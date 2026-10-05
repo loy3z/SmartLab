@@ -1,0 +1,6 @@
+# Verified versions for the local Sprint 1 environment.
+Django==5.2.17
+djangorestframework==3.16.1
+asgiref==3.12.1
+sqlparse==0.6.0
+tzdata==2026.5

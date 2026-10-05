@@ -1,0 +1,2443 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Sprint 1 Smart Lab and Room Booking API",
+    "version": "1.0.0",
+    "description": "Backend-only Sprint 1 contract. University SSO, durable database and Outlook synchronisation are integration points. Demo authentication and memory data are local-development-only. All API paths retain their trailing slash; request timestamps require timezone offsets and response timestamps use UTC Z."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8000",
+      "description": "Single-process local demo"
+    }
+  ],
+  "tags": [
+    {
+      "name": "System"
+    },
+    {
+      "name": "Authentication"
+    },
+    {
+      "name": "Resources"
+    },
+    {
+      "name": "Qualifications"
+    },
+    {
+      "name": "Bookings"
+    },
+    {
+      "name": "Student"
+    },
+    {
+      "name": "Administration"
+    }
+  ],
+  "paths": {
+    "/api/v1/health/": {
+      "get": {
+        "operationId": "get__api_v1_health_",
+        "tags": [
+          "System"
+        ],
+        "summary": "Service health",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/config/": {
+      "get": {
+        "operationId": "get__api_v1_auth_config_",
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Read authentication mode",
+        "description": "Reports whether local demonstration authentication is enabled. Actual university SSO is an integration point.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthConfig"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/demo-register/": {
+      "post": {
+        "operationId": "post__api_v1_auth_demo_register_",
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Register a demonstration student",
+        "description": "Available only when DEBUG and ENABLE_DEMO_AUTH are both true. Always assigns STUDENT; client-supplied privileged roles are rejected. This endpoint is unsuitable for real authentication.",
+        "security": [],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Demonstration authentication is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The zID is already registered.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DemoRegister"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/demo-login/": {
+      "post": {
+        "operationId": "post__api_v1_auth_demo_login_",
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Log in as an existing demonstration identity",
+        "description": "Local demonstration only; no password is checked. Disable outside local development.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unknown or inactive demonstration identity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Demonstration authentication is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DemoLogin"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me/": {
+      "get": {
+        "operationId": "get__api_v1_auth_me_",
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Read current user",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resources/": {
+      "get": {
+        "operationId": "get__api_v1_resources_",
+        "tags": [
+          "Resources"
+        ],
+        "summary": "List resources",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid resource kind.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ROOM",
+                "EQUIPMENT"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/resources/{id}/": {
+      "get": {
+        "operationId": "get__api_v1_resources_id_",
+        "tags": [
+          "Resources"
+        ],
+        "summary": "Read a resource",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resource"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/qualification-requirements/": {
+      "get": {
+        "operationId": "get__api_v1_qualification_requirements_",
+        "tags": [
+          "Resources"
+        ],
+        "summary": "List induction requirements",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualificationRequirementList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resources/{id}/availability/": {
+      "get": {
+        "operationId": "get__api_v1_resources_id_availability_",
+        "tags": [
+          "Resources"
+        ],
+        "summary": "Find resource time slots",
+        "description": "Returns a snapshot. Only APPROVED bookings occupy slots. All timestamps are UTC ISO 8601. can_request reports the qualification submission gate; it does not promise automatic approval.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Availability"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid date or booking duration.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Resource is inactive.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Calendar date in the resource timezone."
+          },
+          {
+            "name": "duration_minutes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 30
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/qualifications/": {
+      "get": {
+        "operationId": "get__api_v1_qualifications_",
+        "tags": [
+          "Qualifications"
+        ],
+        "summary": "List my induction submissions",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualificationSubmissionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "post__api_v1_qualifications_",
+        "tags": [
+          "Qualifications"
+        ],
+        "summary": "Upload induction evidence",
+        "description": "The latest submission determines current eligibility. Uploads are private and restricted to PDF, PNG or JPEG of at most 5 MiB. An existing PENDING or currently valid VERIFIED submission blocks duplicate submission; rejected or expired evidence can be resubmitted.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualificationSubmission"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, file size or content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Qualification requirement not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Evidence is already pending or verified and still current for this requirement.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/QualificationUpload"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/qualifications/{id}/": {
+      "get": {
+        "operationId": "get__api_v1_qualifications_id_",
+        "tags": [
+          "Qualifications"
+        ],
+        "summary": "Read an induction submission",
+        "description": "Only the submitting student and staff can access the record.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualificationSubmission"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Submission not found or not accessible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/qualifications/{id}/file/": {
+      "get": {
+        "operationId": "download_qualification_file",
+        "tags": [
+          "Qualifications"
+        ],
+        "summary": "Download private induction evidence",
+        "description": "Requires Bearer authentication. There is no public download URL. Only the owner or staff can access this file.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Private attachment; Content-Disposition contains its file name.",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "File or submission not found or not accessible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bookings/": {
+      "get": {
+        "operationId": "get__api_v1_bookings_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "List my booking requests",
+        "description": "Reads process due requests using server time before returning their current statuses.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "post__api_v1_bookings_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "Create a room or individual equipment booking request",
+        "description": "Requires an induction submission for the resource. Valid VERIFIED qualification plus no approved conflict results in APPROVED. PENDING evidence with no conflict results in WAITING_QUALIFICATION for up to 24 hours; existing conflicts result in PENDING_APPROVAL immediately. HTTP 201 alone does not mean the booking is approved. Pending requests do not occupy slots. Interval semantics are [start, end). If the requested start is at or before the 24-hour threshold, unverified requests enter PENDING_APPROVAL immediately. Unapproved requests expire when their start time is reached.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The same Idempotency-Key and request were replayed; the original booking is returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid timestamps, duration, alignment or opening hours.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Student-only action or qualification submission gate failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency key conflicts with a different request or booking cannot be created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+            },
+            "description": "Reuse for retries of the same request; use a new value for a different request."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bookings/{id}/": {
+      "get": {
+        "operationId": "get__api_v1_bookings_id_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "Read a booking request",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Booking not found or not accessible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/bookings/{id}/cancel/": {
+      "post": {
+        "operationId": "post__api_v1_bookings_id_cancel_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "Cancel my booking request",
+        "description": "Only future active requests may be cancelled. Checks ownership and current state; refresh availability after cancellation. Repeating cancellation returns the already-cancelled booking. Send an empty body or {}.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Cancellation accepts only an empty body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Booking not found or not accessible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Booking is no longer cancellable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/dashboard/": {
+      "get": {
+        "operationId": "get__api_v1_dashboard_",
+        "tags": [
+          "Student"
+        ],
+        "summary": "Read my student dashboard",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dashboard"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/qualifications/": {
+      "get": {
+        "operationId": "get__api_v1_admin_qualifications_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "List qualification review queue",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualificationSubmissionList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid status filter.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "VERIFIED",
+                "REJECTED"
+              ],
+              "default": "PENDING"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/qualifications/{id}/review/": {
+      "post": {
+        "operationId": "post__api_v1_admin_qualifications_id_review_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Verify or reject induction evidence",
+        "description": "Admin or Manager only. Qualification and booking decisions are independent. A VERIFIED decision may re-evaluate WAITING_QUALIFICATION bookings, returning any updated bookings. A rejected decision requires a reason; valid_until, when supplied, must carry a timezone.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualificationReviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid review decision, reason or expiry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Submission not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The submission is no longer reviewable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QualificationReview"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/bookings/": {
+      "get": {
+        "operationId": "get__api_v1_admin_bookings_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "List booking review queue",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid status filter.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "WAITING_QUALIFICATION",
+                "PENDING_APPROVAL",
+                "APPROVED",
+                "REJECTED",
+                "CANCELLED",
+                "EXPIRED"
+              ],
+              "default": "PENDING_APPROVAL"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/bookings/{id}/review/": {
+      "post": {
+        "operationId": "post__api_v1_admin_bookings_id_review_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Approve or reject a booking request",
+        "description": "Admin or Manager only. Approval always re-checks that the qualification is valid through the booking end and that no APPROVED booking overlaps. Staff cannot override an approved conflict or missing qualification.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, review time, duration or resource opening-hour rules.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Booking not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Missing valid qualification, approved conflict, expired request or invalid booking state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingReview"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/process-due/": {
+      "post": {
+        "operationId": "post__api_v1_admin_process_due_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Process due booking state transitions",
+        "description": "Uses server time; clients cannot advance the clock. Requests waiting 24 hours move to PENDING_APPROVAL. Unapproved requests reaching their start time expire. A production scheduler can invoke the same service.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessDueResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Processing accepts only an empty body, and no client-supplied time.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/schema/": {
+      "get": {
+        "operationId": "get__api_schema_",
+        "tags": [
+          "System"
+        ],
+        "summary": "Read this OpenAPI definition",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Signed demonstration token expires after 3600 seconds. Actual SSO authentication is supplied by a future server-side adapter."
+      }
+    },
+    "schemas": {
+      "User": {
+        "type": "object",
+        "required": [
+          "id",
+          "zid",
+          "display_name",
+          "role",
+          "active"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "zid": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "STUDENT",
+              "ADMIN",
+              "MANAGER"
+            ]
+          },
+          "active": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "details"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      },
+      "AuthResponse": {
+        "type": "object",
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in",
+          "user",
+          "mode"
+        ],
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "token_type": {
+            "type": "string",
+            "enum": [
+              "Bearer"
+            ]
+          },
+          "expires_in": {
+            "type": "integer",
+            "example": 3600
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "demo"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "DemoRegister": {
+        "type": "object",
+        "required": [
+          "zid",
+          "display_name"
+        ],
+        "properties": {
+          "zid": {
+            "type": "string",
+            "example": "z1234567",
+            "pattern": "^z[0-9]{7}$"
+          },
+          "display_name": {
+            "type": "string",
+            "example": "Demo Student",
+            "maxLength": 120
+          }
+        },
+        "additionalProperties": false
+      },
+      "DemoLogin": {
+        "type": "object",
+        "required": [
+          "zid"
+        ],
+        "properties": {
+          "zid": {
+            "type": "string",
+            "example": "z1000001",
+            "pattern": "^z[0-9]{7}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "QualificationRequirement": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Resource": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "location",
+          "description",
+          "active",
+          "required_qualification_id",
+          "slot_minutes",
+          "max_booking_minutes",
+          "opening_time",
+          "closing_time",
+          "timezone"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ROOM",
+              "EQUIPMENT"
+            ]
+          },
+          "location": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "required_qualification_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "slot_minutes": {
+            "type": "integer",
+            "example": 30
+          },
+          "max_booking_minutes": {
+            "type": "integer",
+            "example": 480
+          },
+          "opening_time": {
+            "type": "string",
+            "example": "08:00:00"
+          },
+          "closing_time": {
+            "type": "string",
+            "example": "20:00:00"
+          },
+          "timezone": {
+            "type": "string",
+            "example": "Australia/Sydney"
+          }
+        },
+        "additionalProperties": false
+      },
+      "QualificationSubmission": {
+        "type": "object",
+        "required": [
+          "id",
+          "student_id",
+          "requirement_id",
+          "title",
+          "notes",
+          "file_id",
+          "submitted_at",
+          "status",
+          "reviewed_by",
+          "reviewed_at",
+          "rejection_reason",
+          "valid_until",
+          "effective_status",
+          "file_url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "student_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirement_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "file_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "submitted_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "VERIFIED",
+              "REJECTED"
+            ]
+          },
+          "reviewed_by": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "reviewed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "rejection_reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "valid_until": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "effective_status": {
+            "type": "string",
+            "description": "Current derived status, including expiry; the stored review status remains in status.",
+            "enum": [
+              "PENDING",
+              "VERIFIED",
+              "REJECTED",
+              "EXPIRED"
+            ]
+          },
+          "file_url": {
+            "type": "string",
+            "description": "Private API path; Bearer authentication is still required.",
+            "example": "/api/v1/qualifications/{id}/file/"
+          }
+        },
+        "additionalProperties": false
+      },
+      "QualificationUpload": {
+        "type": "object",
+        "required": [
+          "requirement_id",
+          "title",
+          "file"
+        ],
+        "properties": {
+          "requirement_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "description": "PDF, PNG or JPEG, at most 5 MiB; validated by the server."
+          }
+        },
+        "additionalProperties": false
+      },
+      "Booking": {
+        "type": "object",
+        "required": [
+          "id",
+          "student_id",
+          "resource_id",
+          "start",
+          "end",
+          "purpose",
+          "created_at",
+          "status",
+          "reason_code",
+          "review_due_at",
+          "reviewed_by",
+          "reviewed_at",
+          "decision_reason",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "student_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "resource_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "WAITING_QUALIFICATION",
+              "PENDING_APPROVAL",
+              "APPROVED",
+              "REJECTED",
+              "CANCELLED",
+              "EXPIRED"
+            ]
+          },
+          "reason_code": {
+            "type": "string",
+            "nullable": true
+          },
+          "review_due_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "reviewed_by": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "reviewed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "decision_reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "BookingCreate": {
+        "type": "object",
+        "required": [
+          "resource_id",
+          "start",
+          "end",
+          "purpose"
+        ],
+        "properties": {
+          "resource_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "purpose": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "additionalProperties": false
+      },
+      "Availability": {
+        "type": "object",
+        "required": [
+          "resource_id",
+          "date",
+          "timezone",
+          "duration_minutes",
+          "slots",
+          "can_request",
+          "qualification_status"
+        ],
+        "properties": {
+          "resource_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "timezone": {
+            "type": "string",
+            "example": "Australia/Sydney"
+          },
+          "duration_minutes": {
+            "type": "integer"
+          },
+          "slots": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "start",
+                "end",
+                "available",
+                "reason_code"
+              ],
+              "properties": {
+                "start": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "end": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "available": {
+                  "type": "boolean"
+                },
+                "reason_code": {
+                  "type": "string",
+                  "nullable": true
+                }
+              }
+            }
+          },
+          "can_request": {
+            "type": "boolean"
+          },
+          "qualification_status": {
+            "type": "string",
+            "enum": [
+              "NOT_CONFIGURED",
+              "NOT_SUBMITTED",
+              "PENDING",
+              "VERIFIED",
+              "REJECTED",
+              "EXPIRED"
+            ],
+            "description": "Current resource eligibility; request submission additionally checks validity through the selected end time."
+          }
+        },
+        "additionalProperties": false
+      },
+      "QualificationReview": {
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "VERIFIED",
+              "REJECTED"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "valid_until": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "QualificationReviewResponse": {
+        "type": "object",
+        "required": [
+          "submission",
+          "updated_bookings"
+        ],
+        "properties": {
+          "submission": {
+            "$ref": "#/components/schemas/QualificationSubmission"
+          },
+          "updated_bookings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Booking"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "BookingReview": {
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "APPROVED",
+              "REJECTED"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "additionalProperties": false
+      },
+      "Dashboard": {
+        "type": "object",
+        "required": [
+          "bookings",
+          "qualifications",
+          "counts"
+        ],
+        "properties": {
+          "bookings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Booking"
+            }
+          },
+          "qualifications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QualificationSubmission"
+            }
+          },
+          "counts": {
+            "type": "object",
+            "required": [
+              "WAITING_QUALIFICATION",
+              "PENDING_APPROVAL",
+              "APPROVED",
+              "REJECTED",
+              "CANCELLED",
+              "EXPIRED"
+            ],
+            "properties": {
+              "WAITING_QUALIFICATION": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "PENDING_APPROVAL": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "APPROVED": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "REJECTED": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "CANCELLED": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "EXPIRED": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProcessDueResponse": {
+        "type": "object",
+        "required": [
+          "processed_count",
+          "updated_bookings"
+        ],
+        "properties": {
+          "processed_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updated_bookings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Booking"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ResourceList": {
+        "type": "object",
+        "required": [
+          "count",
+          "results"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Resource"
+            }
+          }
+        }
+      },
+      "QualificationRequirementList": {
+        "type": "object",
+        "required": [
+          "count",
+          "results"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QualificationRequirement"
+            }
+          }
+        }
+      },
+      "QualificationSubmissionList": {
+        "type": "object",
+        "required": [
+          "count",
+          "results"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QualificationSubmission"
+            }
+          }
+        }
+      },
+      "BookingList": {
+        "type": "object",
+        "required": [
+          "count",
+          "results"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Booking"
+            }
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "required": [
+          "status",
+          "service",
+          "demo_auth_enabled",
+          "persistence",
+          "outlook_sync"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "service": {
+            "type": "string",
+            "example": "smartlab-sprint1"
+          },
+          "demo_auth_enabled": {
+            "type": "boolean"
+          },
+          "persistence": {
+            "type": "string",
+            "enum": [
+              "adapter"
+            ]
+          },
+          "outlook_sync": {
+            "type": "string",
+            "enum": [
+              "not_implemented"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "AuthConfig": {
+        "type": "object",
+        "required": [
+          "mode",
+          "demo_auth_enabled",
+          "demo_registration_enabled",
+          "sso_connected",
+          "token_type"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "demo",
+              "external_provider_required"
+            ]
+          },
+          "demo_auth_enabled": {
+            "type": "boolean"
+          },
+          "demo_registration_enabled": {
+            "type": "boolean"
+          },
+          "sso_connected": {
+            "type": "boolean",
+            "description": "Always false in Sprint 1; actual school SSO is not integrated."
+          },
+          "token_type": {
+            "type": "string",
+            "enum": [
+              "Bearer"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

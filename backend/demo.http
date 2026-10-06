@@ -1,0 +1,157 @@
+@baseUrl = http://127.0.0.1:8000/api/v1
+@studentToken = replace-with-demo-login-access-token
+@adminToken = replace-with-admin-demo-login-access-token
+@resourceId = 00000000-0000-0000-0000-000000000101
+@requirementId = 00000000-0000-0000-0000-000000000001
+@submissionId = replace-with-created-submission-id
+@bookingId = replace-with-created-booking-id
+@bookingStart = 2026-10-07T09:00:00+11:00
+@bookingEnd = 2026-10-07T10:00:00+11:00
+
+### Health
+GET {{baseUrl}}/health/
+
+### Authentication configuration
+GET {{baseUrl}}/auth/config/
+
+### Demo login: a student with valid qualification
+POST {{baseUrl}}/auth/demo-login/
+Content-Type: application/json
+
+{"zid": "z1000001"}
+
+### Demo login: student who needs to submit induction
+POST {{baseUrl}}/auth/demo-login/
+Content-Type: application/json
+
+{"zid": "z1000002"}
+
+### Demo registration: always creates a student
+POST {{baseUrl}}/auth/demo-register/
+Content-Type: application/json
+
+{"zid": "z1234567", "display_name": "Demo Student"}
+
+### Current student
+GET {{baseUrl}}/auth/me/
+Authorization: Bearer {{studentToken}}
+
+### Find rooms
+GET {{baseUrl}}/resources/?kind=ROOM
+Authorization: Bearer {{studentToken}}
+
+### Find individual equipment
+GET {{baseUrl}}/resources/?kind=EQUIPMENT
+Authorization: Bearer {{studentToken}}
+
+### Qualification requirements
+GET {{baseUrl}}/qualification-requirements/
+Authorization: Bearer {{studentToken}}
+
+### Submit induction. Replace the sample file path with a real PDF/PNG/JPEG.
+POST {{baseUrl}}/qualifications/
+Authorization: Bearer {{studentToken}}
+Content-Type: multipart/form-data; boundary=demo-boundary
+
+--demo-boundary
+Content-Disposition: form-data; name="requirement_id"
+
+{{requirementId}}
+--demo-boundary
+Content-Disposition: form-data; name="title"
+
+Induction completion certificate
+--demo-boundary
+Content-Disposition: form-data; name="notes"
+
+Please review my induction certificate.
+--demo-boundary
+Content-Disposition: form-data; name="file"; filename="certificate.pdf"
+Content-Type: application/pdf
+
+< ./certificate.pdf
+--demo-boundary--
+
+### Availability. Use a future date within the configured opening hours.
+GET {{baseUrl}}/resources/{{resourceId}}/availability/?date=2026-10-07&duration_minutes=60
+Authorization: Bearer {{studentToken}}
+
+### Create a booking. Update timestamps before replaying this example.
+POST {{baseUrl}}/bookings/
+Authorization: Bearer {{studentToken}}
+Content-Type: application/json
+Idempotency-Key: demo-booking-request-001
+
+{
+  "resource_id": "{{resourceId}}",
+  "start": "{{bookingStart}}",
+  "end": "{{bookingEnd}}",
+  "purpose": "Project laboratory session"
+}
+
+### Student dashboard. Only APPROVED means a confirmed booking.
+GET {{baseUrl}}/dashboard/
+Authorization: Bearer {{studentToken}}
+
+### Demo administrator login
+POST {{baseUrl}}/auth/demo-login/
+Content-Type: application/json
+
+{"zid": "z9000001"}
+
+### Pending induction submissions
+GET {{baseUrl}}/admin/qualifications/?status=PENDING
+Authorization: Bearer {{adminToken}}
+
+### Read a private attachment
+GET {{baseUrl}}/qualifications/{{submissionId}}/file/
+Authorization: Bearer {{adminToken}}
+
+### Verify induction. valid_until is optional; include a timezone if supplied.
+POST {{baseUrl}}/admin/qualifications/{{submissionId}}/review/
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"decision": "VERIFIED", "reason": "Certificate checked"}
+
+### Reject induction
+POST {{baseUrl}}/admin/qualifications/{{submissionId}}/review/
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"decision": "REJECTED", "reason": "Please provide the required induction certificate"}
+
+### Pending booking approvals
+GET {{baseUrl}}/admin/bookings/?status=PENDING_APPROVAL
+Authorization: Bearer {{adminToken}}
+
+### Approve booking. Requires valid induction and no approved conflict.
+POST {{baseUrl}}/admin/bookings/{{bookingId}}/review/
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"decision": "APPROVED", "reason": "Request reviewed"}
+
+### Reject booking
+POST {{baseUrl}}/admin/bookings/{{bookingId}}/review/
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"decision": "REJECTED", "reason": "Please choose another time slot"}
+
+### Process due requests. Uses server time; clients cannot fast-forward time.
+POST {{baseUrl}}/admin/process-due/
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{}
+
+### Cancel own booking
+POST {{baseUrl}}/bookings/{{bookingId}}/cancel/
+Authorization: Bearer {{studentToken}}
+Content-Type: application/json
+
+{}
+
+### OpenAPI JSON
+GET http://127.0.0.1:8000/api/schema/

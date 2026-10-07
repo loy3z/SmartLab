@@ -16,6 +16,7 @@ from .domain import (
     AuditRecord,
     Booking,
     Principal,
+    OutlookSyncRecord,
     QualificationRequirement,
     QualificationSubmission,
     Resource,
@@ -54,6 +55,9 @@ class Repository(Protocol):
     def save_booking(self, booking: Booking) -> None: ...
     def append_audit(self, record: AuditRecord) -> None: ...
     def list_audit(self) -> list[AuditRecord]: ...
+    def get_outlook_sync(self, booking_id: str) -> OutlookSyncRecord | None: ...
+    def list_outlook_sync(self) -> list[OutlookSyncRecord]: ...
+    def save_outlook_sync(self, record: OutlookSyncRecord) -> None: ...
 
 
 class MemoryRepository:
@@ -72,6 +76,7 @@ class MemoryRepository:
         self._submissions: dict[str, QualificationSubmission] = {}
         self._bookings: dict[str, Booking] = {}
         self._audit: list[AuditRecord] = []
+        self._outlook_sync: dict[str, OutlookSyncRecord] = {}
 
     @contextmanager
     def atomic(
@@ -87,6 +92,7 @@ class MemoryRepository:
                 self._submissions.copy(),
                 self._bookings.copy(),
                 deepcopy(self._audit),
+                self._outlook_sync.copy(),
             )
             try:
                 yield
@@ -98,6 +104,7 @@ class MemoryRepository:
                     self._submissions,
                     self._bookings,
                     self._audit,
+                    self._outlook_sync,
                 ) = snapshot
                 raise
 
@@ -198,3 +205,16 @@ class MemoryRepository:
             self._submissions.clear()
             self._bookings.clear()
             self._audit.clear()
+            self._outlook_sync.clear()
+
+    def get_outlook_sync(self, booking_id: str) -> OutlookSyncRecord | None:
+        with self._lock:
+            return self._outlook_sync.get(booking_id)
+
+    def list_outlook_sync(self) -> list[OutlookSyncRecord]:
+        with self._lock:
+            return list(self._outlook_sync.values())
+
+    def save_outlook_sync(self, record: OutlookSyncRecord) -> None:
+        with self._lock:
+            self._outlook_sync[record.booking_id] = record

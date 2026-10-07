@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Sprint 1 Smart Lab and Room Booking API",
-    "version": "1.0.0",
-    "description": "Backend-only Sprint 1 contract. University SSO, durable database and Outlook synchronisation are integration points. Demo authentication and memory data are local-development-only. All API paths retain their trailing slash; request timestamps require timezone offsets and response timestamps use UTC Z."
+    "version": "1.1.0",
+    "description": "Sprint 1 backend with Microsoft Graph one-way creation/cancellation of confirmed bookings. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Rescheduling, waitlists and recurrence are deferred to Sprint 2. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z."
   },
   "servers": [
     {
@@ -1609,6 +1609,235 @@
           }
         }
       }
+    },
+    "/api/v1/admin/outlook/": {
+      "get": {
+        "operationId": "get_outlook_status",
+        "summary": "Outlook configuration and sync records",
+        "tags": [
+          "Administration"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutlookStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin or Manager role required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sync disabled, not required or already in progress.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/outlook/process/": {
+      "post": {
+        "operationId": "process_outlook_jobs",
+        "summary": "Process a bounded batch of due Outlook jobs",
+        "tags": [
+          "Administration"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutlookProcessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin or Manager role required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sync disabled, not required or already in progress.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutlookProcessRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/bookings/{id}/outlook-retry/": {
+      "post": {
+        "operationId": "retry_booking_outlook",
+        "summary": "Immediately retry a booking's Outlook job",
+        "tags": [
+          "Administration"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin or Manager role required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sync disabled, not required or already in progress.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutlookRetryRequest"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -1974,7 +2203,8 @@
           "reviewed_by",
           "reviewed_at",
           "decision_reason",
-          "updated_at"
+          "updated_at",
+          "outlook_sync"
         ],
         "properties": {
           "id": {
@@ -2042,6 +2272,9 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
+          },
+          "outlook_sync": {
+            "$ref": "#/components/schemas/OutlookSync"
           }
         },
         "additionalProperties": false
@@ -2396,7 +2629,8 @@
           "outlook_sync": {
             "type": "string",
             "enum": [
-              "not_implemented"
+              "enabled",
+              "disabled"
             ]
           }
         },
@@ -2436,6 +2670,216 @@
             ]
           }
         },
+        "additionalProperties": false
+      },
+      "OutlookSync": {
+        "type": "object",
+        "required": [
+          "status",
+          "action",
+          "web_link",
+          "last_error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "DISABLED",
+              "NOT_REQUIRED",
+              "PENDING",
+              "IN_PROGRESS",
+              "SYNCED",
+              "FAILED"
+            ]
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "CREATE",
+              "DELETE"
+            ],
+            "nullable": true
+          },
+          "web_link": {
+            "type": "string",
+            "format": "uri",
+            "nullable": true
+          },
+          "last_error": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "OutlookSyncRecord": {
+        "type": "object",
+        "required": [
+          "booking_id",
+          "action",
+          "status",
+          "calendar_path",
+          "updated_at",
+          "revision",
+          "event_id",
+          "web_link",
+          "attempts",
+          "create_attempted",
+          "next_attempt_at",
+          "lease_until",
+          "last_error"
+        ],
+        "properties": {
+          "booking_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "CREATE",
+              "DELETE"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "IN_PROGRESS",
+              "SYNCED",
+              "FAILED"
+            ]
+          },
+          "calendar_path": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "event_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "web_link": {
+            "type": "string",
+            "format": "uri",
+            "nullable": true
+          },
+          "attempts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "create_attempted": {
+            "type": "boolean"
+          },
+          "next_attempt_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "lease_until": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "last_error": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "OutlookSyncCollection": {
+        "type": "object",
+        "required": [
+          "count",
+          "results"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OutlookSyncRecord"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "OutlookStatus": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "configured",
+          "mode",
+          "direction",
+          "sync_records"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "configured": {
+            "type": "boolean",
+            "description": "Local configuration exists; does not prove valid Graph authorization."
+          },
+          "mode": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "system_to_outlook"
+            ]
+          },
+          "sync_records": {
+            "$ref": "#/components/schemas/OutlookSyncCollection"
+          }
+        },
+        "additionalProperties": false
+      },
+      "OutlookProcessRequest": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "default": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "OutlookProcessResponse": {
+        "type": "object",
+        "required": [
+          "processed_count",
+          "results"
+        ],
+        "properties": {
+          "processed_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OutlookSyncRecord"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "OutlookRetryRequest": {
+        "type": "object",
         "additionalProperties": false
       }
     }

@@ -42,3 +42,18 @@ CORS_ALLOWED_ORIGINS = [x.strip() for x in os.getenv("CORS_ALLOWED_ORIGINS", "ht
 DATA_UPLOAD_MAX_MEMORY_SIZE = 6 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 SECURE_CONTENT_TYPE_NOSNIFF = True
+
+# Independent from AUTH_PROVIDER: students' demo/SSO tokens are never sent to Graph.
+OUTLOOK_ENABLED = os.getenv("OUTLOOK_ENABLED", "false").lower() == "true"
+OUTLOOK_SYNC_ON_WRITE = os.getenv("OUTLOOK_SYNC_ON_WRITE", "true").lower() == "true"
+OUTLOOK_PROVIDER_FACTORY = os.getenv("OUTLOOK_PROVIDER_FACTORY", "booking.outlook.make_graph_calendar")
+OUTLOOK_ACCESS_TOKEN = os.getenv("OUTLOOK_ACCESS_TOKEN", "").strip()
+OUTLOOK_TOKEN_FILE = os.getenv("OUTLOOK_TOKEN_FILE", str(BASE_DIR / ".local" / "outlook-token") if DEBUG else "")
+OUTLOOK_TENANT_ID = os.getenv("OUTLOOK_TENANT_ID", "").strip()
+OUTLOOK_CLIENT_ID = os.getenv("OUTLOOK_CLIENT_ID", "").strip()
+OUTLOOK_CLIENT_SECRET = os.getenv("OUTLOOK_CLIENT_SECRET", "")
+OUTLOOK_MAILBOX = os.getenv("OUTLOOK_MAILBOX", "").strip()
+OUTLOOK_CALENDAR_ID = os.getenv("OUTLOOK_CALENDAR_ID", "").strip()
+OUTLOOK_HTTP_TIMEOUT_SECONDS = float(os.getenv("OUTLOOK_HTTP_TIMEOUT_SECONDS", "8"))
+if not 0 < OUTLOOK_HTTP_TIMEOUT_SECONDS <= 30:
+    raise ValueError("OUTLOOK_HTTP_TIMEOUT_SECONDS must be in (0, 30]")

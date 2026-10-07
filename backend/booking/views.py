@@ -11,11 +11,12 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .authentication import issue_demo_token, require_demo_mode
-from .domain import BookingStatus, Principal, QualificationStatus, ResourceKind, Role
+from .domain import Booking, BookingStatus, Principal, QualificationStatus, ResourceKind, Role
 from .exceptions import DomainError
 from .runtime import get_service
 from .serializers import (AvailabilityQuerySerializer, BookingCreateSerializer, BookingReviewSerializer,
-                          DemoLoginSerializer, DemoRegisterSerializer, QualificationCreateSerializer, QualificationReviewSerializer)
+                          DemoLoginSerializer, DemoRegisterSerializer, QualificationCreateSerializer, QualificationReviewSerializer,
+                          OutlookProcessSerializer)
 
 def json_value(value):
     if isinstance(value, Enum):
@@ -25,7 +26,10 @@ def json_value(value):
     if isinstance(value, (time, date)):
         return value.isoformat()
     if is_dataclass(value):
-        return json_value(asdict(value))
+        result = json_value(asdict(value))
+        if isinstance(value, Booking):
+            result["outlook_sync"] = get_service().calendar_sync.describe(value)
+        return result
     if isinstance(value, dict):
         return {key: json_value(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
@@ -47,6 +51,13 @@ def validated(serializer_cls, data):
     serializer.is_valid(raise_exception=True)
     return serializer.validated_data
 
+def sync_after_write(service, *bookings):
+    # The domain transaction has returned before any external HTTP call.
+    if settings.OUTLOOK_SYNC_ON_WRITE:
+        for booking in bookings:
+            service.calendar_sync.process_booking(booking.id)
+    return tuple(service.repo.get_booking(booking.id) for booking in bookings)
+
 def session_result(principal):
     return {"access_token": issue_demo_token(principal), "token_type": "Bearer", "expires_in": settings.DEMO_TOKEN_TTL_SECONDS,
             "user": json_value(principal), "mode": "demo"}
@@ -58,7 +69,7 @@ class PublicView(APIView):
 class HealthView(PublicView):
     def get(self, request):
         return Response({"status": "ok", "service": "smartlab-sprint1", "demo_auth_enabled": settings.DEBUG and settings.ENABLE_DEMO_AUTH,
-                         "persistence": "adapter", "outlook_sync": "not_implemented"})
+                         "persistence": "adapter", "outlook_sync": "enabled" if settings.OUTLOOK_ENABLED else "disabled"})
 
 class AuthConfigView(PublicView):
     def get(self, request):
@@ -159,6 +170,7 @@ class BookingListView(APIView):
         service.require_student(request.user)
         data = validated(BookingCreateSerializer, request.data)
         booking, created = service.create_booking(request.user, str(data["resource_id"]), data["start"], data["end"], data["purpose"], request.headers.get("Idempotency-Key"))
+        booking, = sync_after_write(service, booking)
         return Response(json_value(booking), status=201 if created else 200)
 
 class BookingDetailView(APIView):
@@ -171,7 +183,10 @@ class BookingCancelView(APIView):
     def post(self, request, booking_id):
         if request.data:
             raise DomainError("VALIDATION_ERROR", "The cancellation action does not accept extra fields.")
-        return Response(json_value(get_service().cancel_booking(request.user, str(booking_id))))
+        service = get_service()
+        booking = service.cancel_booking(request.user, str(booking_id))
+        booking, = sync_after_write(service, booking)
+        return Response(json_value(booking))
 
 class DashboardView(APIView):
     def get(self, request):
@@ -198,6 +213,7 @@ class AdminQualificationReviewView(APIView):
         service.require_staff(request.user)
         data = validated(QualificationReviewSerializer, request.data)
         record, bookings = service.review_qualification(request.user, str(submission_id), data["decision"], data["reason"], data["valid_until"])
+        bookings = sync_after_write(service, *bookings)
         return Response({"submission": submission_json(record), "updated_bookings": json_value(bookings)})
 
 class AdminBookingListView(APIView):
@@ -216,7 +232,9 @@ class AdminBookingReviewView(APIView):
         service = get_service()
         service.require_staff(request.user)
         data = validated(BookingReviewSerializer, request.data)
-        return Response(json_value(service.review_booking(request.user, str(booking_id), data["decision"], data["reason"])))
+        booking = service.review_booking(request.user, str(booking_id), data["decision"], data["reason"])
+        booking, = sync_after_write(service, booking)
+        return Response(json_value(booking))
 
 class ProcessDueView(APIView):
     def post(self, request):
@@ -226,3 +244,33 @@ class ProcessDueView(APIView):
             raise DomainError("VALIDATION_ERROR", "The processing action does not accept a client-supplied clock.")
         changed = service.process_due_requests()
         return Response({"processed_count": len(changed), "updated_bookings": json_value(changed)})
+
+
+class OutlookStatusView(APIView):
+    def get(self, request):
+        service = get_service()
+        service.require_staff(request.user)
+        sync = service.calendar_sync
+        return Response({"enabled": sync.enabled, "configured": sync.provider.configured,
+                         "mode": getattr(sync.provider, "mode", "adapter"), "direction": "system_to_outlook",
+                         "sync_records": collection(sync.repo.list_outlook_sync())})
+
+
+class OutlookProcessView(APIView):
+    def post(self, request):
+        service = get_service()
+        service.require_staff(request.user)
+        data = validated(OutlookProcessSerializer, request.data)
+        processed = service.calendar_sync.process_pending(data["limit"])
+        return Response({"processed_count": len(processed), "results": json_value(processed)})
+
+
+class OutlookRetryView(APIView):
+    def post(self, request, booking_id):
+        service = get_service()
+        service.require_staff(request.user)
+        if request.data:
+            raise DomainError("VALIDATION_ERROR", "The retry action does not accept extra fields.")
+        booking = service.booking_for(request.user, str(booking_id))
+        service.calendar_sync.retry(booking)
+        return Response(json_value(booking))

@@ -85,7 +85,6 @@ class Resource:
     opening_time: time = time(8)
     closing_time: time = time(20)
     timezone: str = "Australia/Sydney"
-    calendar_email: str = ""
 
 
 @dataclass(frozen=True)

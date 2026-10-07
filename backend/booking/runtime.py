@@ -22,7 +22,6 @@ def seed_demo_data(service):
         service.repo.save_resource(Resource(
             fixed_id(number), name, kind, "Demo laboratory", "Single resource; demonstration data.",
             required_qualification_id=requirement.id,
-            calendar_email=f"resource-{number}@example.edu",
         ))
     for number, zid, name, role in [(501, "z1000001", "Qualified demo student", Role.STUDENT),
                                     (502, "z1000002", "New demo student", Role.STUDENT),

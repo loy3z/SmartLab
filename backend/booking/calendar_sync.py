@@ -102,8 +102,8 @@ class CalendarSyncService:
                         resource = self.repo.get_resource(source.resource_id)
                         if not student or not student.university_email:
                             raise OutlookError("STUDENT_EMAIL_NOT_CONFIGURED")
-                        if not resource or not resource.calendar_email:
-                            raise OutlookError("RESOURCE_CALENDAR_NOT_CONFIGURED")
+                        if not resource:
+                            raise OutlookError("RESOURCE_NOT_FOUND")
                     if creating:
                         event = self.provider.create_event(source, student, resource, claimed.calendar_path)
                         event_id, web_link, ical_uid = event.id, event.web_link, event.ical_uid

@@ -2125,8 +2125,7 @@
           "max_booking_minutes",
           "opening_time",
           "closing_time",
-          "timezone",
-          "calendar_email"
+          "timezone"
         ],
         "properties": {
           "id": {
@@ -2176,11 +2175,6 @@
           "timezone": {
             "type": "string",
             "example": "Australia/Sydney"
-          },
-          "calendar_email": {
-            "type": "string",
-            "format": "email",
-            "description": "Mailbox invited as the resource attendee for confirmed bookings."
           }
         },
         "additionalProperties": false

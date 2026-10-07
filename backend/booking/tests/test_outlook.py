@@ -34,7 +34,7 @@ class FakeCalendar:
         return "/me/calendar/events"
 
     def create_event(self, booking, student, resource, path):
-        self.creates.append((booking.id, student.university_email, resource.calendar_email, path))
+        self.creates.append((booking.id, student.university_email, resource.id, path))
         if self.on_create:
             self.on_create()
         if self.error:
@@ -42,7 +42,7 @@ class FakeCalendar:
         return CalendarEvent("event-" + booking.id, "https://outlook.live.com/calendar/item/demo", "ical-" + booking.id)
 
     def update_event(self, booking, student, resource, path, event_id):
-        self.updates.append((booking.id, student.university_email, resource.calendar_email, path, event_id))
+        self.updates.append((booking.id, student.university_email, resource.id, path, event_id))
         if self.error:
             raise self.error
         return CalendarEvent(event_id, "https://outlook.live.com/calendar/item/demo", "ical-" + booking.id)
@@ -145,13 +145,11 @@ class OutlookWorkflowTests(SimpleTestCase):
         self.assertIsNone(result.data["outlook_sync"]["web_link"])
         self.assertEqual(len(self.provider.deletes), 1)
 
-    def test_cancellation_does_not_require_attendee_emails_after_event_exists(self):
+    def test_cancellation_does_not_require_student_email_after_event_exists(self):
         booking = self.create().data
         stored = self.service.repo.get_booking(booking["id"])
         student = self.service.repo.get_principal(stored.student_id)
-        resource = self.service.repo.get_resource(stored.resource_id)
         self.service.repo.save_principal(replace(student, university_email=""))
-        self.service.repo.save_resource(replace(resource, calendar_email=""))
         result = self.client.post(f"/api/v1/bookings/{booking['id']}/cancel/", {}, format="json")
         self.assertEqual(result.data["outlook_sync"]["status"], "SYNCED")
         self.assertEqual(len(self.provider.deletes), 1)
@@ -312,8 +310,7 @@ class GraphAdapterTests(SimpleTestCase):
             "Private purpose", NOW, BookingStatus.APPROVED, "AUTO_APPROVED")
         student = Principal("student-private-id", "z1234567", "Example Student", Role.STUDENT,
                             university_email="student@example.edu")
-        resource = Resource("resource", "Lab Room 1", ResourceKind.ROOM, "Building A", "Demo",
-                            calendar_email="room1@example.edu")
+        resource = Resource("resource", "Lab Room 1", ResourceKind.ROOM, "Building A", "Demo")
         return booking, student, resource
 
     def test_personal_account_posts_real_graph_payload_without_student_private_data(self):
@@ -327,10 +324,11 @@ class GraphAdapterTests(SimpleTestCase):
         self.assertEqual(headers["Authorization"], "Bearer example-access-token")
         self.assertEqual(body["transactionId"], booking.id)
         self.assertEqual(body["start"], {"dateTime": "2026-10-08T00:00:00", "timeZone": "UTC"})
+        self.assertEqual(len(body["attendees"]), 1)
         self.assertEqual(body["attendees"][0]["emailAddress"]["address"], student.university_email)
         self.assertEqual(body["attendees"][0]["type"], "required")
-        self.assertEqual(body["attendees"][1]["emailAddress"]["address"], resource.calendar_email)
-        self.assertEqual(body["attendees"][1]["type"], "resource")
+        self.assertEqual(body["subject"], "SmartLab booking: Lab Room 1")
+        self.assertEqual(body["location"]["displayName"], "Building A")
         self.assertNotIn(booking.student_id, json.dumps(body))
         self.assertNotIn(booking.purpose, json.dumps(body))
         self.assertEqual(event.id, "event-id")
@@ -357,8 +355,8 @@ class GraphAdapterTests(SimpleTestCase):
         self.assertEqual(method, "PATCH")
         self.assertTrue(url.endswith("/events/event%2Fwith%2Bcharacters"))
         self.assertNotIn("transactionId", body)
+        self.assertEqual(len(body["attendees"]), 1)
         self.assertEqual(body["attendees"][0]["emailAddress"]["address"], student.university_email)
-        self.assertEqual(body["attendees"][1]["emailAddress"]["address"], resource.calendar_email)
         self.assertEqual(event.id, "event/with+characters")
         self.assertEqual(event.ical_uid, "ical-uid")
 

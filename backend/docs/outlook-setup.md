@@ -1,6 +1,6 @@
 # Sprint 1：个人 Outlook 日历演示
 
-本版把已批准预约写入授权 Outlook 账号的日历，邀请学生邮箱和对应房间／设备邮箱，改期时更新原事件，取消时删除事件。授权账号是组织者；资源邮箱作为 `resource` attendee，学生邮箱作为 `required` attendee。这是“系统 → Outlook”的单向日历同步，不是独立邮件通知，也不是学校 SSO。学生仍用本地演示登录。等待名单和重复预约留到 Sprint 2。
+本版把已批准预约写入授权 Outlook 账号的日历，并邀请学生邮箱；改期时更新原事件，取消时删除事件。授权账号是组织者，学生邮箱作为 `required` attendee。房间和设备的可用性、资格要求与冲突由本系统管理。这是“系统 → Outlook”的单向日历同步，不是独立邮件通知，也不是学校 SSO。学生仍用本地演示登录。等待名单和重复预约留到 Sprint 2。
 
 微软凭证只在本机配置，不要发到聊天或提交 GitLab。默认不启用同步。
 
@@ -52,7 +52,7 @@ PowerShell 用 `$env:DEBUG="true"`、`$env:ENABLE_DEMO_AUTH="true"`、`$env:DJAN
 5. 在本系统把预约改到另一个可用时间；确认 `action=UPDATE`、`status=SYNCED`，原事件 ID 保持不变且时间已更新。
 6. 在本系统取消该预约；确认 `action=DELETE`、`status=SYNCED`，日历中该事件应被删除。
 
-人工批准、induction 审核后自动批准也走同一流程。未批准申请不会创建事件。事件包含学生大学邮箱、资源日历邮箱、资源、地点和预约引用，不包含内部 student ID、学生证件、induction 附件或预约用途。演示种子里的 `example.edu` 邮箱只是占位值；真实联调前必须换成实际邮箱。资源邮箱能否自动接受邀请由学校 Exchange 资源邮箱策略决定。
+人工批准、induction 审核后自动批准也走同一流程。未批准申请不会创建事件。事件包含学生大学邮箱、预约资源名称、地点和预约引用，不包含内部 student ID、学生证件、induction 附件或预约用途。演示种子里的 `example.edu` 学生邮箱只是占位值；真实联调前必须换成实际邮箱。
 
 取消演示预约后再停止服务器。当前数据在内存，重启会丢失预约和事件 ID，但 Outlook 事件仍存在；提前重启后需要在自己的 Outlook 删除遗留演示事件。共享运行前由数据库同学接入持久化。
 
@@ -72,7 +72,6 @@ PowerShell 用 `$env:DEBUG="true"`、`$env:ENABLE_DEMO_AUTH="true"`、`$env:DJAN
 | --- | --- |
 | `OUTLOOK_NOT_CONFIGURED` | 尚未保存 Token 或未提供应用配置 |
 | `STUDENT_EMAIL_NOT_CONFIGURED` | 用户资料没有大学邮箱；补全可信 SSO／用户映射 |
-| `RESOURCE_CALENDAR_NOT_CONFIGURED` | 资源没有对应的 Outlook 日历邮箱 |
 | `OUTLOOK_EVENT_ID_MISSING` | 更新任务缺少已创建事件的 ID；检查持久化／迁移数据 |
 | `GRAPH_HTTP_401` | Token 过期／无效；重新获取并运行 `outlook_token`，再重试 |
 | `GRAPH_HTTP_403` | 未授予日历读写权限，或没有目标日历权限 |
@@ -86,8 +85,8 @@ PowerShell 用 `$env:DEBUG="true"`、`$env:ENABLE_DEMO_AUTH="true"`、`$env:DJAN
 
 正式服务可配置 `OUTLOOK_TENANT_ID`、`OUTLOOK_CLIENT_ID`、`OUTLOOK_CLIENT_SECRET`、`OUTLOOK_MAILBOX`，使用应用身份自动获取新 access token；清除个人 Token，并将 `OUTLOOK_TOKEN_FILE` 设置为空。需要应用 `Calendars.ReadWrite` 权限、管理员同意及目标邮箱访问范围配置。客户／学校须确认授权，学生 SSO 登录不能替代。
 
-数据库新增 `get_outlook_sync`、`list_outlook_sync`、`save_outlook_sync`，保存 `OutlookSyncRecord` 全部字段，包括事件 ID、iCal UID、目标路径、预约版本、同步版本、最后成功时间、重试时间和租约。`Principal.university_email` 和 `Resource.calendar_email` 也必须持久化。预约、同步记录、审计在同一事务保存，处理完成时重读版本。接入持久化后可定时执行 `python manage.py process_outlook --limit 10`；内存演示只能通过运行中服务器的管理员接口处理失败。
+数据库新增 `get_outlook_sync`、`list_outlook_sync`、`save_outlook_sync`，保存 `OutlookSyncRecord` 全部字段，包括事件 ID、iCal UID、目标路径、预约版本、同步版本、最后成功时间、重试时间和租约。`Principal.university_email` 也必须持久化。预约、同步记录、审计在同一事务保存，处理完成时重读版本。接入持久化后可定时执行 `python manage.py process_outlook --limit 10`；内存演示只能通过运行中服务器的管理员接口处理失败。
 
-默认在一个授权组织者日历建立事件，再邀请当前学生和预约对应资源。每个资源必须配置自己的 `calendar_email`；若未来改为直接写入多个邮箱日历，需要同时保存各日历的事件 ID，并扩展 `CalendarProvider`。
+默认在一个授权组织者日历建立事件，再邀请当前学生。房间和设备只由系统数据库管理，Outlook 事件中的资源名称和地点用于向学生说明预约内容。
 
 微软文档：[创建事件](https://learn.microsoft.com/en-us/graph/api/calendar-post-events?view=graph-rest-1.0)、[更新事件](https://learn.microsoft.com/en-us/graph/api/event-update?view=graph-rest-1.0)、[删除事件](https://learn.microsoft.com/en-us/graph/api/event-delete?view=graph-rest-1.0)、[权限](https://learn.microsoft.com/en-us/graph/permissions-reference#calendarsreadwrite)、[应用身份认证](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow)。

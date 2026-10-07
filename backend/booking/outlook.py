@@ -154,7 +154,6 @@ class MicrosoftGraphCalendar:
             "reminderMinutesBeforeStart": 15,
             "attendees": [
                 {"emailAddress": {"address": student.university_email, "name": student.display_name}, "type": "required"},
-                {"emailAddress": {"address": resource.calendar_email, "name": resource.name}, "type": "resource"},
             ],
         }
         if include_transaction_id:

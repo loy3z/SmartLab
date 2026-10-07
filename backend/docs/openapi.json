@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Sprint 1 Smart Lab and Room Booking API",
-    "version": "1.1.0",
-    "description": "Sprint 1 backend with Microsoft Graph one-way creation/cancellation of confirmed bookings. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Rescheduling, waitlists and recurrence are deferred to Sprint 2. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z."
+    "version": "1.2.0",
+    "description": "Sprint 1 backend with Microsoft Graph one-way creation, rescheduling and cancellation of confirmed bookings. Confirmed events invite the student and the corresponding room/equipment calendar. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Waitlists and recurrence are deferred to Sprint 2. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z."
   },
   "servers": [
     {
@@ -1141,6 +1141,104 @@
         ]
       }
     },
+    "/api/v1/bookings/{id}/reschedule/": {
+      "post": {
+        "operationId": "post__api_v1_bookings_id_reschedule_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "Reschedule my approved booking",
+        "description": "Moves a future approved booking after rechecking resource rules, qualification validity and conflicts. A successful Outlook sync updates the existing event rather than creating another event.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The supplied time range is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user is not an active student.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Booking not found or not accessible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Booking is not reschedulable, the new period conflicts, or qualification does not cover it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingReschedule"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/dashboard/": {
       "get": {
         "operationId": "get__api_v1_dashboard_",
@@ -1856,7 +1954,8 @@
           "zid",
           "display_name",
           "role",
-          "active"
+          "active",
+          "university_email"
         ],
         "properties": {
           "id": {
@@ -1879,6 +1978,10 @@
           },
           "active": {
             "type": "boolean"
+          },
+          "university_email": {
+            "type": "string",
+            "format": "email"
           }
         },
         "additionalProperties": false
@@ -1950,7 +2053,8 @@
         "type": "object",
         "required": [
           "zid",
-          "display_name"
+          "display_name",
+          "university_email"
         ],
         "properties": {
           "zid": {
@@ -1962,6 +2066,12 @@
             "type": "string",
             "example": "Demo Student",
             "maxLength": 120
+          },
+          "university_email": {
+            "type": "string",
+            "format": "email",
+            "example": "z1234567@example.edu",
+            "maxLength": 254
           }
         },
         "additionalProperties": false
@@ -2015,7 +2125,8 @@
           "max_booking_minutes",
           "opening_time",
           "closing_time",
-          "timezone"
+          "timezone",
+          "calendar_email"
         ],
         "properties": {
           "id": {
@@ -2065,6 +2176,11 @@
           "timezone": {
             "type": "string",
             "example": "Australia/Sydney"
+          },
+          "calendar_email": {
+            "type": "string",
+            "format": "email",
+            "description": "Mailbox invited as the resource attendee for confirmed bookings."
           }
         },
         "additionalProperties": false
@@ -2204,6 +2320,7 @@
           "reviewed_at",
           "decision_reason",
           "updated_at",
+          "revision",
           "outlook_sync"
         ],
         "properties": {
@@ -2273,6 +2390,10 @@
             "format": "date-time",
             "nullable": true
           },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
           "outlook_sync": {
             "$ref": "#/components/schemas/OutlookSync"
           }
@@ -2303,6 +2424,24 @@
           "purpose": {
             "type": "string",
             "maxLength": 1000
+          }
+        },
+        "additionalProperties": false
+      },
+      "BookingReschedule": {
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time"
           }
         },
         "additionalProperties": false
@@ -2696,6 +2835,7 @@
             "type": "string",
             "enum": [
               "CREATE",
+              "UPDATE",
               "DELETE"
             ],
             "nullable": true
@@ -2721,13 +2861,16 @@
           "calendar_path",
           "updated_at",
           "revision",
+          "booking_revision",
           "event_id",
           "web_link",
+          "ical_uid",
           "attempts",
           "create_attempted",
           "next_attempt_at",
           "lease_until",
-          "last_error"
+          "last_error",
+          "last_success_at"
         ],
         "properties": {
           "booking_id": {
@@ -2738,6 +2881,7 @@
             "type": "string",
             "enum": [
               "CREATE",
+              "UPDATE",
               "DELETE"
             ]
           },
@@ -2761,6 +2905,10 @@
             "type": "integer",
             "minimum": 1
           },
+          "booking_revision": {
+            "type": "integer",
+            "minimum": 1
+          },
           "event_id": {
             "type": "string",
             "nullable": true
@@ -2768,6 +2916,10 @@
           "web_link": {
             "type": "string",
             "format": "uri",
+            "nullable": true
+          },
+          "ical_uid": {
+            "type": "string",
             "nullable": true
           },
           "attempts": {
@@ -2790,6 +2942,11 @@
           "last_error": {
             "type": "string",
             "nullable": true
+          },
+          "last_success_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
           }
         },
         "additionalProperties": false

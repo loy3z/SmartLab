@@ -14,7 +14,7 @@ from .authentication import issue_demo_token, require_demo_mode
 from .domain import Booking, BookingStatus, Principal, QualificationStatus, ResourceKind, Role
 from .exceptions import DomainError
 from .runtime import get_service
-from .serializers import (AvailabilityQuerySerializer, BookingCreateSerializer, BookingReviewSerializer,
+from .serializers import (AvailabilityQuerySerializer, BookingCreateSerializer, BookingRescheduleSerializer, BookingReviewSerializer,
                           DemoLoginSerializer, DemoRegisterSerializer, QualificationCreateSerializer, QualificationReviewSerializer,
                           OutlookProcessSerializer)
 
@@ -85,7 +85,8 @@ class DemoRegisterView(PublicView):
         with service.repo.atomic():
             if any(item.zid == data["zid"] for item in service.repo.list_principals()):
                 raise DomainError("USER_ALREADY_EXISTS", "This demo zID already exists.", 409)
-            principal = Principal(str(uuid4()), data["zid"], data["display_name"], Role.STUDENT)
+            principal = Principal(str(uuid4()), data["zid"], data["display_name"], Role.STUDENT,
+                                  university_email=data["university_email"])
             service.repo.save_principal(principal)
             service._audit(principal.id, "DEMO_STUDENT_CREATED", "principal", principal.id)
         return Response(session_result(principal), status=status.HTTP_201_CREATED)
@@ -185,6 +186,14 @@ class BookingCancelView(APIView):
             raise DomainError("VALIDATION_ERROR", "The cancellation action does not accept extra fields.")
         service = get_service()
         booking = service.cancel_booking(request.user, str(booking_id))
+        booking, = sync_after_write(service, booking)
+        return Response(json_value(booking))
+
+class BookingRescheduleView(APIView):
+    def post(self, request, booking_id):
+        data = validated(BookingRescheduleSerializer, request.data)
+        service = get_service()
+        booking = service.reschedule_booking(request.user, str(booking_id), data["start"], data["end"])
         booking, = sync_after_write(service, booking)
         return Response(json_value(booking))
 

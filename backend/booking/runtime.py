@@ -19,12 +19,19 @@ def seed_demo_data(service):
     service.repo.save_requirement(requirement)
     for number, name, kind in [(101, "Lab Room 1", ResourceKind.ROOM), (102, "Lab Room 2", ResourceKind.ROOM),
                                (201, "Microscope 001", ResourceKind.EQUIPMENT), (202, "Camera 001", ResourceKind.EQUIPMENT)]:
-        service.repo.save_resource(Resource(fixed_id(number), name, kind, "Demo laboratory", "Single resource; demonstration data.", required_qualification_id=requirement.id))
+        service.repo.save_resource(Resource(
+            fixed_id(number), name, kind, "Demo laboratory", "Single resource; demonstration data.",
+            required_qualification_id=requirement.id,
+            calendar_email=f"resource-{number}@example.edu",
+        ))
     for number, zid, name, role in [(501, "z1000001", "Qualified demo student", Role.STUDENT),
                                     (502, "z1000002", "New demo student", Role.STUDENT),
                                     (901, "z9000001", "Demo administrator", Role.ADMIN),
                                     (902, "z9000002", "Demo manager", Role.MANAGER)]:
-        service.repo.save_principal(Principal(fixed_id(number), zid, name, role))
+        service.repo.save_principal(Principal(
+            fixed_id(number), zid, name, role,
+            university_email=f"{zid}@example.edu",
+        ))
     now = service.now()
     evidence = service.storage.save(b"%PDF-1.4\nDemo seeded induction evidence\n%%EOF", "demo-induction.pdf", "application/pdf", fixed_id(501))
     service.repo.save_submission(QualificationSubmission(fixed_id(601), fixed_id(501), requirement.id, "Seeded demo induction", "Development fixture", evidence.id, now,

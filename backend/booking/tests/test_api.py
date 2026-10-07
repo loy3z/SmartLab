@@ -104,16 +104,17 @@ class BookingAPITests(SimpleTestCase):
     def test_demo_registration_does_not_accept_privileged_role(self):
         response = self.client.post(
             "/api/v1/auth/demo-register/",
-            {"zid": "z2000001", "display_name": "Demo student", "role": "ADMIN"},
+            {"zid": "z2000001", "display_name": "Demo student", "university_email": "z2000001@example.edu", "role": "ADMIN"},
             format="json",
         )
         self.assert_error(response, 400)
         valid = self.client.post(
             "/api/v1/auth/demo-register/",
-            {"zid": "z2000001", "display_name": "Demo student"}, format="json",
+            {"zid": "z2000001", "display_name": "Demo student", "university_email": "z2000001@example.edu"}, format="json",
         )
         self.assertEqual(valid.status_code, 201, valid.data)
         self.assertEqual(valid.data["user"]["role"], "STUDENT")
+        self.assertEqual(valid.data["user"]["university_email"], "z2000001@example.edu")
 
     def test_demo_auth_is_hidden_when_debug_or_demo_flag_is_disabled(self):
         for flags in ({"DEBUG": False}, {"ENABLE_DEMO_AUTH": False}):
@@ -124,7 +125,7 @@ class BookingAPITests(SimpleTestCase):
                 self.assertEqual(response.status_code, 404)
                 response = self.client.post(
                     "/api/v1/auth/demo-register/",
-                    {"zid": "z2000002", "display_name": "Demo student"}, format="json",
+                    {"zid": "z2000002", "display_name": "Demo student", "university_email": "z2000002@example.edu"}, format="json",
                 )
                 self.assertEqual(response.status_code, 404)
                 self.assertEqual(self.verified.get("/api/v1/auth/me/").status_code, 401)
@@ -235,6 +236,27 @@ class BookingAPITests(SimpleTestCase):
         )
         detail = self.verified.get(f"/api/v1/bookings/{booking['id']}/")
         self.assertEqual(detail.data["status"], "APPROVED")
+
+    def test_owner_can_reschedule_an_approved_booking_but_not_into_a_conflict(self):
+        booking = self.create_booking().data
+        occupied = self.create_booking(payload=self.payload(day_offset=4, hour=14)).data
+        conflict = self.verified.post(f"/api/v1/bookings/{booking['id']}/reschedule/", {
+            "start": occupied["start"], "end": occupied["end"],
+        }, format="json")
+        self.assert_error(conflict, 409)
+        self.assertEqual(conflict.data["error"]["code"], "BOOKING_CONFLICT")
+        new_period = self.payload(day_offset=5, hour=15)
+        moved = self.verified.post(f"/api/v1/bookings/{booking['id']}/reschedule/", {
+            "start": new_period["start"], "end": new_period["end"],
+        }, format="json")
+        self.assertEqual(moved.status_code, 200, moved.data)
+        self.assertEqual(moved.data["start"], datetime.fromisoformat(new_period["start"]).astimezone(timezone.utc).isoformat().replace("+00:00", "Z"))
+        self.assertEqual(moved.data["revision"], 2)
+        self.assertTrue(any(item.action == "BOOKING_RESCHEDULED" and item.entity_id == booking["id"]
+                            for item in self.service.repo.list_audit()))
+        self.assert_error(self.student.post(f"/api/v1/bookings/{booking['id']}/reschedule/", {
+            "start": new_period["start"], "end": new_period["end"],
+        }, format="json"), 404)
 
     def test_student_cannot_use_admin_endpoints(self):
         for endpoint in ("bookings", "qualifications"):

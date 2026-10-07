@@ -7,6 +7,8 @@
 @bookingId = replace-with-created-booking-id
 @bookingStart = 2026-10-07T09:00:00+11:00
 @bookingEnd = 2026-10-07T10:00:00+11:00
+@rescheduledStart = 2026-10-08T13:00:00+11:00
+@rescheduledEnd = 2026-10-08T14:00:00+11:00
 
 ### Health
 GET {{baseUrl}}/health/
@@ -30,7 +32,7 @@ Content-Type: application/json
 POST {{baseUrl}}/auth/demo-register/
 Content-Type: application/json
 
-{"zid": "z1234567", "display_name": "Demo Student"}
+{"zid": "z1234567", "display_name": "Demo Student", "university_email": "student@example.edu"}
 
 ### Current student
 GET {{baseUrl}}/auth/me/
@@ -145,6 +147,13 @@ Authorization: Bearer {{adminToken}}
 Content-Type: application/json
 
 {}
+
+### Reschedule an approved future booking
+POST {{baseUrl}}/bookings/{{bookingId}}/reschedule/
+Authorization: Bearer {{studentToken}}
+Content-Type: application/json
+
+{"start": "{{rescheduledStart}}", "end": "{{rescheduledEnd}}"}
 
 ### Cancel own booking
 POST {{baseUrl}}/bookings/{{bookingId}}/cancel/

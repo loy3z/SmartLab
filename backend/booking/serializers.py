@@ -23,6 +23,7 @@ class AwareDateTimeField(serializers.DateTimeField):
 class DemoRegisterSerializer(StrictSerializer):
     zid = serializers.RegexField(r"^z[0-9]{7}$")
     display_name = serializers.CharField(max_length=120)
+    university_email = serializers.EmailField(max_length=254)
 
 class DemoLoginSerializer(StrictSerializer):
     zid = serializers.RegexField(r"^z[0-9]{7}$")
@@ -32,6 +33,11 @@ class BookingCreateSerializer(StrictSerializer):
     start = AwareDateTimeField()
     end = AwareDateTimeField()
     purpose = serializers.CharField(max_length=1000)
+
+
+class BookingRescheduleSerializer(StrictSerializer):
+    start = AwareDateTimeField()
+    end = AwareDateTimeField()
 
 class QualificationCreateSerializer(StrictSerializer):
     requirement_id = serializers.UUIDField()

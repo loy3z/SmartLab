@@ -261,6 +261,54 @@ class BookingService:
             self._audit(actor.id, "BOOKING_CANCELLED", "booking", revised.id)
             return revised
 
+    def reschedule_booking(self, actor, booking_id, start, end):
+        """Move a student's confirmed future booking to another valid free slot."""
+        self.require_student(actor)
+        self.process_due_requests()
+        source = self.booking_for(actor, booking_id)
+        if start.tzinfo is None or start.utcoffset() is None or end.tzinfo is None or end.utcoffset() is None:
+            raise DomainError("INVALID_TIME", "Start and end require UTC offsets.")
+        start, end = start.astimezone(UTC), end.astimezone(UTC)
+        with self.repo.atomic(resource_ids=[source.resource_id], student_ids=[source.student_id]):
+            source = self.booking_for(actor, booking_id)
+            if source.status != BookingStatus.APPROVED or source.start <= self.now():
+                raise DomainError("REQUEST_NOT_RESCHEDULABLE", "Only a future approved booking can be rescheduled.", 409)
+            resource = self.resource(source.resource_id)
+            self._validate_period(resource, start, end)
+            eligibility, qualified = self.qualification_state(source.student_id, resource, end)
+            if not qualified:
+                raise DomainError(
+                    "QUALIFICATION_NOT_VERIFIED",
+                    "A current qualification covering the new booking period is required.",
+                    409,
+                    {"qualification_status": eligibility},
+                )
+            if self._overlaps(source.resource_id, start, end, source.id):
+                raise DomainError("BOOKING_CONFLICT", "The requested new period is occupied by another approved booking.", 409)
+            if (source.start, source.end) == (start, end):
+                return source
+            revised = replace(
+                source,
+                start=start,
+                end=end,
+                reason_code="RESCHEDULED_BY_USER",
+                updated_at=self.now(),
+                revision=source.revision + 1,
+            )
+            self._save_booking(revised)
+            self._audit(
+                actor.id,
+                "BOOKING_RESCHEDULED",
+                "booking",
+                revised.id,
+                old_start=source.start.isoformat(),
+                old_end=source.end.isoformat(),
+                new_start=revised.start.isoformat(),
+                new_end=revised.end.isoformat(),
+                revision=revised.revision,
+            )
+            return revised
+
     def process_due_requests(self):
         """Idempotent time processing; call from queries or a future scheduler."""
         changed = []

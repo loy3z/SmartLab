@@ -6,6 +6,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.utils.module_loading import import_string
 from .domain import Principal, QualificationRequirement, QualificationStatus, QualificationSubmission, Resource, ResourceKind, Role
 from .services import BookingService
+from .calendar_sync import CalendarSyncService
 
 _service = None
 _lock = RLock()
@@ -41,6 +42,8 @@ def get_service():
             if not settings.DEBUG and (isinstance(repo, MemoryRepository) or isinstance(storage, MemoryFileStorage)):
                 raise ImproperlyConfigured("Configure durable repository and private file-storage adapters outside DEBUG mode.")
             _service = BookingService(repo, storage, wait_hours=settings.APPROVAL_WAIT_HOURS)
+            _service.calendar_sync = CalendarSyncService(repo, import_string(settings.OUTLOOK_PROVIDER_FACTORY)(),
+                enabled=settings.OUTLOOK_ENABLED, clock=lambda: _service.now())
             if settings.SEED_DEMO_DATA:
                 seed_demo_data(_service)
         return _service

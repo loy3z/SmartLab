@@ -155,3 +155,21 @@ Content-Type: application/json
 
 ### OpenAPI JSON
 GET http://127.0.0.1:8000/api/schema/
+
+### Outlook configuration and sync records (credentials are never returned)
+GET {{baseUrl}}/admin/outlook/
+Authorization: Bearer {{adminToken}}
+
+### Process one due Outlook job
+POST {{baseUrl}}/admin/outlook/process/
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"limit": 1}
+
+### Retry after updating the local Microsoft Graph token
+POST {{baseUrl}}/admin/bookings/{{bookingId}}/outlook-retry/
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{}

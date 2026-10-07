@@ -142,3 +142,34 @@ API 输出时间为 ISO 8601 UTC `Z`。前端用 `Australia/Sydney` 显示，支
 前端使用 API，不读取数据库，不直接连接 Outlook。数据库同学实现 `Repository`、私有 `FileStorage` 和事务锁；SSO 同学提供服务端验证及可信用户映射。接口结构和状态应保持不变。
 
 演示身份选择仅在本地开发模式开启，不代表正式 SSO。正式前端不得保留任意 zID 登录或选择管理员身份的演示入口。内存数据和 token 登录流程用于联调；数据重启丢失，无法跨多个后端进程共享。
+
+## Sprint 1 Outlook 同步
+
+所有预约响应（列表、详情、dashboard、创建、取消和审核结果）新增 `outlook_sync`，原有预约 `status` 保持不变：
+
+```json
+{
+  "status": "APPROVED",
+  "outlook_sync": {
+    "status": "SYNCED",
+    "action": "CREATE",
+    "web_link": "https://outlook.live.com/calendar/item/...",
+    "last_error": null
+  }
+}
+```
+
+| outlook_sync.status | 前端显示 |
+| --- | --- |
+| `DISABLED` | 日历同步未启用；预约状态仍有效 |
+| `NOT_REQUIRED` | 当前申请无需写入日历 |
+| `PENDING`／`IN_PROGRESS` | 日历等待同步／同步中 |
+| `SYNCED` + `CREATE` | 已同步到 Outlook；可显示“打开日历”链接 |
+| `SYNCED` + `DELETE` | 取消已同步到 Outlook |
+| `FAILED` | 预约结果已保存，日历同步失败；提示联系管理员 |
+
+只依据预约 `status` 判断是否批准／取消，不把日历失败提示为“预约失败”，也不要自动重新创建预约。更新界面可轮询预约详情或 dashboard；读取接口不自动执行日历网络请求。只有创建成功且未取消的事件返回 `web_link`。
+
+Admin／Manager 的接口：`GET admin/outlook/` 查询配置及记录；`POST admin/outlook/process/` 处理到期任务（`{"limit":1}`，最多 5）；`POST admin/bookings/{id}/outlook-retry/` 立即重试（`{}`）。配置存在不代表权限验证成功，以 Graph 操作结果为准。学生不能调用这些管理接口。
+
+个人账号的授权在开发者本机完成，不需要学生 dashboard 出现 Microsoft 授权按钮，也不要把微软 Token 放进前端。步骤见 [outlook-setup.md](outlook-setup.md)。Sprint 1 是系统写入 Outlook 的单向同步；改期、等待名单、重复预约及规则管理在 Sprint 2 完善。

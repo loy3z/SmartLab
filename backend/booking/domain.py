@@ -149,3 +149,25 @@ class AuditRecord:
 
     def __post_init__(self) -> None:
         _require_aware(at=self.at)
+
+
+@dataclass(frozen=True)
+class OutlookSyncRecord:
+    """Outbox entry and external event mapping; never contains credentials."""
+
+    booking_id: str
+    action: str
+    status: str
+    calendar_path: str
+    updated_at: datetime
+    revision: int = 1
+    event_id: str | None = None
+    web_link: str | None = None
+    attempts: int = 0
+    create_attempted: bool = False
+    next_attempt_at: datetime | None = None
+    lease_until: datetime | None = None
+    last_error: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_aware(updated_at=self.updated_at, next_attempt_at=self.next_attempt_at, lease_until=self.lease_until)

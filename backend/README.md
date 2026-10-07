@@ -11,7 +11,11 @@ Django 5.2 + Django REST Framework 3.16。提供学生时段查询、房间／�
 - 只有 `APPROVED` 占用时段。资格审核和预约审核是独立操作；24 小时不会自动获得资格。
 - 学生查看自己的 dashboard、资格和预约，取消尚未开始的有效预约。Admin／Manager 查看审核队列并作出决定。
 
-真实学校 SSO、正式数据库、Outlook、邮件、设备领取／归还、报表和资源管理后台待后续接入。现在使用仓储和文件存储接口搭配内存演示适配器；所有演示数据和附件在进程重启后丢失，只能使用单进程运行。
+客户 2026-10-07 补充要求的 Pending 可配置临时占位、大学邮箱身份字段尚待实现；本次提交保留当前“仅 APPROVED 占用时段”的演示行为。不同资源已可关联不同资格要求，但当前演示数据共用一个通用要求，每个资源目前只关联一项要求。
+
+已提供 Microsoft Graph 的真实 Outlook 日历适配器：批准预约后自动尝试创建事件，取消已批准预约时删除事件；同步状态独立于预约状态，失败可重试。默认关闭，个人账号演示步骤见 [outlook-setup.md](docs/outlook-setup.md)。真实连通需要本地配置微软授权，自动化测试使用模拟响应。
+
+真实学校 SSO、正式数据库、邮件通知、设备领取／归还、报表和资源管理后台待后续接入。改期、等待名单、重复预约及 Manager 规则配置安排到 Sprint 2。现在使用仓储和文件存储接口搭配内存演示适配器；演示数据、附件和日历事件对应关系在进程重启后丢失，只能使用单进程运行。
 
 ## 本地启动（PowerShell）
 
@@ -82,3 +86,11 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
 24 小时计算依据服务器保存的 `created_at`，`APPROVAL_WAIT_HOURS` 默认 `24`。预约查询及操作会推进到期的状态，Admin 也可调用 `POST /api/v1/admin/process-due/`。这保证 API 再次访问时可看到正确状态；如果需要在无人访问系统时准时处理，正式部署应增加定时任务，调用同一个时间处理服务。
 
 资料仅本人和 Admin／Manager 能通过受保护下载接口读取。正式文件存储必须保持私有权限；同时补齐部署配置、SSO、数据库、后台任务与文件服务后，才能作为真实校园服务使用。
+
+## Outlook 与数据库交接
+
+`booking/outlook.py` 定义 `CalendarProvider` 和真实 Microsoft Graph 适配器。`booking/calendar_sync.py` 负责事件对应关系、失败退避重试、取消补偿和处理租约。个人演示将所有资源预约写到一个账号的默认日历；`OUTLOOK_MAILBOX`、`OUTLOOK_CALENDAR_ID` 可指定 Microsoft 365 日历。Sprint 1 不读取 Outlook 外部占用，也不接收 Outlook 编辑；演示预约在本系统操作。
+
+数据库适配器新增 `get_outlook_sync(booking_id)`、`list_outlook_sync()`、`save_outlook_sync(record)`，实体为 `OutlookSyncRecord`。预约、同步记录、审计必须在同一 `atomic` 事务内保存。通过相同资源／学生锁领取处理租约，网络调用发生在事务外，完成后重读版本再更新；保留取消预约的事件对应关系。
+
+内存演示通过预约 API 自动尝试同步，管理员可用 `admin/outlook/process/` 和 `admin/bookings/{id}/outlook-retry/` 处理失败。接入共享数据库后，可定时执行 `python manage.py process_outlook --limit 10`；独立进程不能读取演示服务器的内存，因此该命令拒绝内存适配器。

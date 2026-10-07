@@ -74,3 +74,7 @@ class BookingReviewSerializer(StrictSerializer):
 class AvailabilityQuerySerializer(StrictSerializer):
     date = serializers.DateField()
     duration_minutes = serializers.IntegerField(default=30, min_value=1, max_value=1440)
+
+
+class OutlookProcessSerializer(StrictSerializer):
+    limit = serializers.IntegerField(default=1, min_value=1, max_value=5)

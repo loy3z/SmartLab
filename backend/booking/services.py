@@ -8,10 +8,16 @@ from .domain import AuditRecord, Booking, BookingStatus, QualificationSubmission
 from .errors import DomainError
 
 class BookingService:
-    def __init__(self, repo, storage, clock=None, wait_hours=24):
+    def __init__(self, repo, storage, clock=None, wait_hours=24, calendar_sync=None):
         self.repo, self.storage = repo, storage
         self.clock = clock or (lambda: datetime.now(UTC))
         self.wait_hours = wait_hours
+        self.calendar_sync = calendar_sync
+
+    def _save_booking(self, booking):
+        self.repo.save_booking(booking)
+        if self.calendar_sync:
+            self.calendar_sync.schedule(booking)
 
     def now(self):
         current = self.clock()
@@ -123,7 +129,7 @@ class BookingService:
                     status, reason = BookingStatus.WAITING_QUALIFICATION, "QUALIFICATION_PENDING"
             booking = Booking(booking_id, actor.id, resource_id, start, end, purpose.strip(), now, status, reason,
                               review_due_at=review_due, updated_at=now)
-            self.repo.save_booking(booking)
+            self._save_booking(booking)
             self._audit(actor.id, "BOOKING_CREATED", "booking", booking.id, status=status.value, reason_code=reason)
             return booking, True
 
@@ -208,7 +214,7 @@ class BookingService:
                     else:
                         next_status, next_reason = BookingStatus.APPROVED, "AUTO_APPROVED_AFTER_QUALIFICATION"
                 revised = replace(booking, status=next_status, reason_code=next_reason, updated_at=self.now())
-                self.repo.save_booking(revised)
+                self._save_booking(revised)
                 self._audit(actor.id, "BOOKING_REEVALUATED", "booking", revised.id, status=next_status.value, reason_code=next_reason)
                 changed.append(revised)
             return updated, changed
@@ -237,7 +243,7 @@ class BookingService:
                     raise DomainError("BOOKING_CONFLICT", "This period is still occupied by an approved booking.", 409)
             revised = replace(source, status=BookingStatus(decision), reason_code=f"MANUALLY_{decision}", reviewed_by=actor.id,
                               reviewed_at=self.now(), decision_reason=reason.strip() or None, updated_at=self.now())
-            self.repo.save_booking(revised)
+            self._save_booking(revised)
             self._audit(actor.id, f"BOOKING_{decision}", "booking", revised.id, reason=reason.strip())
             return revised
 
@@ -251,7 +257,7 @@ class BookingService:
             if source.status in (BookingStatus.REJECTED, BookingStatus.EXPIRED) or source.start <= self.now():
                 raise DomainError("REQUEST_NOT_CANCELLABLE", "Only future active requests can be cancelled.", 409)
             revised = replace(source, status=BookingStatus.CANCELLED, reason_code="CANCELLED_BY_USER", updated_at=self.now())
-            self.repo.save_booking(revised)
+            self._save_booking(revised)
             self._audit(actor.id, "BOOKING_CANCELLED", "booking", revised.id)
             return revised
 
@@ -272,7 +278,7 @@ class BookingService:
                 else:
                     continue
                 updated = replace(current, status=status, reason_code=reason, updated_at=self.now())
-                self.repo.save_booking(updated)
+                self._save_booking(updated)
                 self._audit("SYSTEM", "BOOKING_TIME_PROCESSED", "booking", updated.id, status=status.value, reason_code=reason)
                 changed.append(updated)
         return changed

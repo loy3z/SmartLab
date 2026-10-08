@@ -23,6 +23,7 @@ class AwareDateTimeField(serializers.DateTimeField):
 class DemoRegisterSerializer(StrictSerializer):
     zid = serializers.RegexField(r"^z[0-9]{7}$")
     display_name = serializers.CharField(max_length=120)
+    university_email = serializers.EmailField(max_length=254)
 
 class DemoLoginSerializer(StrictSerializer):
     zid = serializers.RegexField(r"^z[0-9]{7}$")
@@ -78,3 +79,7 @@ class AvailabilityQuerySerializer(StrictSerializer):
 
 class OutlookProcessSerializer(StrictSerializer):
     limit = serializers.IntegerField(default=1, min_value=1, max_value=5)
+
+
+class BookingPolicySerializer(StrictSerializer):
+    pending_hold_minutes = serializers.IntegerField(min_value=1, max_value=10080)

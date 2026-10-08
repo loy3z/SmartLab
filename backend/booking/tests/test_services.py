@@ -19,16 +19,16 @@ from booking.services import BookingService
 from booking.storage import MemoryFileStorage
 
 
-class BookingWorkflowTests(SimpleTestCase):
+class BookingFixtureMixin:
     def setUp(self):
         self.now = datetime(2030, 1, 7, 0, tzinfo=timezone.utc)
         self.repo = MemoryRepository()
         self.service = BookingService(
             self.repo, MemoryFileStorage(), clock=lambda: self.now, wait_hours=24
         )
-        self.student = Principal(str(uuid4()), "z1111111", "First student", Role.STUDENT)
-        self.other = Principal(str(uuid4()), "z2222222", "Second student", Role.STUDENT)
-        self.admin = Principal(str(uuid4()), "z9999999", "Administrator", Role.ADMIN)
+        self.student = Principal(str(uuid4()), "z1111111", "First student", Role.STUDENT, "z1111111@ad.unsw.edu.au")
+        self.other = Principal(str(uuid4()), "z2222222", "Second student", Role.STUDENT, "z2222222@ad.unsw.edu.au")
+        self.admin = Principal(str(uuid4()), "z9999999", "Administrator", Role.ADMIN, "z9999999@ad.unsw.edu.au")
         for principal in (self.student, self.other, self.admin):
             self.repo.save_principal(principal)
         self.requirement = QualificationRequirement(str(uuid4()), "Lab induction", "Required induction")
@@ -64,6 +64,7 @@ class BookingWorkflowTests(SimpleTestCase):
         arguments.update(overrides)
         return self.service.create_booking(principal or self.student, **arguments)[0]
 
+class BookingWorkflowTests(BookingFixtureMixin, SimpleTestCase):
     def test_parallel_submissions_cannot_double_book_a_resource(self):
         self.qualification(self.student)
         self.qualification(self.other)
@@ -148,6 +149,7 @@ class BookingWorkflowTests(SimpleTestCase):
         submission = self.qualification(status=QualificationStatus.PENDING)
         waiting = self.book()
         self.qualification(self.other)
+        self.now = waiting.hold_until
         winner = self.book(self.other)
         reviewed, changed = self.service.review_qualification(
             self.admin, submission.id, "VERIFIED"
@@ -242,7 +244,7 @@ class BookingWorkflowTests(SimpleTestCase):
 class RepositoryTransactionTests(SimpleTestCase):
     def test_failed_transaction_rolls_back_record_and_audit_together(self):
         repository = MemoryRepository()
-        student = Principal("student", "z1234567", "Student", Role.STUDENT)
+        student = Principal("student", "z1234567", "Student", Role.STUDENT, "z1234567@ad.unsw.edu.au")
         repository.save_principal(student)
         with self.assertRaises(RuntimeError):
             with repository.atomic(student_ids=[student.id]):

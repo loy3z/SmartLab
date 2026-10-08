@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Sprint 1 Smart Lab and Room Booking API",
-    "version": "1.1.0",
-    "description": "Sprint 1 backend with Microsoft Graph one-way creation/cancellation of confirmed bookings. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Rescheduling, waitlists and recurrence are deferred to Sprint 2. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z."
+    "version": "1.2.0",
+    "description": "Sprint 1 backend with Microsoft Graph one-way creation/cancellation of confirmed bookings. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Rescheduling, waitlists and recurrence are deferred to Sprint 2. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z. Identity includes university_email. Pending requests may temporarily hold resource slots under a Manager-configurable policy; hold expiry releases the slot while retaining the pending request. Authentication and resource-specific eligibility are separate."
   },
   "servers": [
     {
@@ -87,7 +87,7 @@
           "Authentication"
         ],
         "summary": "Register a demonstration student",
-        "description": "Available only when DEBUG and ENABLE_DEMO_AUTH are both true. Always assigns STUDENT; client-supplied privileged roles are rejected. This endpoint is unsuitable for real authentication.",
+        "description": "Available only when DEBUG and ENABLE_DEMO_AUTH are both true. Always assigns STUDENT; client-supplied privileged roles are rejected. This endpoint is unsuitable for real authentication. Requires zid, display_name and university_email. Demo email format validation does not verify ownership or institution membership.",
         "security": [],
         "responses": {
           "201": {
@@ -450,7 +450,7 @@
           "Resources"
         ],
         "summary": "Find resource time slots",
-        "description": "Returns a snapshot. Only APPROVED bookings occupy slots. All timestamps are UTC ISO 8601. can_request reports the qualification submission gate; it does not promise automatic approval.",
+        "description": "Returns a snapshot. APPROVED bookings and active pending holds occupy slots. TEMPORARILY_HELD includes hold_until and held_by_me without disclosing other users. All timestamps are UTC ISO 8601. can_request reports the resource-specific qualification submission gate, not automatic approval or slot availability.",
         "security": [
           {
             "BearerAuth": []
@@ -883,7 +883,7 @@
           "Bookings"
         ],
         "summary": "Create a room or individual equipment booking request",
-        "description": "Requires an induction submission for the resource. Valid VERIFIED qualification plus no approved conflict results in APPROVED. PENDING evidence with no conflict results in WAITING_QUALIFICATION for up to 24 hours; existing conflicts result in PENDING_APPROVAL immediately. HTTP 201 alone does not mean the booking is approved. Pending requests do not occupy slots. Interval semantics are [start, end). If the requested start is at or before the 24-hour threshold, unverified requests enter PENDING_APPROVAL immediately. Unapproved requests expire when their start time is reached.",
+        "description": "Requires a submitted induction for the selected resource. Valid VERIFIED qualification through the booking end plus no blocking conflict results in APPROVED. PENDING evidence with no conflict enters WAITING_QUALIFICATION for up to the configured approval waiting period (default 24 hours), or PENDING_APPROVAL immediately if start is at or before that threshold. A conflict-free pending request gets a hold until min(start, creation time plus the resource pending_hold_minutes, default 30). Overlap with APPROVED or active pending holds enters PENDING_APPROVAL without a new hold. Pending is not confirmed and does not create an Outlook event. Hold expiry only releases occupancy and retains the pending request; it never renews on reads, idempotent retries or escalation. Unapproved requests expire at their start time. HTTP 201 alone does not mean approved. Interval semantics are [start, end).",
         "security": [
           {
             "BearerAuth": []
@@ -1439,7 +1439,7 @@
           "Administration"
         ],
         "summary": "Approve or reject a booking request",
-        "description": "Admin or Manager only. Approval always re-checks that the qualification is valid through the booking end and that no APPROVED booking overlaps. Staff cannot override an approved conflict or missing qualification.",
+        "description": "Admin or Manager only. Approval re-checks resource-specific qualification through the booking end and conflicts with APPROVED bookings and active pending holds, excluding this request's own ID. Staff cannot override blockers or missing qualification. BOOKING_HOLD_CONFLICT (409) includes details.hold_until; BOOKING_CONFLICT (409) indicates an approved blocker.",
         "security": [
           {
             "BearerAuth": []
@@ -1497,7 +1497,7 @@
             }
           },
           "409": {
-            "description": "Missing valid qualification, approved conflict, expired request or invalid booking state.",
+            "description": "Missing valid qualification, approved or active-hold conflict, expired request or invalid booking state.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1838,6 +1838,160 @@
           }
         ]
       }
+    },
+    "/api/v1/admin/resources/{id}/booking-policy/": {
+      "get": {
+        "operationId": "get__api_v1_admin_resources_id_booking_policy_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Read pending hold policy",
+        "description": "Admin or Manager only.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current per-resource pending hold policy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingPolicyResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patch__api_v1_admin_resources_id_booking_policy_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Set pending hold policy",
+        "description": "Active Manager only; Admin cannot write. Updates persist a per-resource integer from 1 to 10080 minutes and an audit entry. Only future holds use the new value; existing deadlines stay unchanged. Independent of the 24-hour approval waiting period.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current per-resource pending hold policy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingPolicyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, review time, duration or resource opening-hour rules.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingPolicyRequest"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1856,7 +2010,8 @@
           "zid",
           "display_name",
           "role",
-          "active"
+          "active",
+          "university_email"
         ],
         "properties": {
           "id": {
@@ -1879,6 +2034,12 @@
           },
           "active": {
             "type": "boolean"
+          },
+          "university_email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254,
+            "example": "z1234567@ad.unsw.edu.au"
           }
         },
         "additionalProperties": false
@@ -1950,7 +2111,8 @@
         "type": "object",
         "required": [
           "zid",
-          "display_name"
+          "display_name",
+          "university_email"
         ],
         "properties": {
           "zid": {
@@ -1962,6 +2124,12 @@
             "type": "string",
             "example": "Demo Student",
             "maxLength": 120
+          },
+          "university_email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254,
+            "example": "z1234567@ad.unsw.edu.au"
           }
         },
         "additionalProperties": false
@@ -2015,7 +2183,8 @@
           "max_booking_minutes",
           "opening_time",
           "closing_time",
-          "timezone"
+          "timezone",
+          "pending_hold_minutes"
         ],
         "properties": {
           "id": {
@@ -2065,6 +2234,13 @@
           "timezone": {
             "type": "string",
             "example": "Australia/Sydney"
+          },
+          "pending_hold_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10080,
+            "description": "Minutes for a newly created conflict-free pending hold; existing deadlines do not change.",
+            "example": 30
           }
         },
         "additionalProperties": false
@@ -2204,7 +2380,10 @@
           "reviewed_at",
           "decision_reason",
           "updated_at",
-          "outlook_sync"
+          "outlook_sync",
+          "hold_until",
+          "hold_active",
+          "blocks_slot"
         ],
         "properties": {
           "id": {
@@ -2275,6 +2454,20 @@
           },
           "outlook_sync": {
             "$ref": "#/components/schemas/OutlookSync"
+          },
+          "hold_until": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Historical hold deadline; use hold_active to determine current occupancy."
+          },
+          "hold_active": {
+            "type": "boolean",
+            "description": "Pending status and hold_until strictly later than server time."
+          },
+          "blocks_slot": {
+            "type": "boolean",
+            "description": "True for APPROVED or an active pending hold."
           }
         },
         "additionalProperties": false
@@ -2342,7 +2535,9 @@
                 "start",
                 "end",
                 "available",
-                "reason_code"
+                "reason_code",
+                "hold_until",
+                "held_by_me"
               ],
               "properties": {
                 "start": {
@@ -2358,7 +2553,23 @@
                 },
                 "reason_code": {
                   "type": "string",
-                  "nullable": true
+                  "nullable": true,
+                  "enum": [
+                    "START_TIME_PASSED",
+                    "BOOKED",
+                    "TEMPORARILY_HELD",
+                    null
+                  ]
+                },
+                "hold_until": {
+                  "type": "string",
+                  "format": "date-time",
+                  "nullable": true,
+                  "description": "Latest blocking hold deadline for TEMPORARILY_HELD; otherwise null."
+                },
+                "held_by_me": {
+                  "type": "boolean",
+                  "description": "True only when all blocking holds belong to the current user."
                 }
               }
             }
@@ -2880,6 +3091,41 @@
       },
       "OutlookRetryRequest": {
         "type": "object",
+        "additionalProperties": false
+      },
+      "BookingPolicyRequest": {
+        "type": "object",
+        "required": [
+          "pending_hold_minutes"
+        ],
+        "properties": {
+          "pending_hold_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10080,
+            "description": "Minutes for a newly created conflict-free pending hold; existing deadlines do not change."
+          }
+        },
+        "additionalProperties": false
+      },
+      "BookingPolicyResponse": {
+        "type": "object",
+        "required": [
+          "resource_id",
+          "pending_hold_minutes"
+        ],
+        "properties": {
+          "resource_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "pending_hold_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10080,
+            "description": "Minutes for a newly created conflict-free pending hold; existing deadlines do not change."
+          }
+        },
         "additionalProperties": false
       }
     }

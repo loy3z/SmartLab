@@ -1,6 +1,7 @@
 @baseUrl = http://127.0.0.1:8000/api/v1
 @studentToken = replace-with-demo-login-access-token
 @adminToken = replace-with-admin-demo-login-access-token
+@managerToken = replace-with-manager-demo-login-access-token
 @resourceId = 00000000-0000-0000-0000-000000000101
 @requirementId = 00000000-0000-0000-0000-000000000001
 @submissionId = replace-with-created-submission-id
@@ -30,7 +31,7 @@ Content-Type: application/json
 POST {{baseUrl}}/auth/demo-register/
 Content-Type: application/json
 
-{"zid": "z1234567", "display_name": "Demo Student"}
+{"zid": "z1234567", "display_name": "Demo Student", "university_email": "z1234567@ad.unsw.edu.au"}
 
 ### Current student
 GET {{baseUrl}}/auth/me/
@@ -125,7 +126,7 @@ Content-Type: application/json
 GET {{baseUrl}}/admin/bookings/?status=PENDING_APPROVAL
 Authorization: Bearer {{adminToken}}
 
-### Approve booking. Requires valid induction and no approved conflict.
+### Approve booking. Requires valid induction and no approved/active-hold conflict.
 POST {{baseUrl}}/admin/bookings/{{bookingId}}/review/
 Authorization: Bearer {{adminToken}}
 Content-Type: application/json
@@ -155,6 +156,23 @@ Content-Type: application/json
 
 ### OpenAPI JSON
 GET http://127.0.0.1:8000/api/schema/
+
+### Demo manager login
+POST {{baseUrl}}/auth/demo-login/
+Content-Type: application/json
+
+{"zid": "z9000002"}
+
+### Read a resource's temporary hold policy (Admin or Manager)
+GET {{baseUrl}}/admin/resources/{{resourceId}}/booking-policy/
+Authorization: Bearer {{managerToken}}
+
+### Configure future pending holds (Manager only; existing deadlines stay unchanged)
+PATCH {{baseUrl}}/admin/resources/{{resourceId}}/booking-policy/
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{"pending_hold_minutes": 30}
 
 ### Outlook configuration and sync records (credentials are never returned)
 GET {{baseUrl}}/admin/outlook/

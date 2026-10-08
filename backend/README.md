@@ -8,14 +8,16 @@ Django 5.2 + Django REST Framework 3.16。提供学生时段查询、房间／�
 - 资格有效且时段无冲突时，预约立即 `APPROVED`。
 - 资料仍在审核且时段无冲突时，预约为 `WAITING_QUALIFICATION`；从预约提交起满 24 小时后转 `PENDING_APPROVAL`。如果预约开始时间早于／等于该门槛，则直接进入人工审核，避免一直等待到使用开始。
 - 与已批准预约冲突的请求立即进入 `PENDING_APPROVAL`。管理员批准时重新检查资格和冲突，不能重复批准相同时段。
-- 只有 `APPROVED` 占用时段。资格审核和预约审核是独立操作；24 小时不会自动获得资格。
+- `APPROVED` 持续占用时段；无冲突的 Pending 请求取得临时占位，默认 30 分钟。占位到期只释放时段，保留申请；取消、拒绝或申请过期立即释放。资格审核和预约审核是独立操作；24 小时不会自动获得资格。
 - 学生查看自己的 dashboard、资格和预约，取消尚未开始的有效预约。Admin／Manager 查看审核队列并作出决定。
 
-客户 2026-10-07 补充要求的 Pending 可配置临时占位、大学邮箱身份字段尚待实现；本次提交保留当前“仅 APPROVED 占用时段”的演示行为。不同资源已可关联不同资格要求，但当前演示数据共用一个通用要求，每个资源目前只关联一项要求。
+已补齐客户 2026-10-07 要求的大学邮箱字段和 Pending 临时占位。有效占位阻止后来请求自动获批，管理员也不能越过占位批准重叠预约。冲突请求仍可进入人工审批，但不取得新的占位。每个资源目前关联一项资格要求，资格有效期必须覆盖预约结束时间。
+
+Manager 可通过 `GET /api/v1/admin/resources/{id}/booking-policy/` 查看规则，并用 `PATCH` 提交 `{"pending_hold_minutes":30}`。支持整数 1–10080 分钟，只影响之后创建的占位；Admin 可以读取，不能修改。新种子资源的默认值由 `DEFAULT_PENDING_HOLD_MINUTES` 设置，与 24 小时审批等待独立。占位截止时间不晚于预约开始时间，刷新页面、重复提交同一幂等请求和审批升级都不会延长占位。
 
 已提供 Microsoft Graph 的真实 Outlook 日历适配器：批准预约后自动尝试创建事件，取消已批准预约时删除事件；同步状态独立于预约状态，失败可重试。默认关闭，个人账号演示步骤见 [outlook-setup.md](docs/outlook-setup.md)。真实连通需要本地配置微软授权，自动化测试使用模拟响应。
 
-真实学校 SSO、正式数据库、邮件通知、设备领取／归还、报表和资源管理后台待后续接入。改期、等待名单、重复预约及 Manager 规则配置安排到 Sprint 2。现在使用仓储和文件存储接口搭配内存演示适配器；演示数据、附件和日历事件对应关系在进程重启后丢失，只能使用单进程运行。
+真实学校 SSO、正式数据库、邮件通知、设备领取／归还、报表和资源管理后台待后续接入。改期、等待名单、重复预约及更完整的 Manager 规则配置安排到 Sprint 2。现在使用仓储和文件存储接口搭配内存演示适配器；演示数据、附件和日历事件对应关系在进程重启后丢失，只能使用单进程运行。
 
 ## 本地启动（PowerShell）
 
@@ -47,7 +49,9 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
 
 调用 `POST /api/v1/auth/demo-login/` 并发送 `{"zid":"z1000001"}` 即可获得 token。`demo-register` 只能创建 STUDENT，不允许请求体决定管理员角色。可以用 [demo.http](demo.http) 演示完整调用流程。
 
-所有种子资源要求通用 induction：`00000000-0000-0000-0000-000000000001`。房间 ID 末尾 `101`、`102`；单台设备 ID 末尾 `201`、`202`，完整 ID 前缀均为 `00000000-0000-0000-0000-000000000`。实际名称和规则以 `GET resources/` 返回为准。
+演示注册必须提供 `zid`、`display_name`、`university_email`。演示邮箱只检查格式，不验证学校归属或邮箱所有权；正式认证由可信 SSO 声明提供。种子身份使用对应 `zID@ad.unsw.edu.au` 演示地址。
+
+种子资源 `101`（房间）和 `201`（设备）要求基础 induction `00000000-0000-0000-0000-000000000001`；资源 `102`、`202` 要求高级培训 `00000000-0000-0000-0000-000000000002`。资源完整 ID 前缀均为 `00000000-0000-0000-0000-000000000`。学生 `z1000001` 仅具备基础资格，因此不能直接申请高级资源。实际名称和规则以 `GET resources/` 返回为准。
 
 ## 检查
 
@@ -58,16 +62,16 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
 
 依赖的已验证精确版本保存在 `requirements-lock.txt`，可用它重建相同环境。
 
-这些测试使用临时内存数据，覆盖资格门槛、24 小时流转、自动／人工审批、时段冲突、权限和 API 契约。数据库同学接入后，需要对自己的适配器额外运行事务和并发测试。
+这些测试使用临时内存数据，覆盖资格门槛、24 小时流转、自动／人工审批、临时占位与到期释放、并发冲突、Manager 规则权限、身份邮箱和 API 契约。数据库同学接入后，需要对自己的适配器额外运行事务和并发测试。
 
 ## 接入正式数据库
 
-业务逻辑依赖 [booking/repository.py](booking/repository.py) 的 `Repository` Protocol，不直接查询 Django ORM。数据库适配器需实现用户、资源、资格要求、提交资料、预约和审计记录的读写接口；实体字段见 [booking/domain.py](booking/domain.py)。本 Sprint 所有可预约资源必须设置 induction 要求；未配置要求的资源会拒绝创建申请，防止配置遗漏绕过资格门槛。附件通过 [booking/storage.py](booking/storage.py) 的 `FileStorage` 接入私有文件服务。
+业务逻辑依赖 [booking/repository.py](booking/repository.py) 的 `Repository` Protocol，不直接查询 Django ORM。数据库适配器需实现用户、资源、资格要求、提交资料、预约和审计记录的读写接口；实体字段见 [booking/domain.py](booking/domain.py)，新增字段、占位查询和事务约定见 [database-interface.md](docs/database-interface.md)。本 Sprint 所有可预约资源必须设置 induction 要求；未配置要求的资源会拒绝创建申请，防止配置遗漏绕过资格门槛。附件通过 [booking/storage.py](booking/storage.py) 的 `FileStorage` 接入私有文件服务。
 
 `Repository.atomic(resource_ids, student_ids)` 必须是真实事务，并同时协调以下操作：
 
 1. 对资源和学生的锁定顺序保持一致。
-2. 在事务内重读最新资格和已批准预约，检查区间冲突，再保存状态和审计。
+2. 在事务内重读最新资格，通过 `list_blocking_bookings` 查询已批准预约和未到期 Pending 占位，检查区间冲突，再保存状态和审计。
 3. 创建请求、人工批准、资格审核触发的重新判断使用相同锁定规则。
 4. 失败时完整回滚，避免两个并发请求都获批准。不能先查询可用性再独立写入预约。
 
@@ -77,7 +81,7 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
 
 ## 接入真实 SSO 与后台时间处理
 
-真实 SSO 应验证学校提供的凭证，再映射为本地 `Principal`：`id`、`zid`、`display_name`、`role`、`active`。身份角色来自受信任的学校声明或本地管理记录，不能采用浏览器提交的角色。是否完成 induction 由资格记录判断，不能因 SSO 登录成功就视为已合格。
+真实 SSO 应验证学校提供的凭证，再映射为本地 `Principal`：`id`、`zid`、`display_name`、`university_email`、`role`、`active`。身份角色来自受信任的学校声明或本地管理记录，不能采用浏览器提交的角色。是否完成 induction 由资格记录判断，不能因 SSO 登录成功就视为已合格。
 
 `AUTH_PROVIDER` 是真实认证适配器的配置入口：配置可无参数实例化的 provider 类，实现 `resolve_bearer(token: str) -> Principal`。provider 应验证凭证签名、有效期和受众，并将可信身份映射为数据库中的用户记录。当前演示 Bearer 认证不能代替学校 SSO。完成接入后，前端保留相同 `/auth/me/` 和业务接口，登录跳转／token 获取方式根据学校方案调整。
 

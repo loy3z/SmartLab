@@ -38,6 +38,9 @@ DEMO_TOKEN_TTL_SECONDS = 3600
 APPROVAL_WAIT_HOURS = float(os.getenv("APPROVAL_WAIT_HOURS", "24"))
 if APPROVAL_WAIT_HOURS < 0:
     raise ValueError("APPROVAL_WAIT_HOURS must be nonnegative")
+DEFAULT_PENDING_HOLD_MINUTES = int(os.getenv("DEFAULT_PENDING_HOLD_MINUTES", "30"))
+if not 1 <= DEFAULT_PENDING_HOLD_MINUTES <= 10080:
+    raise ValueError("DEFAULT_PENDING_HOLD_MINUTES must be from 1 to 10080")
 CORS_ALLOWED_ORIGINS = [x.strip() for x in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",") if x.strip()]
 DATA_UPLOAD_MAX_MEMORY_SIZE = 6 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024

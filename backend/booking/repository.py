@@ -9,6 +9,7 @@ The memory implementation is neither durable nor safe across multiple workers.
 
 from contextlib import contextmanager
 from copy import deepcopy
+from datetime import datetime
 from threading import RLock
 from typing import ContextManager, Iterator, Protocol, Sequence
 
@@ -53,6 +54,10 @@ class Repository(Protocol):
         resource_id: str | None = None,
     ) -> list[Booking]: ...
     def save_booking(self, booking: Booking) -> None: ...
+    def list_blocking_bookings(
+        self, resource_id: str, start: datetime, end: datetime, at: datetime,
+        exclude_id: str | None = None,
+    ) -> list[Booking]: ...
     def append_audit(self, record: AuditRecord) -> None: ...
     def list_audit(self) -> list[AuditRecord]: ...
     def get_outlook_sync(self, booking_id: str) -> OutlookSyncRecord | None: ...
@@ -185,6 +190,13 @@ class MemoryRepository:
     def save_booking(self, booking: Booking) -> None:
         with self._lock:
             self._bookings[booking.id] = booking
+
+    def list_blocking_bookings(self, resource_id, start, end, at, exclude_id=None):
+        """Use server time, strict overlap and active pending holds, not status alone."""
+        with self._lock:
+            return [item for item in self._bookings.values()
+                    if item.resource_id == resource_id and item.id != exclude_id
+                    and start < item.end and item.start < end and item.blocks_resource_at(at)]
 
     def append_audit(self, record: AuditRecord) -> None:
         with self._lock:

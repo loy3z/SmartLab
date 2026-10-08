@@ -17,6 +17,7 @@ urlpatterns = [
     path("bookings/", views.BookingListView.as_view()),
     path("bookings/<uuid:booking_id>/", views.BookingDetailView.as_view()),
     path("bookings/<uuid:booking_id>/cancel/", views.BookingCancelView.as_view()),
+    path("bookings/<uuid:booking_id>/reschedule/", views.BookingRescheduleView.as_view()),
     path("dashboard/", views.DashboardView.as_view()),
     path("admin/qualifications/", views.AdminQualificationListView.as_view()),
     path("admin/qualifications/<uuid:submission_id>/review/", views.AdminQualificationReviewView.as_view()),

@@ -11,7 +11,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | 学生 dashboard | 显示资格、预约状态和数量，刷新结果 | 返回当前学生的数据与汇总 |
 | Induction 提交 | 选择资格要求，填写说明，上传文件，展示审核结果 | 检查附件、保存提交、保护下载权限 |
 | 预约申请 | 选择资源和时间，填写用途，提交后显示服务端状态 | 验证资格门槛、时间规则、自动／人工审批 |
-| 我的预约 | 显示详情、取消确认、取消后刷新 | 判断归属及状态，执行取消 |
+| 我的预约 | 显示详情、改期／取消确认、操作后刷新 | 判断归属及状态，重新校验并执行改期／取消 |
 | 管理员资格审核 | 审核列表、查看资料、通过／拒绝和原因，填写有效期 | 修改资格，重新判断等待资格的预约 |
 | 管理员预约审核 | 审核队列、详情、通过／拒绝和原因、显示冲突错误 | 批准前再次检查资格与冲突 |
 | Manager 占位规则 | 按资源显示和修改 Pending 占位分钟数 | 角色校验、规则保存和审计；Admin 仅可读取 |
@@ -90,6 +90,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | GET / POST | `bookings/` | 我的预约列表／创建预约 |
 | GET | `bookings/{id}/` | 预约详情 |
 | POST | `bookings/{id}/cancel/` | 取消预约 |
+| POST | `bookings/{id}/reschedule/` | 改期已批准且尚未开始的预约：`start`、`end` |
 | GET | `dashboard/` | 我的预约、资料与数量 |
 | GET | `admin/qualifications/?status=PENDING` | 管理员资格队列 |
 | POST | `admin/qualifications/{id}/review/` | `decision: VERIFIED\|REJECTED`，可带 `reason`、`valid_until` |
@@ -98,7 +99,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | POST | `admin/process-due/` | 处理已到 24 小时门槛／开始时间的请求 |
 | GET / PATCH | `admin/resources/{id}/booking-policy/` | Admin／Manager 读取；仅 Manager 修改占位时长 |
 
-`POST bookings/` 可带 `Idempotency-Key`，同一用户重试同一请求时复用同一 key；提交不同预约时生成新 key。key 最多 128 个字符，仅可使用字母、数字、点、下划线、冒号、连字符。禁止只依赖禁用按钮防止重复请求。字段 `start`、`end` 表示区间 `[start,end)`。取消仅允许尚未开始的有效请求；重复取消已取消记录返回原记录。
+`POST bookings/` 可带 `Idempotency-Key`，同一用户重试同一请求时复用同一 key；提交不同预约时生成新 key。key 最多 128 个字符，仅可使用字母、数字、点、下划线、冒号、连字符。禁止只依赖禁用按钮防止重复请求。字段 `start`、`end` 表示区间 `[start,end)`。取消仅允许尚未开始的有效请求；重复取消已取消记录返回原记录。改期只允许预约所有者操作未来 `APPROVED` 预约；后端重新检查时间规则、资格有效期与冲突。成功后 `revision` 增加，并更新原 Outlook 事件。
 
 时段查询默认时长为 30 分钟。前端应依据资源返回的 `slot_minutes` 和 `max_booking_minutes` 限制选择；当前种子规则是 30 分钟粒度、08:00–20:00、最长 480 分钟，同一预约不能跨当地日期。这些是演示配置，客户确认规则后可通过资源数据调整。
 
@@ -142,6 +143,7 @@ Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{
 | `IDEMPOTENCY_CONFLICT` | 409 | 同一 key 不能用于另一份请求；新操作生成新 key |
 | `REQUEST_NOT_REVIEWABLE`／`ALREADY_REVIEWED` | 409 | 队列状态已改变，刷新列表 |
 | `REQUEST_NOT_CANCELLABLE` | 409 | 预约已开始或请求已结束，刷新预约 |
+| `REQUEST_NOT_RESCHEDULABLE` | 409 | 只有未来且已批准的预约可以改期，刷新预约 |
 | `INVALID_TIME`／`INVALID_TIME_INCREMENT`／`OUTSIDE_OPENING_HOURS`／`DURATION_LIMIT` | 400 | 根据资源规则修正时间 |
 | `VALIDATION_ERROR` | 400 | 在对应字段展示 `details` 错误，包括附件格式／大小问题 |
 | `TOKEN_EXPIRED`／`INVALID_TOKEN` | 401 | 重新登录 |
@@ -179,12 +181,13 @@ API 输出时间为 ISO 8601 UTC `Z`。前端用 `Australia/Sydney` 显示，支
 | `DISABLED` | 日历同步未启用；预约状态仍有效 |
 | `NOT_REQUIRED` | 当前申请无需写入日历 |
 | `PENDING`／`IN_PROGRESS` | 日历等待同步／同步中 |
-| `SYNCED` + `CREATE` | 已同步到 Outlook；可显示“打开日历”链接 |
+| `SYNCED` + `CREATE` | 已创建 Outlook 事件；可显示“打开日历”链接 |
+| `SYNCED` + `UPDATE` | 改期已更新到同一个 Outlook 事件；可显示“打开日历”链接 |
 | `SYNCED` + `DELETE` | 取消已同步到 Outlook |
 | `FAILED` | 预约结果已保存，日历同步失败；提示联系管理员 |
 
-只依据预约 `status` 判断是否批准／取消，不把日历失败提示为“预约失败”，也不要自动重新创建预约。更新界面可轮询预约详情或 dashboard；读取接口不自动执行日历网络请求。只有创建成功且未取消的事件返回 `web_link`。
+只依据预约 `status` 判断是否批准／取消，不把日历失败提示为“预约失败”，也不要自动重新创建预约。更新界面可轮询预约详情或 dashboard；读取接口不自动执行日历网络请求。只有创建／更新成功且未取消的事件返回 `web_link`。
 
 Admin／Manager 的接口：`GET admin/outlook/` 查询配置及记录；`POST admin/outlook/process/` 处理到期任务（`{"limit":1}`，最多 5）；`POST admin/bookings/{id}/outlook-retry/` 立即重试（`{}`）。配置存在不代表权限验证成功，以 Graph 操作结果为准。学生不能调用这些管理接口。
 
-个人账号的授权在开发者本机完成，不需要学生 dashboard 出现 Microsoft 授权按钮，也不要把微软 Token 放进前端。步骤见 [outlook-setup.md](outlook-setup.md)。Sprint 1 是系统写入 Outlook 的单向同步；Pending 占位不会创建日历事件。改期、等待名单、重复预约及更完整的规则管理在 Sprint 2 完善。
+个人账号的授权在开发者本机完成，不需要学生 dashboard 出现 Microsoft 授权按钮，也不要把微软 Token 放进前端。步骤见 [outlook-setup.md](outlook-setup.md)。Sprint 1 是系统写入 Outlook 的单向同步，已覆盖创建、改期和取消；Pending 占位不会创建日历事件。等待名单、重复预约及更完整的规则管理在 Sprint 2 完善。

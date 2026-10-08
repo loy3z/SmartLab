@@ -34,6 +34,11 @@ class BookingCreateSerializer(StrictSerializer):
     end = AwareDateTimeField()
     purpose = serializers.CharField(max_length=1000)
 
+
+class BookingRescheduleSerializer(StrictSerializer):
+    start = AwareDateTimeField()
+    end = AwareDateTimeField()
+
 class QualificationCreateSerializer(StrictSerializer):
     requirement_id = serializers.UUIDField()
     title = serializers.CharField(max_length=160)

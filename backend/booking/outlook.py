@@ -25,13 +25,15 @@ class OutlookError(Exception):
 class CalendarEvent:
     id: str
     web_link: str | None = None
+    ical_uid: str | None = None
 
 
 class CalendarProvider(Protocol):
     @property
     def configured(self) -> bool: ...
     def target_path(self) -> str: ...
-    def create_event(self, booking, resource, calendar_path: str) -> CalendarEvent: ...
+    def create_event(self, booking, student, resource, calendar_path: str) -> CalendarEvent: ...
+    def update_event(self, booking, student, resource, calendar_path: str, event_id: str) -> CalendarEvent: ...
     def delete_event(self, calendar_path: str, event_id: str) -> None: ...
 
 
@@ -140,7 +142,7 @@ class MicrosoftGraphCalendar:
                 self._cached_token, self._expires_at = None, 0
             raise
 
-    def create_event(self, booking, resource, calendar_path):
+    def _event_body(self, booking, student, resource, include_transaction_id=False):
         body = {
             "subject": f"SmartLab booking: {resource.name}",
             "body": {"contentType": "text", "content": f"Booking reference: {booking.id}\nManaged by SmartLab."},
@@ -148,17 +150,40 @@ class MicrosoftGraphCalendar:
             "end": {"dateTime": booking.end.astimezone(UTC).replace(tzinfo=None).isoformat(timespec="seconds"), "timeZone": "UTC"},
             "location": {"displayName": resource.location},
             "showAs": "busy",
-            "transactionId": booking.id,
             "isReminderOn": True,
             "reminderMinutesBeforeStart": 15,
+            "attendees": [
+                {"emailAddress": {"address": student.university_email, "name": student.display_name}, "type": "required"},
+            ],
         }
-        result = self._request("POST", calendar_path, body)
-        if not isinstance(result, dict) or not isinstance(result.get("id"), str) or not result["id"]:
+        if include_transaction_id:
+            body["transactionId"] = booking.id
+        return body
+
+    @staticmethod
+    def _event_from_response(result, fallback_id=None):
+        event_id = result.get("id") if isinstance(result, dict) else None
+        if not isinstance(event_id, str) or not event_id:
+            event_id = fallback_id
+        if not event_id:
             raise OutlookError("GRAPH_INVALID_EVENT_RESPONSE")
-        link = result.get("webLink")
+        link = result.get("webLink") if isinstance(result, dict) else None
         if not isinstance(link, str) or not link.startswith(("https://outlook.live.com/", "https://outlook.office365.com/", "https://outlook.office.com/")):
             link = None
-        return CalendarEvent(result["id"], link)
+        ical_uid = result.get("iCalUId") if isinstance(result, dict) else None
+        if not isinstance(ical_uid, str) or not ical_uid:
+            ical_uid = None
+        return CalendarEvent(event_id, link, ical_uid)
+
+    def create_event(self, booking, student, resource, calendar_path):
+        body = self._event_body(booking, student, resource, include_transaction_id=True)
+        result = self._request("POST", calendar_path, body)
+        return self._event_from_response(result)
+
+    def update_event(self, booking, student, resource, calendar_path, event_id):
+        result = self._request("PATCH", calendar_path + "/" + quote(event_id, safe=""),
+                               self._event_body(booking, student, resource))
+        return self._event_from_response(result, fallback_id=event_id)
 
     def delete_event(self, calendar_path, event_id):
         try:

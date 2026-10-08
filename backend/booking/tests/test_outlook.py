@@ -26,20 +26,26 @@ class FakeCalendar:
     mode = "test_adapter"
 
     def __init__(self):
-        self.creates, self.deletes = [], []
+        self.creates, self.updates, self.deletes = [], [], []
         self.error = None
         self.on_create = None
 
     def target_path(self):
         return "/me/calendar/events"
 
-    def create_event(self, booking, resource, path):
-        self.creates.append((booking.id, path))
+    def create_event(self, booking, student, resource, path):
+        self.creates.append((booking.id, student.university_email, resource.id, path))
         if self.on_create:
             self.on_create()
         if self.error:
             raise self.error
-        return CalendarEvent("event-" + booking.id, "https://outlook.live.com/calendar/item/demo")
+        return CalendarEvent("event-" + booking.id, "https://outlook.live.com/calendar/item/demo", "ical-" + booking.id)
+
+    def update_event(self, booking, student, resource, path, event_id):
+        self.updates.append((booking.id, student.university_email, resource.id, path, event_id))
+        if self.error:
+            raise self.error
+        return CalendarEvent(event_id, "https://outlook.live.com/calendar/item/demo", "ical-" + booking.id)
 
     def delete_event(self, path, event_id):
         if self.error:
@@ -138,6 +144,44 @@ class OutlookWorkflowTests(SimpleTestCase):
         self.assertEqual(result.data["outlook_sync"]["status"], "SYNCED")
         self.assertIsNone(result.data["outlook_sync"]["web_link"])
         self.assertEqual(len(self.provider.deletes), 1)
+
+    def test_reschedule_updates_the_existing_event_and_preserves_its_identity(self):
+        booking = self.create().data
+        original = self.service.repo.get_outlook_sync(booking["id"])
+        new_start = (NOW.astimezone(SYDNEY) + timedelta(days=4)).replace(hour=14, minute=0)
+        result = self.client.post(f"/api/v1/bookings/{booking['id']}/reschedule/", {
+            "start": new_start.isoformat(),
+            "end": (new_start + timedelta(hours=1)).isoformat(),
+        }, format="json")
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.data["revision"], 2)
+        self.assertEqual(result.data["reason_code"], "RESCHEDULED_BY_USER")
+        self.assertEqual(result.data["outlook_sync"]["action"], "UPDATE")
+        self.assertEqual(result.data["outlook_sync"]["status"], "SYNCED")
+        self.assertEqual(len(self.provider.creates), 1)
+        self.assertEqual(len(self.provider.updates), 1)
+        self.assertEqual(self.provider.updates[0][-1], original.event_id)
+        self.assertEqual(self.service.repo.get_outlook_sync(booking["id"]).event_id, original.event_id)
+
+    def test_failed_reschedule_sync_keeps_new_booking_time_and_retry_updates_event(self):
+        booking = self.create().data
+        original = self.service.repo.get_outlook_sync(booking["id"])
+        self.provider.error = OutlookError("GRAPH_NETWORK_ERROR")
+        new_start = (NOW.astimezone(SYDNEY) + timedelta(days=5)).replace(hour=15, minute=0)
+        moved = self.client.post(f"/api/v1/bookings/{booking['id']}/reschedule/", {
+            "start": new_start.isoformat(),
+            "end": (new_start + timedelta(hours=1)).isoformat(),
+        }, format="json")
+        self.assertEqual(moved.status_code, 200)
+        self.assertEqual(moved.data["status"], "APPROVED")
+        self.assertEqual(moved.data["outlook_sync"]["status"], "FAILED")
+        self.assertEqual(moved.data["outlook_sync"]["action"], "UPDATE")
+        self.provider.error = None
+        retried = self.admin.post(f"/api/v1/admin/bookings/{booking['id']}/outlook-retry/", {}, format="json")
+        self.assertEqual(retried.data["outlook_sync"]["status"], "SYNCED")
+        self.assertEqual(len(self.provider.creates), 1)
+        self.assertEqual(len(self.provider.updates), 2)
+        self.assertTrue(all(call[-1] == original.event_id for call in self.provider.updates))
 
     def test_graph_failure_preserves_approved_booking_and_retry_recovers(self):
         self.provider.error = OutlookError("GRAPH_HTTP_429", retry_after=120)
@@ -251,23 +295,31 @@ class OutlookWorkflowTests(SimpleTestCase):
 
 class GraphAdapterTests(SimpleTestCase):
     def fixture(self):
-        from booking.domain import Booking, Resource, ResourceKind
+        from booking.domain import Booking, Principal, Resource, ResourceKind, Role
         start = NOW + timedelta(days=3)
         booking = Booking("booking-reference", "student-private-id", "resource", start, start + timedelta(hours=1),
             "Private purpose", NOW, BookingStatus.APPROVED, "AUTO_APPROVED")
-        return booking, Resource("resource", "Lab Room 1", ResourceKind.ROOM, "Building A", "Demo")
+        student = Principal("student-private-id", "z1234567", "Example Student", Role.STUDENT,
+                            university_email="student@example.edu")
+        resource = Resource("resource", "Lab Room 1", ResourceKind.ROOM, "Building A", "Demo")
+        return booking, student, resource
 
     def test_personal_account_posts_real_graph_payload_without_student_private_data(self):
         transport = FakeTransport([{"id": "event-id", "webLink": "https://outlook.live.com/calendar/item/event"}])
         provider = MicrosoftGraphCalendar(access_token="example-access-token", transport=transport)
-        booking, resource = self.fixture()
-        event = provider.create_event(booking, resource, provider.target_path())
+        booking, student, resource = self.fixture()
+        event = provider.create_event(booking, student, resource, provider.target_path())
         method, url, headers, body, _ = transport.calls[0]
         self.assertEqual(method, "POST")
         self.assertEqual(url, "https://graph.microsoft.com/v1.0/me/calendar/events")
         self.assertEqual(headers["Authorization"], "Bearer example-access-token")
         self.assertEqual(body["transactionId"], booking.id)
         self.assertEqual(body["start"], {"dateTime": "2026-10-08T00:00:00", "timeZone": "UTC"})
+        self.assertEqual(len(body["attendees"]), 1)
+        self.assertEqual(body["attendees"][0]["emailAddress"]["address"], student.university_email)
+        self.assertEqual(body["attendees"][0]["type"], "required")
+        self.assertEqual(body["subject"], "SmartLab booking: Lab Room 1")
+        self.assertEqual(body["location"]["displayName"], "Building A")
         self.assertNotIn(booking.student_id, json.dumps(body))
         self.assertNotIn(booking.purpose, json.dumps(body))
         self.assertEqual(event.id, "event-id")
@@ -278,12 +330,26 @@ class GraphAdapterTests(SimpleTestCase):
             client_id="example-client", client_secret="example-secret", mailbox="lab@example.com", calendar_id="a/b", transport=transport)
         self.assertTrue(provider.configured)
         self.assertEqual(provider.mode, "application")
-        booking, resource = self.fixture()
-        provider.create_event(booking, resource, provider.target_path())
-        provider.create_event(booking, resource, provider.target_path())
+        booking, student, resource = self.fixture()
+        provider.create_event(booking, student, resource, provider.target_path())
+        provider.create_event(booking, student, resource, provider.target_path())
         self.assertEqual(len(transport.calls), 3)
         self.assertEqual(transport.calls[0][4]["scope"], "https://graph.microsoft.com/.default")
         self.assertEqual(transport.calls[1][1], "https://graph.microsoft.com/v1.0/users/lab%40example.com/calendars/a%2Fb/events")
+
+    def test_reschedule_patches_the_existing_graph_event(self):
+        transport = FakeTransport([{"id": "event/with+characters", "iCalUId": "ical-uid"}])
+        provider = MicrosoftGraphCalendar(access_token="example-token", transport=transport)
+        booking, student, resource = self.fixture()
+        event = provider.update_event(booking, student, resource, provider.target_path(), "event/with+characters")
+        method, url, _, body, _ = transport.calls[0]
+        self.assertEqual(method, "PATCH")
+        self.assertTrue(url.endswith("/events/event%2Fwith%2Bcharacters"))
+        self.assertNotIn("transactionId", body)
+        self.assertEqual(len(body["attendees"]), 1)
+        self.assertEqual(body["attendees"][0]["emailAddress"]["address"], student.university_email)
+        self.assertEqual(event.id, "event/with+characters")
+        self.assertEqual(event.ical_uid, "ical-uid")
 
     def test_deleted_or_missing_event_cancellation_is_idempotent(self):
         transport = FakeTransport([OutlookError("GRAPH_HTTP_404")])
@@ -293,9 +359,9 @@ class GraphAdapterTests(SimpleTestCase):
 
     def test_invalid_response_is_not_reported_as_a_synced_event(self):
         provider = MicrosoftGraphCalendar(access_token="example-token", transport=FakeTransport([{}]))
-        booking, resource = self.fixture()
+        booking, student, resource = self.fixture()
         with self.assertRaisesRegex(OutlookError, "GRAPH_INVALID_EVENT_RESPONSE"):
-            provider.create_event(booking, resource, provider.target_path())
+            provider.create_event(booking, student, resource, provider.target_path())
 
     def test_token_file_can_be_replaced_without_restarting_server(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -303,10 +369,10 @@ class GraphAdapterTests(SimpleTestCase):
             token_path.write_text("first-token", encoding="utf-8")
             transport = FakeTransport([{"id": "first"}, {"id": "second"}])
             provider = MicrosoftGraphCalendar(token_file=str(token_path), transport=transport)
-            booking, resource = self.fixture()
-            provider.create_event(booking, resource, provider.target_path())
+            booking, student, resource = self.fixture()
+            provider.create_event(booking, student, resource, provider.target_path())
             token_path.write_text("second-token", encoding="utf-8")
-            provider.create_event(booking, resource, provider.target_path())
+            provider.create_event(booking, student, resource, provider.target_path())
             self.assertEqual(transport.calls[1][2]["Authorization"], "Bearer second-token")
 
     def test_http_errors_redact_bodies_and_preserve_retry_after(self):
@@ -332,9 +398,9 @@ class GraphAdapterTests(SimpleTestCase):
 
     def test_missing_credentials_produce_a_safe_configuration_error(self):
         provider = MicrosoftGraphCalendar()
-        booking, resource = self.fixture()
+        booking, student, resource = self.fixture()
         with self.assertRaisesRegex(OutlookError, "OUTLOOK_NOT_CONFIGURED"):
-            provider.create_event(booking, resource, provider.target_path())
+            provider.create_event(booking, student, resource, provider.target_path())
 
     @override_settings(DEBUG=False)
     def test_token_helper_cannot_run_in_production(self):

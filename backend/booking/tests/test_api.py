@@ -115,6 +115,7 @@ class BookingAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         )
         self.assertEqual(valid.status_code, 201, valid.data)
         self.assertEqual(valid.data["user"]["role"], "STUDENT")
+        self.assertEqual(valid.data["user"]["university_email"], "z2000001@ad.unsw.edu.au")
 
     def test_demo_auth_is_hidden_when_debug_or_demo_flag_is_disabled(self):
         for flags in ({"DEBUG": False}, {"ENABLE_DEMO_AUTH": False}):
@@ -240,6 +241,36 @@ class BookingAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         )
         detail = self.verified.get(f"/api/v1/bookings/{booking['id']}/")
         self.assertEqual(detail.data["status"], "APPROVED")
+
+    def test_owner_can_reschedule_an_approved_booking_but_not_into_a_conflict(self):
+        booking = self.create_booking().data
+        occupied = self.create_booking(payload=self.payload(day_offset=4, hour=14)).data
+        conflict = self.verified.post(f"/api/v1/bookings/{booking['id']}/reschedule/", {
+            "start": occupied["start"], "end": occupied["end"],
+        }, format="json")
+        self.assert_error(conflict, 409)
+        self.assertEqual(conflict.data["error"]["code"], "BOOKING_CONFLICT")
+        self.submit(self.student)
+        held = self.create_booking(self.student, self.payload(day_offset=6, hour=14)).data
+        self.assertTrue(held["hold_active"])
+        held_conflict = self.verified.post(f"/api/v1/bookings/{booking['id']}/reschedule/", {
+            "start": held["start"], "end": held["end"],
+        }, format="json")
+        self.assert_error(held_conflict, 409)
+        self.assertEqual(held_conflict.data["error"]["code"], "BOOKING_HOLD_CONFLICT")
+        self.assertEqual(held_conflict.data["error"]["details"]["hold_until"], held["hold_until"])
+        new_period = self.payload(day_offset=5, hour=15)
+        moved = self.verified.post(f"/api/v1/bookings/{booking['id']}/reschedule/", {
+            "start": new_period["start"], "end": new_period["end"],
+        }, format="json")
+        self.assertEqual(moved.status_code, 200, moved.data)
+        self.assertEqual(moved.data["start"], datetime.fromisoformat(new_period["start"]).astimezone(timezone.utc).isoformat().replace("+00:00", "Z"))
+        self.assertEqual(moved.data["revision"], 2)
+        self.assertTrue(any(item.action == "BOOKING_RESCHEDULED" and item.entity_id == booking["id"]
+                            for item in self.service.repo.list_audit()))
+        self.assert_error(self.student.post(f"/api/v1/bookings/{booking['id']}/reschedule/", {
+            "start": new_period["start"], "end": new_period["end"],
+        }, format="json"), 404)
 
     def test_student_cannot_use_admin_endpoints(self):
         for endpoint in ("bookings", "qualifications"):

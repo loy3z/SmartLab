@@ -135,6 +135,7 @@ class Booking:
     reviewed_at: datetime | None = None
     decision_reason: str | None = None
     updated_at: datetime | None = None
+    revision: int = 1
     hold_until: datetime | None = None
 
     def __post_init__(self) -> None:
@@ -181,13 +182,17 @@ class OutlookSyncRecord:
     calendar_path: str
     updated_at: datetime
     revision: int = 1
+    booking_revision: int = 1
     event_id: str | None = None
     web_link: str | None = None
+    ical_uid: str | None = None
     attempts: int = 0
     create_attempted: bool = False
     next_attempt_at: datetime | None = None
     lease_until: datetime | None = None
     last_error: str | None = None
+    last_success_at: datetime | None = None
 
     def __post_init__(self) -> None:
-        _require_aware(updated_at=self.updated_at, next_attempt_at=self.next_attempt_at, lease_until=self.lease_until)
+        _require_aware(updated_at=self.updated_at, next_attempt_at=self.next_attempt_at,
+                       lease_until=self.lease_until, last_success_at=self.last_success_at)

@@ -145,15 +145,6 @@ class OutlookWorkflowTests(SimpleTestCase):
         self.assertIsNone(result.data["outlook_sync"]["web_link"])
         self.assertEqual(len(self.provider.deletes), 1)
 
-    def test_cancellation_does_not_require_student_email_after_event_exists(self):
-        booking = self.create().data
-        stored = self.service.repo.get_booking(booking["id"])
-        student = self.service.repo.get_principal(stored.student_id)
-        self.service.repo.save_principal(replace(student, university_email=""))
-        result = self.client.post(f"/api/v1/bookings/{booking['id']}/cancel/", {}, format="json")
-        self.assertEqual(result.data["outlook_sync"]["status"], "SYNCED")
-        self.assertEqual(len(self.provider.deletes), 1)
-
     def test_reschedule_updates_the_existing_event_and_preserves_its_identity(self):
         booking = self.create().data
         original = self.service.repo.get_outlook_sync(booking["id"])

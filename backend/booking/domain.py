@@ -52,8 +52,12 @@ class Principal:
     zid: str
     display_name: str
     role: Role
+    university_email: str
     active: bool = True
-    university_email: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.university_email or "@" not in self.university_email or any(char.isspace() for char in self.university_email):
+            raise ValueError("A university email address is required for each principal.")
 
     @property
     def is_authenticated(self) -> bool:
@@ -85,6 +89,11 @@ class Resource:
     opening_time: time = time(8)
     closing_time: time = time(20)
     timezone: str = "Australia/Sydney"
+    pending_hold_minutes: int = 30
+
+    def __post_init__(self) -> None:
+        if isinstance(self.pending_hold_minutes, bool) or not isinstance(self.pending_hold_minutes, int) or not 1 <= self.pending_hold_minutes <= 10080:
+            raise ValueError("pending_hold_minutes must be an integer from 1 to 10080.")
 
 
 @dataclass(frozen=True)
@@ -127,6 +136,7 @@ class Booking:
     decision_reason: str | None = None
     updated_at: datetime | None = None
     revision: int = 1
+    hold_until: datetime | None = None
 
     def __post_init__(self) -> None:
         _require_aware(
@@ -136,7 +146,16 @@ class Booking:
             review_due_at=self.review_due_at,
             reviewed_at=self.reviewed_at,
             updated_at=self.updated_at,
+            hold_until=self.hold_until,
         )
+
+    def hold_is_active(self, at: datetime) -> bool:
+        _require_aware(at=at)
+        return bool(self.status in (BookingStatus.WAITING_QUALIFICATION, BookingStatus.PENDING_APPROVAL)
+                    and self.hold_until and self.hold_until > at)
+
+    def blocks_resource_at(self, at: datetime) -> bool:
+        return self.status == BookingStatus.APPROVED or self.hold_is_active(at)
 
 
 @dataclass(frozen=True)

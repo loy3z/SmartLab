@@ -21,8 +21,7 @@ NOW = datetime(2026, 10, 5, 0, tzinfo=timezone.utc)
 SYDNEY = ZoneInfo("Australia/Sydney")
 
 
-@override_settings(DEBUG=True, ENABLE_DEMO_AUTH=True, SEED_DEMO_DATA=True)
-class BookingAPITests(SimpleTestCase):
+class BookingAPIFixtureMixin:
     def setUp(self):
         reset_runtime()
         self.service = get_service()
@@ -88,6 +87,8 @@ class BookingAPITests(SimpleTestCase):
         self.assertIn("code", response.data["error"])
         self.assertIn("message", response.data["error"])
 
+@override_settings(DEBUG=True, ENABLE_DEMO_AUTH=True, SEED_DEMO_DATA=True)
+class BookingAPITests(BookingAPIFixtureMixin, SimpleTestCase):
     def test_invalid_resource_identifier_has_a_json_error_for_the_frontend(self):
         response = self.verified.get("/api/v1/resources/not-a-uuid/")
         self.assertEqual(response.status_code, 404)
@@ -104,17 +105,17 @@ class BookingAPITests(SimpleTestCase):
     def test_demo_registration_does_not_accept_privileged_role(self):
         response = self.client.post(
             "/api/v1/auth/demo-register/",
-            {"zid": "z2000001", "display_name": "Demo student", "university_email": "z2000001@example.edu", "role": "ADMIN"},
+            {"zid": "z2000001", "display_name": "Demo student", "university_email": "z2000001@ad.unsw.edu.au", "role": "ADMIN"},
             format="json",
         )
         self.assert_error(response, 400)
         valid = self.client.post(
             "/api/v1/auth/demo-register/",
-            {"zid": "z2000001", "display_name": "Demo student", "university_email": "z2000001@example.edu"}, format="json",
+            {"zid": "z2000001", "display_name": "Demo student", "university_email": "z2000001@ad.unsw.edu.au"}, format="json",
         )
         self.assertEqual(valid.status_code, 201, valid.data)
         self.assertEqual(valid.data["user"]["role"], "STUDENT")
-        self.assertEqual(valid.data["user"]["university_email"], "z2000001@example.edu")
+        self.assertEqual(valid.data["user"]["university_email"], "z2000001@ad.unsw.edu.au")
 
     def test_demo_auth_is_hidden_when_debug_or_demo_flag_is_disabled(self):
         for flags in ({"DEBUG": False}, {"ENABLE_DEMO_AUTH": False}):
@@ -125,7 +126,7 @@ class BookingAPITests(SimpleTestCase):
                 self.assertEqual(response.status_code, 404)
                 response = self.client.post(
                     "/api/v1/auth/demo-register/",
-                    {"zid": "z2000002", "display_name": "Demo student", "university_email": "z2000002@example.edu"}, format="json",
+                    {"zid": "z2000002", "display_name": "Demo student", "university_email": "z2000002@ad.unsw.edu.au"}, format="json",
                 )
                 self.assertEqual(response.status_code, 404)
                 self.assertEqual(self.verified.get("/api/v1/auth/me/").status_code, 401)
@@ -145,15 +146,19 @@ class BookingAPITests(SimpleTestCase):
         self.assert_error(self.create_booking(self.student), 403)
         self.assertEqual(self.items(self.student.get("/api/v1/bookings/")), [])
 
-    def test_pending_induction_allows_request_but_only_approved_booking_occupies_slot(self):
+    def test_pending_induction_request_temporarily_holds_slot_against_later_approval(self):
         self.submit()
         waiting = self.create_booking(self.student)
         self.assertEqual(waiting.status_code, 201, waiting.data)
         self.assertEqual(waiting.data["status"], "WAITING_QUALIFICATION")
         self.assertIsNotNone(waiting.data["review_due_at"])
-        approved = self.create_booking(self.verified)
-        self.assertEqual(approved.status_code, 201, approved.data)
-        self.assertEqual(approved.data["status"], "APPROVED")
+        self.assertTrue(waiting.data["hold_active"])
+        self.assertTrue(waiting.data["blocks_slot"])
+        later = self.create_booking(self.verified)
+        self.assertEqual(later.status_code, 201, later.data)
+        self.assertEqual(later.data["status"], "PENDING_APPROVAL")
+        self.assertEqual(later.data["reason_code"], "TEMPORARY_HOLD_CONFLICT")
+        self.assertIsNone(later.data["hold_until"])
 
     def test_verified_student_can_book_room_and_equipment_and_view_own_dashboard(self):
         for resource in (self.room, self.equipment):
@@ -245,6 +250,15 @@ class BookingAPITests(SimpleTestCase):
         }, format="json")
         self.assert_error(conflict, 409)
         self.assertEqual(conflict.data["error"]["code"], "BOOKING_CONFLICT")
+        self.submit(self.student)
+        held = self.create_booking(self.student, self.payload(day_offset=6, hour=14)).data
+        self.assertTrue(held["hold_active"])
+        held_conflict = self.verified.post(f"/api/v1/bookings/{booking['id']}/reschedule/", {
+            "start": held["start"], "end": held["end"],
+        }, format="json")
+        self.assert_error(held_conflict, 409)
+        self.assertEqual(held_conflict.data["error"]["code"], "BOOKING_HOLD_CONFLICT")
+        self.assertEqual(held_conflict.data["error"]["details"]["hold_until"], held["hold_until"])
         new_period = self.payload(day_offset=5, hour=15)
         moved = self.verified.post(f"/api/v1/bookings/{booking['id']}/reschedule/", {
             "start": new_period["start"], "end": new_period["end"],

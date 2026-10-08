@@ -16,7 +16,7 @@ from .exceptions import DomainError
 from .runtime import get_service
 from .serializers import (AvailabilityQuerySerializer, BookingCreateSerializer, BookingRescheduleSerializer, BookingReviewSerializer,
                           DemoLoginSerializer, DemoRegisterSerializer, QualificationCreateSerializer, QualificationReviewSerializer,
-                          OutlookProcessSerializer)
+                          OutlookProcessSerializer, BookingPolicySerializer)
 
 def json_value(value):
     if isinstance(value, Enum):
@@ -28,7 +28,10 @@ def json_value(value):
     if is_dataclass(value):
         result = json_value(asdict(value))
         if isinstance(value, Booking):
-            result["outlook_sync"] = get_service().calendar_sync.describe(value)
+            service = get_service()
+            result["outlook_sync"] = service.calendar_sync.describe(value)
+            result["hold_active"] = value.hold_is_active(service.now())
+            result["blocks_slot"] = value.blocks_resource_at(service.now())
         return result
     if isinstance(value, dict):
         return {key: json_value(item) for key, item in value.items()}
@@ -283,3 +286,19 @@ class OutlookRetryView(APIView):
         booking = service.booking_for(request.user, str(booking_id))
         service.calendar_sync.retry(booking)
         return Response(json_value(booking))
+
+
+class ResourceBookingPolicyView(APIView):
+    def get(self, request, resource_id):
+        service = get_service()
+        service.require_staff(request.user)
+        resource = service.resource(str(resource_id))
+        return Response({"resource_id": resource.id, "pending_hold_minutes": resource.pending_hold_minutes})
+
+    def patch(self, request, resource_id):
+        service = get_service()
+        if not request.user.active or request.user.role != Role.MANAGER:
+            raise DomainError("FORBIDDEN", "Only an active Manager may configure booking policies.", 403)
+        data = validated(BookingPolicySerializer, request.data)
+        resource = service.set_pending_hold_minutes(request.user, str(resource_id), data["pending_hold_minutes"])
+        return Response({"resource_id": resource.id, "pending_hold_minutes": resource.pending_hold_minutes})

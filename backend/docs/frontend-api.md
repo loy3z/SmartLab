@@ -14,8 +14,11 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | 我的预约 | 显示详情、改期／取消确认、操作后刷新 | 判断归属及状态，重新校验并执行改期／取消 |
 | 管理员资格审核 | 审核列表、查看资料、通过／拒绝和原因，填写有效期 | 修改资格，重新判断等待资格的预约 |
 | 管理员预约审核 | 审核队列、详情、通过／拒绝和原因、显示冲突错误 | 批准前再次检查资格与冲突 |
+| Manager 占位规则 | 按资源显示和修改 Pending 占位分钟数 | 角色校验、规则保存和审计；Admin 仅可读取 |
 
 隐藏按钮只能改善体验；身份、资格和冲突均由后端执行。前端不能直接设置预约状态、资格状态或用户角色。
+
+演示学生注册需要 `zid`、`display_name`、`university_email`，缺少或格式错误的邮箱返回 400。登录／注册响应中的用户对象以及 `auth/me/` 均返回邮箱。演示模式不验证邮箱所有权；正式 SSO 的邮箱及角色必须由后端从可信身份来源映射。
 
 ## 建议调用顺序
 
@@ -32,7 +35,9 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 
 `qualification_status=NOT_CONFIGURED` 表示资源尚未设置 induction 要求，不能申请；需要维护资源数据后再开放。
 
-可用性查询是当时的快照，提交前后仍可能有人占用时段。显示 `available=false` 的时段不能提示“可立即预约”；如果希望前端允许发送冲突人工审核请求，应明确展示“已有预约，将进入人工审核”，而不是“预订成功”。
+可用性查询是当时的快照，提交前后仍可能有人占用时段。显示 `available=false` 的时段不能提示“可立即预约”；如果允许发送冲突人工审核请求，应明确展示“已有预约／临时占位，将进入人工审核”。每个资源的 `required_qualification_id` 可以不同，前端必须读取资源要求，不能用一个全局“已完成 induction”开关判断所有资源的资格。
+
+`slots[]` 的 `reason_code` 为 `START_TIME_PASSED`、`BOOKED`、`TEMPORARILY_HELD` 或 `null`。临时占位时返回 `hold_until`（UTC 截止时间）和 `held_by_me`（是否为当前学生自己的占位）；其他情况分别为 `null`、`false`。不返回其他学生身份。可显示占位倒计时，到期刷新查询，最终以服务端响应为准；`can_request` 表示身份／资料允许提交申请，不代表所选时段能立即获批。
 
 ## 状态与界面文字
 
@@ -47,12 +52,18 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 
 | 预约状态 | 建议显示 | 是否占时段 |
 | --- | --- | --- |
-| `WAITING_QUALIFICATION` | 申请已提交，等待资格确认 | 否 |
-| `PENDING_APPROVAL` | 等待管理员审批 | 否 |
+| `WAITING_QUALIFICATION` | 申请已提交，等待资格确认 | 仅 `hold_active=true` 时临时占位 |
+| `PENDING_APPROVAL` | 等待管理员审批 | 仅 `hold_active=true` 时临时占位 |
 | `APPROVED` | 预约已批准 | 是 |
 | `REJECTED` | 预约被拒绝 | 否 |
 | `CANCELLED` | 预约已取消 | 否 |
 | `EXPIRED` | 申请已过期 | 否 |
+
+所有预约响应增加 `hold_until`（可空截止时间）、`hold_active`（当前占位是否有效）和 `blocks_slot`（当前是否阻挡重叠预约）。`APPROVED` 的 `blocks_slot=true`，即使 `hold_active=false`。不要只用非空 `hold_until` 判断占用：该值保留为历史，取消、拒绝、批准或截止时间到达后临时占位不再有效。
+
+无冲突的 Pending 请求取得占位，默认 30 分钟，最多持续到预约开始。**占位到期只释放时段，申请仍保持 Pending**，并可能按原规则从等待资格转人工审批；到了预约开始时间仍未批准才变 `EXPIRED`。刷新、幂等重试和审批升级不会续占；占位到期后不会自动重新占用或晋升其他申请。这不是等待名单功能。
+
+与已有批准预约冲突时，新申请 `reason_code=TIME_CONFLICT`；仅与有效占位冲突时为 `TEMPORARY_HOLD_CONFLICT`。这些申请进入人工审批且没有占位。其他学生不能越过有效占位自动获批，管理员也不能强行批准冲突请求；只需展示后端状态，不在前端推断请求优先级。
 
 无冲突且资格已验证的申请立即批准。未验证申请从预约创建起等待 24 小时，之后进入人工预约审核；不会自动获得资格。已有冲突的请求立即进入人工审核。资格通过后，后端会重新判断仍在等待资格的预约；前端使用后端返回的结果，不自行推算“自动成功”。
 
@@ -86,10 +97,13 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | GET | `admin/bookings/?status=PENDING_APPROVAL` | 管理员预约队列 |
 | POST | `admin/bookings/{id}/review/` | `decision: APPROVED\|REJECTED`，可带 `reason` |
 | POST | `admin/process-due/` | 处理已到 24 小时门槛／开始时间的请求 |
+| GET / PATCH | `admin/resources/{id}/booking-policy/` | Admin／Manager 读取；仅 Manager 修改占位时长 |
 
 `POST bookings/` 可带 `Idempotency-Key`，同一用户重试同一请求时复用同一 key；提交不同预约时生成新 key。key 最多 128 个字符，仅可使用字母、数字、点、下划线、冒号、连字符。禁止只依赖禁用按钮防止重复请求。字段 `start`、`end` 表示区间 `[start,end)`。取消仅允许尚未开始的有效请求；重复取消已取消记录返回原记录。改期只允许预约所有者操作未来 `APPROVED` 预约；后端重新检查时间规则、资格有效期与冲突。成功后 `revision` 增加，并更新原 Outlook 事件。
 
 时段查询默认时长为 30 分钟。前端应依据资源返回的 `slot_minutes` 和 `max_booking_minutes` 限制选择；当前种子规则是 30 分钟粒度、08:00–20:00、最长 480 分钟，同一预约不能跨当地日期。这些是演示配置，客户确认规则后可通过资源数据调整。
+
+Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{"pending_hold_minutes":30}`；GET／PATCH 均返回 `{"resource_id":"<uuid>","pending_hold_minutes":30}`。范围为整数 1–10080，修改只影响之后创建的占位；已有截止时间不变。资源详情也包含 `pending_hold_minutes`。占位时长与 24 小时审批等待是两个独立配置。
 
 附件支持 PDF、PNG、JPEG，最大 5 MiB。后端检查大小、扩展名、MIME 和文件格式特征。资料中的 `file_url` 是受保护的 API 路径，下载仍需带 Authorization；前端可请求为 Blob 后显示／下载，不能假设 `<img src>` 或普通链接会自动附带 Bearer token。附件没有公开地址。
 
@@ -124,6 +138,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | `QUALIFICATION_REQUIRED` | 403 | 提示先提交有效 induction 资料；查看 `details.qualification_status` |
 | `QUALIFICATION_NOT_VERIFIED` | 409 | 管理员先处理资格，不能直接批准预约 |
 | `BOOKING_CONFLICT` | 409 | 人工批准失败，提示时段已有获批预约 |
+| `BOOKING_HOLD_CONFLICT` | 409 | 人工批准失败，提示时段仍临时占用；`details.hold_until` 为当前占位截止时间 |
 | `QUALIFICATION_ALREADY_PENDING`／`QUALIFICATION_ALREADY_VERIFIED` | 409 | 保留当前资料，刷新资格状态 |
 | `IDEMPOTENCY_CONFLICT` | 409 | 同一 key 不能用于另一份请求；新操作生成新 key |
 | `REQUEST_NOT_REVIEWABLE`／`ALREADY_REVIEWED` | 409 | 队列状态已改变，刷新列表 |
@@ -175,4 +190,4 @@ API 输出时间为 ISO 8601 UTC `Z`。前端用 `Australia/Sydney` 显示，支
 
 Admin／Manager 的接口：`GET admin/outlook/` 查询配置及记录；`POST admin/outlook/process/` 处理到期任务（`{"limit":1}`，最多 5）；`POST admin/bookings/{id}/outlook-retry/` 立即重试（`{}`）。配置存在不代表权限验证成功，以 Graph 操作结果为准。学生不能调用这些管理接口。
 
-个人账号的授权在开发者本机完成，不需要学生 dashboard 出现 Microsoft 授权按钮，也不要把微软 Token 放进前端。步骤见 [outlook-setup.md](outlook-setup.md)。Sprint 1 是系统写入 Outlook 的单向同步，已覆盖创建、改期和取消；等待名单、重复预约及规则管理在 Sprint 2 完善。
+个人账号的授权在开发者本机完成，不需要学生 dashboard 出现 Microsoft 授权按钮，也不要把微软 Token 放进前端。步骤见 [outlook-setup.md](outlook-setup.md)。Sprint 1 是系统写入 Outlook 的单向同步，已覆盖创建、改期和取消；Pending 占位不会创建日历事件。等待名单、重复预约及更完整的规则管理在 Sprint 2 完善。

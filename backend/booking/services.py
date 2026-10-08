@@ -33,6 +33,19 @@ class BookingService:
         if not actor.active or actor.role not in (Role.ADMIN, Role.MANAGER):
             raise DomainError("FORBIDDEN", "This action requires an Admin or Manager account.", 403)
 
+    def set_pending_hold_minutes(self, actor, resource_id, minutes):
+        if not actor.active or actor.role != Role.MANAGER:
+            raise DomainError("FORBIDDEN", "Only an active Manager may configure booking policies.", 403)
+        if isinstance(minutes, bool) or not isinstance(minutes, int) or not 1 <= minutes <= 10080:
+            raise DomainError("VALIDATION_ERROR", "pending_hold_minutes must be an integer from 1 to 10080.")
+        with self.repo.atomic(resource_ids=[str(resource_id)]):
+            current = self.resource(resource_id)
+            updated = replace(current, pending_hold_minutes=minutes)
+            self.repo.save_resource(updated)
+            self._audit(actor.id, "RESOURCE_BOOKING_POLICY_UPDATED", "resource", current.id,
+                        previous_minutes=current.pending_hold_minutes, pending_hold_minutes=minutes)
+            return updated
+
     def _audit(self, actor_id, action, kind, entity_id, **details):
         self.repo.append_audit(AuditRecord(str(uuid4()), actor_id, action, kind, entity_id, self.now(), details))
 
@@ -62,9 +75,7 @@ class BookingService:
         return record.status.value, False
 
     def _overlaps(self, resource_id, start, end, exclude_id=None):
-        return [item for item in self.repo.list_bookings(resource_id=resource_id)
-                if item.id != exclude_id and item.status == BookingStatus.APPROVED
-                and start < item.end and item.start < end]
+        return self.repo.list_blocking_bookings(resource_id, start, end, self.now(), exclude_id)
 
     def _validate_period(self, resource, start, end):
         if start.tzinfo is None or start.utcoffset() is None or end.tzinfo is None or end.utcoffset() is None:
@@ -118,7 +129,8 @@ class BookingService:
             conflicts = self._overlaps(resource_id, start, end)
             review_due = None
             if conflicts:
-                status, reason = BookingStatus.PENDING_APPROVAL, "TIME_CONFLICT"
+                status = BookingStatus.PENDING_APPROVAL
+                reason = "TIME_CONFLICT" if any(item.status == BookingStatus.APPROVED for item in conflicts) else "TEMPORARY_HOLD_CONFLICT"
             elif qualified:
                 status, reason = BookingStatus.APPROVED, "AUTO_APPROVED"
             else:
@@ -128,9 +140,12 @@ class BookingService:
                 else:
                     status, reason = BookingStatus.WAITING_QUALIFICATION, "QUALIFICATION_PENDING"
             booking = Booking(booking_id, actor.id, resource_id, start, end, purpose.strip(), now, status, reason,
-                              review_due_at=review_due, updated_at=now)
+                              review_due_at=review_due, updated_at=now,
+                              hold_until=min(start, now + timedelta(minutes=resource.pending_hold_minutes))
+                              if not conflicts and status in (BookingStatus.WAITING_QUALIFICATION, BookingStatus.PENDING_APPROVAL) else None)
             self._save_booking(booking)
-            self._audit(actor.id, "BOOKING_CREATED", "booking", booking.id, status=status.value, reason_code=reason)
+            self._audit(actor.id, "BOOKING_CREATED", "booking", booking.id, status=status.value, reason_code=reason,
+                        hold_until=booking.hold_until.isoformat() if booking.hold_until else None)
             return booking, True
 
     def booking_for(self, actor, booking_id):
@@ -239,8 +254,12 @@ class BookingService:
                 eligibility, qualified = self.qualification_state(source.student_id, resource, source.end)
                 if not qualified:
                     raise DomainError("QUALIFICATION_NOT_VERIFIED", "Verify current induction evidence covering the booking before approval.", 409, {"qualification_status": eligibility})
-                if self._overlaps(source.resource_id, source.start, source.end, source.id):
+                blockers = self._overlaps(source.resource_id, source.start, source.end, source.id)
+                if any(item.status == BookingStatus.APPROVED for item in blockers):
                     raise DomainError("BOOKING_CONFLICT", "This period is still occupied by an approved booking.", 409)
+                if blockers:
+                    raise DomainError("BOOKING_HOLD_CONFLICT", "This period is temporarily held by an earlier pending request.", 409,
+                                      {"hold_until": max(item.hold_until for item in blockers).isoformat().replace("+00:00", "Z")})
             revised = replace(source, status=BookingStatus(decision), reason_code=f"MANUALLY_{decision}", reviewed_by=actor.id,
                               reviewed_at=self.now(), decision_reason=reason.strip() or None, updated_at=self.now())
             self._save_booking(revised)
@@ -283,8 +302,16 @@ class BookingService:
                     409,
                     {"qualification_status": eligibility},
                 )
-            if self._overlaps(source.resource_id, start, end, source.id):
+            blockers = self._overlaps(source.resource_id, start, end, source.id)
+            if any(item.status == BookingStatus.APPROVED for item in blockers):
                 raise DomainError("BOOKING_CONFLICT", "The requested new period is occupied by another approved booking.", 409)
+            if blockers:
+                raise DomainError(
+                    "BOOKING_HOLD_CONFLICT",
+                    "The requested new period is temporarily held by an earlier pending request.",
+                    409,
+                    {"hold_until": max(item.hold_until for item in blockers).isoformat().replace("+00:00", "Z")},
+                )
             if (source.start, source.end) == (start, end):
                 return source
             revised = replace(
@@ -345,8 +372,15 @@ class BookingService:
         slots = []
         while cursor + timedelta(minutes=duration_minutes) <= closing:
             end = cursor + timedelta(minutes=duration_minutes)
-            reason = "START_TIME_PASSED" if cursor <= self.now() else "BOOKED" if self._overlaps(resource.id, cursor, end) else None
-            slots.append({"start": cursor, "end": end, "available": reason is None, "reason_code": reason})
+            blockers = self._overlaps(resource.id, cursor, end)
+            holds = [item for item in blockers if item.hold_is_active(self.now())]
+            reason = ("START_TIME_PASSED" if cursor <= self.now() else
+                      "BOOKED" if any(item.status == BookingStatus.APPROVED for item in blockers) else
+                      "TEMPORARILY_HELD" if holds else None)
+            slots.append({"start": cursor, "end": end, "available": reason is None, "reason_code": reason,
+                          "hold_until": max(item.hold_until for item in holds) if reason == "TEMPORARILY_HELD" else None,
+                          "held_by_me": bool(holds) and all(item.student_id == actor.id for item in holds)
+                          if reason == "TEMPORARILY_HELD" else False})
             cursor += timedelta(minutes=resource.slot_minutes)
         return {"resource_id": resource.id, "date": day.isoformat(), "timezone": resource.timezone,
                 "duration_minutes": duration_minutes, "slots": slots,

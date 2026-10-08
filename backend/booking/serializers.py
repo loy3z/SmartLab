@@ -84,3 +84,7 @@ class AvailabilityQuerySerializer(StrictSerializer):
 
 class OutlookProcessSerializer(StrictSerializer):
     limit = serializers.IntegerField(default=1, min_value=1, max_value=5)
+
+
+class BookingPolicySerializer(StrictSerializer):
+    pending_hold_minutes = serializers.IntegerField(min_value=1, max_value=10080)

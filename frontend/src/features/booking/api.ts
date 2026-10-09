@@ -1,4 +1,13 @@
-import type { AuthResponse, Availability, Booking, ListResponse, Resource } from './types'
+import type {
+  AuthResponse,
+  Availability,
+  Booking,
+  ListResponse,
+  Qualification,
+  Requirement,
+  Resource,
+  User,
+} from './types'
 
 const BASE = '/api/v1/'
 const TOKEN_KEY = 'access_token'
@@ -62,3 +71,7 @@ export const cancelBooking = (id: string) => post<Booking>(`bookings/${id}/cance
 
 export const rescheduleBooking = (id: string, start: string, end: string) =>
   post<Booking>(`bookings/${id}/reschedule/`, { start, end })
+
+export const getMe = () => request<User>('auth/me/')
+export const listRequirements = () => request<ListResponse<Requirement>>('qualification-requirements/')
+export const listQualifications = () => request<ListResponse<Qualification>>('qualifications/')

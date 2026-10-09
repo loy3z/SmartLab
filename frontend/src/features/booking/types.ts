@@ -87,3 +87,24 @@ export interface AuthResponse {
   access_token: string
   user: { id: string; zid: string; display_name: string; role: string }
 }
+
+export interface Requirement {
+  id: string
+  name: string
+  description: string
+}
+
+export interface Qualification {
+  id: string
+  requirement_id: string
+  status: 'PENDING' | 'VERIFIED' | 'REJECTED'
+  effective_status: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'EXPIRED'
+  submitted_at: string
+}
+
+export interface User {
+  id: string
+  zid: string
+  display_name: string
+  role: string
+}

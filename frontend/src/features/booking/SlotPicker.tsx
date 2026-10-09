@@ -71,7 +71,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
             ))}
           </select>
         </label>
-        <button type="button" onClick={() => setReload((n) => n + 1)}>
+        <button type="button" className="bk-btn-outline bk-sm" onClick={() => setReload((n) => n + 1)}>
           Refresh
         </button>
       </div>

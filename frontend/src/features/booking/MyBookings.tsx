@@ -11,7 +11,7 @@ function RescheduleBox({ booking, resource, onDone }: { booking: Booking; resour
   const [open, setOpen] = useState(false)
   const duration = (new Date(booking.end).getTime() - new Date(booking.start).getTime()) / 60000
 
-  if (!open) return <button onClick={() => setOpen(true)}>Reschedule</button>
+  if (!open) return <button className="bk-btn-outline bk-sm" onClick={() => setOpen(true)}>Reschedule</button>
 
   async function save() {
     if (!slot) return
@@ -28,7 +28,7 @@ function RescheduleBox({ booking, resource, onDone }: { booking: Booking; resour
   }
 
   return (
-    <div className="bk-card">
+    <div className="bk-resched">
       <p className="bk-muted">Pick a new start time ({duration} min, same length as now).</p>
       <SlotPicker
         resource={{ ...resource, slot_minutes: duration, max_booking_minutes: duration }}
@@ -36,8 +36,8 @@ function RescheduleBox({ booking, resource, onDone }: { booking: Booking; resour
         hideQualification
       />
       {slot && <p>New time: {fmtDateTime(slot.start)} → {fmtDateTime(slot.end)}</p>}
-      <button disabled={!slot || busy} onClick={save}>Confirm reschedule</button>{' '}
-      <button onClick={() => setOpen(false)}>Close</button>
+      <button className="bk-btn-yellow bk-sm" disabled={!slot || busy} onClick={save}>Confirm reschedule</button>{' '}
+      <button className="bk-btn-outline bk-sm" onClick={() => setOpen(false)}>Close</button>
       {error && <p className="bk-error">{error}</p>}
     </div>
   )
@@ -86,22 +86,20 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
 
   return (
     <div>
-      <button onClick={load}>Refresh</button>
+      <h1>My bookings</h1>
+      <p className="bk-sub">Your requests and their current status.</p>
       {loading && <p>Loading…</p>}
       {error && <p className="bk-error">{error}</p>}
       {!loading && bookings.length === 0 && <p>No bookings yet.</p>}
       {bookings.map((b) => {
         const res = resources[b.resource_id]
         return (
-          <div key={b.id} className="bk-card">
-            <h4>{res?.name ?? 'Resource'}</h4>
+          <div key={b.id} className="bk-bcard">
+            <div className="bk-bhead"><h3>{res?.name ?? 'Resource'}</h3><span className={`bk-chip st-${b.status}`}>{STATUS_TEXT[b.status]}</span></div>
             <p>
               {fmtDateTime(b.start)} → {fmtDateTime(b.end)}
             </p>
-            <p>
-              <b>{STATUS_TEXT[b.status]}</b>
-              {b.hold_active && b.hold_until && ` · time held until ${fmtDateTime(b.hold_until)}`}
-            </p>
+            {b.hold_active && b.hold_until && <p className="bk-muted">Time held until {fmtDateTime(b.hold_until)}</p>}
             {b.purpose && <p className="bk-muted">Purpose: {b.purpose}</p>}
             {b.decision_reason && <p className="bk-muted">Reason: {b.decision_reason}</p>}
             {b.outlook_sync?.status === 'SYNCED' && b.outlook_sync.web_link && (
@@ -110,7 +108,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
             {b.outlook_sync?.status === 'FAILED' && (
               <p className="bk-muted">Calendar sync failed; your booking is unaffected. Contact an admin.</p>
             )}
-            {cancellable(b) && <button onClick={() => cancel(b)}>Cancel</button>}{' '}
+            {cancellable(b) && <button className="bk-btn-outline bk-sm" onClick={() => cancel(b)}>Cancel</button>}
             {b.status === 'APPROVED' && future(b) && res && (
               <RescheduleBox booking={b} resource={res} onDone={load} />
             )}

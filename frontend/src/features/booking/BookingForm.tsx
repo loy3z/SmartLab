@@ -42,8 +42,8 @@ export function BookingForm({ resource, onBooked }: { resource: Resource; onBook
   }
 
   return (
-    <form onSubmit={submit} className="bk-card">
-      <h3>Book: {resource.name}</h3>
+    <form onSubmit={submit} className="bk-form">
+      <h2>{resource.name}</h2>
       <p className="bk-muted">
         {resource.location} · {resource.opening_time.slice(0, 5)}–{resource.closing_time.slice(0, 5)} · max{' '}
         {resource.max_booking_minutes} min
@@ -64,7 +64,7 @@ export function BookingForm({ resource, onBooked }: { resource: Resource; onBook
           rows={3}
         />
       </label>
-      <button type="submit" disabled={!slot || busy || !purpose.trim()}>
+      <button className="bk-btn-yellow" type="submit" disabled={!slot || busy || !purpose.trim()}>
         {busy ? 'Submitting…' : 'Request booking'}
       </button>
       {error && <p className="bk-error">{error}</p>}

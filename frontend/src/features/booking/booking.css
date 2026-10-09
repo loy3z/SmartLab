@@ -1,0 +1,16 @@
+.bk-root { text-align: left; max-width: 960px; margin: 0 auto; padding: 16px; font-size: 15px; }
+.bk-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.bk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.bk-card { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 8px 0; }
+.bk-res { display: flex; flex-direction: column; gap: 4px; text-align: left; background: none; cursor: pointer; font: inherit; color: inherit; }
+.bk-slots { display: flex; flex-wrap: wrap; gap: 8px; }
+.bk-slot { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: none; cursor: pointer; font: inherit; color: inherit; }
+.bk-slot-off { opacity: 0.6; border-style: dashed; }
+.bk-slot-on { border-color: var(--accent); background: var(--accent-bg); opacity: 1; }
+.bk-slot:disabled { cursor: not-allowed; opacity: 0.35; }
+.bk-tab-on { border-color: var(--accent); background: var(--accent-bg); }
+.bk-block { display: block; margin: 12px 0; }
+.bk-block textarea { display: block; width: 100%; box-sizing: border-box; }
+.bk-muted { opacity: 0.75; font-size: 13px; }
+.bk-error { color: #c0392b; }
+.bk-ok { color: #1e8e3e; }

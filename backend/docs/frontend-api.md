@@ -12,8 +12,9 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | Induction 提交 | 选择资格要求，填写说明，上传文件，展示审核结果 | 检查附件、保存提交、保护下载权限 |
 | 预约申请 | 选择资源和时间，填写用途，提交后显示服务端状态 | 验证资格门槛、时间规则、自动／人工审批 |
 | 我的预约 | 显示详情、改期／取消确认、操作后刷新 | 判断归属及状态，重新校验并执行改期／取消 |
-| 管理员资格审核 | 审核列表、查看资料、通过／拒绝和原因，填写有效期 | 修改资格，重新判断等待资格的预约 |
+| 管理员资格审核 | 审核列表、查看资料、通过／拒绝和原因；显示后端返回的有效期 | 修改资格、自动设定有效期，重新判断等待资格的预约 |
 | 管理员预约审核 | 审核队列、详情、通过／拒绝和原因、显示冲突错误 | 批准前再次检查资格与冲突 |
+| 审计记录 | Admin／Manager 按资源、学生、操作、时间筛选并分页查看；预约详情可显示该预约的历史 | 记录并查询申请、审批、改期、取消和资格审核轨迹 |
 | Manager 占位规则 | 按资源显示和修改 Pending 占位分钟数 | 角色校验、规则保存和审计；Admin 仅可读取 |
 
 隐藏按钮只能改善体验；身份、资格和冲突均由后端执行。前端不能直接设置预约状态、资格状态或用户角色。
@@ -30,6 +31,18 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 6. 调用 `POST bookings/`，发送 `resource_id`、`start`、`end`、`purpose`。时间必须携带时区，例如 `2026-10-07T09:00:00+11:00`；不要发送无时区字符串。
 7. 按响应 `status` 显示结果，再刷新 dashboard 和可用性。HTTP 201 表示请求创建成功，重复幂等请求返回 200；只有 `APPROVED` 表示预约已经获批。
 8. Admin 使用 `admin/qualifications/` 审核 induction；审核响应包含 `submission` 和 `updated_bookings`，刷新相关列表。随后用 `admin/bookings/` 审核预约。
+
+### 审计记录（OpenAPI 1.3.0 起）
+
+`GET admin/audit/` 仅 Admin／Manager 可用，学生返回 403。返回 `{ count, limit, offset, results }`，`count` 是筛选后的总数（分页前），`results` 按时间从新到旧。每条记录含 `action`、`entity_type`、`entity_id`、`at`、`details`，以及 `actor`（`zid`、`display_name`、`role`；系统自动处理时 `actor_id` 为 `SYSTEM`、`actor` 为 `null`）。
+
+- 某个预约的完整历史：`?entity_id={booking_id}`。
+- 某个资源：`?resource_id=...`，包括该资源所有预约的记录和占位规则修改。
+- 某个学生：`?student_id=...`，包括该学生的操作及其预约、资料和账号相关记录。
+- 其他筛选：`action`（如 `BOOKING_CANCELLED`）、`entity_type`（`booking|qualification|resource|principal`）、`actor_id`、`since`／`until`（必须带时区，`until` 不包含）。
+- 分页：`limit` 1–500，默认 100；`offset` 默认 0。未知参数返回 400。
+
+`details` 的字段随动作不同，例如创建预约有 `status`、`reason_code`、`hold_until`，改期有 `old_start`／`new_start` 等。前端可直接显示键值，不要依赖固定字段。
 
 `dashboard` 返回 `{ bookings, qualifications, counts }`。两个列表是数组，`counts` 的键为六种大写预约状态，例如 `counts.APPROVED`；它不是资格数量或预约总数。其他列表接口使用 `{ count, results }`。
 
@@ -49,6 +62,8 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | `REJECTED` 或已过期 | 资料被拒绝／资格已过期，请重新提交 | 否 |
 
 最新提交决定当前资格。`status` 是资料审核状态，额外的 `effective_status` 表示当前有效性，界面应结合该字段显示过期情况。有效期需要覆盖预约结束时间；在当前时刻有效，不一定覆盖用户选择的预约。已有 PENDING 提交或仍有效的 VERIFIED 提交时，不能重复上传相同要求的资料；拒绝或过期后可重新提交。
+
+**有效期（OpenAPI 1.3.0 起）**：审核通过时后端自动设定 `valid_until = 审核时间 + QUALIFICATION_VALIDITY_DAYS`，默认 120 天（约一个学期）。审核请求不再接受 `valid_until`，带上该字段会返回 400。前端资格审核页去掉有效期输入框，改为显示响应里的 `valid_until`；学生端可显示“资格有效至 …”，并提示超过该时间的预约无法提交。资格过期前不能提前续期，过期后重新上传。
 
 | 预约状态 | 建议显示 | 是否占时段 |
 | --- | --- | --- |
@@ -93,9 +108,10 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | POST | `bookings/{id}/reschedule/` | 改期已批准且尚未开始的预约：`start`、`end` |
 | GET | `dashboard/` | 我的预约、资料与数量 |
 | GET | `admin/qualifications/?status=PENDING` | 管理员资格队列 |
-| POST | `admin/qualifications/{id}/review/` | `decision: VERIFIED\|REJECTED`，可带 `reason`、`valid_until` |
+| POST | `admin/qualifications/{id}/review/` | `decision: VERIFIED\|REJECTED`，可带 `reason`；不接受 `valid_until`，有效期由后端设定 |
 | GET | `admin/bookings/?status=PENDING_APPROVAL` | 管理员预约队列 |
 | POST | `admin/bookings/{id}/review/` | `decision: APPROVED\|REJECTED`，可带 `reason` |
+| GET | `admin/audit/?resource_id=&student_id=&action=&since=&until=&limit=100&offset=0` | Admin／Manager 查看审计记录（申请、审批、改期、取消等），最新在前 |
 | POST | `admin/process-due/` | 处理已到 24 小时门槛／开始时间的请求 |
 | GET / PATCH | `admin/resources/{id}/booking-policy/` | Admin／Manager 读取；仅 Manager 修改占位时长 |
 

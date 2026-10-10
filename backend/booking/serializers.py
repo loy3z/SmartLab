@@ -61,7 +61,7 @@ class QualificationCreateSerializer(StrictSerializer):
 class QualificationReviewSerializer(StrictSerializer):
     decision = serializers.ChoiceField(choices=["VERIFIED", "REJECTED"])
     reason = serializers.CharField(required=False, allow_blank=True, default="", max_length=2000)
-    valid_until = AwareDateTimeField(required=False, allow_null=True, default=None)
+    # No valid_until input: expiry is fixed by QUALIFICATION_VALIDITY_DAYS (Sprint 1 policy).
 
     def validate(self, attrs):
         if attrs["decision"] == "REJECTED" and not attrs["reason"].strip():
@@ -84,6 +84,19 @@ class AvailabilityQuerySerializer(StrictSerializer):
 
 class OutlookProcessSerializer(StrictSerializer):
     limit = serializers.IntegerField(default=1, min_value=1, max_value=5)
+
+
+class AuditQuerySerializer(StrictSerializer):
+    resource_id = serializers.UUIDField(required=False)
+    student_id = serializers.UUIDField(required=False)
+    entity_type = serializers.ChoiceField(choices=["booking", "qualification", "resource", "principal"], required=False)
+    entity_id = serializers.UUIDField(required=False)
+    action = serializers.RegexField(r"^[A-Z][A-Z0-9_]{0,63}$", required=False)
+    actor_id = serializers.RegexField(r"^(SYSTEM|[0-9a-fA-F-]{36})$", required=False)
+    since = AwareDateTimeField(required=False)
+    until = AwareDateTimeField(required=False)
+    limit = serializers.IntegerField(default=100, min_value=1, max_value=500)
+    offset = serializers.IntegerField(default=0, min_value=0)
 
 
 class BookingPolicySerializer(StrictSerializer):

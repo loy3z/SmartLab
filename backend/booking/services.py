@@ -8,11 +8,17 @@ from .domain import AuditRecord, Booking, BookingStatus, QualificationSubmission
 from .errors import DomainError
 
 class BookingService:
-    def __init__(self, repo, storage, clock=None, wait_hours=24, calendar_sync=None):
+    def __init__(self, repo, storage, clock=None, wait_hours=24, calendar_sync=None, qualification_validity_days=120):
         self.repo, self.storage = repo, storage
         self.clock = clock or (lambda: datetime.now(UTC))
         self.wait_hours = wait_hours
         self.calendar_sync = calendar_sync
+        # Sprint 1 fixed policy: a verified induction lasts one term (default 120 days from approval).
+        # Configured by QUALIFICATION_VALIDITY_DAYS; reviewers cannot choose a different expiry.
+        if isinstance(qualification_validity_days, bool) or not isinstance(qualification_validity_days, int) \
+                or not 1 <= qualification_validity_days <= 3650:
+            raise ValueError("qualification_validity_days must be an integer from 1 to 3650.")
+        self.qualification_validity_days = qualification_validity_days
 
     def _save_booking(self, booking):
         self.repo.save_booking(booking)
@@ -61,6 +67,15 @@ class BookingService:
         return max(enumerate(records), key=lambda pair: (pair[1].submitted_at, pair[0]))[1] if records else None
 
     def qualification_state(self, student_id, resource, end=None):
+        """Single eligibility check used by create, approve, reschedule and availability.
+
+        Eligibility comes only from the latest QualificationSubmission for the
+        resource's requirement. Sprint 1 creates VERIFIED records through manual
+        review (review_qualification). A future source such as Moodle course
+        completion should be added as an adapter that saves a VERIFIED
+        QualificationSubmission (reviewed_by identifying the source, valid_until
+        from the same validity policy). Booking rules here then need no change.
+        """
         if not resource.required_qualification_id:
             return "NOT_CONFIGURED", False
         record = self.latest_submission(student_id, resource.required_qualification_id)
@@ -187,15 +202,21 @@ class BookingService:
                 self.storage.delete(stored.id)
             raise
 
-    def review_qualification(self, actor, submission_id, decision, reason="", valid_until=None):
+    def qualification_expiry(self, verified_at):
+        """Expiry for a qualification verified at ``verified_at`` (Sprint 1: fixed days).
+
+        Replace this calculation if the client later adopts term end dates or
+        per-requirement validity; manual review and any Moodle adapter should both use it.
+        """
+        return verified_at + timedelta(days=self.qualification_validity_days)
+
+    def review_qualification(self, actor, submission_id, decision, reason=""):
         self.require_staff(actor)
         self.process_due_requests()
         if decision not in ("VERIFIED", "REJECTED"):
             raise DomainError("VALIDATION_ERROR", "Choose VERIFIED or REJECTED.")
         if decision == "REJECTED" and not reason.strip():
             raise DomainError("REASON_REQUIRED", "A rejection reason is required.")
-        if valid_until is not None and (valid_until.tzinfo is None or valid_until.utcoffset() is None or valid_until <= self.now()):
-            raise DomainError("INVALID_VALIDITY", "The qualification expiry must be a future time with a UTC offset.")
         source = self.submission_for(actor, submission_id)
         resource_ids = sorted(item.id for item in self.repo.list_resources() if item.required_qualification_id == source.requirement_id)
         with self.repo.atomic(resource_ids=resource_ids, student_ids=[source.student_id]):
@@ -204,11 +225,13 @@ class BookingService:
                 raise DomainError("ALREADY_REVIEWED", "This evidence has already been reviewed.", 409)
             if actor.id == source.student_id:
                 raise DomainError("SELF_REVIEW_FORBIDDEN", "You cannot review your own evidence.", 403)
-            updated = replace(source, status=QualificationStatus(decision), reviewed_by=actor.id, reviewed_at=self.now(),
+            reviewed_at = self.now()
+            updated = replace(source, status=QualificationStatus(decision), reviewed_by=actor.id, reviewed_at=reviewed_at,
                               rejection_reason=reason.strip() if decision == "REJECTED" else None,
-                              valid_until=valid_until.astimezone(UTC) if decision == "VERIFIED" and valid_until else None)
+                              valid_until=self.qualification_expiry(reviewed_at) if decision == "VERIFIED" else None)
             self.repo.save_submission(updated)
-            self._audit(actor.id, f"QUALIFICATION_{decision}", "qualification", updated.id, reason=reason.strip())
+            self._audit(actor.id, f"QUALIFICATION_{decision}", "qualification", updated.id, reason=reason.strip(),
+                        valid_until=updated.valid_until.isoformat() if updated.valid_until else None)
             changed = []
             for booking in sorted(self.repo.list_bookings(student_id=source.student_id), key=lambda item: (item.created_at, item.id)):
                 if booking.status != BookingStatus.WAITING_QUALIFICATION or booking.resource_id not in resource_ids:
@@ -335,6 +358,60 @@ class BookingService:
                 revision=revised.revision,
             )
             return revised
+
+    AUDIT_ENTITY_TYPES = ("booking", "qualification", "resource", "principal")
+
+    def audit_trail(self, actor, resource_id=None, student_id=None, entity_type=None, entity_id=None,
+                    action=None, actor_id=None, since=None, until=None, limit=100, offset=0):
+        """Admin/Manager view of requests, approvals, changes and cancellations, newest first.
+
+        resource_id matches the resource's own records and those of its bookings; student_id
+        matches records the student performed plus their bookings, submissions and account.
+        Returns (total_matching, page). Filtering runs in memory over ``repo.list_audit()``;
+        a database adapter may push these filters into an indexed query with the same results.
+        """
+        self.require_staff(actor)
+        if entity_type is not None and entity_type not in self.AUDIT_ENTITY_TYPES:
+            raise DomainError("VALIDATION_ERROR", "Unknown audit entity type.")
+        for name, value in (("since", since), ("until", until)):
+            if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+                raise DomainError("INVALID_TIME", f"{name} requires a UTC offset.")
+        if since is not None and until is not None and since >= until:
+            raise DomainError("INVALID_TIME", "since must be earlier than until.")
+        if not 1 <= limit <= 500 or offset < 0:
+            raise DomainError("VALIDATION_ERROR", "Use limit 1-500 and a non-negative offset.")
+        resource_entities = student_entities = None
+        if resource_id is not None:
+            resource_id = str(resource_id)
+            resource_entities = {("resource", resource_id)} | {
+                ("booking", item.id) for item in self.repo.list_bookings(resource_id=resource_id)}
+        if student_id is not None:
+            student_id = str(student_id)
+            student_entities = ({("principal", student_id)}
+                                | {("booking", item.id) for item in self.repo.list_bookings(student_id=student_id)}
+                                | {("qualification", item.id) for item in self.repo.list_submissions(student_id=student_id)})
+        matches = []
+        for index, record in enumerate(self.repo.list_audit()):
+            key = (record.entity_type, record.entity_id)
+            if resource_entities is not None and key not in resource_entities:
+                continue
+            if student_entities is not None and key not in student_entities and record.actor_id != student_id:
+                continue
+            if entity_type is not None and record.entity_type != entity_type:
+                continue
+            if entity_id is not None and record.entity_id != str(entity_id):
+                continue
+            if action is not None and record.action != action:
+                continue
+            if actor_id is not None and record.actor_id != str(actor_id):
+                continue
+            if since is not None and record.at < since:
+                continue
+            if until is not None and record.at >= until:
+                continue
+            matches.append((record.at, index, record))
+        matches.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        return len(matches), [record for _, _, record in matches[offset:offset + limit]]
 
     def process_due_requests(self):
         """Idempotent time processing; call from queries or a future scheduler."""

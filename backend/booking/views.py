@@ -16,7 +16,7 @@ from .exceptions import DomainError
 from .runtime import get_service
 from .serializers import (AvailabilityQuerySerializer, BookingCreateSerializer, BookingRescheduleSerializer, BookingReviewSerializer,
                           DemoLoginSerializer, DemoRegisterSerializer, QualificationCreateSerializer, QualificationReviewSerializer,
-                          OutlookProcessSerializer, BookingPolicySerializer)
+                          OutlookProcessSerializer, BookingPolicySerializer, AuditQuerySerializer)
 
 def json_value(value):
     if isinstance(value, Enum):
@@ -224,7 +224,7 @@ class AdminQualificationReviewView(APIView):
         service = get_service()
         service.require_staff(request.user)
         data = validated(QualificationReviewSerializer, request.data)
-        record, bookings = service.review_qualification(request.user, str(submission_id), data["decision"], data["reason"], data["valid_until"])
+        record, bookings = service.review_qualification(request.user, str(submission_id), data["decision"], data["reason"])
         bookings = sync_after_write(service, *bookings)
         return Response({"submission": submission_json(record), "updated_bookings": json_value(bookings)})
 
@@ -238,6 +238,24 @@ class AdminBookingListView(APIView):
             raise DomainError("VALIDATION_ERROR", "Unknown booking status.")
         records = [item for item in service.repo.list_bookings() if item.status.value == requested]
         return Response(collection(records))
+
+def audit_json(record, principals):
+    result = json_value(record)
+    person = principals.get(record.actor_id)
+    result["actor"] = ({"id": person.id, "zid": person.zid, "display_name": person.display_name, "role": person.role.value}
+                       if person else None)
+    return result
+
+class AdminAuditListView(APIView):
+    """Audit trail of requests, approvals, changes and cancellations (Admin/Manager)."""
+    def get(self, request):
+        service = get_service()
+        service.require_staff(request.user)
+        data = validated(AuditQuerySerializer, request.query_params)
+        total, records = service.audit_trail(request.user, **data)
+        principals = {item.id: item for item in service.repo.list_principals()}
+        return Response({"count": total, "limit": data["limit"], "offset": data["offset"],
+                         "results": [audit_json(item, principals) for item in records]})
 
 class AdminBookingReviewView(APIView):
     def post(self, request, booking_id):

@@ -16,7 +16,13 @@ export interface Resource {
   pending_hold_minutes: number
 }
 
-export type SlotReason = 'START_TIME_PASSED' | 'BOOKED' | 'TEMPORARILY_HELD' | null
+export type SlotReason =
+  | 'START_TIME_PASSED'
+  | 'TOO_SOON'
+  | 'TOO_FAR_AHEAD'
+  | 'BOOKED'
+  | 'TEMPORARILY_HELD'
+  | null
 
 export interface Slot {
   start: string
@@ -43,6 +49,11 @@ export interface Availability {
   slots: Slot[]
   can_request: boolean
   qualification_status: QualificationStatus
+  /** Booking window (resource-local dates): starts must fall from earliest_date to latest_date. */
+  earliest_date: string
+  latest_date: string
+  min_advance_days: number
+  max_advance_days: number
 }
 
 export type BookingStatus =

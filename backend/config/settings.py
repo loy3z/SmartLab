@@ -50,9 +50,10 @@ if not 1 <= DEFAULT_PENDING_HOLD_MINUTES <= 20160:
     raise ValueError("DEFAULT_PENDING_HOLD_MINUTES must be from 1 to 20160")
 # Sprint 1 fixed rules (demo values): latest bookable start date, and how many undecided requests a
 # student whose induction is still under review may hold per qualification.
-MAX_ADVANCE_DAYS = int(os.getenv("MAX_ADVANCE_DAYS", "7"))
-if not 1 <= MAX_ADVANCE_DAYS <= 365:
-    raise ValueError("MAX_ADVANCE_DAYS must be from 1 to 365")
+MIN_ADVANCE_DAYS = int(os.getenv("MIN_ADVANCE_DAYS", "7"))
+MAX_ADVANCE_DAYS = int(os.getenv("MAX_ADVANCE_DAYS", "30"))
+if not 0 <= MIN_ADVANCE_DAYS <= MAX_ADVANCE_DAYS <= 365 or MAX_ADVANCE_DAYS < 1:
+    raise ValueError("Require 0 <= MIN_ADVANCE_DAYS <= MAX_ADVANCE_DAYS <= 365 and MAX_ADVANCE_DAYS >= 1")
 UNVERIFIED_PENDING_LIMIT = int(os.getenv("UNVERIFIED_PENDING_LIMIT", "1"))
 if not 1 <= UNVERIFIED_PENDING_LIMIT <= 100:
     raise ValueError("UNVERIFIED_PENDING_LIMIT must be from 1 to 100")

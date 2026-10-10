@@ -96,10 +96,19 @@ export interface Requirement {
 
 export interface Qualification {
   id: string
+  student_id: string
   requirement_id: string
+  title: string
+  notes: string
+  file_id: string
+  file_url: string
+  submitted_at: string
   status: 'PENDING' | 'VERIFIED' | 'REJECTED'
   effective_status: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'EXPIRED'
-  submitted_at: string
+  reviewed_by: string | null
+  reviewed_at: string | null
+  rejection_reason: string | null
+  valid_until: string | null
 }
 
 export interface User {

@@ -2,7 +2,8 @@ import { useState, type ReactNode } from 'react'
 import { CalendarIcon, CapIcon, ChevronIcon, ClockIcon, FileIcon, HelpIcon, LogoutIcon, UserIcon } from './icons'
 import type { User } from './types'
 
-export type Page = 'browse' | 'mine'
+
+export type Page = 'browse' | 'mine' | 'induction' | 'qualification-review' | 'manager-bookings'
 
 interface Props {
   page: Page
@@ -14,6 +15,7 @@ interface Props {
 
 export function Layout({ page, onNavigate, user, onSignOut, children }: Props) {
   const [menu, setMenu] = useState(false)
+  const isStaff = user?.role === 'ADMIN' || user?.role === 'MANAGER'
   const initials = (user?.display_name ?? '?')
     .split(' ')
     .map((w) => w[0])
@@ -24,11 +26,25 @@ export function Layout({ page, onNavigate, user, onSignOut, children }: Props) {
   // Items owned by other team members are shown disabled so the shell matches the final design.
   const items: { key: Page | null; label: string; icon: ReactNode }[] = [
     { key: 'browse', label: 'Book a Resource', icon: <CalendarIcon /> },
-    { key: null, label: 'Induction & Training', icon: <CapIcon /> },
+    { key: 'induction', label: 'Induction & Training', icon: <CapIcon /> },
     { key: null, label: 'Application Progress', icon: <FileIcon /> },
     { key: 'mine', label: 'My Bookings', icon: <CalendarIcon /> },
     { key: null, label: 'Booking History', icon: <ClockIcon /> },
   ]
+  if (isStaff) {
+    items.push({
+      key: 'qualification-review',
+      label: 'Qualification Review',
+      icon: <CapIcon />,
+    })
+  }
+  if (user?.role === 'MANAGER') {
+    items.push({
+      key: 'manager-bookings',
+      label: 'Room Booking Management',
+      icon: <CalendarIcon />,
+    })
+  }
 
   return (
     <div className="bk-shell">
@@ -54,7 +70,13 @@ export function Layout({ page, onNavigate, user, onSignOut, children }: Props) {
       </aside>
       <div className="bk-main">
         <header className="bk-top">
-          <span className="bk-top-title">Student Portal</span>
+          <span className="bk-top-title">
+            {user?.role === 'MANAGER'
+              ? 'Manager Portal'
+              : isStaff
+                ? 'Admin Portal'
+                : 'Student Portal'}
+          </span>
           <div className="bk-user">
             <button className="bk-user-btn" onClick={() => setMenu((m) => !m)}>
               <span className="bk-avatar">{initials}</span>

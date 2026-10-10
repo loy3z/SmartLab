@@ -283,6 +283,7 @@ class WaitlistOutlookTests(SimpleTestCase):
     def setUp(self):
         self.service = reset_runtime()
         self.service.clock = lambda: NOW
+        self.service.min_advance_days, self.service.max_advance_days = 0, 7  # workflow tests book a few days ahead; see test_booking_window.py
         self.provider = FakeCalendar()
         self.service.calendar_sync.provider = self.provider
         for item in self.service.repo.list_submissions():

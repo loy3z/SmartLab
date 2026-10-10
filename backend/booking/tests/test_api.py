@@ -26,6 +26,7 @@ class BookingAPIFixtureMixin:
         reset_runtime()
         self.service = get_service()
         self.service.clock = lambda: NOW
+        self.service.min_advance_days, self.service.max_advance_days = 0, 7  # workflow tests book a few days ahead; see test_booking_window.py
         self.client = APIClient()
         self.verified = self.login("z1000001")
         self.student = self.login("z1000002")

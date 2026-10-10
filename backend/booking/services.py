@@ -27,7 +27,7 @@ def _bounded_int(name, value, low, high):
 
 class BookingService:
     def __init__(self, repo, storage, clock=None, wait_hours=24, calendar_sync=None, qualification_validity_days=120,
-                 max_advance_days=7, unverified_pending_limit=1):
+                 min_advance_days=7, max_advance_days=30, unverified_pending_limit=1):
         self.repo, self.storage = repo, storage
         self.clock = clock or (lambda: datetime.now(UTC))
         self.wait_hours = wait_hours
@@ -39,10 +39,14 @@ class BookingService:
             raise ValueError("qualification_validity_days must be an integer from 1 to 3650.")
         self.qualification_validity_days = qualification_validity_days
         # Sprint 1 fixed rules (demo values, not client-confirmed policy):
-        # bookings may start at most max_advance_days local calendar days ahead, and a student whose
-        # induction is still under review may keep at most unverified_pending_limit undecided requests
-        # per qualification, so one unverified student cannot lock many slots while waiting.
+        # a booking must start between min_advance_days and max_advance_days local calendar days from today
+        # (default: at least one week ahead, at most 30 days ahead), and a student whose induction is still
+        # under review may keep at most unverified_pending_limit undecided requests per qualification, so one
+        # unverified student cannot lock many slots while waiting.
+        self.min_advance_days = _bounded_int("min_advance_days", min_advance_days, 0, 365)
         self.max_advance_days = _bounded_int("max_advance_days", max_advance_days, 1, 365)
+        if self.min_advance_days > self.max_advance_days:
+            raise ValueError("min_advance_days must not exceed max_advance_days.")
         self.unverified_pending_limit = _bounded_int("unverified_pending_limit", unverified_pending_limit, 1, 100)
 
     def take_promoted_ids(self):
@@ -182,12 +186,29 @@ class BookingService:
         if start.second or start.microsecond or end.second or end.microsecond or offset % resource.slot_minutes or duration % resource.slot_minutes:
             raise DomainError("INVALID_TIME_INCREMENT", f"Use {resource.slot_minutes}-minute time increments.")
 
+    def booking_window(self, resource):
+        """First and last local dates a new or rescheduled booking may start on."""
+        today = self.now().astimezone(ZoneInfo(resource.timezone)).date()
+        return today + timedelta(days=self.min_advance_days), today + timedelta(days=self.max_advance_days)
+
+    def _window_details(self, resource):
+        earliest, latest = self.booking_window(resource)
+        return {"earliest_date": earliest.isoformat(), "latest_date": latest.isoformat(),
+                "min_advance_days": self.min_advance_days, "max_advance_days": self.max_advance_days}
+
+    def _window_reason(self, resource, start):
+        earliest, latest = self.booking_window(resource)
+        day = start.astimezone(ZoneInfo(resource.timezone)).date()
+        return "BOOKING_TOO_SOON" if day < earliest else "BOOKING_TOO_FAR_AHEAD" if day > latest else None
+
     def _validate_horizon(self, resource, start):
-        zone = ZoneInfo(resource.timezone)
-        latest = self.now().astimezone(zone).date() + timedelta(days=self.max_advance_days)
-        if start.astimezone(zone).date() > latest:
-            raise DomainError("BOOKING_TOO_FAR_AHEAD", f"Bookings can start at most {self.max_advance_days} days ahead.", 400,
-                              {"latest_date": latest.isoformat(), "max_advance_days": self.max_advance_days})
+        reason = self._window_reason(resource, start)
+        if reason == "BOOKING_TOO_SOON":
+            raise DomainError(reason, f"Bookings must be made at least {self.min_advance_days} days in advance.", 400,
+                              self._window_details(resource))
+        if reason == "BOOKING_TOO_FAR_AHEAD":
+            raise DomainError(reason, f"Bookings can start at most {self.max_advance_days} days ahead.", 400,
+                              self._window_details(resource))
 
     def _check_unverified_limit(self, student_id, resource):
         same_requirement = {item.id for item in self.repo.list_resources()
@@ -634,7 +655,10 @@ class BookingService:
             end = cursor + timedelta(minutes=duration_minutes)
             blockers = self._overlaps(resource.id, cursor, end)
             holds = [item for item in blockers if item.hold_is_active(self.now())]
+            window = self._window_reason(resource, cursor)
             reason = ("START_TIME_PASSED" if cursor <= self.now() else
+                      "TOO_SOON" if window == "BOOKING_TOO_SOON" else
+                      "TOO_FAR_AHEAD" if window == "BOOKING_TOO_FAR_AHEAD" else
                       "BOOKED" if any(item.status == BookingStatus.APPROVED for item in blockers) else
                       "TEMPORARILY_HELD" if holds else None)
             slots.append({"start": cursor, "end": end, "available": reason is None, "reason_code": reason,
@@ -643,6 +667,6 @@ class BookingService:
                           if reason == "TEMPORARILY_HELD" else False})
             cursor += timedelta(minutes=resource.slot_minutes)
         return {"resource_id": resource.id, "date": day.isoformat(), "timezone": resource.timezone,
-                "duration_minutes": duration_minutes, "slots": slots,
+                "duration_minutes": duration_minutes, "slots": slots, **self._window_details(resource),
                 "can_request": actor.role == Role.STUDENT and eligibility in ("PENDING", "VERIFIED"),
                 "qualification_status": eligibility}

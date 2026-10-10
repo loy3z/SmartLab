@@ -71,9 +71,10 @@ export function BookingForm({ resource, onBooked }: { resource: Resource; onBook
       {result && (
         <p className={result.status === 'APPROVED' ? 'bk-ok' : 'bk-muted'}>
           {STATUS_TEXT[result.status]}
-          {result.reason_code === 'TIME_CONFLICT' && ' — conflicts with an approved booking; sent to manual review.'}
+          {result.reason_code === 'TIME_CONFLICT' &&
+            ' — the time is already booked; you are on the waitlist and will be approved automatically if it frees up.'}
           {result.reason_code === 'TEMPORARY_HOLD_CONFLICT' &&
-            ' — conflicts with a temporary hold; sent to manual review.'}
+            ' — the time is held for an earlier request; you are on the waitlist and will be approved automatically if it frees up.'}
         </p>
       )}
     </form>

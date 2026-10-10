@@ -71,6 +71,7 @@ class OutlookWorkflowTests(SimpleTestCase):
     def setUp(self):
         self.service = reset_runtime()
         self.service.clock = lambda: NOW
+        self.service.min_advance_days, self.service.max_advance_days = 0, 7  # workflow tests book a few days ahead; see test_booking_window.py
         self.provider = FakeCalendar()
         self.sync = self.service.calendar_sync
         self.sync.provider = self.provider
@@ -288,6 +289,7 @@ class OutlookWorkflowTests(SimpleTestCase):
     def test_disabled_integration_keeps_the_original_booking_workflow(self):
         self.service = reset_runtime()
         self.service.clock = lambda: NOW
+        self.service.min_advance_days, self.service.max_advance_days = 0, 7  # workflow tests book a few days ahead; see test_booking_window.py
         booking = self.create().data
         self.assertEqual(booking["outlook_sync"]["status"], "DISABLED")
         self.assertEqual(self.provider.creates, [])

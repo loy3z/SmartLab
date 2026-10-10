@@ -79,7 +79,7 @@ Content-Type: application/pdf
 GET {{baseUrl}}/resources/{{resourceId}}/availability/?date=2026-10-07&duration_minutes=60
 Authorization: Bearer {{studentToken}}
 
-### Create a booking. Update timestamps before replaying this example.
+### Create a booking. Start must be 7 to 30 days from today (MIN/MAX_ADVANCE_DAYS); update timestamps before replaying.
 POST {{baseUrl}}/bookings/
 Authorization: Bearer {{studentToken}}
 Content-Type: application/json

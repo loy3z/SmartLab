@@ -48,10 +48,22 @@ const ERROR_TEXT: Record<string, string> = {
   TOKEN_EXPIRED: 'Session expired. Please log in again.',
   INVALID_TOKEN: 'Session expired. Please log in again.',
   REQUEST_WAITLISTED: 'This request is waitlisted and cannot be manually approved. It will be approved automatically when eligible and the slot is available.',
+  PENDING_REQUEST_LIMIT: 'Your induction is still under review, so you can only have one open request. Wait for the review or cancel the existing request.',
 }
+
+/** Format a YYYY-MM-DD date for display without shifting it through UTC. */
+export const fmtDate = (ymd: string) =>
+  new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${ymd}T00:00:00Z`))
 
 export function errorMessage(e: unknown): string {
   const err = e as ApiError
+  const range = err?.details as
+    | { earliest_date?: string; latest_date?: string; min_advance_days?: number; max_advance_days?: number }
+    | undefined
+  if (err?.code === 'BOOKING_TOO_SOON' && range?.earliest_date)
+    return `Bookings must be made at least ${range.min_advance_days ?? 7} days in advance. The earliest date you can book is ${fmtDate(range.earliest_date)}.`
+  if (err?.code === 'BOOKING_TOO_FAR_AHEAD' && range?.latest_date)
+    return `Bookings can be made at most ${range.max_advance_days ?? 30} days ahead. The latest date you can book is ${fmtDate(range.latest_date)}.`
   if (err?.code && ERROR_TEXT[err.code]) return ERROR_TEXT[err.code]
   if (err?.code === 'VALIDATION_ERROR') return `Validation error: ${JSON.stringify(err.details)}`
   return err?.message ?? 'Something went wrong.'

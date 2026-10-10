@@ -110,7 +110,7 @@ Authorization: Bearer {{adminToken}}
 GET {{baseUrl}}/qualifications/{{submissionId}}/file/
 Authorization: Bearer {{adminToken}}
 
-### Verify induction. valid_until is optional; include a timezone if supplied.
+### Verify induction. The server sets valid_until (QUALIFICATION_VALIDITY_DAYS, default 120); do not send it.
 POST {{baseUrl}}/admin/qualifications/{{submissionId}}/review/
 Authorization: Bearer {{adminToken}}
 Content-Type: application/json
@@ -162,6 +162,14 @@ Authorization: Bearer {{studentToken}}
 Content-Type: application/json
 
 {}
+
+### Full audit history of one booking (Admin or Manager), newest first
+GET {{baseUrl}}/admin/audit/?entity_id={{bookingId}}
+Authorization: Bearer {{adminToken}}
+
+### Audit trail for one resource, e.g. all cancellations
+GET {{baseUrl}}/admin/audit/?resource_id={{resourceId}}&action=BOOKING_CANCELLED&limit=20
+Authorization: Bearer {{adminToken}}
 
 ### OpenAPI JSON
 GET http://127.0.0.1:8000/api/schema/

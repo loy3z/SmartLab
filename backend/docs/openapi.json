@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Sprint 1 Smart Lab and Room Booking API",
-    "version": "1.2.0",
-    "description": "Sprint 1 backend with Microsoft Graph one-way creation, rescheduling and cancellation of confirmed bookings. Confirmed events invite the student; room and equipment availability remains managed by the booking system. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Waitlists and recurrence are deferred to Sprint 2. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z. Identity includes university_email. Pending requests may temporarily hold resource slots under a Manager-configurable policy; hold expiry releases the slot while retaining the pending request. Authentication and resource-specific eligibility are separate."
+    "version": "1.3.0",
+    "description": "Sprint 1 backend with Microsoft Graph one-way creation, rescheduling and cancellation of confirmed bookings. Confirmed events invite the student; room and equipment availability remains managed by the booking system. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Waitlists and recurrence are deferred to Sprint 2. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z. Identity includes university_email. Pending requests may temporarily hold resource slots under a Manager-configurable policy; hold expiry releases the slot while retaining the pending request. Authentication and resource-specific eligibility are separate. Verified induction expires a fixed number of days after approval (QUALIFICATION_VALIDITY_DAYS, default 120, one term); reviewers no longer supply an expiry. Admin and Manager can query the audit trail of requests, approvals, changes and cancellations. The prototype seed has 2 labs and 20 independently bookable devices."
   },
   "servers": [
     {
@@ -1364,7 +1364,7 @@
           "Administration"
         ],
         "summary": "Verify or reject induction evidence",
-        "description": "Admin or Manager only. Qualification and booking decisions are independent. A VERIFIED decision may re-evaluate WAITING_QUALIFICATION bookings, returning any updated bookings. A rejected decision requires a reason; valid_until, when supplied, must carry a timezone.",
+        "description": "Admin or Manager only. Qualification and booking decisions are independent. A VERIFIED decision sets valid_until to the review time plus the configured validity period (default 120 days, one term) and may re-evaluate WAITING_QUALIFICATION bookings, returning any updated bookings. A rejected decision requires a reason. valid_until is not accepted in the request; sending it returns 400.",
         "security": [
           {
             "BearerAuth": []
@@ -1382,7 +1382,7 @@
             }
           },
           "400": {
-            "description": "Invalid review decision, reason or expiry.",
+            "description": "Invalid review decision or reason, or an unknown field such as valid_until.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1622,6 +1622,174 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/BookingReview"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/audit/": {
+      "get": {
+        "operationId": "get__api_v1_admin_audit_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Audit trail of requests, approvals, changes and cancellations",
+        "description": "Admin or Manager only. Newest first. Filters combine with AND. resource_id matches the resource's own records (for example booking policy changes) and records of its bookings; student_id matches records performed by the student plus records of their bookings, qualification submissions and account. count is the total number of matching records before limit/offset.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "resource_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Records about this resource or its bookings."
+          },
+          {
+            "name": "student_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Records by or about this student."
+          },
+          {
+            "name": "entity_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "booking",
+                "qualification",
+                "resource",
+                "principal"
+              ]
+            },
+            "description": "Type of the record's subject."
+          },
+          {
+            "name": "entity_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "A single booking, submission, resource or user; for example the full history of one booking."
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{0,63}$",
+              "example": "BOOKING_CANCELLED"
+            },
+            "description": "Exact action code."
+          },
+          {
+            "name": "actor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "SYSTEM"
+            },
+            "description": "User UUID, or SYSTEM for automatic processing."
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Inclusive lower bound; requires a UTC offset."
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Exclusive upper bound; requires a UTC offset and must be later than since."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            },
+            "description": "Page size."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "Number of matching records to skip."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditRecordPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or unknown filter, naive timestamp or page size.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
               }
             }
           }
@@ -2413,7 +2581,8 @@
           "valid_until": {
             "type": "string",
             "format": "date-time",
-            "nullable": true
+            "nullable": true,
+            "description": "Set by the server when VERIFIED: review time plus the configured validity period. Null for PENDING or REJECTED. Bookings must end no later than this time."
           },
           "effective_status": {
             "type": "string",
@@ -2729,11 +2898,6 @@
           "reason": {
             "type": "string",
             "maxLength": 2000
-          },
-          "valid_until": {
-            "type": "string",
-            "format": "date-time",
-            "nullable": true
           }
         },
         "additionalProperties": false
@@ -3266,6 +3430,123 @@
           }
         },
         "additionalProperties": false
+      },
+      "AuditActor": {
+        "type": "object",
+        "required": [
+          "id",
+          "zid",
+          "display_name",
+          "role"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "zid": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "STUDENT",
+              "ADMIN",
+              "MANAGER"
+            ]
+          }
+        }
+      },
+      "AuditRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "actor_id",
+          "action",
+          "entity_type",
+          "entity_id",
+          "at",
+          "details",
+          "actor"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actor_id": {
+            "type": "string",
+            "description": "User UUID, or SYSTEM for automatic time processing and calendar sync."
+          },
+          "action": {
+            "type": "string",
+            "example": "BOOKING_APPROVED",
+            "description": "For example BOOKING_CREATED, BOOKING_APPROVED, BOOKING_REJECTED, BOOKING_CANCELLED, BOOKING_RESCHEDULED, BOOKING_REEVALUATED, BOOKING_TIME_PROCESSED, QUALIFICATION_SUBMITTED, QUALIFICATION_VERIFIED, QUALIFICATION_REJECTED, RESOURCE_BOOKING_POLICY_UPDATED, OUTLOOK_SYNC_SUCCEEDED, OUTLOOK_SYNC_FAILED, DEMO_STUDENT_CREATED."
+          },
+          "entity_type": {
+            "type": "string",
+            "enum": [
+              "booking",
+              "qualification",
+              "resource",
+              "principal"
+            ]
+          },
+          "entity_id": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Action-specific values such as status, reason_code, reason, old/new times or valid_until."
+          },
+          "actor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AuditActor"
+              }
+            ],
+            "nullable": true,
+            "description": "Null for SYSTEM or an unknown user."
+          }
+        }
+      },
+      "AuditRecordPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "count",
+          "limit",
+          "offset",
+          "results"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "description": "Total matching records before paging."
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditRecord"
+            }
+          }
+        }
       }
     }
   }

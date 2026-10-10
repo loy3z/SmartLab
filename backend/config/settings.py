@@ -39,6 +39,11 @@ APPROVAL_WAIT_HOURS = float(os.getenv("APPROVAL_WAIT_HOURS", "24"))
 if APPROVAL_WAIT_HOURS < 0:
     raise ValueError("APPROVAL_WAIT_HOURS must be nonnegative")
 DEFAULT_PENDING_HOLD_MINUTES = int(os.getenv("DEFAULT_PENDING_HOLD_MINUTES", "30"))
+# Sprint 1 fixed policy: verified induction lasts one term, counted in days from approval.
+# A demo value, not a client-confirmed rule; see README "资格来源与有效期".
+QUALIFICATION_VALIDITY_DAYS = int(os.getenv("QUALIFICATION_VALIDITY_DAYS", "120"))
+if not 1 <= QUALIFICATION_VALIDITY_DAYS <= 3650:
+    raise ValueError("QUALIFICATION_VALIDITY_DAYS must be from 1 to 3650")
 if not 1 <= DEFAULT_PENDING_HOLD_MINUTES <= 10080:
     raise ValueError("DEFAULT_PENDING_HOLD_MINUTES must be from 1 to 10080")
 CORS_ALLOWED_ORIGINS = [x.strip() for x in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",") if x.strip()]

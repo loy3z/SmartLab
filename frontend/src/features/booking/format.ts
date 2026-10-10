@@ -17,6 +17,7 @@ export const todaySydney = () =>
 
 export const STATUS_TEXT: Record<BookingStatus, string> = {
   WAITING_QUALIFICATION: 'Submitted, waiting for qualification check',
+  WAITLISTED: 'Waitlisted',
   PENDING_APPROVAL: 'Waiting for admin approval',
   APPROVED: 'Approved',
   REJECTED: 'Rejected',
@@ -46,6 +47,7 @@ const ERROR_TEXT: Record<string, string> = {
   BOOKING_HOLD_CONFLICT: 'That time is temporarily held by another request.',
   TOKEN_EXPIRED: 'Session expired. Please log in again.',
   INVALID_TOKEN: 'Session expired. Please log in again.',
+  REQUEST_WAITLISTED: 'This request is waitlisted and cannot be manually approved. It will be approved automatically when eligible and the slot is available.',
 }
 
 export function errorMessage(e: unknown): string {

@@ -11,6 +11,7 @@ import { InductionPage } from '../induction/InductionPage'
 import type { Qualification, Requirement, Resource, User } from './types'
 import { QualificationReviewPage } from '../admin/QualificationReviewPage'
 import { ManagerBookingsPage } from '../manager/ManagerBookingsPage'
+import { BookingReviewPage } from '../admin/BookingReviewPage'
 import './booking.css'
 
 /** Dev-only login so this feature works before frontend A's login lands. */
@@ -234,6 +235,9 @@ export function BookingApp() {
       )}
       {page === 'manager-bookings' && user?.role === 'MANAGER' && (
         <ManagerBookingsPage />
+      )}
+      {page === 'booking-review' && isStaff && (
+        <BookingReviewPage />
       )}
     </Layout>
   )

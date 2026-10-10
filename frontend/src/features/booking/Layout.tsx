@@ -3,7 +3,7 @@ import { CalendarIcon, CapIcon, ChevronIcon, ClockIcon, FileIcon, HelpIcon, Logo
 import type { User } from './types'
 
 
-export type Page = 'browse' | 'mine' | 'induction' | 'qualification-review' | 'manager-bookings'
+export type Page = 'browse' | 'mine' | 'induction' | 'qualification-review' | 'manager-bookings' | 'booking-review'
 
 interface Props {
   page: Page
@@ -32,11 +32,18 @@ export function Layout({ page, onNavigate, user, onSignOut, children }: Props) {
     { key: null, label: 'Booking History', icon: <ClockIcon /> },
   ]
   if (isStaff) {
-    items.push({
-      key: 'qualification-review',
-      label: 'Qualification Review',
-      icon: <CapIcon />,
-    })
+    items.push(
+      {
+        key: 'qualification-review',
+        label: 'Qualification Review',
+        icon: <CapIcon />,
+      },
+      {
+        key: 'booking-review',
+        label: 'Booking Review',
+        icon: <FileIcon />,
+      },
+    )
   }
   if (user?.role === 'MANAGER') {
     items.push({

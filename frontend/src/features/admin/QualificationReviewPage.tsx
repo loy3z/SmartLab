@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  getToken,
+  downloadQualification,
   listAdminQualifications,
   listRequirements,
   reviewQualification,
@@ -92,23 +92,7 @@ export function QualificationReviewPage() {
     setBusy(true)
 
     try {
-      const token = getToken()
-      const headers = new Headers()
-
-      if (token) {
-        headers.set('Authorization', `Bearer ${token}`)
-      }
-
-      const response = await fetch(
-        `/api/v1/qualifications/${submission.id}/file/`,
-        { headers },
-      )
-
-      if (!response.ok) {
-        throw new Error(`Unable to download evidence (${response.status}).`)
-      }
-
-      const blob = await response.blob()
+      const blob = await downloadQualification(submission.id)
       const extension =
         blob.type === 'application/pdf'
           ? '.pdf'

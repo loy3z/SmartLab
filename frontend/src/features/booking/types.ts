@@ -86,7 +86,24 @@ export interface ListResponse<T> {
 
 export interface AuthResponse {
   access_token: string
-  user: { id: string; zid: string; display_name: string; role: string }
+  token_type: 'Bearer'
+  expires_in: number
+  user: User
+  mode: 'demo'
+}
+
+export interface AuthConfig {
+  mode: 'demo' | 'external_provider_required'
+  demo_auth_enabled: boolean
+  demo_registration_enabled: boolean
+  sso_connected: boolean
+  token_type: 'Bearer'
+}
+
+export interface Dashboard {
+  bookings: Booking[]
+  qualifications: Qualification[]
+  counts: Record<BookingStatus, number>
 }
 
 export interface Requirement {
@@ -112,9 +129,13 @@ export interface Qualification {
   valid_until: string | null
 }
 
+export type Role = 'STUDENT' | 'ADMIN' | 'MANAGER'
+
 export interface User {
   id: string
   zid: string
   display_name: string
-  role: string
+  role: Role
+  university_email: string
+  active: boolean
 }

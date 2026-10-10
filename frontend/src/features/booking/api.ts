@@ -1,54 +1,29 @@
 import type {
+  AuthConfig,
   AuthResponse,
   Availability,
   Booking,
+  Dashboard,
   ListResponse,
   Qualification,
   Requirement,
   Resource,
   User,
 } from './types'
-
-const BASE = '/api/v1/'
-const TOKEN_KEY = 'access_token'
-
-// Frontend A owns login; this only reads/writes the shared token.
-export const getToken = () => localStorage.getItem(TOKEN_KEY)
-export const setToken = (t: string | null) =>
-  t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY)
-
-export class ApiError extends Error {
-  status: number
-  code: string
-  details: Record<string, unknown>
-  constructor(status: number, code: string, message: string, details: Record<string, unknown>) {
-    super(message)
-    this.status = status
-    this.code = code
-    this.details = details
-  }
-}
-
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const headers = new Headers(init.headers)
-  const token = getToken()
-  if (token) headers.set('Authorization', `Bearer ${token}`)
-  if (init.body && !(init.body instanceof FormData)) {
-    headers.set('Content-Type', 'application/json')
-  }
-  const res = await fetch(BASE + path, { ...init, headers })
-  const body = res.status === 204 ? null : await res.json().catch(() => null)
-  if (!res.ok) {
-    const e = body?.error
-    throw new ApiError(res.status, e?.code ?? 'UNKNOWN', e?.message ?? res.statusText, e?.details ?? {})
-  }
-  return body as T
-}
+import { request, requestBlob } from '../../lib/api-client'
+export { ApiError, getToken, setToken } from '../../lib/api-client'
 
 const post = <T>(path: string, data: unknown, headers?: HeadersInit) =>
   request<T>(path, { method: 'POST', body: JSON.stringify(data), headers })
 
-export const demoLogin = (zid: string) => post<AuthResponse>('auth/demo-login/', { zid })
+export const getAuthConfig = () => request<AuthConfig>('auth/config/', {}, { authenticated: false })
+export const demoLogin = (zid: string) => request<AuthResponse>('auth/demo-login/', {
+  method: 'POST', body: JSON.stringify({ zid }),
+}, { authenticated: false })
+export const demoRegister = (data: { zid: string; display_name: string; university_email: string }) =>
+  request<AuthResponse>('auth/demo-register/', { method: 'POST', body: JSON.stringify(data) }, { authenticated: false })
+export const getDashboard = () => request<Dashboard>('dashboard/')
+export const downloadQualification = (id: string) => requestBlob(`qualifications/${id}/file/`)
 
 export function listResources(params: { kind?: string; q?: string }) {
   const qs = new URLSearchParams()

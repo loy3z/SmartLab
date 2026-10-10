@@ -109,7 +109,6 @@ export function reviewQualification(
   submissionId: string,
   decision: 'VERIFIED' | 'REJECTED',
   reason: string = '',
-  validUntil: string | null = null,
 ) {
   return post<{
     submission: Qualification
@@ -117,12 +116,32 @@ export function reviewQualification(
   }>(`admin/qualifications/${submissionId}/review/`, {
     decision,
     reason,
-    valid_until: validUntil,
   })
 }
 
 export function listApprovedBookings() {
   return request<ListResponse<Booking>>(
     'admin/bookings/?status=APPROVED',
+  )
+}
+export function listAdminBookings(
+  status:
+    | 'WAITING_QUALIFICATION'
+    | 'WAITLISTED'
+    | 'PENDING_APPROVAL' = 'WAITLISTED',
+) {
+  return request<ListResponse<Booking>>(
+    `admin/bookings/?status=${status}`,
+  )
+}
+
+export function reviewBooking(
+  bookingId: string,
+  decision: 'APPROVED' | 'REJECTED',
+  reason: string = '',
+) {
+  return post<Booking>(
+    `admin/bookings/${bookingId}/review/`,
+    { decision, reason },
   )
 }

@@ -47,6 +47,7 @@ export interface Availability {
 
 export type BookingStatus =
   | 'WAITING_QUALIFICATION'
+  | 'WAITLISTED'
   | 'PENDING_APPROVAL'
   | 'APPROVED'
   | 'REJECTED'

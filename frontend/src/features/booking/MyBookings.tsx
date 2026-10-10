@@ -82,7 +82,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
 
   const future = (b: Booking) => new Date(b.start).getTime() > now
   const cancellable = (b: Booking) =>
-    future(b) && ['WAITING_QUALIFICATION', 'PENDING_APPROVAL', 'APPROVED'].includes(b.status)
+    future(b) && ['WAITING_QUALIFICATION', 'WAITLISTED', 'PENDING_APPROVAL', 'APPROVED'].includes(b.status)
 
   return (
     <div>

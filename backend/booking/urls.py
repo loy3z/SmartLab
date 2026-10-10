@@ -24,6 +24,8 @@ urlpatterns = [
     path("admin/bookings/", views.AdminBookingListView.as_view()),
     path("admin/bookings/<uuid:booking_id>/review/", views.AdminBookingReviewView.as_view()),
     path("admin/audit/", views.AdminAuditListView.as_view()),
+    path("admin/users/", views.AdminUserListView.as_view()),
+    path("admin/users/<uuid:user_id>/", views.AdminUserDetailView.as_view()),
     path("admin/process-due/", views.ProcessDueView.as_view()),
     path("admin/resources/<uuid:resource_id>/booking-policy/", views.ResourceBookingPolicyView.as_view()),
     path("admin/outlook/", views.OutlookStatusView.as_view()),

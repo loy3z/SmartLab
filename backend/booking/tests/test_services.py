@@ -43,6 +43,11 @@ class BookingFixtureMixin:
         self.start = datetime(2030, 1, 10, 10, tzinfo=ZoneInfo("Australia/Sydney"))
         self.end = self.start + timedelta(hours=1)
 
+    def use_long_hold(self):
+        """Manager-configured hold that outlasts the 24-hour review window (default is 30 minutes)."""
+        self.room = replace(self.room, pending_hold_minutes=20160)
+        self.repo.save_resource(self.room)
+
     def qualification(self, principal=None, status=QualificationStatus.VERIFIED, valid_until=None):
         principal = principal or self.student
         submission = QualificationSubmission(
@@ -79,7 +84,7 @@ class BookingWorkflowTests(BookingFixtureMixin, SimpleTestCase):
 
         self.assertCountEqual(
             [booking.status for booking in results],
-            [BookingStatus.APPROVED, BookingStatus.PENDING_APPROVAL],
+            [BookingStatus.APPROVED, BookingStatus.WAITLISTED],
         )
         approved = [b for b in self.repo.list_bookings() if b.status == BookingStatus.APPROVED]
         self.assertEqual(len(approved), 1)
@@ -123,6 +128,7 @@ class BookingWorkflowTests(BookingFixtureMixin, SimpleTestCase):
         self.assertEqual(expired.exception.status, 403)
 
     def test_24_hour_escalation_and_exact_start_expiration(self):
+        self.use_long_hold()
         self.qualification(status=QualificationStatus.PENDING)
         booking = self.book()
         self.assertEqual(booking.status, BookingStatus.WAITING_QUALIFICATION)
@@ -155,16 +161,20 @@ class BookingWorkflowTests(BookingFixtureMixin, SimpleTestCase):
             self.admin, submission.id, "VERIFIED"
         )
         self.assertEqual(reviewed.status, QualificationStatus.VERIFIED)
-        self.assertEqual([booking.id for booking in changed], [waiting.id])
-        self.assertEqual(self.repo.get_booking(waiting.id).status, BookingStatus.PENDING_APPROVAL)
+        # Its 30-minute hold ended before the winner booked, so it was already waitlisted
+        # (HOLD_EXPIRED) and stays queued behind the winner after verification.
+        self.assertEqual(changed, [])
+        self.assertEqual((self.repo.get_booking(waiting.id).status, self.repo.get_booking(waiting.id).reason_code),
+                         (BookingStatus.WAITLISTED, "HOLD_EXPIRED"))
         with self.assertRaises(DomainError) as conflict:
             self.service.review_booking(self.admin, waiting.id, "APPROVED")
-        self.assertEqual(conflict.exception.status, 409)
+        self.assertEqual(conflict.exception.code, "REQUEST_WAITLISTED")
         self.service.cancel_booking(self.other, winner.id)
-        approved = self.service.review_booking(self.admin, waiting.id, "APPROVED")
-        self.assertEqual(approved.status, BookingStatus.APPROVED)
+        promoted = self.repo.get_booking(waiting.id)
+        self.assertEqual((promoted.status, promoted.reason_code), (BookingStatus.APPROVED, "PROMOTED_FROM_WAITLIST"))
 
     def test_qualification_review_does_not_auto_approve_already_escalated_request(self):
+        self.use_long_hold()
         submission = self.qualification(status=QualificationStatus.PENDING)
         booking = self.book()
         self.now += timedelta(hours=24)
@@ -175,6 +185,7 @@ class BookingWorkflowTests(BookingFixtureMixin, SimpleTestCase):
         self.assertEqual(approved.status, BookingStatus.APPROVED)
 
     def test_qualification_review_observes_24_hour_deadline_without_a_prior_poll(self):
+        self.use_long_hold()
         submission = self.qualification(status=QualificationStatus.PENDING)
         booking = self.book()
         self.now += timedelta(hours=24)
@@ -182,6 +193,7 @@ class BookingWorkflowTests(BookingFixtureMixin, SimpleTestCase):
         self.assertEqual(self.repo.get_booking(booking.id).status, BookingStatus.PENDING_APPROVAL)
 
     def test_qualification_and_booking_rejections_require_reason_at_service_boundary(self):
+        self.use_long_hold()
         submission = self.qualification(status=QualificationStatus.PENDING)
         booking = self.book()
         self.now += timedelta(hours=24)
@@ -196,12 +208,12 @@ class BookingWorkflowTests(BookingFixtureMixin, SimpleTestCase):
         self.assertEqual(self.repo.get_booking(booking.id).status, BookingStatus.PENDING_APPROVAL)
 
     def test_booking_review_rechecks_current_qualification(self):
-        self.qualification()
-        first = self.book()
+        self.service.wait_hours = 96  # starts before the review window ends: manual review at once
+        self.qualification(status=QualificationStatus.PENDING)
         candidate = self.book()
-        self.service.cancel_booking(self.student, first.id)
+        self.assertEqual(candidate.status, BookingStatus.PENDING_APPROVAL)
         self.now += timedelta(seconds=1)
-        self.qualification(status=QualificationStatus.REJECTED)
+        self.qualification(status=QualificationStatus.REJECTED)  # recorded directly, bypassing review side effects
         with self.assertRaises(DomainError) as invalid:
             self.service.review_booking(self.admin, candidate.id, "APPROVED")
         self.assertEqual(invalid.exception.status, 409)

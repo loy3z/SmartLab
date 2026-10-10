@@ -38,14 +38,24 @@ DEMO_TOKEN_TTL_SECONDS = 3600
 APPROVAL_WAIT_HOURS = float(os.getenv("APPROVAL_WAIT_HOURS", "24"))
 if APPROVAL_WAIT_HOURS < 0:
     raise ValueError("APPROVAL_WAIT_HOURS must be nonnegative")
+# A first pending request holds its slot this long; afterwards it joins the waitlist and is promoted
+# only once qualified. A Manager may change it per resource (up to 20160, which effectively holds until decided).
 DEFAULT_PENDING_HOLD_MINUTES = int(os.getenv("DEFAULT_PENDING_HOLD_MINUTES", "30"))
 # Sprint 1 fixed policy: verified induction lasts one term, counted in days from approval.
 # A demo value, not a client-confirmed rule; see README "资格来源与有效期".
 QUALIFICATION_VALIDITY_DAYS = int(os.getenv("QUALIFICATION_VALIDITY_DAYS", "120"))
 if not 1 <= QUALIFICATION_VALIDITY_DAYS <= 3650:
     raise ValueError("QUALIFICATION_VALIDITY_DAYS must be from 1 to 3650")
-if not 1 <= DEFAULT_PENDING_HOLD_MINUTES <= 10080:
-    raise ValueError("DEFAULT_PENDING_HOLD_MINUTES must be from 1 to 10080")
+if not 1 <= DEFAULT_PENDING_HOLD_MINUTES <= 20160:
+    raise ValueError("DEFAULT_PENDING_HOLD_MINUTES must be from 1 to 20160")
+# Sprint 1 fixed rules (demo values): latest bookable start date, and how many undecided requests a
+# student whose induction is still under review may hold per qualification.
+MAX_ADVANCE_DAYS = int(os.getenv("MAX_ADVANCE_DAYS", "7"))
+if not 1 <= MAX_ADVANCE_DAYS <= 365:
+    raise ValueError("MAX_ADVANCE_DAYS must be from 1 to 365")
+UNVERIFIED_PENDING_LIMIT = int(os.getenv("UNVERIFIED_PENDING_LIMIT", "1"))
+if not 1 <= UNVERIFIED_PENDING_LIMIT <= 100:
+    raise ValueError("UNVERIFIED_PENDING_LIMIT must be from 1 to 100")
 CORS_ALLOWED_ORIGINS = [x.strip() for x in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",") if x.strip()]
 DATA_UPLOAD_MAX_MEMORY_SIZE = 6 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024

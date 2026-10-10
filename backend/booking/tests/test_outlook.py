@@ -189,7 +189,7 @@ class OutlookWorkflowTests(SimpleTestCase):
         self.assertEqual(booking["status"], "APPROVED")
         self.assertEqual(booking["outlook_sync"]["status"], "FAILED")
         self.assertEqual(booking["outlook_sync"]["last_error"], "GRAPH_HTTP_429")
-        self.assertEqual(self.create().data["status"], "PENDING_APPROVAL")
+        self.assertEqual(self.create().data["status"], "WAITLISTED")
         record = self.service.repo.get_outlook_sync(booking["id"])
         self.assertEqual(record.next_attempt_at, NOW + timedelta(seconds=120))
         self.sync.process_pending()

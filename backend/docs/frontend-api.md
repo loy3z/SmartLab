@@ -12,9 +12,10 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | Induction 提交 | 选择资格要求，填写说明，上传文件，展示审核结果 | 检查附件、保存提交、保护下载权限 |
 | 预约申请 | 选择资源和时间，填写用途，提交后显示服务端状态 | 验证资格门槛、时间规则、自动／人工审批 |
 | 我的预约 | 显示详情、改期／取消确认、操作后刷新 | 判断归属及状态，重新校验并执行改期／取消 |
-| 管理员资格审核 | 审核列表、查看资料、通过／拒绝和原因；显示后端返回的有效期 | 修改资格、自动设定有效期，重新判断等待资格的预约 |
+| 管理员资格审核 | 审核列表、查看资料、通过／拒绝和原因；显示后端返回的有效期 | 修改资格、自动设定有效期；通过时重新判断等待资格的预约，拒绝时自动拒绝该学生依赖此资格的 Pending 预约 |
 | 管理员预约审核 | 审核队列、详情、通过／拒绝和原因、显示冲突错误 | 批准前再次检查资格与冲突 |
 | 审计记录 | Admin／Manager 按资源、学生、操作、时间筛选并分页查看；预约详情可显示该预约的历史 | 记录并查询申请、审批、改期、取消和资格审核轨迹 |
+| 人员与角色管理（仅 Manager） | 人员列表、按角色／状态／zID 筛选，修改角色或停用账号 | 只允许 Manager；不能改自己；至少保留一个 Manager；写审计 |
 | Manager 占位规则 | 按资源显示和修改 Pending 占位分钟数 | 角色校验、规则保存和审计；Admin 仅可读取 |
 
 隐藏按钮只能改善体验；身份、资格和冲突均由后端执行。前端不能直接设置预约状态、资格状态或用户角色。
@@ -44,6 +45,16 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 
 `details` 的字段随动作不同，例如创建预约有 `status`、`reason_code`、`hold_until`，改期有 `old_start`／`new_start` 等。前端可直接显示键值，不要依赖固定字段。
 
+### 人员与角色管理（OpenAPI 1.4.0 起，仅 Manager）
+
+客户要求角色由系统／实验室负责人指定，所以只有 **Manager** 能查看人员名单、修改角色或停用账号；**Manager 同时拥有 Admin 的全部权限**（审核资格、审核预约、查看队列和审计），另外独有占位规则配置和人员管理。Admin 和学生访问这些接口返回 403。
+
+- `GET admin/users/`：返回 `{ count, results }`，每项含 `id`、`zid`、`display_name`、`role`、`active`、`university_email`。可用 `role`、`active=true|false`、`q`（匹配 zID／姓名／邮箱）筛选。
+- `PATCH admin/users/{id}/`：请求体为 `role`（`STUDENT|ADMIN|MANAGER`）和／或 `active`。修改在该用户的**下一次请求**生效：升为 Admin 后马上能看到审核队列；被停用的用户再请求会得到 401，前端应跳回登录页。
+- 不能修改自己（`SELF_MODIFICATION_FORBIDDEN`，403），系统至少保留一个启用的 Manager（`LAST_MANAGER`，409）。每次修改都会写一条 `USER_UPDATED` 审计记录。
+- 修改角色或停用账号不会自动改动该用户已有的预约。
+- 列表里只有已经存在于系统中的用户（演示时由数据库预先写入，或登录／注册过一次）。
+
 `dashboard` 返回 `{ bookings, qualifications, counts }`。两个列表是数组，`counts` 的键为六种大写预约状态，例如 `counts.APPROVED`；它不是资格数量或预约总数。其他列表接口使用 `{ count, results }`。
 
 `qualification_status=NOT_CONFIGURED` 表示资源尚未设置 induction 要求，不能申请；需要维护资源数据后再开放。
@@ -69,6 +80,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | --- | --- | --- |
 | `WAITING_QUALIFICATION` | 申请已提交，等待资格确认 | 仅 `hold_active=true` 时临时占位 |
 | `PENDING_APPROVAL` | 等待管理员审批 | 仅 `hold_active=true` 时临时占位 |
+| `WAITLISTED` | 候补中，显示“候补第 `waitlist_position` 位” | 否 |
 | `APPROVED` | 预约已批准 | 是 |
 | `REJECTED` | 预约被拒绝 | 否 |
 | `CANCELLED` | 预约已取消 | 否 |
@@ -76,11 +88,28 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 
 所有预约响应增加 `hold_until`（可空截止时间）、`hold_active`（当前占位是否有效）和 `blocks_slot`（当前是否阻挡重叠预约）。`APPROVED` 的 `blocks_slot=true`，即使 `hold_active=false`。不要只用非空 `hold_until` 判断占用：该值保留为历史，取消、拒绝、批准或截止时间到达后临时占位不再有效。
 
-无冲突的 Pending 请求取得占位，默认 30 分钟，最多持续到预约开始。**占位到期只释放时段，申请仍保持 Pending**，并可能按原规则从等待资格转人工审批；到了预约开始时间仍未批准才变 `EXPIRED`。刷新、幂等重试和审批升级不会续占；占位到期后不会自动重新占用或晋升其他申请。这不是等待名单功能。
+### 先到先得与等待名单（OpenAPI 1.4.0 起）
 
-与已有批准预约冲突时，新申请 `reason_code=TIME_CONFLICT`；仅与有效占位冲突时为 `TEMPORARY_HOLD_CONFLICT`。这些申请进入人工审批且没有占位。其他学生不能越过有效占位自动获批，管理员也不能强行批准冲突请求；只需展示后端状态，不在前端推断请求优先级。
+同一资源、时间重叠的申请严格按提交顺序处理：
 
-无冲突且资格已验证的申请立即批准。未验证申请从预约创建起等待 24 小时，之后进入人工预约审核；不会自动获得资格。已有冲突的请求立即进入人工审核。资格通过后，后端会重新判断仍在等待资格的预约；前端使用后端返回的结果，不自行推算“自动成功”。
+- **时段空着**（没有已批准预约，也没有别人的有效占位）：资格已通过 → 立即 `APPROVED`；资料待审 → 这张申请成为该时段的“第一位”，状态为 `WAITING_QUALIFICATION`（开始时间在 24 小时内则为 `PENDING_APPROVAL`），并**占位 30 分钟**（Manager 可按资源调整）。
+- **占位到期时资料仍未通过**：这张申请变为 `WAITLISTED`（`reason_code=HOLD_EXPIRED`），时段重新开放。每张申请只有一次占位机会，之后要等资料通过，才能在时段空着时被递补获批；资料一通过、而时段恰好空着，会立即获批。
+- **时段被占**：新申请进入 `WAITLISTED`（`reason_code` 为 `TIME_CONFLICT` 或 `TEMPORARY_HOLD_CONFLICT`），不占时段，响应带 `waitlist_position`（重叠候补中的第几位）。即使资格已通过也要排队，不能插到前面。管理员不能直接批准候补（`REQUEST_WAITLISTED`），但可以拒绝。
+- **自动递补**：时段一空出来（取消、被拒、过期、改期、资料被拒、占位到期），或候补学生的资料审核通过时，后端按提交顺序取下一位能放进去的候补自动处理：资格已通过 → `APPROVED`；资料待审且从没占过位 → 成为新的第一位并占位 30 分钟；占过位但资料还没通过 → 跳过、继续等；资格无效 → `REJECTED`（`QUALIFICATION_REQUIRED`）。`reason_code` 为 `PROMOTED_FROM_WAITLIST`。时间部分重叠时，先检查提交更早的候补，放得下就先给它。
+- 第一位获批后，候补保持 `WAITLISTED` 作为后备；若获批的人之后取消，下一位自动递补。候补到预约开始时间仍未轮到则 `EXPIRED`。
+- 递补不会主动通知，学生需要刷新“我的预约”或 dashboard 才能看到状态变化，前端可轮询。递补获批的预约会和触发它的那次操作一起同步到 Outlook。
+
+**限制**：
+- 预约开始日期最多为资源当地日期“今天 + 7 天”（`MAX_ADVANCE_DAYS`），超出返回 400 `BOOKING_TOO_FAR_AHEAD`，`details.latest_date` 为最远可约日期。日期选择器可以直接限制在这个范围内。
+- 资料还在审核中的学生，每项资格同时只能有 1 张未决申请（`UNVERIFIED_PENDING_LIMIT`，包括候补）。再提交返回 409 `PENDING_REQUEST_LIMIT`，`details.pending_booking_ids` 是已有的申请。资格已通过的学生不受这个限制。
+
+`TEMPORARILY_HELD` 时段可显示为“审核中，暂不可约”，并显示 `hold_until`；学生仍可提交，提交后会进入候补。刷新、幂等重试和审批升级都不会续占。
+
+示例（默认 30 分钟）：10:00 A（资料待审）申请周五 10–12 点，占位到 10:30 → 10:10 有资格的 B 申请同一时段，进候补，不能直接获批 → 10:30 A 的资料仍未通过，A 进候补（`HOLD_EXPIRED`），B 自动递补获批 → 之后 A 的资料通过，A 仍在候补 → 只有 B 取消后，A 才会被递补获批。如果 B 是 10:40 才来，则直接获批。
+
+资格已验证且时段空着的申请立即批准。“24 小时转人工预约审核”只在 Manager 把占位设到 24 小时以上时才会发生；默认 30 分钟占位下，未通过的申请会先进入候补，资料通过后自动处理，不需要管理员再批一次预约。资格通过后，后端会重新判断仍在等待资格的预约；前端使用后端返回的结果，不自行推算“自动成功”。
+
+**资料被拒时**：后端会自动拒绝该学生对“要求这项资格的资源”的所有未决预约（`WAITING_QUALIFICATION`、`PENDING_APPROVAL` 和 `WAITLISTED`），并把空出的时段交给候补，状态变为 `REJECTED`，`reason_code` 为 `QUALIFICATION_REJECTED`，`decision_reason` 为资料的拒绝原因，时段立即释放。审核响应的 `updated_bookings` 会包含这些预约。学生端应显示：资料被拒及原因（资格的 `rejection_reason`）→ 相关预约已被拒 → 引导学生重新上传资料，通过或重新提交后再预约。
 
 如果预约开始时间早于／等于 24 小时门槛，未验证请求立即进入人工审核。仍未获批准的请求达到开始时间后为 `EXPIRED`。资格获批不会自动批准已经处于 `PENDING_APPROVAL` 的请求，需要管理员另行审核预约。
 
@@ -109,8 +138,10 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | GET | `dashboard/` | 我的预约、资料与数量 |
 | GET | `admin/qualifications/?status=PENDING` | 管理员资格队列 |
 | POST | `admin/qualifications/{id}/review/` | `decision: VERIFIED\|REJECTED`，可带 `reason`；不接受 `valid_until`，有效期由后端设定 |
-| GET | `admin/bookings/?status=PENDING_APPROVAL` | 管理员预约队列 |
-| POST | `admin/bookings/{id}/review/` | `decision: APPROVED\|REJECTED`，可带 `reason` |
+| GET | `admin/bookings/?status=PENDING_APPROVAL` | 管理员预约队列；`status=WAITLISTED` 查看候补 |
+| POST | `admin/bookings/{id}/review/` | `decision: APPROVED\|REJECTED`，可带 `reason`；候补只能拒绝，不能批准 |
+| GET | `admin/users/?role=&active=&q=` | 仅 Manager：人员列表 |
+| PATCH | `admin/users/{id}/` | 仅 Manager：`{"role":"ADMIN"}` 和／或 `{"active":false}` |
 | GET | `admin/audit/?resource_id=&student_id=&action=&since=&until=&limit=100&offset=0` | Admin／Manager 查看审计记录（申请、审批、改期、取消等），最新在前 |
 | POST | `admin/process-due/` | 处理已到 24 小时门槛／开始时间的请求 |
 | GET / PATCH | `admin/resources/{id}/booking-policy/` | Admin／Manager 读取；仅 Manager 修改占位时长 |
@@ -119,7 +150,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 
 时段查询默认时长为 30 分钟。前端应依据资源返回的 `slot_minutes` 和 `max_booking_minutes` 限制选择；当前种子规则是 30 分钟粒度、08:00–20:00、最长 480 分钟，同一预约不能跨当地日期。这些是演示配置，客户确认规则后可通过资源数据调整。
 
-Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{"pending_hold_minutes":30}`；GET／PATCH 均返回 `{"resource_id":"<uuid>","pending_hold_minutes":30}`。范围为整数 1–10080，修改只影响之后创建的占位；已有截止时间不变。资源详情也包含 `pending_hold_minutes`。占位时长与 24 小时审批等待是两个独立配置。
+Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{"pending_hold_minutes":30}`；GET／PATCH 均返回 `{"resource_id":"<uuid>","pending_hold_minutes":30}`。范围为整数 1–20160，默认 30；设为最大值 20160（两周，超过可预约范围）相当于“第一位一直保持到有结果”。占位到期时，原申请进入候补，时段交给下一位。修改只影响之后创建的占位；已有截止时间不变。资源详情也包含 `pending_hold_minutes`。占位时长与 24 小时审批等待是两个独立配置。
 
 附件支持 PDF、PNG、JPEG，最大 5 MiB。后端检查大小、扩展名、MIME 和文件格式特征。资料中的 `file_url` 是受保护的 API 路径，下载仍需带 Authorization；前端可请求为 Blob 后显示／下载，不能假设 `<img src>` 或普通链接会自动附带 Bearer token。附件没有公开地址。
 
@@ -155,6 +186,9 @@ Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{
 | `QUALIFICATION_NOT_VERIFIED` | 409 | 管理员先处理资格，不能直接批准预约 |
 | `BOOKING_CONFLICT` | 409 | 人工批准失败，提示时段已有获批预约 |
 | `BOOKING_HOLD_CONFLICT` | 409 | 人工批准失败，提示时段仍临时占用；`details.hold_until` 为当前占位截止时间 |
+| `REQUEST_WAITLISTED` | 409 | 候补不能直接批准，会按顺序自动递补；管理员可以拒绝 |
+| `PENDING_REQUEST_LIMIT` | 409 | 资料审核中只能有 1 张未决申请；引导学生查看或取消 `details.pending_booking_ids` |
+| `BOOKING_TOO_FAR_AHEAD` | 400 | 超出可预约范围；`details.latest_date` 为最远日期 |
 | `QUALIFICATION_ALREADY_PENDING`／`QUALIFICATION_ALREADY_VERIFIED` | 409 | 保留当前资料，刷新资格状态 |
 | `IDEMPOTENCY_CONFLICT` | 409 | 同一 key 不能用于另一份请求；新操作生成新 key |
 | `REQUEST_NOT_REVIEWABLE`／`ALREADY_REVIEWED` | 409 | 队列状态已改变，刷新列表 |
@@ -164,7 +198,7 @@ Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{
 | `VALIDATION_ERROR` | 400 | 在对应字段展示 `details` 错误，包括附件格式／大小问题 |
 | `TOKEN_EXPIRED`／`INVALID_TOKEN` | 401 | 重新登录 |
 
-学生提交冲突请求可以得到 201 和 `PENDING_APPROVAL`；`BOOKING_CONFLICT` 是管理员试图批准仍冲突的请求时的错误。不要把“收到 201”或“等待管理员”显示成已获批准。
+学生提交冲突请求会得到 201 和 `WAITLISTED`；`BOOKING_CONFLICT` 是管理员试图批准仍冲突的请求时的错误。不要把“收到 201”或“等待管理员”显示成已获批准。
 
 API 输出时间为 ISO 8601 UTC `Z`。前端用 `Australia/Sydney` 显示，支持夏令时；不能硬编码全年 `+10:00`。availability 的 `date` 是资源时区日期，`slots` 的时间仍是 UTC。前端应标明本地时区。
 

@@ -34,10 +34,17 @@ SubmissionStatus = QualificationStatus
 class BookingStatus(str, Enum):
     WAITING_QUALIFICATION = "WAITING_QUALIFICATION"
     PENDING_APPROVAL = "PENDING_APPROVAL"
+    # Queued behind an approved booking or an earlier pending request; never blocks a slot.
+    WAITLISTED = "WAITLISTED"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
     CANCELLED = "CANCELLED"
     EXPIRED = "EXPIRED"
+
+
+# Upper bound for a resource's pending hold (two weeks, longer than the booking horizon, so the
+# maximum effectively holds the slot until the request is decided). The system default is 30.
+MAX_PENDING_HOLD_MINUTES = 20160
 
 
 def _require_aware(**timestamps: datetime | None) -> None:
@@ -92,8 +99,9 @@ class Resource:
     pending_hold_minutes: int = 30
 
     def __post_init__(self) -> None:
-        if isinstance(self.pending_hold_minutes, bool) or not isinstance(self.pending_hold_minutes, int) or not 1 <= self.pending_hold_minutes <= 10080:
-            raise ValueError("pending_hold_minutes must be an integer from 1 to 10080.")
+        if isinstance(self.pending_hold_minutes, bool) or not isinstance(self.pending_hold_minutes, int) \
+                or not 1 <= self.pending_hold_minutes <= MAX_PENDING_HOLD_MINUTES:
+            raise ValueError(f"pending_hold_minutes must be an integer from 1 to {MAX_PENDING_HOLD_MINUTES}.")
 
 
 @dataclass(frozen=True)

@@ -27,12 +27,12 @@ class PendingHoldWorkflowTests(BookingFixtureMixin, SimpleTestCase):
         later = self.book(self.other)
         self.assertEqual(earlier.status, BookingStatus.WAITING_QUALIFICATION)
         self.assertEqual(earlier.hold_until, self.now + timedelta(minutes=30))
-        self.assertEqual(later.status, BookingStatus.PENDING_APPROVAL)
+        self.assertEqual(later.status, BookingStatus.WAITLISTED)
         self.assertEqual(later.reason_code, "TEMPORARY_HOLD_CONFLICT")
         self.assertIsNone(later.hold_until)
         with self.assertRaises(DomainError) as rejected:
             self.service.review_booking(self.admin, later.id, "APPROVED")
-        self.assertEqual(rejected.exception.code, "BOOKING_HOLD_CONFLICT")
+        self.assertEqual(rejected.exception.code, "REQUEST_WAITLISTED")
         self.assertTrue(self.repo.get_booking(earlier.id).hold_is_active(self.now))
 
     def test_exact_hold_expiry_releases_slot_without_expiring_the_request(self):
@@ -42,7 +42,8 @@ class PendingHoldWorkflowTests(BookingFixtureMixin, SimpleTestCase):
         self.now = earlier.hold_until
         self.service.process_due_requests()
         current = self.repo.get_booking(earlier.id)
-        self.assertEqual(current.status, BookingStatus.WAITING_QUALIFICATION)
+        self.assertEqual((current.status, current.reason_code), (BookingStatus.WAITLISTED, "HOLD_EXPIRED"))
+        self.assertEqual(current.hold_until, earlier.hold_until)
         self.assertFalse(current.blocks_resource_at(self.now))
         self.qualification(self.other)
         self.assertEqual(self.book(self.other).status, BookingStatus.APPROVED)
@@ -56,17 +57,26 @@ class PendingHoldWorkflowTests(BookingFixtureMixin, SimpleTestCase):
         self.assertFalse(approved.hold_is_active(self.now))
         self.assertTrue(approved.blocks_resource_at(self.now))
 
-    def test_reads_escalation_and_idempotent_retries_do_not_renew_hold(self):
+    def test_reads_and_idempotent_retries_do_not_renew_hold(self):
         pending = self.book(idempotency_key="pending-double-click")
         self.now += timedelta(minutes=20)
         self.service.availability(self.student, self.room.id, self.start.date())
         self.assertEqual(self.book(idempotency_key="pending-double-click").hold_until, pending.hold_until)
+        self.now = pending.hold_until
+        self.service.process_due_requests()
+        current = self.repo.get_booking(pending.id)
+        self.assertEqual(current.status, BookingStatus.WAITLISTED)
+        self.assertEqual(current.hold_until, pending.hold_until)
+
+    def test_escalation_does_not_renew_a_long_hold(self):
+        self.service.set_pending_hold_minutes(self.manager, self.room.id, 20160)
+        pending = self.book()
         self.now += timedelta(hours=24)
         self.service.process_due_requests()
         current = self.repo.get_booking(pending.id)
         self.assertEqual(current.status, BookingStatus.PENDING_APPROVAL)
         self.assertEqual(current.hold_until, pending.hold_until)
-        self.assertFalse(current.hold_is_active(self.now))
+        self.assertTrue(current.hold_is_active(self.now))
 
     def test_cancellation_immediately_releases_a_pending_hold(self):
         pending = self.book()
@@ -94,6 +104,7 @@ class PendingHoldWorkflowTests(BookingFixtureMixin, SimpleTestCase):
         self.assertEqual(self.repo.list_blocking_bookings(self.room.id, self.start, self.end, self.now), [])
 
     def test_manager_policy_changes_only_apply_to_new_holds(self):
+        self.service.unverified_pending_limit = 2
         first = self.book()
         self.service.set_pending_hold_minutes(self.manager, self.room.id, 90)
         second = self.book(start=self.end, end=self.end + timedelta(hours=1))
@@ -106,7 +117,7 @@ class PendingHoldWorkflowTests(BookingFixtureMixin, SimpleTestCase):
             with self.subTest(role=actor.role), self.assertRaises(DomainError) as denied:
                 self.service.set_pending_hold_minutes(actor, self.room.id, 90)
             self.assertEqual(denied.exception.status, 403)
-        for value in (0, -1, 10081, True, "30"):
+        for value in (0, -1, 20161, True, "30"):
             with self.subTest(value=value), self.assertRaises(DomainError):
                 self.service.set_pending_hold_minutes(self.manager, self.room.id, value)
 
@@ -119,7 +130,7 @@ class PendingHoldWorkflowTests(BookingFixtureMixin, SimpleTestCase):
         with ThreadPoolExecutor(max_workers=2) as pool:
             records = list(pool.map(request, (self.student, self.other)))
         self.assertEqual(sum(item.hold_is_active(self.now) for item in records), 1)
-        self.assertCountEqual([item.status for item in records], [BookingStatus.WAITING_QUALIFICATION, BookingStatus.PENDING_APPROVAL])
+        self.assertCountEqual([item.status for item in records], [BookingStatus.WAITING_QUALIFICATION, BookingStatus.WAITLISTED])
 
     def test_adjacent_periods_and_other_resources_do_not_conflict_with_hold(self):
         self.book()
@@ -167,29 +178,40 @@ class PendingHoldAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertNotIn("booking_id", other_view)
         self.assertEqual(waiting["outlook_sync"]["status"], "NOT_REQUIRED")
 
+    def shorten_hold(self, minutes=30):
+        endpoint = f"/api/v1/admin/resources/{self.room['id']}/booking-policy/"
+        self.assertEqual(self.manager.patch(endpoint, {"pending_hold_minutes": minutes}, format="json").status_code, 200)
+
+    def test_default_hold_is_30_minutes(self):
+        waiting = self.waiting()
+        self.assertEqual(parse_datetime(waiting["hold_until"]), NOW + timedelta(minutes=30))
+
     def test_hold_expiry_changes_availability_and_dashboard_without_expiring_request(self):
+        self.shorten_hold()
         waiting = self.waiting()
         self.service.clock = lambda: parse_datetime(waiting["hold_until"])
         slot = self.slots(self.verified)
         self.assertTrue(slot["available"])
         self.assertIsNone(slot["hold_until"])
         current = self.student.get("/api/v1/dashboard/").data["bookings"][0]
-        self.assertEqual(current["status"], "WAITING_QUALIFICATION")
+        self.assertEqual((current["status"], current["reason_code"]), ("WAITLISTED", "HOLD_EXPIRED"))
         self.assertFalse(current["hold_active"])
         self.assertFalse(current["blocks_slot"])
 
-    def test_manual_approval_cannot_override_hold_but_succeeds_after_expiry(self):
+    def test_waitlisted_request_cannot_be_force_approved_and_is_promoted_when_a_short_hold_ends(self):
+        self.shorten_hold()
         waiting = self.waiting()
         later = self.create_booking().data
+        self.assertEqual((later["status"], later["waitlist_position"]), ("WAITLISTED", 1))
         endpoint = f"/api/v1/admin/bookings/{later['id']}/review/"
         denied = self.admin.post(endpoint, {"decision": "APPROVED"}, format="json")
         self.assertEqual(denied.status_code, 409)
-        self.assertEqual(denied.data["error"]["code"], "BOOKING_HOLD_CONFLICT")
+        self.assertEqual(denied.data["error"]["code"], "REQUEST_WAITLISTED")
         self.service.clock = lambda: parse_datetime(waiting["hold_until"])
-        approved = self.admin.post(endpoint, {"decision": "APPROVED"}, format="json")
-        self.assertEqual(approved.status_code, 200)
-        self.assertEqual(approved.data["status"], "APPROVED")
-        self.assertTrue(approved.data["blocks_slot"])
+        promoted = self.verified.get(f"/api/v1/bookings/{later['id']}/").data
+        self.assertEqual((promoted["status"], promoted["reason_code"]), ("APPROVED", "PROMOTED_FROM_WAITLIST"))
+        self.assertTrue(promoted["blocks_slot"])
+        self.assertIsNone(promoted["waitlist_position"])
 
     def test_client_cannot_choose_hold_deadline_or_identity(self):
         for key, value in (("hold_until", "2099-01-01T00:00:00Z"), ("hold_active", False), ("student_id", str(uuid4()))):
@@ -207,7 +229,7 @@ class PendingHoldAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(self.manager.get(endpoint).data["pending_hold_minutes"], 90)
         waiting = self.waiting()
         self.assertEqual(parse_datetime(waiting["hold_until"]), NOW + timedelta(minutes=90))
-        for data in ({"pending_hold_minutes": 0}, {"pending_hold_minutes": 10081}, {"pending_hold_minutes": 60, "role": "MANAGER"}):
+        for data in ({"pending_hold_minutes": 0}, {"pending_hold_minutes": 20161}, {"pending_hold_minutes": 60, "role": "MANAGER"}):
             self.assertEqual(self.manager.patch(endpoint, data, format="json").status_code, 400)
 
     def test_identity_includes_required_university_email_but_is_separate_from_eligibility(self):

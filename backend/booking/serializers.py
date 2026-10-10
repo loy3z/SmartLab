@@ -99,5 +99,21 @@ class AuditQuerySerializer(StrictSerializer):
     offset = serializers.IntegerField(default=0, min_value=0)
 
 
+class UserListQuerySerializer(StrictSerializer):
+    role = serializers.ChoiceField(choices=["STUDENT", "ADMIN", "MANAGER"], required=False)
+    active = serializers.BooleanField(required=False, allow_null=True, default=None)
+    q = serializers.CharField(required=False, allow_blank=True, max_length=120, default="")
+
+
+class UserUpdateSerializer(StrictSerializer):
+    role = serializers.ChoiceField(choices=["STUDENT", "ADMIN", "MANAGER"], required=False)
+    active = serializers.BooleanField(required=False)
+
+    def validate(self, attrs):
+        if not attrs:
+            raise serializers.ValidationError("Provide role and/or active.")
+        return attrs
+
+
 class BookingPolicySerializer(StrictSerializer):
-    pending_hold_minutes = serializers.IntegerField(min_value=1, max_value=10080)
+    pending_hold_minutes = serializers.IntegerField(min_value=1, max_value=20160)

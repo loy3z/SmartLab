@@ -156,8 +156,9 @@ class BookingAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertTrue(waiting.data["blocks_slot"])
         later = self.create_booking(self.verified)
         self.assertEqual(later.status_code, 201, later.data)
-        self.assertEqual(later.data["status"], "PENDING_APPROVAL")
+        self.assertEqual(later.data["status"], "WAITLISTED")
         self.assertEqual(later.data["reason_code"], "TEMPORARY_HOLD_CONFLICT")
+        self.assertEqual(later.data["waitlist_position"], 1)
         self.assertIsNone(later.data["hold_until"])
 
     def test_verified_student_can_book_room_and_equipment_and_view_own_dashboard(self):
@@ -182,12 +183,12 @@ class BookingAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data["status"], "APPROVED")
 
-    def test_conflict_goes_to_manual_review_and_cannot_be_force_approved(self):
+    def test_conflict_is_waitlisted_and_promoted_automatically_after_cancellation(self):
         first = self.create_booking()
         conflict = self.create_booking()
         self.assertEqual(first.status_code, 201, first.data)
         self.assertEqual(conflict.status_code, 201, conflict.data)
-        self.assertEqual(conflict.data["status"], "PENDING_APPROVAL")
+        self.assertEqual(conflict.data["status"], "WAITLISTED")
         rejected_approval = self.admin.post(
             f"/api/v1/admin/bookings/{conflict.data['id']}/review/",
             {"decision": "APPROVED"}, format="json",
@@ -197,14 +198,14 @@ class BookingAPITests(BookingAPIFixtureMixin, SimpleTestCase):
             f"/api/v1/bookings/{first.data['id']}/cancel/", {}, format="json"
         )
         self.assertEqual(cancelled.status_code, 200, cancelled.data)
-        approved = self.admin.post(
-            f"/api/v1/admin/bookings/{conflict.data['id']}/review/",
-            {"decision": "APPROVED"}, format="json",
-        )
-        self.assertEqual(approved.status_code, 200, approved.data)
-        self.assertEqual(approved.data["status"], "APPROVED")
+        promoted = self.verified.get(f"/api/v1/bookings/{conflict.data['id']}/")
+        self.assertEqual(promoted.data["status"], "APPROVED")
+        self.assertEqual(promoted.data["reason_code"], "PROMOTED_FROM_WAITLIST")
 
     def test_24_hour_escalation_does_not_bypass_pending_qualification(self):
+        # Only relevant when a Manager sets a hold longer than 24 hours (default is 30 minutes).
+        self.manager.patch(f"/api/v1/admin/resources/{self.room['id']}/booking-policy/",
+                           {"pending_hold_minutes": 20160}, format="json")
         self.submit()
         waiting = self.create_booking(self.student)
         self.service.clock = lambda: NOW + timedelta(hours=23, minutes=59)
@@ -350,7 +351,7 @@ class BookingAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         payload["start"] = datetime.fromisoformat(payload["start"]).astimezone(timezone.utc).isoformat()
         payload["end"] = datetime.fromisoformat(payload["end"]).astimezone(timezone.utc).isoformat()
         same_instant = self.create_booking(payload=payload)
-        self.assertEqual(same_instant.data["status"], "PENDING_APPROVAL")
+        self.assertEqual(same_instant.data["status"], "WAITLISTED")
 
     def test_idempotency_key_replays_original_and_rejects_changed_payload(self):
         first = self.create_booking(HTTP_IDEMPOTENCY_KEY="one-click")

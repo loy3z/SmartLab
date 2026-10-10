@@ -27,11 +27,20 @@ class UserManagementAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assert_error(self.client.get(USERS), 401)
 
     def test_list_and_filters(self):
+        # Compare against the seeded repository instead of a fixed roster, so adding demo users does not break this test.
+        seeded = self.service.repo.list_principals()
         everyone = self.items(self.manager.get(USERS))
-        self.assertEqual({item["zid"] for item in everyone}, {"z1000001", "z1000002", "z9000001", "z9000002"})
+        self.assertEqual({item["zid"] for item in everyone}, {item.zid for item in seeded})
+        self.assertTrue({"z1000001", "z9000001", "z9000002"} <= {item["zid"] for item in everyone})
         self.assertEqual(set(everyone[0]), {"id", "zid", "display_name", "role", "active", "university_email"})
-        self.assertEqual([item["zid"] for item in self.items(self.manager.get(USERS, {"role": "ADMIN"}))], ["z9000001"])
-        self.assertEqual(len(self.items(self.manager.get(USERS, {"q": "z1000"}))), 2)
+        for role in (Role.STUDENT, Role.ADMIN, Role.MANAGER):
+            with self.subTest(role=role):
+                listed = self.items(self.manager.get(USERS, {"role": role.value}))
+                self.assertEqual({item["zid"] for item in listed}, {item.zid for item in seeded if item.role == role})
+                self.assertTrue(listed)
+        students = self.items(self.manager.get(USERS, {"q": "z1000"}))
+        self.assertEqual({item["zid"] for item in students}, {item.zid for item in seeded if "z1000" in item.zid})
+        self.assertTrue(all("z1000" in item["zid"] for item in students))
         self.assert_error(self.manager.get(USERS, {"role": "OWNER"}), 400)
 
     def test_promoting_and_demoting_takes_effect_on_the_next_request(self):

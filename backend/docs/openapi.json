@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Sprint 1 Smart Lab and Room Booking API",
-    "version": "1.3.0",
-    "description": "Sprint 1 backend with Microsoft Graph one-way creation, rescheduling and cancellation of confirmed bookings. Confirmed events invite the student; room and equipment availability remains managed by the booking system. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Waitlists and recurrence are deferred to Sprint 2. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z. Identity includes university_email. Pending requests may temporarily hold resource slots under a Manager-configurable policy; hold expiry releases the slot while retaining the pending request. Authentication and resource-specific eligibility are separate. Verified induction expires a fixed number of days after approval (QUALIFICATION_VALIDITY_DAYS, default 120, one term); reviewers no longer supply an expiry. Admin and Manager can query the audit trail of requests, approvals, changes and cancellations. The prototype seed has 2 labs and 20 independently bookable devices."
+    "version": "1.4.0",
+    "description": "Sprint 1 backend with Microsoft Graph one-way creation, rescheduling and cancellation of confirmed bookings. Confirmed events invite the student; room and equipment availability remains managed by the booking system. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Recurrence is deferred to Sprint 2. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z. Identity includes university_email. Requests for the same time are first-come-first-served with a waitlist: the first undecided request holds the slot for 30 minutes by default (Manager-configurable per resource); later requests, and a holder whose hold ends while still under review, are WAITLISTED and promoted automatically in order when the slot frees up. Bookings may start at most 7 days ahead. Authentication and resource-specific eligibility are separate. Verified induction expires a fixed number of days after approval (QUALIFICATION_VALIDITY_DAYS, default 120, one term); reviewers no longer supply an expiry. Admin and Manager can query the audit trail of requests, approvals, changes and cancellations. The prototype seed has 2 labs and 20 independently bookable devices. A Manager has every Admin permission and can also configure booking policies and nominate user roles or deactivate accounts."
   },
   "servers": [
     {
@@ -883,7 +883,7 @@
           "Bookings"
         ],
         "summary": "Create a room or individual equipment booking request",
-        "description": "Requires a submitted induction for the selected resource. Valid VERIFIED qualification through the booking end plus no blocking conflict results in APPROVED. PENDING evidence with no conflict enters WAITING_QUALIFICATION for up to the configured approval waiting period (default 24 hours), or PENDING_APPROVAL immediately if start is at or before that threshold. A conflict-free pending request gets a hold until min(start, creation time plus the resource pending_hold_minutes, default 30). Overlap with APPROVED or active pending holds enters PENDING_APPROVAL without a new hold. Pending is not confirmed and does not create an Outlook event. Hold expiry only releases occupancy and retains the pending request; it never renews on reads, idempotent retries or escalation. Unapproved requests expire at their start time. HTTP 201 alone does not mean approved. Interval semantics are [start, end).",
+        "description": "Requires a submitted induction for the selected resource. Bookings may start at most MAX_ADVANCE_DAYS (default 7) local calendar days ahead. Requests for the same time are handled first-come-first-served with a waitlist. If no APPROVED booking or active hold overlaps: a valid VERIFIED qualification through the booking end results in APPROVED; PENDING evidence makes this request the slot holder in WAITING_QUALIFICATION (or PENDING_APPROVAL at once if start is within the approval waiting period, default 24 hours) with hold_until = min(start, creation + pending_hold_minutes, default 30). If an APPROVED booking or active hold overlaps, the request becomes WAITLISTED (reason TIME_CONFLICT or TEMPORARY_HOLD_CONFLICT) with waitlist_position, even if qualified. When a hold ends while the holder is still undecided, the holder becomes WAITLISTED (reason HOLD_EXPIRED) and is promoted only once qualified; each request gets at most one hold. When time frees up (cancellation, rejection, expiry, rescheduling, a hold ending, or a waitlisted student's induction being verified) the earliest waitlisted request that now fits is promoted automatically: qualified -> APPROVED; induction under review and never held -> new holder; otherwise REJECTED (QUALIFICATION_REQUIRED); reason PROMOTED_FROM_WAITLIST. A student whose induction is under review may hold at most UNVERIFIED_PENDING_LIMIT (default 1) undecided requests per qualification. Only APPROVED creates an Outlook event. Undecided and waitlisted requests expire at their start time. HTTP 201 alone does not mean approved. Interval semantics are [start, end).",
         "security": [
           {
             "BearerAuth": []
@@ -911,7 +911,7 @@
             }
           },
           "400": {
-            "description": "Invalid timestamps, duration, alignment or opening hours.",
+            "description": "Invalid timestamps, duration, alignment, opening hours, or BOOKING_TOO_FAR_AHEAD (details.latest_date).",
             "content": {
               "application/json": {
                 "schema": {
@@ -951,7 +951,7 @@
             }
           },
           "409": {
-            "description": "Idempotency key conflicts with a different request or booking cannot be created.",
+            "description": "Idempotency key conflicts with a different request, resource policy is not configured, or PENDING_REQUEST_LIMIT (details.limit, details.pending_booking_ids) while the student's induction is under review.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1060,7 +1060,7 @@
           "Bookings"
         ],
         "summary": "Cancel my booking request",
-        "description": "Only future active requests may be cancelled. Checks ownership and current state; refresh availability after cancellation. Repeating cancellation returns the already-cancelled booking. Send an empty body or {}.",
+        "description": "Only future active requests (including WAITLISTED) may be cancelled. Checks ownership and current state. Cancelling an approved booking or a slot holder promotes the next waitlisted request automatically; refresh availability afterwards. Repeating cancellation returns the already-cancelled booking. Send an empty body or {}.",
         "security": [
           {
             "BearerAuth": []
@@ -1148,7 +1148,7 @@
           "Bookings"
         ],
         "summary": "Reschedule my approved booking",
-        "description": "Moves a future approved booking after rechecking resource rules, qualification validity and conflicts. A successful Outlook sync updates the existing event rather than creating another event.",
+        "description": "Moves a future approved booking after rechecking resource rules, the booking horizon, qualification validity and conflicts. The old period is released and offered to the waitlist. A successful Outlook sync updates the existing event rather than creating another event.",
         "security": [
           {
             "BearerAuth": []
@@ -1166,7 +1166,7 @@
             }
           },
           "400": {
-            "description": "The supplied time range is invalid.",
+            "description": "The supplied time range is invalid or BOOKING_TOO_FAR_AHEAD.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1364,7 +1364,7 @@
           "Administration"
         ],
         "summary": "Verify or reject induction evidence",
-        "description": "Admin or Manager only. Qualification and booking decisions are independent. A VERIFIED decision sets valid_until to the review time plus the configured validity period (default 120 days, one term) and may re-evaluate WAITING_QUALIFICATION bookings, returning any updated bookings. A rejected decision requires a reason. valid_until is not accepted in the request; sending it returns 400.",
+        "description": "Admin or Manager only. Qualification and booking decisions are independent. A VERIFIED decision sets valid_until to the review time plus the configured validity period (default 120 days, one term) and re-evaluates the student's WAITING_QUALIFICATION bookings for resources requiring this qualification and approves their waitlisted requests whose time is free. A REJECTED decision requires a reason and rejects all of the student's pending bookings (WAITING_QUALIFICATION and PENDING_APPROVAL) for those resources with reason_code QUALIFICATION_REJECTED and the same reason, releasing their slots at once. updated_bookings lists every booking changed. valid_until is not accepted in the request; sending it returns 400.",
         "security": [
           {
             "BearerAuth": []
@@ -1519,6 +1519,7 @@
               "enum": [
                 "WAITING_QUALIFICATION",
                 "PENDING_APPROVAL",
+                "WAITLISTED",
                 "APPROVED",
                 "REJECTED",
                 "CANCELLED",
@@ -1537,7 +1538,7 @@
           "Administration"
         ],
         "summary": "Approve or reject a booking request",
-        "description": "Admin or Manager only. Approval re-checks resource-specific qualification through the booking end and conflicts with APPROVED bookings and active pending holds, excluding this request's own ID. Staff cannot override blockers or missing qualification. BOOKING_HOLD_CONFLICT (409) includes details.hold_until; BOOKING_CONFLICT (409) indicates an approved blocker.",
+        "description": "Admin or Manager only. APPROVED is allowed only for PENDING_APPROVAL requests; it re-checks resource-specific qualification through the booking end and conflicts with APPROVED bookings and active holds, excluding this request's own ID. A WAITLISTED request cannot be approved (REQUEST_WAITLISTED, 409); it is promoted automatically in order. REJECTED (reason required) may be applied to PENDING_APPROVAL or WAITLISTED requests; rejecting a slot holder promotes the next waitlisted request. BOOKING_HOLD_CONFLICT (409) includes details.hold_until; BOOKING_CONFLICT (409) indicates an approved blocker.",
         "security": [
           {
             "BearerAuth": []
@@ -1595,7 +1596,7 @@
             }
           },
           "409": {
-            "description": "Missing valid qualification, approved or active-hold conflict, expired request or invalid booking state.",
+            "description": "Missing valid qualification, approved or active-hold conflict, REQUEST_WAITLISTED, or invalid booking state.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1785,6 +1786,196 @@
           },
           "403": {
             "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/": {
+      "get": {
+        "operationId": "get__api_v1_admin_users_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Staff and user list (Manager only)",
+        "description": "Active Manager only. Lists users sorted by role then zID. Roles are nominated by the lab owner (Manager); a Manager also has every Admin permission.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "STUDENT",
+                "ADMIN",
+                "MANAGER"
+              ]
+            },
+            "description": "Filter by role."
+          },
+          {
+            "name": "active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Filter by account status."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "description": "Case-insensitive match on zID, name or email."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or unknown filter.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only an active Manager can manage users.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{id}/": {
+      "patch": {
+        "operationId": "patch__api_v1_admin_users_id_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Nominate a role or (de)activate an account (Manager only)",
+        "description": "Active Manager only. Send role and/or active. Takes effect on the user's next request; a deactivated user receives 401. Managers cannot change their own role or status (SELF_MODIFICATION_FORBIDDEN, 403), and at least one active Manager must remain (LAST_MANAGER, 409). Every change writes a USER_UPDATED audit record with previous and new values. Existing bookings are not changed.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Empty body, unknown field or invalid role/active value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an active Manager, or attempting to change yourself.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "LAST_MANAGER: the change would leave no active Manager.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2178,7 +2369,7 @@
           "Administration"
         ],
         "summary": "Set pending hold policy",
-        "description": "Active Manager only; Admin cannot write. Updates persist a per-resource integer from 1 to 10080 minutes and an audit entry. Only future holds use the new value; existing deadlines stay unchanged. Independent of the 24-hour approval waiting period.",
+        "description": "Active Manager only; Admin cannot write. Updates persist a per-resource integer from 1 to 20160 minutes (default 30) and an audit entry. Only future holds use the new value; existing deadlines stay unchanged. A longer hold protects the first requester for longer; the maximum effectively holds the slot until the request is decided. Independent of the 24-hour approval waiting period, which only matters when the hold is longer than 24 hours.",
         "security": [
           {
             "BearerAuth": []
@@ -2504,8 +2695,8 @@
           "pending_hold_minutes": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 10080,
-            "description": "Minutes for a newly created conflict-free pending hold; existing deadlines do not change.",
+            "maximum": 20160,
+            "description": "Minutes a newly created first-place pending request holds its slot, capped at the booking start. Default 30. When the hold ends while the request is still undecided, it moves to WAITLISTED (reason HOLD_EXPIRED) and is promoted only once its induction is verified. The maximum 20160 exceeds the booking horizon, which effectively holds the slot until the request is decided.",
             "example": 30
           }
         },
@@ -2651,7 +2842,8 @@
           "outlook_sync",
           "hold_until",
           "hold_active",
-          "blocks_slot"
+          "blocks_slot",
+          "waitlist_position"
         ],
         "properties": {
           "id": {
@@ -2686,11 +2878,13 @@
             "enum": [
               "WAITING_QUALIFICATION",
               "PENDING_APPROVAL",
+              "WAITLISTED",
               "APPROVED",
               "REJECTED",
               "CANCELLED",
               "EXPIRED"
-            ]
+            ],
+            "description": "WAITING_QUALIFICATION and PENDING_APPROVAL are undecided requests that may hold their slot; WAITLISTED is queued behind an earlier booking or request and never holds a slot; only APPROVED is confirmed."
           },
           "reason_code": {
             "type": "string",
@@ -2739,7 +2933,13 @@
           },
           "blocks_slot": {
             "type": "boolean",
-            "description": "True for APPROVED or an active pending hold."
+            "description": "True for APPROVED or an undecided request whose hold is active. Never true for WAITLISTED."
+          },
+          "waitlist_position": {
+            "type": "integer",
+            "minimum": 1,
+            "nullable": true,
+            "description": "1-based place among waitlisted requests overlapping this one on the same resource, in submission order. Null unless WAITLISTED."
           }
         },
         "additionalProperties": false
@@ -2966,6 +3166,7 @@
             "required": [
               "WAITING_QUALIFICATION",
               "PENDING_APPROVAL",
+              "WAITLISTED",
               "APPROVED",
               "REJECTED",
               "CANCELLED",
@@ -2977,6 +3178,10 @@
                 "minimum": 0
               },
               "PENDING_APPROVAL": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "WAITLISTED": {
                 "type": "integer",
                 "minimum": 0
               },
@@ -3405,8 +3610,8 @@
           "pending_hold_minutes": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 10080,
-            "description": "Minutes for a newly created conflict-free pending hold; existing deadlines do not change."
+            "maximum": 20160,
+            "description": "Minutes a newly created first-place pending request holds its slot, capped at the booking start. Default 30. When the hold ends while the request is still undecided, it moves to WAITLISTED (reason HOLD_EXPIRED) and is promoted only once its induction is verified. The maximum 20160 exceeds the booking horizon, which effectively holds the slot until the request is decided."
           }
         },
         "additionalProperties": false
@@ -3425,8 +3630,8 @@
           "pending_hold_minutes": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 10080,
-            "description": "Minutes for a newly created conflict-free pending hold; existing deadlines do not change."
+            "maximum": 20160,
+            "description": "Minutes a newly created first-place pending request holds its slot, capped at the booking start. Default 30. When the hold ends while the request is still undecided, it moves to WAITLISTED (reason HOLD_EXPIRED) and is promoted only once its induction is verified. The maximum 20160 exceeds the booking horizon, which effectively holds the slot until the request is decided."
           }
         },
         "additionalProperties": false
@@ -3545,6 +3750,44 @@
             "items": {
               "$ref": "#/components/schemas/AuditRecord"
             }
+          }
+        }
+      },
+      "UserList": {
+        "type": "object",
+        "required": [
+          "count",
+          "results"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User"
+            }
+          }
+        }
+      },
+      "UserUpdate": {
+        "type": "object",
+        "minProperties": 1,
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "STUDENT",
+              "ADMIN",
+              "MANAGER"
+            ]
+          },
+          "active": {
+            "type": "boolean",
+            "description": "false locks the account out on its next request; true restores it."
           }
         }
       }

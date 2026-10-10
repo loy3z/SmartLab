@@ -19,6 +19,10 @@ PDF = b"%PDF-1.4\nInduction certificate\n%%EOF"
 
 
 class QualificationValidityServiceTests(BookingFixtureMixin, SimpleTestCase):
+    def setUp(self):
+        super().setUp()
+        self.service.max_advance_days = 365  # these scenarios book months ahead to reach the expiry
+
     def verify_pending(self, principal=None):
         submission = self.qualification(principal, status=QualificationStatus.PENDING)
         reviewed, _ = self.service.review_qualification(self.admin, submission.id, "VERIFIED")

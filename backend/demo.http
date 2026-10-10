@@ -128,6 +128,10 @@ Content-Type: application/json
 GET {{baseUrl}}/admin/bookings/?status=PENDING_APPROVAL
 Authorization: Bearer {{adminToken}}
 
+### Waitlisted requests (promoted automatically in submission order; can only be rejected)
+GET {{baseUrl}}/admin/bookings/?status=WAITLISTED
+Authorization: Bearer {{adminToken}}
+
 ### Approve booking. Requires valid induction and no approved/active-hold conflict.
 POST {{baseUrl}}/admin/bookings/{{bookingId}}/review/
 Authorization: Bearer {{adminToken}}
@@ -179,6 +183,17 @@ POST {{baseUrl}}/auth/demo-login/
 Content-Type: application/json
 
 {"zid": "z9000002"}
+
+### Staff and user list (Manager only)
+GET {{baseUrl}}/admin/users/
+Authorization: Bearer {{managerToken}}
+
+### Nominate a role or deactivate an account (Manager only; not yourself)
+PATCH {{baseUrl}}/admin/users/00000000-0000-0000-0000-000000000502/
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{"role": "ADMIN"}
 
 ### Read a resource's temporary hold policy (Admin or Manager)
 GET {{baseUrl}}/admin/resources/{{resourceId}}/booking-policy/

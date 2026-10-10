@@ -73,7 +73,9 @@ def get_service():
             if not settings.DEBUG and (isinstance(repo, MemoryRepository) or isinstance(storage, MemoryFileStorage)):
                 raise ImproperlyConfigured("Configure durable repository and private file-storage adapters outside DEBUG mode.")
             _service = BookingService(repo, storage, wait_hours=settings.APPROVAL_WAIT_HOURS,
-                                      qualification_validity_days=settings.QUALIFICATION_VALIDITY_DAYS)
+                                      qualification_validity_days=settings.QUALIFICATION_VALIDITY_DAYS,
+                                      max_advance_days=settings.MAX_ADVANCE_DAYS,
+                                      unverified_pending_limit=settings.UNVERIFIED_PENDING_LIMIT)
             _service.calendar_sync = CalendarSyncService(repo, import_string(settings.OUTLOOK_PROVIDER_FACTORY)(),
                 enabled=settings.OUTLOOK_ENABLED, clock=lambda: _service.now())
             if settings.SEED_DEMO_DATA:

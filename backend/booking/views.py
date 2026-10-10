@@ -16,7 +16,8 @@ from .exceptions import DomainError
 from .runtime import get_service
 from .serializers import (AvailabilityQuerySerializer, BookingCreateSerializer, BookingRescheduleSerializer, BookingReviewSerializer,
                           DemoLoginSerializer, DemoRegisterSerializer, QualificationCreateSerializer, QualificationReviewSerializer,
-                          OutlookProcessSerializer, BookingPolicySerializer, AuditQuerySerializer)
+                          OutlookProcessSerializer, BookingPolicySerializer, AuditQuerySerializer,
+                          UserListQuerySerializer, UserUpdateSerializer)
 
 def json_value(value):
     if isinstance(value, Enum):
@@ -32,6 +33,7 @@ def json_value(value):
             result["outlook_sync"] = service.calendar_sync.describe(value)
             result["hold_active"] = value.hold_is_active(service.now())
             result["blocks_slot"] = value.blocks_resource_at(service.now())
+            result["waitlist_position"] = waitlist_position(service, value)
         return result
     if isinstance(value, dict):
         return {key: json_value(item) for key, item in value.items()}
@@ -55,11 +57,24 @@ def validated(serializer_cls, data):
     return serializer.validated_data
 
 def sync_after_write(service, *bookings):
-    # The domain transaction has returned before any external HTTP call.
+    # The domain transaction has returned before any external HTTP call. Bookings approved by
+    # automatic waitlist promotion during this request are synchronised as well.
+    ids = [booking.id for booking in bookings]
+    promoted = [item for item in service.take_promoted_ids() if item not in ids]
     if settings.OUTLOOK_SYNC_ON_WRITE:
-        for booking in bookings:
-            service.calendar_sync.process_booking(booking.id)
+        for booking_id in ids + promoted:
+            service.calendar_sync.process_booking(booking_id)
     return tuple(service.repo.get_booking(booking.id) for booking in bookings)
+
+def waitlist_position(service, booking):
+    """1-based place among waitlisted requests that overlap this one on the same resource."""
+    if booking.status != BookingStatus.WAITLISTED:
+        return None
+    ahead = [item for item in service.repo.list_bookings(resource_id=booking.resource_id)
+             if item.status == BookingStatus.WAITLISTED and item.id != booking.id
+             and (item.created_at, item.id) < (booking.created_at, booking.id)
+             and item.start < booking.end and booking.start < item.end]
+    return len(ahead) + 1
 
 def session_result(principal):
     return {"access_token": issue_demo_token(principal), "token_type": "Bearer", "expires_in": settings.DEMO_TOKEN_TTL_SECONDS,
@@ -257,6 +272,21 @@ class AdminAuditListView(APIView):
         return Response({"count": total, "limit": data["limit"], "offset": data["offset"],
                          "results": [audit_json(item, principals) for item in records]})
 
+class AdminUserListView(APIView):
+    """Manager only: staff and user list for nominating roles."""
+    def get(self, request):
+        service = get_service()
+        service.require_manager(request.user)
+        data = validated(UserListQuerySerializer, request.query_params)
+        return Response(collection(service.list_users(request.user, data.get("role"), data["active"], data["q"])))
+
+class AdminUserDetailView(APIView):
+    def patch(self, request, user_id):
+        service = get_service()
+        service.require_manager(request.user)
+        data = validated(UserUpdateSerializer, request.data)
+        return Response(json_value(service.update_user(request.user, str(user_id), data.get("role"), data.get("active"))))
+
 class AdminBookingReviewView(APIView):
     def post(self, request, booking_id):
         service = get_service()
@@ -315,8 +345,7 @@ class ResourceBookingPolicyView(APIView):
 
     def patch(self, request, resource_id):
         service = get_service()
-        if not request.user.active or request.user.role != Role.MANAGER:
-            raise DomainError("FORBIDDEN", "Only an active Manager may configure booking policies.", 403)
+        service.require_manager(request.user)
         data = validated(BookingPolicySerializer, request.data)
         resource = service.set_pending_hold_minutes(request.user, str(resource_id), data["pending_hold_minutes"])
         return Response({"resource_id": resource.id, "pending_hold_minutes": resource.pending_hold_minutes})

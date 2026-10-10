@@ -33,7 +33,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   const token = getToken()
   if (token) headers.set('Authorization', `Bearer ${token}`)
-  if (init.body) headers.set('Content-Type', 'application/json')
+  if (init.body && !(init.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json')
+  }
   const res = await fetch(BASE + path, { ...init, headers })
   const body = res.status === 204 ? null : await res.json().catch(() => null)
   if (!res.ok) {
@@ -75,3 +77,52 @@ export const rescheduleBooking = (id: string, start: string, end: string) =>
 export const getMe = () => request<User>('auth/me/')
 export const listRequirements = () => request<ListResponse<Requirement>>('qualification-requirements/')
 export const listQualifications = () => request<ListResponse<Qualification>>('qualifications/')
+
+export function submitQualification(
+  requirementId: string,
+  title: string,
+  notes: string,
+  file: File,
+) {
+  const formData = new FormData()
+
+  formData.append('requirement_id', requirementId)
+  formData.append('title', title)
+  formData.append('notes', notes)
+  formData.append('file', file)
+
+  return request<Qualification>('qualifications/', {
+    method: 'POST',
+    body: formData,
+  })
+}
+export function listAdminQualifications(
+  status: 'PENDING' | 'VERIFIED' | 'REJECTED' = 'PENDING',
+) {
+  return request<ListResponse<Qualification>>(
+    `admin/qualifications/?status=${status}`,
+  )
+}
+
+
+export function reviewQualification(
+  submissionId: string,
+  decision: 'VERIFIED' | 'REJECTED',
+  reason: string = '',
+  validUntil: string | null = null,
+) {
+  return post<{
+    submission: Qualification
+    updated_bookings: Booking[]
+  }>(`admin/qualifications/${submissionId}/review/`, {
+    decision,
+    reason,
+    valid_until: validUntil,
+  })
+}
+
+export function listApprovedBookings() {
+  return request<ListResponse<Booking>>(
+    'admin/bookings/?status=APPROVED',
+  )
+}

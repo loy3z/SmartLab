@@ -26,6 +26,8 @@ def seed_demo_data(service):
             pending_hold_minutes=settings.DEFAULT_PENDING_HOLD_MINUTES))
     for number, zid, name, role in [(501, "z1000001", "Qualified demo student", Role.STUDENT),
                                     (502, "z1000002", "New demo student", Role.STUDENT),
+                                    (503, "z1000003", "New demo student3", Role.STUDENT),
+                                    (504, "z1000004", "New demo student4", Role.STUDENT),
                                     (901, "z9000001", "Demo administrator", Role.ADMIN),
                                     (902, "z9000002", "Demo manager", Role.MANAGER)]:
         service.repo.save_principal(Principal(fixed_id(number), zid, name, role, f"{zid}@ad.unsw.edu.au"))

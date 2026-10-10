@@ -7,7 +7,10 @@ import { Layout, type Page } from './Layout'
 import { Modal } from './Modal'
 import { MyBookings } from './MyBookings'
 import { ResourceCard, type InductionState } from './ResourceCard'
+import { InductionPage } from '../induction/InductionPage'
 import type { Qualification, Requirement, Resource, User } from './types'
+import { QualificationReviewPage } from '../admin/QualificationReviewPage'
+import { ManagerBookingsPage } from '../manager/ManagerBookingsPage'
 import './booking.css'
 
 /** Dev-only login so this feature works before frontend A's login lands. */
@@ -162,19 +165,76 @@ export function BookingApp() {
 
   useEffect(() => {
     if (!authed) return
-    getMe().then(setUser).catch(() => (setToken(null), setAuthed(false)))
+
+    let active = true
+
+    getMe()
+      .then((currentUser) => {
+        if (!active) return
+
+        setUser(currentUser)
+
+        const staff =
+          currentUser.role === 'ADMIN' ||
+          currentUser.role === 'MANAGER'
+
+        setPage(staff ? 'qualification-review' : 'browse')
+      })
+      .catch(() => {
+        if (!active) return
+
+        setToken(null)
+        setUser(null)
+        setAuthed(false)
+      })
+
+    return () => {
+      active = false
+    }
   }, [authed])
 
-  if (!authed) return <DevLogin onDone={() => setAuthed(true)} />
+  if (!authed) {
+    return <DevLogin onDone={() => setAuthed(true)} />
+  }
+
+  if (!user) {
+    return <p>Loading your account...</p>
+  }
+
+  const isStaff = user.role === 'ADMIN' || user.role === 'MANAGER'
+
+  function handleSignOut() {
+    setToken(null)
+    setUser(null)
+    setPage('browse')
+    setAuthed(false)
+  }
 
   return (
     <Layout
       page={page}
       onNavigate={setPage}
       user={user}
-      onSignOut={() => (setToken(null), setUser(null), setAuthed(false))}
+      onSignOut={handleSignOut}
     >
-      {page === 'browse' ? <Browse onBooked={() => setBump((n) => n + 1)} /> : <MyBookings refreshKey={bump} />}
+      {page === 'browse' && (
+        <Browse onBooked={() => setBump((n) => n + 1)} />
+      )}
+
+      {page === 'mine' && (
+        <MyBookings refreshKey={bump} />
+      )}
+
+      {page === 'induction' && (
+        <InductionPage />
+      )}
+
+      {page === 'qualification-review' && isStaff && (
+        <QualificationReviewPage />
+      )}
+      {page === 'manager-bookings' && user?.role === 'MANAGER' && (
+        <ManagerBookingsPage />
+      )}
     </Layout>
   )
 }

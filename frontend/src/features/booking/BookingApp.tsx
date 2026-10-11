@@ -1,47 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router'
 import { BookingForm } from './BookingForm'
-import { demoLogin, getMe, getToken, listQualifications, listRequirements, listResources, setToken } from './api'
+import { listQualifications, listRequirements, listResources } from './api'
 import { errorMessage } from './format'
 import { AlertIcon, CheckIcon, DoorIcon, FlaskIcon, SearchIcon, UploadIcon } from './icons'
-import { Layout, type Page } from './Layout'
 import { Modal } from './Modal'
-import { MyBookings } from './MyBookings'
 import { ResourceCard, type InductionState } from './ResourceCard'
-import { InductionPage } from '../induction/InductionPage'
-import type { Qualification, Requirement, Resource, User } from './types'
-import { QualificationReviewPage } from '../admin/QualificationReviewPage'
-import { ManagerBookingsPage } from '../manager/ManagerBookingsPage'
-import { BookingReviewPage } from '../admin/BookingReviewPage'
-import './booking.css'
-
-/** Dev-only login so this feature works before frontend A's login lands. */
-function DevLogin({ onDone }: { onDone: () => void }) {
-  const [zid, setZid] = useState('z1000001')
-  const [error, setError] = useState('')
-  return (
-    <div className="bk-login">
-      <div className="bk-panel">
-        <h2>SmartLab Booking</h2>
-        <p className="bk-muted">Dev login (demo mode only; replaced by the real login page).</p>
-        <input value={zid} onChange={(e) => setZid(e.target.value)} />
-        <button
-          className="bk-btn-yellow"
-          onClick={async () => {
-            try {
-              setToken((await demoLogin(zid)).access_token)
-              onDone()
-            } catch (e) {
-              setError(errorMessage(e))
-            }
-          }}
-        >
-          Login
-        </button>
-        {error && <p className="bk-error">{error}</p>}
-      </div>
-    </div>
-  )
-}
+import type { Qualification, Requirement, Resource } from './types'
 
 function stateFor(r: Resource, quals: Qualification[]): InductionState {
   if (!r.required_qualification_id) return 'NOT_CONFIGURED'
@@ -51,7 +16,8 @@ function stateFor(r: Resource, quals: Qualification[]): InductionState {
   return latest ? latest.effective_status : 'NOT_SUBMITTED'
 }
 
-function Browse({ onBooked }: { onBooked: () => void }) {
+/** Frontend B's resource page; authentication, routing and layout are owned by app/. */
+export function BookingApp({ onBooked }: { onBooked: () => void }) {
   const [kind, setKind] = useState('')
   const [q, setQ] = useState('')
   const [term, setTerm] = useState('')
@@ -111,9 +77,9 @@ function Browse({ onBooked }: { onBooked: () => void }) {
                 <small>{req.description || 'Required before requesting a booking.'}</small>
               </div>
               {!ok && state !== 'PENDING' && (
-                <button className="bk-btn-yellow" disabled title="Available on the Induction page">
+                <Link className="bk-btn-yellow" to="/induction">
                   <UploadIcon size={18} /> Upload induction
-                </button>
+                </Link>
               )}
             </div>
           )
@@ -155,90 +121,5 @@ function Browse({ onBooked }: { onBooked: () => void }) {
         </Modal>
       )}
     </>
-  )
-}
-
-export function BookingApp() {
-  const [authed, setAuthed] = useState(!!getToken())
-  const [page, setPage] = useState<Page>('browse')
-  const [user, setUser] = useState<User | null>(null)
-  const [bump, setBump] = useState(0)
-
-  useEffect(() => {
-    if (!authed) return
-
-    let active = true
-
-    getMe()
-      .then((currentUser) => {
-        if (!active) return
-
-        setUser(currentUser)
-
-        const staff =
-          currentUser.role === 'ADMIN' ||
-          currentUser.role === 'MANAGER'
-
-        setPage(staff ? 'qualification-review' : 'browse')
-      })
-      .catch(() => {
-        if (!active) return
-
-        setToken(null)
-        setUser(null)
-        setAuthed(false)
-      })
-
-    return () => {
-      active = false
-    }
-  }, [authed])
-
-  if (!authed) {
-    return <DevLogin onDone={() => setAuthed(true)} />
-  }
-
-  if (!user) {
-    return <p>Loading your account...</p>
-  }
-
-  const isStaff = user.role === 'ADMIN' || user.role === 'MANAGER'
-
-  function handleSignOut() {
-    setToken(null)
-    setUser(null)
-    setPage('browse')
-    setAuthed(false)
-  }
-
-  return (
-    <Layout
-      page={page}
-      onNavigate={setPage}
-      user={user}
-      onSignOut={handleSignOut}
-    >
-      {page === 'browse' && (
-        <Browse onBooked={() => setBump((n) => n + 1)} />
-      )}
-
-      {page === 'mine' && (
-        <MyBookings refreshKey={bump} />
-      )}
-
-      {page === 'induction' && (
-        <InductionPage />
-      )}
-
-      {page === 'qualification-review' && isStaff && (
-        <QualificationReviewPage />
-      )}
-      {page === 'manager-bookings' && user?.role === 'MANAGER' && (
-        <ManagerBookingsPage />
-      )}
-      {page === 'booking-review' && isStaff && (
-        <BookingReviewPage />
-      )}
-    </Layout>
   )
 }

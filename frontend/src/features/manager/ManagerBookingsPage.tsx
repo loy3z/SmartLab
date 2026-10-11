@@ -14,6 +14,12 @@ export function ManagerBookingsPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [refresh, setRefresh] = useState(0)
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -63,7 +69,7 @@ export function ManagerBookingsPage() {
     setError('')
     setSuccess('')
 
-    if (new Date(booking.start).getTime() <= Date.now()) {
+    if (new Date(booking.start).getTime() <= now) {
       setError('This booking has already started and cannot be cancelled.')
       return
     }
@@ -123,7 +129,7 @@ export function ManagerBookingsPage() {
               (item) => item.id === booking.resource_id,
             )
             const roomName = room?.name ?? booking.resource_id
-            const started = new Date(booking.start).getTime() <= Date.now()
+            const started = new Date(booking.start).getTime() <= now
 
             return (
               <section

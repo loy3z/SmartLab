@@ -1,6 +1,15 @@
-import { BookingApp } from './features/booking/BookingApp'
+import { HashRouter } from 'react-router'
+import { AppRouter } from './app/AppRouter'
+import { AuthProvider } from './features/auth/AuthProvider'
+import './features/booking/booking.css'
+import './app/shell.css'
 
-// Temporary shell: frontend A's router/layout will replace this and mount BookingApp on student routes.
 export default function App() {
-  return <BookingApp />
+  return (
+    <HashRouter>
+      <AuthProvider>
+        <AppRouter />
+      </AuthProvider>
+    </HashRouter>
+  )
 }

@@ -2,6 +2,7 @@ import { startTransition, useEffect } from 'react'
 import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { useAuth } from '../features/auth/auth-context'
 import { LoginPage } from '../features/auth/LoginPage'
+import { MockSsoPage } from '../features/auth/MockSsoPage'
 import { BookingApp } from '../features/booking/BookingApp'
 import { MyBookings } from '../features/booking/MyBookings'
 import { InductionPage } from '../features/induction/InductionPage'
@@ -18,6 +19,7 @@ const titles: Record<string, string> = {
   '/induction': 'Induction & training', '/admin/qualifications': 'Qualification review',
   '/admin/bookings': 'Booking review', '/manager/bookings': 'Room management',
   '/account': 'Account details', '/help': 'Help & support', '/login': 'Sign in',
+  '/login/mock-sso': 'Demo university sign-in',
 }
 
 function useSignOut() {
@@ -34,12 +36,12 @@ function useSignOut() {
 }
 
 // Public route: a successful login returns to an allowed deep link or the role's home.
-function LoginRoute() {
+function LoginRoute({ mockSso = false }: { mockSso?: boolean }) {
   const { user, notice } = useAuth()
   const location = useLocation()
   return user
     ? <Navigate to={loginDestination(location.state, user.role)} replace state={null} />
-    : <LoginPage notice={notice} />
+    : mockSso ? <MockSsoPage notice={notice} /> : <LoginPage notice={notice} />
 }
 
 // All portal pages share this authentication boundary and the same layout.
@@ -111,13 +113,14 @@ export function AppRouter() {
   }
 
   // Use one canonical address so trailing-slash links also highlight the menu.
-  if (pathname !== path && (isKnownPath(path) || path === '/login')) {
+  if (pathname !== path && (isKnownPath(path) || path === '/login' || path === '/login/mock-sso')) {
     return <Navigate to={{ pathname: path, search }} replace state={state} />
   }
 
   return (
     <Routes>
       <Route path="/login" caseSensitive element={<LoginRoute />} />
+      <Route path="/login/mock-sso" caseSensitive element={<LoginRoute mockSso />} />
       <Route element={<ProtectedLayout />}>
         <Route index element={auth.user && <Navigate to={homePath(auth.user.role)} replace />} />
         <Route element={<RequireAccess />}>

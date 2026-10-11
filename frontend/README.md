@@ -30,12 +30,28 @@ Open the Local URL printed by Vite (normally `http://localhost:5173`). `/api` is
 
 The sign-in page reads `GET /api/v1/auth/config/`. Demo login and student registration appear only when the backend enables them. No password is requested in demo mode; it is not university SSO. If demo authentication is disabled, the page explains that university sign-in is not connected. The current API does not provide an SSO redirect flow.
 
+The primary **University sign-in (Demo)** link opens `#/login/mock-sso`, a separate simulated university sign-in page with a campus background and centred white card. Enter an existing demo zID (for example `z1000001`) or its `@ad.unsw.edu.au` email form, then select **Next** or press Enter. Input is trimmed and matched case-insensitively; other email domains are rejected. The email form is only an alias for a demo zID, not verification of university identity or mailbox ownership. **Sign-in options** lists the four seeded accounts.
+
+The form calls the existing `auth/demo-login/` API; the backend issues the session token and `auth/me/` determines the user's role. The original zID form and student registration remain under **Other demo sign-in options** on the SmartLab sign-in page. **Back to SmartLab** cancels the mock sign-in, ignores any pending login response, and preserves an allowed return destination for the next attempt.
+
+This demonstrates the sign-in journey, session restoration, role-specific navigation and returning to an allowed page after login. It does not implement an external identity provider, an OAuth/OIDC callback or shared sign-on across applications; `sso_connected` remains false. No university password is collected.
+
 | Demo zID | Role | Starting page |
 | --- | --- | --- |
 | `z1000001` | Student with general induction | Dashboard |
 | `z1000002` | Student without induction | Dashboard |
 | `z9000001` | Administrator | Qualification review |
 | `z9000002` | Manager | Room management |
+
+### Tutor demonstration
+
+1. Start both servers with demo authentication enabled, then open `http://localhost:5173/#/login` (sign out first if already logged in).
+2. Select **University sign-in (Demo)** and show the simulation notice.
+3. Enter `z1000001@ad.unsw.edu.au` and select **Next** to open the student dashboard. Use the account menu to show the current user's details.
+4. Sign out and repeat with `z9000001` (Administrator) or `z9000002` (Manager) to show the different portal and access permissions.
+5. To demonstrate returning after login, sign out, open `#/bookings`, then complete the mock sign-in as a student. SmartLab returns to My Bookings.
+
+Entering a demo identity signs into the same existing backend account; it does not create a new account or reset its bookings or training records. Account descriptions reflect the initial seed data. In-memory changes reset when the backend process restarts.
 
 The shell resolves the current user through `auth/me/` before showing protected content. It restores sessions after refresh, handles sign-out across tabs, refreshes identity on window focus or protected 403 responses, and clears only the matching session on 401. Temporary network failure retains the token and provides Retry. Successful demo registration always creates a student; roles are controlled by the server.
 
@@ -46,6 +62,7 @@ React Router's `HashRouter` keeps the existing `#/...` URLs. These work with sta
 | URL fragment | Access | Feature owner |
 | --- | --- | --- |
 | `#/login` | Public | A: sign-in and demo registration |
+| `#/login/mock-sso` | Public, demo mode only | A: simulated university sign-in form |
 | `#/dashboard` | Student | A: booking counts, upcoming bookings and induction overview |
 | `#/resources` | Student | B: resource search and booking |
 | `#/bookings` | Student | B: bookings, cancellation and rescheduling |

@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { Link, useLocation } from 'react-router'
 import { demoLogin, demoRegister, getAuthConfig, setToken } from '../booking/api'
 import { errorMessage } from '../booking/format'
 import { CalendarIcon, CapIcon, ClockIcon } from '../booking/icons'
@@ -6,6 +7,8 @@ import type { AuthConfig } from '../booking/types'
 import './auth.css'
 
 export function LoginPage({ notice = '' }: { notice?: string }) {
+  const location = useLocation()
+  const mounted = useRef(false)
   const [config, setConfig] = useState<AuthConfig | null>(null)
   const [configError, setConfigError] = useState('')
   const [attempt, setAttempt] = useState(0)
@@ -15,6 +18,12 @@ export function LoginPage({ notice = '' }: { notice?: string }) {
   const [email, setEmail] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    mounted.current = true
+    document.getElementById('auth-title')?.focus({ preventScroll: true })
+    return () => { mounted.current = false }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -32,10 +41,12 @@ export function LoginPage({ notice = '' }: { notice?: string }) {
       const result = register
         ? await demoRegister({ zid: zid.trim().toLowerCase(), display_name: name.trim(), university_email: email.trim() })
         : await demoLogin(zid.trim().toLowerCase())
-      setToken(result.access_token)
+      if (mounted.current) setToken(result.access_token)
     } catch (err) {
-      setError(errorMessage(err))
-      setBusy(false)
+      if (mounted.current) {
+        setError(errorMessage(err))
+        setBusy(false)
+      }
     }
   }
 
@@ -91,7 +102,11 @@ export function LoginPage({ notice = '' }: { notice?: string }) {
           {configError && <div className="auth-error" role="alert"><p>{configError}</p><button className="auth-text-button" onClick={() => { setConfigError(''); setAttempt((n) => n + 1) }}>Try again</button></div>}
           {config && !config.demo_auth_enabled && <div className="auth-notice"><h3>University sign-in is not available yet</h3><p>The university login connection has not been enabled. Please contact your project administrator for access.</p><button className="auth-text-button" onClick={() => { setConfig(null); setAttempt((n) => n + 1) }}>Check again</button></div>}
           {config?.demo_auth_enabled && <>
-            <div className="auth-demo-notice"><span>Demo sign-in</span><p>Use a demo zID below. University SSO is not connected; no password is required.</p></div>
+            <div className="auth-demo-notice"><span>Simulated university sign-in</span><p>This is a project demonstration. University SSO is not connected. Use demo accounts only; no university password is required.</p></div>
+            <Link className="auth-submit auth-sso-entry" to="/login/mock-sso" state={location.state} aria-disabled={busy || undefined} onClick={(event) => { if (busy) event.preventDefault() }}>University sign-in (Demo)<span aria-hidden="true">→</span></Link>
+            <p className="auth-sso-caption">Enter your demo zID or university email on the next screen.</p>
+            <details className="auth-demo-accounts auth-alternative-login">
+              <summary>Other demo sign-in options</summary>
             <form onSubmit={submit} className="auth-form">
               <fieldset disabled={busy}>
                 <label htmlFor="auth-zid">University zID</label>
@@ -108,7 +123,7 @@ export function LoginPage({ notice = '' }: { notice?: string }) {
               </fieldset>
             </form>
             {config.demo_registration_enabled && <p className="auth-switch">{register ? 'Already have an account?' : 'New to the prototype?'} <button className="auth-text-button" disabled={busy} onClick={() => { setRegister(!register); setError('') }}>{register ? 'Sign in' : 'Create student account'}</button></p>}
-            {!register && <details className="auth-demo-accounts"><summary>Demo accounts for testing</summary><p>Use an existing account to explore each portal.</p><ul><li><code>z1000001</code> — Student with induction</li><li><code>z1000002</code> — Student awaiting induction</li><li><code>z9000001</code> — Administrator</li><li><code>z9000002</code> — Manager</li></ul></details>}
+            </details>
           </>}
             </div>
             <aside className="auth-support" aria-label="Sign-in help">

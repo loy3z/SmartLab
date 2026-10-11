@@ -80,6 +80,7 @@ class BookingReviewSerializer(StrictSerializer):
 class AvailabilityQuerySerializer(StrictSerializer):
     date = serializers.DateField()
     duration_minutes = serializers.IntegerField(default=30, min_value=1, max_value=1440)
+    exclude_booking_id = serializers.UUIDField(required=False)
 
 
 class OutlookProcessSerializer(StrictSerializer):
@@ -116,4 +117,47 @@ class UserUpdateSerializer(StrictSerializer):
 
 
 class BookingPolicySerializer(StrictSerializer):
-    pending_hold_minutes = serializers.IntegerField(min_value=1, max_value=20160)
+    pending_hold_minutes = serializers.IntegerField(min_value=1, max_value=20160, required=False)
+    auto_approve_max_minutes = serializers.IntegerField(min_value=1, max_value=1440, required=False)
+
+    def validate(self, attrs):
+        if not attrs:
+            raise serializers.ValidationError("Provide pending_hold_minutes and/or auto_approve_max_minutes.")
+        return attrs
+
+
+class ResourceStatusSerializer(StrictSerializer):
+    status = serializers.ChoiceField(choices=["AVAILABLE", "MAINTENANCE", "CLOSED"])
+    reason = serializers.CharField(required=False, allow_blank=True, default="", max_length=500)
+
+
+class ManagerCreateSerializer(StrictSerializer):
+    zid = serializers.RegexField(r"^[zZ]\d{7}$")
+    display_name = serializers.CharField(max_length=120)
+    university_email = serializers.EmailField(max_length=254)
+
+
+BOOKING_STATUS_VALUES = ["WAITING_QUALIFICATION", "PENDING_APPROVAL", "WAITLISTED", "APPROVED", "REJECTED", "CANCELLED", "EXPIRED"]
+
+
+class AdminBookingQuerySerializer(StrictSerializer):
+    """status: one status, a comma-separated list, or ALL."""
+    status = serializers.CharField(required=False, default="PENDING_APPROVAL", max_length=200)
+    resource_id = serializers.UUIDField(required=False)
+    student_id = serializers.UUIDField(required=False)
+    since = AwareDateTimeField(required=False)
+    until = AwareDateTimeField(required=False)
+
+    def validate_status(self, value):
+        if value.strip().upper() == "ALL":
+            return None
+        values = [item.strip() for item in value.split(",") if item.strip()]
+        unknown = [item for item in values if item not in BOOKING_STATUS_VALUES]
+        if not values or unknown:
+            raise serializers.ValidationError("Use ALL or booking statuses separated by commas.")
+        return values
+
+    def validate(self, attrs):
+        if attrs.get("since") and attrs.get("until") and attrs["since"] >= attrs["until"]:
+            raise serializers.ValidationError({"until": "until must be later than since."})
+        return attrs

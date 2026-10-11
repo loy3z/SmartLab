@@ -11,7 +11,10 @@ Django 5.2 + Django REST Framework 3.16。提供学生时段查询、房间／�
 - 同一时段严格先到先得：`APPROVED` 持续占用时段；时段空着时，资料待审的申请成为第一位并占住时段 30 分钟（Manager 可按资源调整）。占位期间后来的重叠申请进入等待名单 `WAITLISTED`，即使资格已通过也不能插队，管理员也不能直接批准候补。占位到期时资料仍未通过，原申请也进入候补（`HOLD_EXPIRED`），每张申请只有一次占位机会，之后要等资料通过才能被递补。时段空出来时（取消、拒绝、过期、改期、占位到期，或候补学生的资料通过），系统按提交顺序自动递补：资格已通过就直接获批，资料待审且没占过位就成为新的第一位。默认设置下，“24 小时转人工”只在占位超过 24 小时时才会出现。资格审核和预约审核是独立操作；24 小时不会自动获得资格。资料被拒时，该学生依赖这项资格的所有未决预约（包括候补）会被自动拒绝（`QUALIFICATION_REJECTED`，沿用资料的拒绝原因），时段立即交给下一位候补；学生重新上传资料后再预约。
 - 同一学生不能为同一资源重复提交时间重叠的有效申请；已有 `WAITING_QUALIFICATION`、`PENDING_APPROVAL`、`WAITLISTED` 或 `APPROVED` 记录时返回 `DUPLICATE_BOOKING`。取消、拒绝或过期后可重新申请；不同资源在同一时间仍可分别预约。
 - 学生查看自己的 dashboard、资格和预约，取消尚未开始的有效预约。Admin／Manager 查看审核队列并作出决定。
-- **Manager 拥有 Admin 的全部权限**，另外独有占位规则配置和人员管理：通过 `GET /api/v1/admin/users/` 查看人员名单，用 `PATCH /api/v1/admin/users/{id}/` 指定角色（Student／Admin／Manager）或停用账号（不能改自己，至少保留一个 Manager，修改写审计）。
+- 资格有效且时段空着时，时长不超过资源的 `auto_approve_max_minutes`（默认 120 分钟，Manager 可按资源设置）才自动批准；更长的进入人工审批 `PENDING_APPROVAL`（`DURATION_REVIEW`），并占住时段直到管理员决定。已批准预约改期可以改时长，但不能超过这个上限。
+- Manager 可以把房间或设备设为维修中／关闭（`PATCH /api/v1/admin/resources/{id}/status/`，需填原因）：暂停新申请、批准和递补，已有预约保留并列出供 Manager 决定是否取消；改回可用后候补自动递补。
+- Admin／Manager 可用 `GET /api/v1/admin/bookings/?status=ALL` 按资源、学生、日期查看所有人的预约（带学生 zID 和姓名）；Manager 可用 `GET /api/v1/admin/bookings/export/` 导出 CSV。
+- **Manager 拥有 Admin 的全部权限**，另外独有占位规则配置和人员管理：通过 `GET /api/v1/admin/users/` 查看人员名单，用 `PATCH /api/v1/admin/users/{id}/` 在 Student／Admin 之间调整角色或停用账号（学生必须所有 induction 都有效才能升为 Admin；不能改自己，至少保留一个 Manager，修改写审计）。人员列表带每个人的 induction 状态。Manager 只能通过网页上的 Add manager（`POST /api/v1/admin/users/managers/`）新建，不能把现有的人改成 Manager。
 - Admin／Manager 可通过 `GET /api/v1/admin/audit/` 按资源、学生、操作类型和时间查看审计记录（申请、审批、改期、取消、资格审核等），满足客户对操作轨迹的要求。
 
 已补齐客户 2026-10-07 要求的大学邮箱字段和 Pending 临时占位。有效占位阻止后来请求自动获批，管理员也不能越过占位批准重叠预约。冲突请求进入等待名单，不取得新的占位。每个资源目前关联一项资格要求，资格有效期必须覆盖预约结束时间。

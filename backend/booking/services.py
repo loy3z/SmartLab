@@ -5,8 +5,8 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4, uuid5
 from zoneinfo import ZoneInfo
-from .domain import (MAX_PENDING_HOLD_MINUTES, AuditRecord, Booking, BookingStatus, QualificationSubmission,
-                     QualificationStatus, Role)
+from .domain import (MAX_PENDING_HOLD_MINUTES, AuditRecord, Booking, BookingStatus, Principal, QualificationSubmission,
+                     QualificationStatus, ResourceStatus, Role)
 from .errors import DomainError
 
 # Requests that hold first place for their slot (blocking others while hold_until is in the future).
@@ -100,11 +100,24 @@ class BookingService:
         user_id = str(user_id)
         if user_id == actor.id:
             raise DomainError("SELF_MODIFICATION_FORBIDDEN", "Managers cannot change their own role or status.", 403)
+        if role == Role.MANAGER.value:
+            raise DomainError("MANAGER_ROLE_NOT_ASSIGNABLE",
+                              "Managers are created only with Add manager, not by changing a role.", 403)
         managers = [item.id for item in self.repo.list_principals() if item.role == Role.MANAGER]
         with self.repo.atomic(student_ids=sorted(set(managers + [user_id]))):
             current = self.repo.get_principal(user_id)
             if current is None:
                 raise DomainError("NOT_FOUND", "User not found.", 404)
+            if role is not None and current.role == Role.MANAGER and role != Role.MANAGER.value:
+                raise DomainError("MANAGER_ROLE_NOT_ASSIGNABLE",
+                                  "A Manager's role cannot be changed here; deactivate the account instead.", 403)
+            if role == Role.ADMIN.value and current.role == Role.STUDENT:
+                inductions = self.induction_summary(current.id)
+                missing = [item for item in inductions if item["status"] != "VERIFIED"]
+                if missing:
+                    raise DomainError("INDUCTION_REQUIRED_FOR_ADMIN",
+                                      f"{current.display_name} ({current.zid}) must pass every induction before becoming an administrator.",
+                                      409, {"zid": current.zid, "display_name": current.display_name, "missing_inductions": missing})
             updated = replace(current, role=Role(role) if role is not None else current.role,
                               active=current.active if active is None else active)
             if updated == current:
@@ -119,16 +132,105 @@ class BookingService:
             return updated
 
     def set_pending_hold_minutes(self, actor, resource_id, minutes):
+        return self.set_booking_policy(actor, resource_id, pending_hold_minutes=minutes)
+
+    def set_booking_policy(self, actor, resource_id, pending_hold_minutes=None, auto_approve_max_minutes=None):
+        """Manager only. Applies to future requests; existing holds and decisions are unchanged."""
         self.require_manager(actor)
-        if isinstance(minutes, bool) or not isinstance(minutes, int) or not 1 <= minutes <= MAX_PENDING_HOLD_MINUTES:
-            raise DomainError("VALIDATION_ERROR", f"pending_hold_minutes must be an integer from 1 to {MAX_PENDING_HOLD_MINUTES}.")
+        if pending_hold_minutes is None and auto_approve_max_minutes is None:
+            raise DomainError("VALIDATION_ERROR", "Provide pending_hold_minutes and/or auto_approve_max_minutes.")
+        for name, value, high in (("pending_hold_minutes", pending_hold_minutes, MAX_PENDING_HOLD_MINUTES),
+                                  ("auto_approve_max_minutes", auto_approve_max_minutes, 1440)):
+            if value is not None and (isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= high):
+                raise DomainError("VALIDATION_ERROR", f"{name} must be an integer from 1 to {high}.")
         with self.repo.atomic(resource_ids=[str(resource_id)]):
             current = self.resource(resource_id)
-            updated = replace(current, pending_hold_minutes=minutes)
+            updated = replace(current,
+                              pending_hold_minutes=current.pending_hold_minutes if pending_hold_minutes is None else pending_hold_minutes,
+                              auto_approve_max_minutes=current.auto_approve_max_minutes if auto_approve_max_minutes is None
+                              else auto_approve_max_minutes)
             self.repo.save_resource(updated)
             self._audit(actor.id, "RESOURCE_BOOKING_POLICY_UPDATED", "resource", current.id,
-                        previous_minutes=current.pending_hold_minutes, pending_hold_minutes=minutes)
+                        previous_minutes=current.pending_hold_minutes, pending_hold_minutes=updated.pending_hold_minutes,
+                        previous_auto_approve_max_minutes=current.auto_approve_max_minutes,
+                        auto_approve_max_minutes=updated.auto_approve_max_minutes)
             return updated
+
+    def set_resource_status(self, actor, resource_id, status, reason=None):
+        """Manager only: open a resource or take it out of service (MAINTENANCE / CLOSED).
+
+        Only new requests, approvals and waitlist promotions are stopped; existing bookings are kept so the
+        Manager can decide whether to cancel them (they are returned as affected_bookings). Reopening the
+        resource offers freed time to its waitlist again.
+        """
+        self.require_manager(actor)
+        if status not in ResourceStatus._value2member_map_:
+            raise DomainError("VALIDATION_ERROR", "status must be AVAILABLE, MAINTENANCE or CLOSED.")
+        reason = (reason or "").strip() or None
+        if status != ResourceStatus.AVAILABLE.value and not reason:
+            raise DomainError("REASON_REQUIRED", "Give a reason when taking a resource out of service.")
+        with self.repo.atomic(resource_ids=[str(resource_id)]):
+            current = self.resource(resource_id)
+            updated = replace(current, status=ResourceStatus(status),
+                              status_reason=None if status == ResourceStatus.AVAILABLE.value else reason)
+            if updated != current:
+                self.repo.save_resource(updated)
+                self._audit(actor.id, "RESOURCE_STATUS_CHANGED", "resource", current.id,
+                            previous_status=current.status.value, status=updated.status.value, reason=updated.status_reason)
+                if updated.bookable:
+                    self._promote_waitlist(updated.id)
+            affected = sorted((item for item in self.repo.list_bookings(resource_id=updated.id)
+                               if item.status in ACTIVE_REQUEST_STATUSES and item.end > self.now()),
+                              key=lambda item: (item.start, item.id))
+            return updated, affected
+
+    def induction_summary(self, student_id):
+        """Each induction requirement with this person's current status (NOT_SUBMITTED, PENDING, VERIFIED, REJECTED, EXPIRED)."""
+        summary = []
+        for requirement in sorted(self.repo.list_requirements(), key=lambda item: (item.name, item.id)):
+            record = self.latest_submission(student_id, requirement.id)
+            if record is None:
+                status = "NOT_SUBMITTED"
+            elif record.status == QualificationStatus.VERIFIED and record.valid_until is not None and record.valid_until <= self.now():
+                status = "EXPIRED"
+            else:
+                status = record.status.value
+            summary.append({"requirement_id": requirement.id, "name": requirement.name, "status": status,
+                            "valid_until": record.valid_until if record and status == "VERIFIED" else None})
+        return summary
+
+    def create_manager(self, actor, zid, display_name, university_email):
+        """Manager only ("Add manager"): the only way to create a Manager. Students and admins come from
+        existing accounts; their role is changed with update_user. No induction is required for a Manager."""
+        self.require_manager(actor)
+        zid = zid.strip().lower()
+        if not re.fullmatch(r"z\d{7}", zid):
+            raise DomainError("VALIDATION_ERROR", "zID must be 'z' followed by 7 digits.")
+        display_name, university_email = display_name.strip(), university_email.strip()
+        if not display_name:
+            raise DomainError("VALIDATION_ERROR", "A display name is required.")
+        with self.repo.atomic():
+            existing = next((item for item in self.repo.list_principals() if item.zid == zid), None)
+            if existing:
+                raise DomainError("USER_EXISTS", "A user with this zID already exists.", 409, {"user_id": existing.id})
+            try:
+                created = Principal(str(uuid4()), zid, display_name, Role.MANAGER, university_email)
+            except ValueError as exc:
+                raise DomainError("VALIDATION_ERROR", str(exc)) from exc
+            self.repo.save_principal(created)
+            self._audit(actor.id, "MANAGER_CREATED", "principal", created.id, zid=zid)
+            return created
+
+    def booking_report(self, actor, statuses=None, resource_id=None, student_id=None, since=None, until=None):
+        """Admin/Manager: every booking matching the filters, ordered by start time (for lists, print and CSV)."""
+        self.require_staff(actor)
+        self.process_due_requests()
+        records = [item for item in self.repo.list_bookings()
+                   if (not statuses or item.status.value in statuses)
+                   and (resource_id is None or item.resource_id == str(resource_id))
+                   and (student_id is None or item.student_id == str(student_id))
+                   and (since is None or item.end > since) and (until is None or item.start < until)]
+        return sorted(records, key=lambda item: (item.start, item.id))
 
     def _audit(self, actor_id, action, kind, entity_id, **details):
         self.repo.append_audit(AuditRecord(str(uuid4()), actor_id, action, kind, entity_id, self.now(), details))
@@ -189,11 +291,20 @@ class BookingService:
                  "end": existing.end.isoformat().replace("+00:00", "Z")},
             )
 
+    def _require_bookable(self, resource):
+        if not resource.bookable:
+            status = resource.status.value if resource.active else "INACTIVE"
+            raise DomainError("RESOURCE_UNAVAILABLE", "This resource is not accepting bookings right now.", 409,
+                              {"resource_status": status, "status_reason": resource.status_reason})
+
+    def _review_hold(self, booking):
+        """A qualified request longer than the auto-approval limit waits for a reviewer and keeps its slot until decided."""
+        return {"hold_until": booking.start, "review_due_at": None}
+
     def _validate_period(self, resource, start, end):
         if start.tzinfo is None or start.utcoffset() is None or end.tzinfo is None or end.utcoffset() is None:
             raise DomainError("INVALID_TIME", "Start and end require UTC offsets.")
-        if not resource.active:
-            raise DomainError("RESOURCE_UNAVAILABLE", "The resource is inactive.", 409)
+        self._require_bookable(resource)
         if start >= end or start <= self.now():
             raise DomainError("INVALID_TIME", "Use a future start time and an end later than start.")
         duration = (end - start).total_seconds() / 60
@@ -263,11 +374,14 @@ class BookingService:
             if booking.start <= now:
                 status, reason, action = BookingStatus.EXPIRED, "START_TIME_PASSED", "BOOKING_TIME_PROCESSED"
             else:
-                if resource is None or not resource.active or self._overlaps(booking.resource_id, booking.start, booking.end, booking.id):
+                if resource is None or not resource.bookable or self._overlaps(booking.resource_id, booking.start, booking.end, booking.id):
                     continue
                 eligibility, qualified = self.qualification_state(booking.student_id, resource, booking.end)
                 action = "BOOKING_PROMOTED"
-                if qualified:
+                if qualified and resource.needs_review(booking.start, booking.end):
+                    status, reason = BookingStatus.PENDING_APPROVAL, "DURATION_REVIEW"
+                    extra = self._review_hold(booking)
+                elif qualified:
                     status, reason = BookingStatus.APPROVED, "PROMOTED_FROM_WAITLIST"
                 elif eligibility == "PENDING":
                     if booking.hold_until is not None:
@@ -335,6 +449,8 @@ class BookingService:
                 status = BookingStatus.WAITLISTED
                 reason = "TIME_CONFLICT" if any(item.status == BookingStatus.APPROVED for item in conflicts) else "TEMPORARY_HOLD_CONFLICT"
                 review_due = None if qualified else now + timedelta(hours=self.wait_hours)
+            elif qualified and resource.needs_review(start, end):
+                status, reason = BookingStatus.PENDING_APPROVAL, "DURATION_REVIEW"
             elif qualified:
                 status, reason = BookingStatus.APPROVED, "AUTO_APPROVED"
             else:
@@ -343,10 +459,14 @@ class BookingService:
                     status, reason = BookingStatus.PENDING_APPROVAL, "REQUEST_STARTS_BEFORE_REVIEW"
                 else:
                     status, reason = BookingStatus.WAITING_QUALIFICATION, "QUALIFICATION_PENDING"
+            if reason == "DURATION_REVIEW":
+                hold_until = start  # holds the slot until an Admin/Manager decides
+            elif not conflicts and status in HEAD_STATUSES:
+                hold_until = min(start, now + timedelta(minutes=resource.pending_hold_minutes))
+            else:
+                hold_until = None
             booking = Booking(booking_id, actor.id, resource_id, start, end, purpose.strip(), now, status, reason,
-                              review_due_at=review_due, updated_at=now,
-                              hold_until=min(start, now + timedelta(minutes=resource.pending_hold_minutes))
-                              if not conflicts and status in (BookingStatus.WAITING_QUALIFICATION, BookingStatus.PENDING_APPROVAL) else None)
+                              review_due_at=review_due, updated_at=now, hold_until=hold_until)
             self._save_booking(booking)
             self._audit(actor.id, "BOOKING_CREATED", "booking", booking.id, status=status.value, reason_code=reason,
                         hold_until=booking.hold_until.isoformat() if booking.hold_until else None)
@@ -446,14 +566,17 @@ class BookingService:
                     _, eligible = self.qualification_state(booking.student_id, resource, booking.end)
                     if not eligible:
                         next_status, next_reason = BookingStatus.PENDING_APPROVAL, "QUALIFICATION_EXPIRES_BEFORE_END"
-                    elif not resource.active:
+                    elif not resource.bookable:
                         next_status, next_reason = BookingStatus.PENDING_APPROVAL, "RESOURCE_UNAVAILABLE"
                     elif self._overlaps(booking.resource_id, booking.start, booking.end, booking.id):
                         # Its timed hold ended and the time was taken meanwhile: queue behind the holder.
                         next_status, next_reason = BookingStatus.WAITLISTED, "TIME_CONFLICT"
+                    elif resource.needs_review(booking.start, booking.end):
+                        next_status, next_reason = BookingStatus.PENDING_APPROVAL, "DURATION_REVIEW"
                     else:
                         next_status, next_reason = BookingStatus.APPROVED, "AUTO_APPROVED_AFTER_QUALIFICATION"
-                revised = replace(booking, status=next_status, reason_code=next_reason, updated_at=self.now())
+                extra = self._review_hold(booking) if next_reason == "DURATION_REVIEW" else {}
+                revised = replace(booking, status=next_status, reason_code=next_reason, updated_at=self.now(), **extra)
                 self._save_booking(revised)
                 self._audit(actor.id, "BOOKING_REEVALUATED", "booking", revised.id, status=next_status.value, reason_code=next_reason)
                 changed.append(revised)
@@ -512,7 +635,8 @@ class BookingService:
                 return source
             if source.status in (BookingStatus.REJECTED, BookingStatus.EXPIRED) or source.start <= self.now():
                 raise DomainError("REQUEST_NOT_CANCELLABLE", "Only future active requests can be cancelled.", 409)
-            revised = replace(source, status=BookingStatus.CANCELLED, reason_code="CANCELLED_BY_USER", updated_at=self.now())
+            reason = "CANCELLED_BY_STAFF" if actor.role in (Role.ADMIN, Role.MANAGER) else "CANCELLED_BY_USER"
+            revised = replace(source, status=BookingStatus.CANCELLED, reason_code=reason, updated_at=self.now())
             self._save_booking(revised)
             self._audit(actor.id, "BOOKING_CANCELLED", "booking", revised.id)
             self._promote_waitlist(revised.resource_id)
@@ -533,6 +657,11 @@ class BookingService:
             resource = self.resource(source.resource_id)
             self._validate_period(resource, start, end)
             self._validate_horizon(resource, start)
+            if resource.needs_review(start, end):
+                raise DomainError("RESCHEDULE_NEEDS_REVIEW",
+                                  f"Bookings longer than {resource.auto_approve_max_minutes} minutes need approval; "
+                                  "cancel this booking and submit a new request.", 409,
+                                  {"auto_approve_max_minutes": resource.auto_approve_max_minutes})
             self._reject_duplicate_request(actor.id, source.resource_id, start, end, source.id)
             eligibility, qualified = self.qualification_state(source.student_id, resource, end)
             if not qualified:
@@ -664,9 +793,16 @@ class BookingService:
                     changed.extend(self._promote_waitlist(resource_id))
         return changed
 
-    def availability(self, actor, resource_id, day, duration_minutes=30):
+    def availability(self, actor, resource_id, day, duration_minutes=30, exclude_booking_id=None):
+        """exclude_booking_id: the caller's own booking being rescheduled, so its current time shows as free."""
         self.process_due_requests()
         resource = self.resource(resource_id)
+        exclude = None
+        if exclude_booking_id:
+            excluded = self.booking_for(actor, exclude_booking_id)
+            if excluded.resource_id != resource.id:
+                raise DomainError("VALIDATION_ERROR", "exclude_booking_id must be a booking for this resource.")
+            exclude = excluded.id
         if not resource.active:
             raise DomainError("RESOURCE_UNAVAILABLE", "The resource is inactive.", 409)
         if duration_minutes < 1 or duration_minutes > resource.max_booking_minutes or duration_minutes % resource.slot_minutes:
@@ -676,15 +812,16 @@ class BookingService:
         closing = datetime.combine(day, resource.closing_time, zone).astimezone(UTC)
         eligibility, _ = self.qualification_state(actor.id, resource)
         own_requests = [item for item in self.repo.list_bookings(student_id=actor.id, resource_id=resource.id)
-                        if item.status in ACTIVE_REQUEST_STATUSES]
+                        if item.status in ACTIVE_REQUEST_STATUSES and item.id != exclude]
         slots = []
         while cursor + timedelta(minutes=duration_minutes) <= closing:
             end = cursor + timedelta(minutes=duration_minutes)
-            blockers = self._overlaps(resource.id, cursor, end)
+            blockers = self._overlaps(resource.id, cursor, end, exclude)
             holds = [item for item in blockers if item.hold_is_active(self.now())]
             requested_by_me = any(cursor < item.end and item.start < end for item in own_requests)
             window = self._window_reason(resource, cursor)
             reason = ("START_TIME_PASSED" if cursor <= self.now() else
+                      "RESOURCE_UNAVAILABLE" if not resource.bookable else
                       "TOO_SOON" if window == "BOOKING_TOO_SOON" else
                       "TOO_FAR_AHEAD" if window == "BOOKING_TOO_FAR_AHEAD" else
                       "BOOKED" if any(item.status == BookingStatus.APPROVED for item in blockers) else
@@ -697,5 +834,8 @@ class BookingService:
             cursor += timedelta(minutes=resource.slot_minutes)
         return {"resource_id": resource.id, "date": day.isoformat(), "timezone": resource.timezone,
                 "duration_minutes": duration_minutes, "slots": slots, **self._window_details(resource),
-                "can_request": actor.role == Role.STUDENT and eligibility in ("PENDING", "VERIFIED"),
+                "resource_status": resource.status.value, "status_reason": resource.status_reason,
+                "auto_approve_max_minutes": resource.auto_approve_max_minutes,
+                "needs_review": duration_minutes > resource.auto_approve_max_minutes,
+                "can_request": actor.role == Role.STUDENT and eligibility in ("PENDING", "VERIFIED") and resource.bookable,
                 "qualification_status": eligibility}

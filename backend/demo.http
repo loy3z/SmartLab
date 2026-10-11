@@ -184,11 +184,12 @@ Content-Type: application/json
 
 {"zid": "z9000002"}
 
-### Staff and user list (Manager only)
+### Staff and user list with each person's induction status (Manager only)
 GET {{baseUrl}}/admin/users/
 Authorization: Bearer {{managerToken}}
 
-### Nominate a role or deactivate an account (Manager only; not yourself)
+### Move a student to ADMIN (or back to STUDENT), or deactivate an account (Manager only; not yourself).
+### A student needs every induction verified first; this demo student has none, so expect 409 INDUCTION_REQUIRED_FOR_ADMIN.
 PATCH {{baseUrl}}/admin/users/00000000-0000-0000-0000-000000000502/
 Authorization: Bearer {{managerToken}}
 Content-Type: application/json
@@ -223,3 +224,39 @@ Authorization: Bearer {{adminToken}}
 Content-Type: application/json
 
 {}
+
+### All bookings with student and resource names (Admin or Manager)
+GET {{baseUrl}}/admin/bookings/?status=ALL&resource_id={{resourceId}}
+Authorization: Bearer {{managerToken}}
+
+### Export bookings as CSV (Manager only)
+GET {{baseUrl}}/admin/bookings/export/?status=APPROVED
+Authorization: Bearer {{managerToken}}
+
+### Put a room under maintenance (Manager only; existing bookings are kept and listed)
+PATCH {{baseUrl}}/admin/resources/{{resourceId}}/status/
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{"status": "MAINTENANCE", "reason": "Fume hood repair"}
+
+### Reopen the room
+PATCH {{baseUrl}}/admin/resources/{{resourceId}}/status/
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{"status": "AVAILABLE"}
+
+### Set the automatic-approval limit (Manager only; longer requests go to an admin)
+PATCH {{baseUrl}}/admin/resources/{{resourceId}}/booking-policy/
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{"auto_approve_max_minutes": 120}
+
+### Add manager: the only way to create a Manager (Manager only; creates a new account)
+POST {{baseUrl}}/admin/users/managers/
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{"zid": "z5123456", "display_name": "New Lab Manager", "university_email": "z5123456@ad.unsw.edu.au"}

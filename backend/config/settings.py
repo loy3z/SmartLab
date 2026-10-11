@@ -48,6 +48,10 @@ if not 1 <= QUALIFICATION_VALIDITY_DAYS <= 3650:
     raise ValueError("QUALIFICATION_VALIDITY_DAYS must be from 1 to 3650")
 if not 1 <= DEFAULT_PENDING_HOLD_MINUTES <= 20160:
     raise ValueError("DEFAULT_PENDING_HOLD_MINUTES must be from 1 to 20160")
+# Qualified requests up to this length are approved automatically; longer ones need an Admin/Manager.
+DEFAULT_AUTO_APPROVE_MAX_MINUTES = int(os.getenv("DEFAULT_AUTO_APPROVE_MAX_MINUTES", "120"))
+if not 1 <= DEFAULT_AUTO_APPROVE_MAX_MINUTES <= 1440:
+    raise ValueError("DEFAULT_AUTO_APPROVE_MAX_MINUTES must be from 1 to 1440")
 # Sprint 1 fixed rules (demo values): latest bookable start date, and how many undecided requests a
 # student whose induction is still under review may hold per qualification.
 MIN_ADVANCE_DAYS = int(os.getenv("MIN_ADVANCE_DAYS", "7"))

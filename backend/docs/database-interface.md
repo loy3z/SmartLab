@@ -8,6 +8,8 @@
 | --- | --- | --- |
 | Principal | `university_email: str` | 必填；正式环境由可信 SSO／身份记录提供。与 zID、姓名一起返回用户接口。不要据此推断角色或资格 |
 | Resource | `pending_hold_minutes: int` | 必填整数 1–20160；系统默认 30。Manager 修改时持久化并记录审计 |
+| Resource | `auto_approve_max_minutes: int` | 必填整数 1–1440；默认 120（`DEFAULT_AUTO_APPROVE_MAX_MINUTES` 只用于种子数据）。超过这个时长的申请转人工审批。Manager 修改时持久化并记录审计 |
+| Resource | `status: str`、`status_reason: str \| None` | `status` 取值 `AVAILABLE`／`MAINTENANCE`／`CLOSED`，默认 `AVAILABLE`；`status_reason` 可空，最长 500 字符。与 `active` 不同：`active=false` 表示资源下架不显示，`status` 是 Manager 随时切换的运营状态 |
 | Booking | `hold_until: datetime \| None` | 可空、带时区。保存成为第一位时算出的截止时间，不随资源规则变化重算 |
 | Booking | `revision: int` | 改期功能新增，默认 1，每次改期加 1 |
 | Booking | `status` | 新增 `WAITLISTED`（候补），需要放宽状态字段的取值约束 |
@@ -15,7 +17,7 @@
 
 `hold_active`、`blocks_slot`、`waitlist_position` 是 API 根据状态、提交顺序和服务端时间计算的响应字段，不需要持久化。申请状态共七种：`WAITING_QUALIFICATION`、`PENDING_APPROVAL`、`WAITLISTED`、`APPROVED`、`REJECTED`、`CANCELLED`、`EXPIRED`。
 
-Manager 可以通过 `PATCH admin/users/{id}/` 修改用户的 `role` 和 `active`，业务层调用 `save_principal` 保存，并在同一事务里写入 `USER_UPDATED` 审计记录；`atomic` 会同时锁住所有 Manager 和被修改的用户，防止并发操作导致系统里没有启用的 Manager。演示用户可以直接写进数据库，`role` 只能是 `STUDENT`／`ADMIN`／`MANAGER`，至少要有一个启用的 Manager。
+Manager 可以通过 `POST admin/users/managers/` 新建 Manager 账号（`save_principal`，zID 唯一、小写保存，写 `MANAGER_CREATED` 审计；这是创建 Manager 的唯一方式），通过 `PATCH admin/users/{id}/` 在 Student／Admin 之间调整 `role`（学生升 Admin 前检查每项 induction 的最新提交都已通过且未过期，用到 `list_requirements` 和 `list_submissions`）和修改 `active`，业务层调用 `save_principal` 保存，并在同一事务里写入 `USER_UPDATED` 审计记录；`atomic` 会同时锁住所有 Manager 和被修改的用户，防止并发操作导致系统里没有启用的 Manager。演示用户可以直接写进数据库，`role` 只能是 `STUDENT`／`ADMIN`／`MANAGER`，至少要有一个启用的 Manager。
 
 `Principal` 构造器现在要求邮箱参数；认证适配器和数据库映射必须同步更新。演示注册使用 EmailField 校验格式，尚未验证邮箱所有权或学校域名，不能当作正式认证证明。管理员／Manager 角色只由受信任来源或系统所有者指定，不能从学生注册请求接收。
 

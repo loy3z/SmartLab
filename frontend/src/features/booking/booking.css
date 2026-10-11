@@ -102,7 +102,11 @@
 .bk-login { min-height: 100vh; display: grid; place-items: center; }
 .bk-panel { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 32px; display: flex; flex-direction: column; gap: 12px; width: 340px; }
 
+.bk-mobile-nav { display: none; }
+
 @media (max-width: 800px) {
+  .bk-mobile-nav { display: flex; gap: 8px; overflow-x: auto; padding: 12px 16px 0; }
+  .bk-mobile-nav .bk-pill { white-space: nowrap; padding: 8px 16px; font-size: 14px; }
   .bk-side { display: none; }
   .bk-content { padding: 20px 16px; }
   .bk-banners, .bk-grid { grid-template-columns: 1fr; }

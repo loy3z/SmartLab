@@ -88,6 +88,8 @@ export interface Booking {
   hold_until: string | null
   hold_active: boolean
   blocks_slot: boolean
+  /** 1-based place among overlapping waitlisted requests; only meaningful when WAITLISTED. */
+  waitlist_position?: number | null
 }
 
 export interface ListResponse<T> {

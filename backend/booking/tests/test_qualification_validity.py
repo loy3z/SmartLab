@@ -55,7 +55,7 @@ class QualificationValidityServiceTests(BookingFixtureMixin, SimpleTestCase):
         inside = self.book(start=expiry - timedelta(hours=1), end=expiry)
         self.assertEqual(inside.status, BookingStatus.APPROVED)
         with self.assertRaises(DomainError) as denied:
-            self.book(start=expiry - timedelta(minutes=30), end=expiry + timedelta(minutes=30))
+            self.book(start=expiry, end=expiry + timedelta(hours=1))
         self.assertEqual(denied.exception.status, 403)
         self.assertEqual(denied.exception.code, "QUALIFICATION_REQUIRED")
         self.assertEqual(denied.exception.details["qualification_status"], "EXPIRES_BEFORE_END")

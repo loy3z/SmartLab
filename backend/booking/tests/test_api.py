@@ -186,7 +186,13 @@ class BookingAPITests(BookingAPIFixtureMixin, SimpleTestCase):
 
     def test_conflict_is_waitlisted_and_promoted_automatically_after_cancellation(self):
         first = self.create_booking()
-        conflict = self.create_booking()
+        submission = self.submit(self.student)
+        reviewed = self.admin.post(
+            f"/api/v1/admin/qualifications/{submission['id']}/review/",
+            {"decision": "VERIFIED"}, format="json",
+        )
+        self.assertEqual(reviewed.status_code, 200, reviewed.data)
+        conflict = self.create_booking(self.student)
         self.assertEqual(first.status_code, 201, first.data)
         self.assertEqual(conflict.status_code, 201, conflict.data)
         self.assertEqual(conflict.data["status"], "WAITLISTED")
@@ -199,9 +205,37 @@ class BookingAPITests(BookingAPIFixtureMixin, SimpleTestCase):
             f"/api/v1/bookings/{first.data['id']}/cancel/", {}, format="json"
         )
         self.assertEqual(cancelled.status_code, 200, cancelled.data)
-        promoted = self.verified.get(f"/api/v1/bookings/{conflict.data['id']}/")
+        promoted = self.student.get(f"/api/v1/bookings/{conflict.data['id']}/")
         self.assertEqual(promoted.data["status"], "APPROVED")
         self.assertEqual(promoted.data["reason_code"], "PROMOTED_FROM_WAITLIST")
+
+    def test_same_student_cannot_request_overlapping_time_for_same_resource_twice(self):
+        first = self.create_booking(payload=self.payload(hour=10))
+        self.assertEqual(first.status_code, 201, first.data)
+
+        exact = self.create_booking(payload=self.payload(hour=10))
+        self.assert_error(exact, 409)
+        self.assertEqual(exact.data["error"]["code"], "DUPLICATE_BOOKING")
+        self.assertEqual(exact.data["error"]["details"]["booking_id"], first.data["id"])
+
+        overlapping = self.payload(hour=10)
+        start = datetime.fromisoformat(overlapping["start"]) + timedelta(minutes=30)
+        overlapping["start"] = start.isoformat()
+        overlapping["end"] = (start + timedelta(hours=1)).isoformat()
+        overlap = self.create_booking(payload=overlapping)
+        self.assert_error(overlap, 409)
+        self.assertEqual(overlap.data["error"]["code"], "DUPLICATE_BOOKING")
+        self.assertEqual(len(self.items(self.verified.get("/api/v1/bookings/"))), 1)
+
+    def test_cancelled_request_does_not_prevent_booking_same_time_again(self):
+        first = self.create_booking()
+        cancelled = self.verified.post(
+            f"/api/v1/bookings/{first.data['id']}/cancel/", {}, format="json",
+        )
+        self.assertEqual(cancelled.status_code, 200, cancelled.data)
+        replacement = self.create_booking()
+        self.assertEqual(replacement.status_code, 201, replacement.data)
+        self.assertEqual(replacement.data["status"], "APPROVED")
 
     def test_24_hour_escalation_does_not_bypass_pending_qualification(self):
         # Only relevant when a Manager sets a hold longer than 24 hours (default is 30 minutes).
@@ -251,7 +285,7 @@ class BookingAPITests(BookingAPIFixtureMixin, SimpleTestCase):
             "start": occupied["start"], "end": occupied["end"],
         }, format="json")
         self.assert_error(conflict, 409)
-        self.assertEqual(conflict.data["error"]["code"], "BOOKING_CONFLICT")
+        self.assertEqual(conflict.data["error"]["code"], "DUPLICATE_BOOKING")
         self.submit(self.student)
         held = self.create_booking(self.student, self.payload(day_offset=6, hour=14)).data
         self.assertTrue(held["hold_active"])
@@ -352,7 +386,8 @@ class BookingAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         payload["start"] = datetime.fromisoformat(payload["start"]).astimezone(timezone.utc).isoformat()
         payload["end"] = datetime.fromisoformat(payload["end"]).astimezone(timezone.utc).isoformat()
         same_instant = self.create_booking(payload=payload)
-        self.assertEqual(same_instant.data["status"], "WAITLISTED")
+        self.assert_error(same_instant, 409)
+        self.assertEqual(same_instant.data["error"]["code"], "DUPLICATE_BOOKING")
 
     def test_idempotency_key_replays_original_and_rejects_changed_payload(self):
         first = self.create_booking(HTTP_IDEMPOTENCY_KEY="one-click")
@@ -365,7 +400,11 @@ class BookingAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assert_error(changed, 409)
 
     def test_availability_does_not_publish_other_students_booking_details(self):
-        self.create_booking()
+        booking = self.create_booking()
+        own_response = self.verified.get(
+            f"/api/v1/resources/{self.room['id']}/availability/",
+            {"date": "2026-10-08", "duration_minutes": 60},
+        )
         response = self.student.get(
             f"/api/v1/resources/{self.room['id']}/availability/",
             {"date": "2026-10-08", "duration_minutes": 60},
@@ -380,7 +419,15 @@ class BookingAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         }
         self.assertFalse(slots[datetime(2026, 10, 8, 10).time()]["available"])
         self.assertEqual(slots[datetime(2026, 10, 8, 10).time()]["reason_code"], "BOOKED")
+        self.assertFalse(slots[datetime(2026, 10, 8, 10).time()]["requested_by_me"])
         self.assertTrue(slots[datetime(2026, 10, 8, 11).time()]["available"])
+        own_slots = {
+            datetime.fromisoformat(item["start"]).astimezone(SYDNEY).time(): item
+            for item in own_response.data["slots"]
+        }
+        self.assertTrue(own_slots[datetime(2026, 10, 8, 10).time()]["requested_by_me"])
+        self.assertNotIn("booking_id", own_slots[datetime(2026, 10, 8, 10).time()])
+        self.assertEqual(booking.data["status"], "APPROVED")
 
     @override_settings(AUTH_PROVIDER="booking.authentication.DisabledIdentityProvider")
     def test_unconfigured_sso_rejects_bearer_without_trusting_client_claims(self):

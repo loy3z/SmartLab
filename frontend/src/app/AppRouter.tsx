@@ -11,13 +11,14 @@ import { ManagerBookingsPage } from '../features/manager/ManagerBookingsPage'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { AppLayout } from './AppLayout'
 import { AccountPage, HelpPage } from './UtilityPages'
+import { ManagerUsersPage } from '../features/manager/ManagerUsersPage'
 import { canAccess, homePath, isKnownPath, loginDestination, normalizePath } from './routes'
 
 const titles: Record<string, string> = {
   '/dashboard': 'Dashboard', '/resources': 'Book a resource', '/bookings': 'My bookings',
   '/induction': 'Induction & training', '/admin/qualifications': 'Qualification review',
   '/admin/bookings': 'Booking review', '/manager/bookings': 'Room management',
-  '/account': 'Account details', '/help': 'Help & support', '/login': 'Sign in',
+  '/account': 'Account details', '/help': 'Help & support', '/login': 'Sign in', '/manager/users': 'User management',
 }
 
 function useSignOut() {
@@ -128,6 +129,7 @@ export function AppRouter() {
           <Route path="/admin/qualifications" caseSensitive element={<QualificationReviewPage />} />
           <Route path="/admin/bookings" caseSensitive element={<BookingReviewPage />} />
           <Route path="/manager/bookings" caseSensitive element={<ManagerBookingsPage />} />
+          <Route path="/manager/users" caseSensitive element={<ManagerUsersPage />} />
           <Route path="/account" caseSensitive element={auth.user && <AccountPage user={auth.user} />} />
           <Route path="/help" caseSensitive element={auth.user && <HelpPage user={auth.user} />} />
         </Route>

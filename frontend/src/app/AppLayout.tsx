@@ -66,7 +66,16 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
     { path: '/admin/qualifications', label: 'Qualification Review', icon: <CapIcon /> },
     { path: '/admin/bookings', label: 'Booking Review', icon: <FileIcon /> },
     ...(user.role === 'MANAGER' ? [
-      { path: '/manager/bookings', label: 'Room Management', icon: <CalendarIcon /> },
+      {
+        path: '/manager/bookings',
+        label: 'Room Management',
+        icon: <CalendarIcon />,
+      },
+      {
+        path: '/manager/users',
+        label: 'User Management',
+        icon: <UserIcon />,
+      },
     ] : []),
   ] : []
 

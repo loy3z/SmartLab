@@ -8,6 +8,7 @@ const permissions: Record<string, readonly Role[]> = {
   '/admin/qualifications': ['ADMIN', 'MANAGER'],
   '/admin/bookings': ['ADMIN', 'MANAGER'],
   '/manager/bookings': ['MANAGER'],
+  '/manager/users': ['MANAGER'],
   '/account': ['STUDENT', 'ADMIN', 'MANAGER'],
   '/help': ['STUDENT', 'ADMIN', 'MANAGER'],
 }

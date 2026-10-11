@@ -32,10 +32,12 @@ test('review pages allow Admin and Manager, while management is Manager-only', (
     assert.equal(canAccess(path, 'ADMIN'), true, path)
     assert.equal(canAccess(path, 'MANAGER'), true, path)
   }
-  assert.equal(isKnownPath('/manager/bookings'), true)
-  assert.equal(canAccess('/manager/bookings', 'STUDENT'), false)
-  assert.equal(canAccess('/manager/bookings', 'ADMIN'), false)
-  assert.equal(canAccess('/manager/bookings', 'MANAGER'), true)
+  for (const path of ['/manager/bookings', '/manager/users']) {
+    assert.equal(isKnownPath(path), true, path)
+    assert.equal(canAccess(path, 'STUDENT'), false, path)
+    assert.equal(canAccess(path, 'ADMIN'), false, path)
+    assert.equal(canAccess(path, 'MANAGER'), true, path)
+  }
 })
 
 test('all signed-in roles can read their account and help', () => {
@@ -65,6 +67,7 @@ test('login returns to an authorized deep link with its query intact', () => {
   assert.equal(loginDestination({ from: '/bookings' }, 'STUDENT'), '/bookings')
   assert.equal(loginDestination({ from: '/resources/?kind=ROOM' }, 'STUDENT'), '/resources/?kind=ROOM')
   assert.equal(loginDestination({ from: '/admin/bookings?status=WAITLISTED' }, 'MANAGER'), '/admin/bookings?status=WAITLISTED')
+  assert.equal(loginDestination({ from: '/manager/users' }, 'MANAGER'), '/manager/users')
 })
 
 test('login rejects forbidden, unknown, external and malformed return destinations', () => {

@@ -71,6 +71,7 @@ class OutlookWorkflowTests(SimpleTestCase):
     def setUp(self):
         self.service = reset_runtime()
         self.service.clock = lambda: NOW
+        self.service.min_advance_days, self.service.max_advance_days = 0, 7  # workflow tests book a few days ahead; see test_booking_window.py
         self.provider = FakeCalendar()
         self.sync = self.service.calendar_sync
         self.sync.provider = self.provider
@@ -184,12 +185,19 @@ class OutlookWorkflowTests(SimpleTestCase):
         self.assertTrue(all(call[-1] == original.event_id for call in self.provider.updates))
 
     def test_graph_failure_preserves_approved_booking_and_retry_recovers(self):
+        submission_id = self.submit()
+        reviewed = self.admin.post(
+            f"/api/v1/admin/qualifications/{submission_id}/review/",
+            {"decision": "VERIFIED"},
+            format="json",
+        )
+        self.assertEqual(reviewed.status_code, 200, reviewed.data)
         self.provider.error = OutlookError("GRAPH_HTTP_429", retry_after=120)
         booking = self.create().data
         self.assertEqual(booking["status"], "APPROVED")
         self.assertEqual(booking["outlook_sync"]["status"], "FAILED")
         self.assertEqual(booking["outlook_sync"]["last_error"], "GRAPH_HTTP_429")
-        self.assertEqual(self.create().data["status"], "WAITLISTED")
+        self.assertEqual(self.create(self.student).data["status"], "WAITLISTED")
         record = self.service.repo.get_outlook_sync(booking["id"])
         self.assertEqual(record.next_attempt_at, NOW + timedelta(seconds=120))
         self.sync.process_pending()
@@ -288,6 +296,7 @@ class OutlookWorkflowTests(SimpleTestCase):
     def test_disabled_integration_keeps_the_original_booking_workflow(self):
         self.service = reset_runtime()
         self.service.clock = lambda: NOW
+        self.service.min_advance_days, self.service.max_advance_days = 0, 7  # workflow tests book a few days ahead; see test_booking_window.py
         booking = self.create().data
         self.assertEqual(booking["outlook_sync"]["status"], "DISABLED")
         self.assertEqual(self.provider.creates, [])

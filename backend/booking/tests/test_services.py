@@ -24,7 +24,9 @@ class BookingFixtureMixin:
         self.now = datetime(2030, 1, 7, 0, tzinfo=timezone.utc)
         self.repo = MemoryRepository()
         self.service = BookingService(
-            self.repo, MemoryFileStorage(), clock=lambda: self.now, wait_hours=24
+            self.repo, MemoryFileStorage(), clock=lambda: self.now, wait_hours=24,
+            # Workflow tests book a few days ahead; the booking window has its own tests in test_booking_window.py.
+            min_advance_days=0, max_advance_days=7,
         )
         self.student = Principal(str(uuid4()), "z1111111", "First student", Role.STUDENT, "z1111111@ad.unsw.edu.au")
         self.other = Principal(str(uuid4()), "z2222222", "Second student", Role.STUDENT, "z2222222@ad.unsw.edu.au")

@@ -71,6 +71,8 @@ WHERE resource_id = :resource_id
 
 数据库索引可覆盖资源、时间区间、状态和占位截止时间。仅对 APPROVED 建区间排斥约束无法防止跨状态的占位冲突，仍需资源锁和事务内重查。可用性接口只提供快照，不能代替写入事务中的校验。实际适配器需验证两个并发请求只会产生一个占位／获批预约，且错误能回滚全部关联写入。
 
+同一资源／学生锁内还必须检查该学生是否已经有与新时段重叠的有效申请（状态为 `WAITING_QUALIFICATION`、`PENDING_APPROVAL`、`WAITLISTED` 或 `APPROVED`）。存在时业务层返回 `DUPLICATE_BOOKING`，不能再创建一条候补记录。终态记录不阻止重新申请；不同资源同一时间不属于重复预约。
+
 规则更新写入 `RESOURCE_BOOKING_POLICY_UPDATED` 审计，保存前后分钟数。身份、资料、资格有效期、审批与取消的现有字段及审计继续持久化。`QualificationSubmission.valid_until` 在 VERIFIED 时由业务服务设定（审核时间加 `QUALIFICATION_VALIDITY_DAYS`），PENDING／REJECTED 为空；`QUALIFICATION_VERIFIED` 审计的 details 带 `valid_until`。审计查询接口 `GET admin/audit/` 目前在业务层对 `list_audit()` 的结果做筛选和分页；数据量变大后，数据库适配器应为审计表的 `at`、`entity_type`＋`entity_id`、`actor_id`、`action` 建索引，必要时再把筛选下推到查询中（结果需与现有测试一致）。审计记录只追加，不修改、不删除。每个资源目前关联一项 `required_qualification_id`，不同资源可以不同；不要改成用户全局 inducted 布尔值。未来多项前置资格需单独扩展关系和接口。
 
 ## 接入／迁移建议

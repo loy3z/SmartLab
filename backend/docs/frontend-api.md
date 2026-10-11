@@ -61,7 +61,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 
 可用性查询是当时的快照，提交前后仍可能有人占用时段。显示 `available=false` 的时段不能提示“可立即预约”；如果允许发送冲突人工审核请求，应明确展示“已有预约／临时占位，将进入人工审核”。每个资源的 `required_qualification_id` 可以不同，前端必须读取资源要求，不能用一个全局“已完成 induction”开关判断所有资源的资格。
 
-`slots[]` 的 `reason_code` 为 `START_TIME_PASSED`、`BOOKED`、`TEMPORARILY_HELD` 或 `null`。临时占位时返回 `hold_until`（UTC 截止时间）和 `held_by_me`（是否为当前学生自己的占位）；其他情况分别为 `null`、`false`。不返回其他学生身份。可显示占位倒计时，到期刷新查询，最终以服务端响应为准；`can_request` 表示身份／资料允许提交申请，不代表所选时段能立即获批。
+`slots[]` 的 `reason_code` 为 `START_TIME_PASSED`、`TOO_SOON`（不足 7 天）、`TOO_FAR_AHEAD`（超过 30 天）、`BOOKED`、`TEMPORARILY_HELD` 或 `null`。响应顶层另有 `earliest_date`、`latest_date`、`min_advance_days`、`max_advance_days`，供日期选择器限制范围。临时占位时返回 `hold_until`（UTC 截止时间）和 `held_by_me`（是否为当前学生自己的占位）；`requested_by_me` 表示当前学生已经对同一资源提交了与该时段重叠的有效申请，前端应禁用再次提交。接口不返回其他学生身份。可显示占位倒计时，到期刷新查询，最终以服务端响应为准；`can_request` 表示身份／资料允许提交申请，不代表所选时段能立即获批。
 
 ## 状态与界面文字
 
@@ -100,7 +100,9 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 - 递补不会主动通知，学生需要刷新“我的预约”或 dashboard 才能看到状态变化，前端可轮询。递补获批的预约会和触发它的那次操作一起同步到 Outlook。
 
 **限制**：
-- 预约开始日期最多为资源当地日期“今天 + 7 天”（`MAX_ADVANCE_DAYS`），超出返回 400 `BOOKING_TOO_FAR_AHEAD`，`details.latest_date` 为最远可约日期。日期选择器可以直接限制在这个范围内。
+- **预约窗口（OpenAPI 1.5.0 起）**：预约开始日期（资源当地日期）必须在“今天 + 7 天”到“今天 + 30 天”之间（`MIN_ADVANCE_DAYS`／`MAX_ADVANCE_DAYS`），即至少提前一周、最多提前一个月。例：周六 10/10 最早能约下周六 10/17，最晚 11/9。太近返回 400 `BOOKING_TOO_SOON`，太远返回 400 `BOOKING_TOO_FAR_AHEAD`；两者的 `details` 都有 `earliest_date`、`latest_date`、`min_advance_days`、`max_advance_days`。改期同样受这个窗口限制；已提交的申请不受影响，日期临近后照常审核和递补。
+  - 日期选择器：用时段查询响应里的 `earliest_date`／`latest_date` 设置 `<input type="date" min max>`，不要在前端写死天数。
+  - 因为至少提前一周，“开始前 24 小时内直接转人工审批”在默认配置下不会发生。
 - 资料还在审核中的学生，每项资格同时只能有 1 张未决申请（`UNVERIFIED_PENDING_LIMIT`，包括候补）。再提交返回 409 `PENDING_REQUEST_LIMIT`，`details.pending_booking_ids` 是已有的申请。资格已通过的学生不受这个限制。
 
 `TEMPORARILY_HELD` 时段可显示为“审核中，暂不可约”，并显示 `hold_until`；学生仍可提交，提交后会进入候补。刷新、幂等重试和审批升级都不会续占。
@@ -188,9 +190,11 @@ Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{
 | `BOOKING_HOLD_CONFLICT` | 409 | 人工批准失败，提示时段仍临时占用；`details.hold_until` 为当前占位截止时间 |
 | `REQUEST_WAITLISTED` | 409 | 候补不能直接批准，会按顺序自动递补；管理员可以拒绝 |
 | `PENDING_REQUEST_LIMIT` | 409 | 资料审核中只能有 1 张未决申请；引导学生查看或取消 `details.pending_booking_ids` |
-| `BOOKING_TOO_FAR_AHEAD` | 400 | 超出可预约范围；`details.latest_date` 为最远日期 |
+| `BOOKING_TOO_SOON` | 400 | 需至少提前 7 天；`details.earliest_date` 为最早可约日期 |
+| `BOOKING_TOO_FAR_AHEAD` | 400 | 最多提前 30 天；`details.latest_date` 为最晚可约日期 |
 | `QUALIFICATION_ALREADY_PENDING`／`QUALIFICATION_ALREADY_VERIFIED` | 409 | 保留当前资料，刷新资格状态 |
 | `IDEMPOTENCY_CONFLICT` | 409 | 同一 key 不能用于另一份请求；新操作生成新 key |
+| `DUPLICATE_BOOKING` | 409 | 当前学生已对同一资源提交重叠时段的有效申请；显示已有申请而不是再次加入候补 |
 | `REQUEST_NOT_REVIEWABLE`／`ALREADY_REVIEWED` | 409 | 队列状态已改变，刷新列表 |
 | `REQUEST_NOT_CANCELLABLE` | 409 | 预约已开始或请求已结束，刷新预约 |
 | `REQUEST_NOT_RESCHEDULABLE` | 409 | 只有未来且已批准的预约可以改期，刷新预约 |

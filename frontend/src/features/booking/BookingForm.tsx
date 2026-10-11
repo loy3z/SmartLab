@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { createBooking } from './api'
-import { errorMessage, fmtDateTime, newIdempotencyKey, STATUS_TEXT } from './format'
+import { bookingDetail, errorMessage, fmtDateTime, newIdempotencyKey, STATUS_TEXT } from './format'
 import { SlotPicker } from './SlotPicker'
 import type { Booking, Resource, Slot } from './types'
 
@@ -70,10 +70,7 @@ export function BookingForm({ resource, onBooked }: { resource: Resource; onBook
       {error && <p className="bk-error">{error}</p>}
       {result && (
         <p className={result.status === 'APPROVED' ? 'bk-ok' : 'bk-muted'}>
-          {STATUS_TEXT[result.status]}
-          {result.reason_code === 'TIME_CONFLICT' && ' — conflicts with an approved booking; sent to manual review.'}
-          {result.reason_code === 'TEMPORARY_HOLD_CONFLICT' &&
-            ' — conflicts with a temporary hold; sent to manual review.'}
+          <b>{STATUS_TEXT[result.status]}.</b> {bookingDetail(result)}
         </p>
       )}
     </form>

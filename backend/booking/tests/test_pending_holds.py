@@ -174,6 +174,8 @@ class PendingHoldAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(other_view["hold_until"], waiting["hold_until"])
         self.assertFalse(other_view["held_by_me"])
         self.assertTrue(own_view["held_by_me"])
+        self.assertFalse(other_view["requested_by_me"])
+        self.assertTrue(own_view["requested_by_me"])
         self.assertNotIn("student_id", other_view)
         self.assertNotIn("booking_id", other_view)
         self.assertEqual(waiting["outlook_sync"]["status"], "NOT_REQUIRED")

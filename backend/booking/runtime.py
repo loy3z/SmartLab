@@ -76,6 +76,7 @@ def get_service():
                 raise ImproperlyConfigured("Configure durable repository and private file-storage adapters outside DEBUG mode.")
             _service = BookingService(repo, storage, wait_hours=settings.APPROVAL_WAIT_HOURS,
                                       qualification_validity_days=settings.QUALIFICATION_VALIDITY_DAYS,
+                                      min_advance_days=settings.MIN_ADVANCE_DAYS,
                                       max_advance_days=settings.MAX_ADVANCE_DAYS,
                                       unverified_pending_limit=settings.UNVERIFIED_PENDING_LIMIT)
             _service.calendar_sync = CalendarSyncService(repo, import_string(settings.OUTLOOK_PROVIDER_FACTORY)(),

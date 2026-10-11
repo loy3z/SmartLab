@@ -36,7 +36,7 @@
 .bk-sm { padding: 7px 14px; font-size: 14px; }
 .bk-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 8px; font-size: 14px; font-weight: 500; }
 .bk-chip.is-ok, .bk-chip.st-APPROVED { background: var(--green-bg); color: var(--green); }
-.bk-chip.is-warn, .bk-chip.st-WAITING_QUALIFICATION, .bk-chip.st-PENDING_APPROVAL { background: var(--amber-bg); color: var(--amber); }
+.bk-chip.is-warn, .bk-chip.st-WAITLISTED, .bk-chip.st-WAITING_QUALIFICATION, .bk-chip.st-PENDING_APPROVAL { background: var(--amber-bg); color: var(--amber); }
 .bk-chip.st-REJECTED { background: var(--red-bg); color: var(--red); }
 .bk-chip.st-CANCELLED, .bk-chip.st-EXPIRED { background: var(--grey-bg); color: var(--muted); }
 .bk-muted { color: var(--muted); font-size: 13px; }

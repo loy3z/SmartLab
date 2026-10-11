@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router'
 import { BookingForm } from './BookingForm'
 import { listQualifications, listRequirements, listResources } from './api'
 import { errorMessage } from './format'
@@ -76,9 +77,9 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
                 <small>{req.description || 'Required before requesting a booking.'}</small>
               </div>
               {!ok && state !== 'PENDING' && (
-                <a className="bk-btn-yellow" href="#/induction">
+                <Link className="bk-btn-yellow" to="/induction">
                   <UploadIcon size={18} /> Upload induction
-                </a>
+                </Link>
               )}
             </div>
           )

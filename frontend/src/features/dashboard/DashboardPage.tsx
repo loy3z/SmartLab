@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router'
 import { getDashboard, listRequirements, listResources } from '../booking/api'
 import { errorMessage, fmtDateTime, fmtTime, STATUS_TEXT, TZ } from '../booking/format'
 import { AlertIcon, CalendarIcon, CapIcon, CheckIcon, ClockIcon, DoorIcon } from '../booking/icons'
@@ -93,7 +94,7 @@ function DashboardSession({ user }: { user: User }) {
           <h1>Welcome back, {firstName}.</h1>
           <p className="dash-intro">Your spaces, bookings and induction progress, all in one place.</p>
         </div>
-        <a className="dash-primary" href="#/resources"><CalendarIcon /> Book a resource</a>
+        <Link className="dash-primary" to="/resources"><CalendarIcon /> Book a resource</Link>
       </header>
 
       <div className="dash-toolbar">
@@ -152,38 +153,38 @@ function DashboardContent({ state }: { state: Extract<DashboardState, { status: 
       {warnings.length > 0 && <p className="dash-warning" role="status"><AlertIcon /> {warnings.join(' ')} Use Refresh overview to try again.</p>}
 
       <section className="dash-stats" aria-label="Booking and induction summary">
-        <a className="dash-stat" href="#/bookings">
+        <Link className="dash-stat" to="/bookings">
           <span className="dash-stat-icon"><CalendarIcon size={24} /></span>
           <span className="dash-stat-label">Upcoming bookings</span>
           <strong>{upcoming.length}</strong>
           <span className="dash-stat-detail">Approved and ready to go</span>
-        </a>
-        <a className="dash-stat" href="#/bookings">
+        </Link>
+        <Link className="dash-stat" to="/bookings">
           <span className="dash-stat-icon dash-stat-icon-amber"><ClockIcon size={24} /></span>
           <span className="dash-stat-label">Pending requests</span>
           <strong>{pendingCount}</strong>
           <span className="dash-stat-detail">Awaiting checks, approval or a place</span>
-        </a>
-        <a className="dash-stat" href="#/induction">
+        </Link>
+        <Link className="dash-stat" to="/induction">
           <span className="dash-stat-icon dash-stat-icon-green"><CheckIcon size={24} /></span>
           <span className="dash-stat-label">Verified inductions</span>
           <strong>{verifiedCount}</strong>
           <span className="dash-stat-detail">Current, valid training records</span>
-        </a>
+        </Link>
       </section>
 
       <div className="dash-columns">
         <section className="dash-panel" aria-labelledby="dash-bookings-title">
           <header className="dash-panel-header">
             <div><h2 id="dash-bookings-title">{upcoming.length ? 'Coming up next' : 'Recent requests'}</h2><p>All booking times are shown in Sydney time.</p></div>
-            <a className="dash-link" href="#/bookings">View all bookings <span aria-hidden="true">↗</span></a>
+            <Link className="dash-link" to="/bookings">View all bookings <span aria-hidden="true">↗</span></Link>
           </header>
           {displayedBookings.length === 0 ? (
             <div className="dash-empty">
               <span className="dash-empty-icon"><CalendarIcon size={32} /></span>
               <h3>Your next booking starts here</h3>
               <p>Find a room or equipment for your next session.</p>
-              <a className="dash-secondary" href="#/resources">Browse resources</a>
+              <Link className="dash-secondary" to="/resources">Browse resources</Link>
             </div>
           ) : (
             <ul className="dash-booking-list">
@@ -235,14 +236,14 @@ function DashboardContent({ state }: { state: Extract<DashboardState, { status: 
               })}
             </ul>
           )}
-          <footer className="dash-panel-footer"><a className="dash-link" href="#/induction">Manage induction & training <span aria-hidden="true">→</span></a></footer>
+          <footer className="dash-panel-footer"><Link className="dash-link" to="/induction">Manage induction & training <span aria-hidden="true">→</span></Link></footer>
         </section>
       </div>
 
       <aside className="dash-tip">
         <span className="dash-tip-icon"><DoorIcon size={28} /></span>
         <div><h2>A space for your next idea</h2><p>Explore shared labs, rooms and equipment. Check availability and submit your next request.</p></div>
-        <a className="dash-link" href="#/resources">Explore resources <span aria-hidden="true">→</span></a>
+        <Link className="dash-link" to="/resources">Explore resources <span aria-hidden="true">→</span></Link>
       </aside>
     </>
   )

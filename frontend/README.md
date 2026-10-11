@@ -1,6 +1,6 @@
 # SmartLab frontend
 
-React + TypeScript + Vite. Frontend A provides the application shell, authentication, role routes, shared API client and student dashboard. Existing booking and administration features are mounted inside that shell.
+React + TypeScript + Vite + React Router. Frontend A provides the application shell, authentication, role routes, shared API client and student dashboard. Existing booking and administration features are mounted inside that shell.
 
 ## Run locally
 
@@ -41,7 +41,7 @@ The shell resolves the current user through `auth/me/` before showing protected 
 
 ## Routes and ownership
 
-Hash URLs work with static hosting without server rewrite rules, preserve deep links and support browser Back/Forward. Frontend route guards complement server authorization.
+React Router's `HashRouter` keeps the existing `#/...` URLs. These work with static hosting without server rewrite rules, preserve deep links and support browser Back/Forward. Frontend route guards complement server authorization.
 
 | URL fragment | Access | Feature owner |
 | --- | --- | --- |
@@ -55,7 +55,11 @@ Hash URLs work with static hosting without server rewrite rules, preserve deep l
 | `#/manager/bookings` | Manager | C: room booking management |
 | `#/account`, `#/help` | All authenticated roles | A: account details and portal guidance |
 
-`src/app/AppRouter.tsx` mounts each feature; `src/app/routes.ts` is the permission map. `AppLayout.tsx` owns responsive navigation and the account menu. `src/features/auth/` owns authentication state and the login screen. `src/lib/api-client.ts` owns JSON/file transport and session invalidation. `src/features/booking/api.ts` retains the existing business API exports for B/C compatibility.
+`src/App.tsx` wraps the application in `HashRouter`. `src/app/AppRouter.tsx` maps addresses to feature pages with `Routes` and `Route`. `ProtectedLayout` redirects anonymous users to login, and `RequireAccess` checks the permission map in `src/app/routes.ts`. An allowed deep link is saved in router location state and restored after login; explicit sign-out clears this destination. Loading and session-recovery errors are handled before protected pages can render.
+
+`AppLayout.tsx` owns responsive navigation and the account menu. `NavLink` highlights the current menu item, `Link` handles internal links, and `Outlet` displays the matching child page. Booking completion uses `useNavigate` to open My Bookings. The former custom `navigation.ts` hash listener has been removed. When adding a protected page, add its `Route`, its role permissions in `routes.ts`, and its navigation entry if needed.
+
+`src/features/auth/` owns authentication state and the login screen. `src/lib/api-client.ts` owns JSON/file transport and session invalidation. `src/features/booking/api.ts` retains the existing business API exports for B/C compatibility.
 
 Dashboard data comes from `dashboard/`, `resources/` and `qualification-requirements/`. Upcoming bookings count only approved bookings whose start is in the future. Qualification summaries use each requirement's latest submission. Errors and empty states are distinct; users can refresh the overview. Dates are shown in Australia/Sydney. No mock totals are displayed.
 
@@ -69,7 +73,21 @@ npm run lint
 npm test
 ```
 
-The Node tests cover route access, hash normalization, protected and public requests, multipart uploads, file downloads, expired sessions, network errors, and stale requests from a previous account. They do not replace a browser walkthrough.
+The Node tests cover role permissions, safe login return destinations, protected and public requests, multipart uploads, file downloads, expired sessions, network errors, and stale requests from a previous account.
+
+Browser routing tests use Playwright with a separate development server on port 5174. API responses are mocked, so these tests do not require or modify backend data:
+
+```powershell
+npx playwright install chromium
+npm run test:e2e
+```
+
+To use an existing Microsoft Edge installation instead of downloading Chromium:
+
+```powershell
+$env:PLAYWRIGHT_CHANNEL="msedge"
+npm run test:e2e
+```
 
 For a manual walkthrough, sign in as each role, refresh a protected URL, use Back/Forward, try an unauthorized URL, open account details, sign out, and repeat navigation at mobile width. Students can reach the existing booking and induction flows from the dashboard; staff use the review/management pages.
 

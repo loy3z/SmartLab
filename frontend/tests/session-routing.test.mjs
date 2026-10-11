@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { canAccess, homePath, isKnownPath, normalizePath } from '../src/app/routes.ts'
+import { canAccess, homePath, isKnownPath, loginDestination, normalizePath } from '../src/app/routes.ts'
 
 const studentPaths = ['/dashboard', '/resources', '/bookings', '/induction']
 const staffPaths = ['/admin/qualifications', '/admin/bookings']
@@ -52,13 +52,26 @@ test('unknown and partial paths are denied rather than matching a permitted pref
   }
 })
 
-test('hash deep links normalize query strings and trailing slashes', () => {
+test('router pathnames preserve the existing trailing slash policy', () => {
   assert.equal(normalizePath(''), '/')
-  assert.equal(normalizePath('#'), '/')
-  assert.equal(normalizePath('#/'), '/')
-  assert.equal(normalizePath('#/resources'), '/resources')
-  assert.equal(normalizePath('#/resources/'), '/resources')
-  assert.equal(normalizePath('#/resources/?kind=ROOM'), '/resources')
-  assert.equal(normalizePath('#/admin/bookings?status=WAITLISTED'), '/admin/bookings')
-  assert.equal(isKnownPath(normalizePath('#/does-not-exist/?returnTo=/dashboard')), false)
+  assert.equal(normalizePath('/'), '/')
+  assert.equal(normalizePath('/resources'), '/resources')
+  assert.equal(normalizePath('/resources/'), '/resources')
+  assert.equal(isKnownPath(normalizePath('/does-not-exist/')), false)
+  assert.equal(isKnownPath(normalizePath('/Resources')), false)
+})
+
+test('login returns to an authorized deep link with its query intact', () => {
+  assert.equal(loginDestination({ from: '/bookings' }, 'STUDENT'), '/bookings')
+  assert.equal(loginDestination({ from: '/resources/?kind=ROOM' }, 'STUDENT'), '/resources/?kind=ROOM')
+  assert.equal(loginDestination({ from: '/admin/bookings?status=WAITLISTED' }, 'MANAGER'), '/admin/bookings?status=WAITLISTED')
+})
+
+test('login rejects forbidden, unknown, external and malformed return destinations', () => {
+  for (const from of ['/admin/bookings', '/missing', '/Resources', '/login', '//example.com', 'https://example.com', '/account/../admin/bookings', 42, null]) {
+    assert.equal(loginDestination({ from }, 'STUDENT'), '/dashboard')
+  }
+  for (const state of [null, undefined, {}, 'invalid', { from: '/resources' }]) {
+    assert.equal(loginDestination(state, 'ADMIN'), '/admin/qualifications')
+  }
 })

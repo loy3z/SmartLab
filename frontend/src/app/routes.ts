@@ -12,9 +12,9 @@ const permissions: Record<string, readonly Role[]> = {
   '/help': ['STUDENT', 'ADMIN', 'MANAGER'],
 }
 
-export function normalizePath(hash: string): string {
-  const path = hash.replace(/^#/, '').split('?')[0].replace(/\/+$/, '')
-  return path || '/'
+// React Router parses the hash and query string; policy checks use its pathname.
+export function normalizePath(pathname: string): string {
+  return pathname.replace(/\/+$/, '') || '/'
 }
 
 export function homePath(role: Role): string {
@@ -23,3 +23,9 @@ export function homePath(role: Role): string {
 
 export function isKnownPath(path: string): boolean { return Object.hasOwn(permissions, path) }
 export function canAccess(path: string, role: Role): boolean { return isKnownPath(path) && permissions[path].includes(role) }
+
+export function loginDestination(state: unknown, role: Role): string {
+  const from = state && typeof state === 'object' && 'from' in state ? state.from : null
+  if (typeof from === 'string' && canAccess(normalizePath(from.split('?')[0]), role)) return from
+  return homePath(role)
+}

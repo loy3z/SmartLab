@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Link, NavLink, Outlet, useLocation } from 'react-router'
 import {
   CalendarIcon,
   CapIcon,
@@ -13,9 +14,7 @@ import { homePath } from './routes'
 
 interface AppLayoutProps {
   user: User
-  path: string
   onSignOut: () => void
-  children: ReactNode
 }
 
 interface NavItem {
@@ -41,7 +40,8 @@ export function AppBrand() {
   )
 }
 
-export function AppLayout({ user, path, onSignOut, children }: AppLayoutProps) {
+export function AppLayout({ user, onSignOut }: AppLayoutProps) {
+  const { pathname } = useLocation()
   const [accountOpen, setAccountOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const accountRef = useRef<HTMLDivElement>(null)
@@ -108,24 +108,25 @@ export function AppLayout({ user, path, onSignOut, children }: AppLayoutProps) {
 
   useEffect(() => {
     mobileDialogRef.current?.close()
-  }, [path])
+  }, [pathname])
 
   const closeMobile = () => mobileDialogRef.current?.close()
   const navLink = (item: NavItem, mobile = false) => (
-    <a
+    <NavLink
       key={item.path}
-      href={`#${item.path}`}
-      className={`app-nav-link${path === item.path ? ' is-active' : ''}`}
-      aria-current={path === item.path ? 'page' : undefined}
+      to={item.path}
+      end
+      caseSensitive
+      className={({ isActive }) => `app-nav-link${isActive ? ' is-active' : ''}`}
       onClick={mobile ? closeMobile : undefined}
     >
       {item.icon}<span>{item.label}</span>
-    </a>
+    </NavLink>
   )
   const sidebarContent = (mobile = false) => (
     <>
       <div className="app-sidebar-brand">
-        <a href={`#${homePath(user.role)}`} aria-label="UNSW SmartLab portal home" onClick={mobile ? closeMobile : undefined}><AppBrand /></a>
+        <Link to={homePath(user.role)} aria-label="UNSW SmartLab portal home" onClick={mobile ? closeMobile : undefined}><AppBrand /></Link>
         {mobile && <button className="app-icon-button" aria-label="Close navigation" onClick={closeMobile}><span aria-hidden="true">×</span></button>}
       </div>
       <div className="app-product-label">SMARTLAB <span>RESOURCE BOOKING</span></div>
@@ -203,14 +204,14 @@ export function AppLayout({ user, path, onSignOut, children }: AppLayoutProps) {
             </button>
             {accountOpen && (
               <div className="app-account-menu" id="app-account-actions">
-                <a href="#/account" onClick={() => setAccountOpen(false)}><UserIcon size={18} />Account details</a>
+                <Link to="/account" onClick={() => setAccountOpen(false)}><UserIcon size={18} />Account details</Link>
                 <button type="button" onClick={() => { setAccountOpen(false); onSignOut() }}><LogoutIcon size={18} />Sign out</button>
               </div>
             )}
           </div>
         </header>
-        <main className="app-content" id="app-main" tabIndex={-1}>{children}</main>
-        <footer className="app-workspace-footer"><span>SmartLab · UNSW Sydney</span><a href="#/help">Help & Support <span aria-hidden="true">↗</span></a></footer>
+        <main className="app-content" id="app-main" tabIndex={-1}><Outlet /></main>
+        <footer className="app-workspace-footer"><span>SmartLab · UNSW Sydney</span><Link to="/help">Help & Support <span aria-hidden="true">↗</span></Link></footer>
       </div>
     </div>
   )

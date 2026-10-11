@@ -4,7 +4,7 @@ import { bookingDetail, errorMessage, fmtDateTime, STATUS_TEXT } from './format'
 import { SlotPicker } from './SlotPicker'
 import type { Booking, Resource, Slot } from './types'
 
-function RescheduleBox({ booking, resource, onDone }: { booking: Booking; resource: Resource; onDone: () => void }) {
+function RescheduleBox({ booking, resource, onDone }: { booking: Booking; resource: Resource; onDone: (updated: Booking) => void }) {
   const [slot, setSlot] = useState<Slot | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -18,8 +18,7 @@ function RescheduleBox({ booking, resource, onDone }: { booking: Booking; resour
     setBusy(true)
     setError('')
     try {
-      await rescheduleBooking(booking.id, slot.start, slot.end)
-      onDone()
+      onDone(await rescheduleBooking(booking.id, slot.start, slot.end))
     } catch (e) {
       setError(errorMessage(e))
     } finally {
@@ -49,6 +48,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(0)
+  const [notice, setNotice] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -72,12 +72,27 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
 
   async function cancel(b: Booking) {
     if (!window.confirm('Cancel this booking?')) return
+    setNotice('')
+    let failure = ''
     try {
       await cancelBooking(b.id)
+      setNotice('Your booking has been cancelled.')
     } catch (e) {
-      setError(errorMessage(e))
+      failure = errorMessage(e)
     }
-    load()
+    await load()
+    if (failure) setError(failure)
+  }
+
+  async function rescheduled(b: Booking) {
+    setNotice(
+      `Booking rescheduled. New time: ${fmtDateTime(b.start)} → ${fmtDateTime(b.end)}. ` +
+        (b.outlook_sync && b.outlook_sync.status !== 'DISABLED' && b.outlook_sync.status !== 'NOT_REQUIRED'
+          ? 'Your calendar event will be updated.'
+          : ''),
+    )
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    await load()
   }
 
   const future = (b: Booking) => new Date(b.start).getTime() > now
@@ -89,6 +104,12 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
       <h1>My bookings</h1>
       <p className="bk-sub">Your requests and their current status.</p>
       {loading && <p>Loading…</p>}
+      {notice && (
+        <p className="bk-notice" role="status">
+          {notice}
+          <button aria-label="Dismiss" onClick={() => setNotice('')}>×</button>
+        </p>
+      )}
       {error && <p className="bk-error">{error}</p>}
       {!loading && bookings.length === 0 && <p>No bookings yet.</p>}
       {bookings.map((b) => {
@@ -110,7 +131,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
             )}
             {cancellable(b) && <button className="bk-btn-outline bk-sm" onClick={() => cancel(b)}>Cancel</button>}
             {b.status === 'APPROVED' && future(b) && res && (
-              <RescheduleBox booking={b} resource={res} onDone={load} />
+              <RescheduleBox booking={b} resource={res} onDone={rescheduled} />
             )}
           </div>
         )

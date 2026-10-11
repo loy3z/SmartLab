@@ -101,6 +101,19 @@ export function Layout({ page, onNavigate, user, onSignOut, children }: Props) {
             )}
           </div>
         </header>
+        <nav className="bk-mobile-nav">
+          {items
+            .filter((i) => i.key)
+            .map((i) => (
+              <button
+                key={i.label}
+                className={`bk-pill ${i.key === page ? 'is-on' : ''}`}
+                onClick={() => i.key && onNavigate(i.key)}
+              >
+                {i.label}
+              </button>
+            ))}
+        </nav>
         <main className="bk-content">{children}</main>
       </div>
     </div>

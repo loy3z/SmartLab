@@ -49,8 +49,8 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 
 客户要求角色由系统／实验室负责人指定，所以只有 **Manager** 能查看人员名单、修改角色或停用账号；**Manager 同时拥有 Admin 的全部权限**（审核资格、审核预约、查看队列和审计），另外独有占位规则配置和人员管理。Admin 和学生访问这些接口返回 403。
 
-- `GET admin/users/`：返回 `{ count, results }`，每项含 `id`、`zid`、`display_name`、`role`、`active`、`university_email`。可用 `role`、`active=true|false`、`q`（匹配 zID／姓名／邮箱）筛选。
-- `PATCH admin/users/{id}/`：请求体为 `role`（`STUDENT|ADMIN|MANAGER`）和／或 `active`。修改在该用户的**下一次请求**生效：升为 Admin 后马上能看到审核队列；被停用的用户再请求会得到 401，前端应跳回登录页。
+- `GET admin/users/`：返回 `{ count, results }`，每项含 `id`、`zid`、`display_name`、`role`、`active`、`university_email`，以及 `inductions`（每项 induction 的 `name`、`status`：`NOT_SUBMITTED`／`PENDING`／`VERIFIED`／`REJECTED`／`EXPIRED`、`valid_until`）和 `induction_status`（全部有效为 `VERIFIED`，否则 `INCOMPLETE`），人员表里可以直接显示一列 induction status。可用 `role`、`active=true|false`、`q`（匹配 zID／姓名／邮箱）筛选。
+- `PATCH admin/users/{id}/`：请求体为 `role`（只能在 `STUDENT`、`ADMIN` 之间调整）和／或 `active`。**学生必须所有 induction 都通过且未过期才能升为 Admin**，否则 409 `INDUCTION_REQUIRED_FOR_ADMIN`，`error.message` 形如 “Jane Doe (z1234567) must pass every induction before becoming an administrator.”，可直接用于弹框，`details.missing_inductions` 列出缺哪几项；Admin 降回学生不检查。`role=MANAGER` 或修改 Manager 的角色返回 403 `MANAGER_ROLE_NOT_ASSIGNABLE`（Manager 只能用 Add manager 新建；不要的 Manager 用 `active=false` 停用），所以操作列的角色下拉只放 Student／Admin。修改在该用户的**下一次请求**生效：升为 Admin 后马上能看到审核队列；被停用的用户再请求会得到 401，前端应跳回登录页。
 - 不能修改自己（`SELF_MODIFICATION_FORBIDDEN`，403），系统至少保留一个启用的 Manager（`LAST_MANAGER`，409）。每次修改都会写一条 `USER_UPDATED` 审计记录。
 - 修改角色或停用账号不会自动改动该用户已有的预约。
 - 列表里只有已经存在于系统中的用户（演示时由数据库预先写入，或登录／注册过一次）。
@@ -61,7 +61,22 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 
 可用性查询是当时的快照，提交前后仍可能有人占用时段。显示 `available=false` 的时段不能提示“可立即预约”；如果允许发送冲突人工审核请求，应明确展示“已有预约／临时占位，将进入人工审核”。每个资源的 `required_qualification_id` 可以不同，前端必须读取资源要求，不能用一个全局“已完成 induction”开关判断所有资源的资格。
 
-`slots[]` 的 `reason_code` 为 `START_TIME_PASSED`、`TOO_SOON`（不足 7 天）、`TOO_FAR_AHEAD`（超过 30 天）、`BOOKED`、`TEMPORARILY_HELD` 或 `null`。响应顶层另有 `earliest_date`、`latest_date`、`min_advance_days`、`max_advance_days`，供日期选择器限制范围。临时占位时返回 `hold_until`（UTC 截止时间）和 `held_by_me`（是否为当前学生自己的占位）；`requested_by_me` 表示当前学生已经对同一资源提交了与该时段重叠的有效申请，前端应禁用再次提交。接口不返回其他学生身份。可显示占位倒计时，到期刷新查询，最终以服务端响应为准；`can_request` 表示身份／资料允许提交申请，不代表所选时段能立即获批。
+`slots[]` 的 `reason_code` 为 `START_TIME_PASSED`、`RESOURCE_UNAVAILABLE`（维修／关闭）、`TOO_SOON`（不足 7 天）、`TOO_FAR_AHEAD`（超过 30 天）、`BOOKED`、`TEMPORARILY_HELD` 或 `null`。响应顶层另有 `earliest_date`、`latest_date`、`min_advance_days`、`max_advance_days`，供日期选择器限制范围。临时占位时返回 `hold_until`（UTC 截止时间）和 `held_by_me`（是否为当前学生自己的占位）；`requested_by_me` 表示当前学生已经对同一资源提交了与该时段重叠的有效申请，前端应禁用再次提交。接口不返回其他学生身份。可显示占位倒计时，到期刷新查询，最终以服务端响应为准；`can_request` 表示身份／资料允许提交申请，不代表所选时段能立即获批。
+
+### Manager 工具与 120 分钟自动审批（OpenAPI 1.6.0 起）
+
+**按时长决定是否自动批准**：资格有效、时段空着时，时长 ≤ 资源的 `auto_approve_max_minutes`（默认 120，起订仍是 30 分钟一格）直接 `APPROVED`；超过的进入 `PENDING_APPROVAL`，`reason_code=DURATION_REVIEW`，`hold_until` 等于开始时间——**一直占住时段直到 Admin／Manager 批准或拒绝**，期间其他人进候补。资料待审的学生先按原规则占位 30 分钟，资料通过后长预约同样转 `DURATION_REVIEW`；候补递补到长预约时也是转人工而不是直接批准。
+- 时段查询响应新增 `auto_approve_max_minutes` 和 `needs_review`（所选时长是否需要人工审批），可在时长选择处提示“超过 120 分钟需管理员审批”。
+- 改期可以改时长，但不能超过 `auto_approve_max_minutes`，否则 409 `RESCHEDULE_NEEDS_REVIEW`（`details.auto_approve_max_minutes`），提示学生取消后重新申请。改期选时段时传 `exclude_booking_id=<正在改的预约>`，学生自己原来的时间会显示为可选。
+- Manager 通过 `PATCH admin/resources/{id}/booking-policy/` 按资源设置，请求可带 `pending_hold_minutes` 和／或 `auto_approve_max_minutes`（1–1440）。
+
+**房间／设备状态**：`PATCH admin/resources/{id}/status/`（仅 Manager），请求 `{"status":"MAINTENANCE","reason":"Fume hood repair"}`；状态为 `AVAILABLE`／`MAINTENANCE`／`CLOSED`，后两者必须填原因。
+- 资源列表和详情新增 `status`、`status_reason`，维修／关闭的资源仍然显示，前端应标出“维修中／已关闭”和原因。
+- 维修／关闭时：新申请返回 409 `RESOURCE_UNAVAILABLE`（`details.resource_status`、`status_reason`），时段查询所有时段为 `RESOURCE_UNAVAILABLE`、`can_request=false`；不批准、不递补。**已有预约保留**，响应的 `affected_bookings` 列出仍需处理的未来预约，Manager 可逐个用 `POST bookings/{id}/cancel/` 取消（`reason_code=CANCELLED_BY_STAFF`）。改回 `AVAILABLE` 后候补自动递补。
+
+**所有人的预订**：`GET admin/bookings/` 新增筛选 `status`（单个、逗号分隔多个或 `ALL`）、`resource_id`、`student_id`、`since`、`until`（带时区的时间，返回与该时段重叠的预约），按开始时间排序；每项新增 `student`（`id`、`zid`、`display_name`、`university_email`）、`resource_name`、`resource_kind`。不带参数时仍是人工审批队列，原有页面不受影响。`GET admin/bookings/export/`（仅 Manager）用相同筛选导出 CSV（默认 `ALL`，UTF-8 带 BOM，可直接用 Excel 打开）；“打印”可由前端对列表页调用浏览器打印。
+
+**Add manager**（人员管理页右上角按钮）：`POST admin/users/managers/`（仅 Manager），请求 `{"zid":"z5123456","display_name":"…","university_email":"…"}`，新建一个 Manager 账号，不检查 induction，成功 201 返回该用户。这是创建 Manager 的唯一方式，客户以后加 Manager 不需要改代码或数据库。zID 已存在返回 409 `USER_EXISTS`（已有的人不能转成 Manager）。学生和 Admin 不在这里新建，只调整现有人员的角色。删除人员请用停用（`PATCH active=false`），以保留预约和审计历史。
 
 ## 状态与界面文字
 
@@ -140,19 +155,22 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | GET | `dashboard/` | 我的预约、资料与数量 |
 | GET | `admin/qualifications/?status=PENDING` | 管理员资格队列 |
 | POST | `admin/qualifications/{id}/review/` | `decision: VERIFIED\|REJECTED`，可带 `reason`；不接受 `valid_until`，有效期由后端设定 |
-| GET | `admin/bookings/?status=PENDING_APPROVAL` | 管理员预约队列；`status=WAITLISTED` 查看候补 |
+| GET | `admin/bookings/?status=PENDING_APPROVAL` | 管理员预约队列；`status=WAITLISTED` 查看候补；`status=ALL&resource_id=&student_id=&since=&until=` 查看所有人的预约（带学生和资源名） |
+| GET | `admin/bookings/export/?status=ALL` | 仅 Manager：按相同筛选导出 CSV |
 | POST | `admin/bookings/{id}/review/` | `decision: APPROVED\|REJECTED`，可带 `reason`；候补只能拒绝，不能批准 |
 | GET | `admin/users/?role=&active=&q=` | 仅 Manager：人员列表 |
-| PATCH | `admin/users/{id}/` | 仅 Manager：`{"role":"ADMIN"}` 和／或 `{"active":false}` |
+| POST | `admin/users/managers/` | 仅 Manager：Add manager，新建 Manager 账号 `zid`、`display_name`、`university_email` |
+| PATCH | `admin/users/{id}/` | 仅 Manager：`{"role":"ADMIN"}`（学生需全部 induction 有效）或 `{"role":"STUDENT"}`，和／或 `{"active":false}` |
 | GET | `admin/audit/?resource_id=&student_id=&action=&since=&until=&limit=100&offset=0` | Admin／Manager 查看审计记录（申请、审批、改期、取消等），最新在前 |
 | POST | `admin/process-due/` | 处理已到 24 小时门槛／开始时间的请求 |
-| GET / PATCH | `admin/resources/{id}/booking-policy/` | Admin／Manager 读取；仅 Manager 修改占位时长 |
+| GET / PATCH | `admin/resources/{id}/booking-policy/` | Admin／Manager 读取；仅 Manager 修改占位时长和自动审批上限 |
+| PATCH | `admin/resources/{id}/status/` | 仅 Manager：`AVAILABLE`／`MAINTENANCE`／`CLOSED` + `reason` |
 
 `POST bookings/` 可带 `Idempotency-Key`，同一用户重试同一请求时复用同一 key；提交不同预约时生成新 key。key 最多 128 个字符，仅可使用字母、数字、点、下划线、冒号、连字符。禁止只依赖禁用按钮防止重复请求。字段 `start`、`end` 表示区间 `[start,end)`。取消仅允许尚未开始的有效请求；重复取消已取消记录返回原记录。改期只允许预约所有者操作未来 `APPROVED` 预约；后端重新检查时间规则、资格有效期与冲突。成功后 `revision` 增加，并更新原 Outlook 事件。
 
 时段查询默认时长为 30 分钟。前端应依据资源返回的 `slot_minutes` 和 `max_booking_minutes` 限制选择；当前种子规则是 30 分钟粒度、08:00–20:00、最长 480 分钟，同一预约不能跨当地日期。这些是演示配置，客户确认规则后可通过资源数据调整。
 
-Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{"pending_hold_minutes":30}`；GET／PATCH 均返回 `{"resource_id":"<uuid>","pending_hold_minutes":30}`。范围为整数 1–20160，默认 30；设为最大值 20160（两周，超过可预约范围）相当于“第一位一直保持到有结果”。占位到期时，原申请进入候补，时段交给下一位。修改只影响之后创建的占位；已有截止时间不变。资源详情也包含 `pending_hold_minutes`。占位时长与 24 小时审批等待是两个独立配置。
+Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{"pending_hold_minutes":30}` 和／或 `{"auto_approve_max_minutes":120}`；GET／PATCH 均返回 `{"resource_id":"<uuid>","pending_hold_minutes":30,"auto_approve_max_minutes":120}`。范围为整数 1–20160，默认 30；设为最大值 20160（两周，超过可预约范围）相当于“第一位一直保持到有结果”。占位到期时，原申请进入候补，时段交给下一位。修改只影响之后创建的占位；已有截止时间不变。资源详情也包含 `pending_hold_minutes`。占位时长与 24 小时审批等待是两个独立配置。
 
 附件支持 PDF、PNG、JPEG，最大 5 MiB。后端检查大小、扩展名、MIME 和文件格式特征。资料中的 `file_url` 是受保护的 API 路径，下载仍需带 Authorization；前端可请求为 Blob 后显示／下载，不能假设 `<img src>` 或普通链接会自动附带 Bearer token。附件没有公开地址。
 
@@ -190,6 +208,11 @@ Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{
 | `BOOKING_HOLD_CONFLICT` | 409 | 人工批准失败，提示时段仍临时占用；`details.hold_until` 为当前占位截止时间 |
 | `REQUEST_WAITLISTED` | 409 | 候补不能直接批准，会按顺序自动递补；管理员可以拒绝 |
 | `PENDING_REQUEST_LIMIT` | 409 | 资料审核中只能有 1 张未决申请；引导学生查看或取消 `details.pending_booking_ids` |
+| `RESOURCE_UNAVAILABLE` | 409 | 资源维修或关闭；显示 `details.status_reason`，暂停新预约 |
+| `RESCHEDULE_NEEDS_REVIEW` | 409 | 改期后超过自动审批上限；提示取消后重新申请 |
+| `USER_EXISTS` | 409 | Add manager 时 zID 已存在 |
+| `INDUCTION_REQUIRED_FOR_ADMIN` | 409 | 弹框显示 `error.message`（“X must pass every induction…”），角色保持不变 |
+| `MANAGER_ROLE_NOT_ASSIGNABLE` | 403 | Manager 只能用 Add manager 新建，角色下拉不提供 Manager |
 | `BOOKING_TOO_SOON` | 400 | 需至少提前 7 天；`details.earliest_date` 为最早可约日期 |
 | `BOOKING_TOO_FAR_AHEAD` | 400 | 最多提前 30 天；`details.latest_date` 为最晚可约日期 |
 | `QUALIFICATION_ALREADY_PENDING`／`QUALIFICATION_ALREADY_VERIFIED` | 409 | 保留当前资料，刷新资格状态 |

@@ -50,7 +50,8 @@ def seed_demo_data(service):
     for number, name, kind, location, needs_advanced in DEMO_RESOURCES:
         service.repo.save_resource(Resource(fixed_id(number), name, kind, location, "Single resource; demonstration data.",
             required_qualification_id=advanced.id if needs_advanced else requirement.id,
-            pending_hold_minutes=settings.DEFAULT_PENDING_HOLD_MINUTES))
+            pending_hold_minutes=settings.DEFAULT_PENDING_HOLD_MINUTES,
+            auto_approve_max_minutes=settings.DEFAULT_AUTO_APPROVE_MAX_MINUTES))
     for number, zid, name, role in [(501, "z1000001", "Qualified demo student", Role.STUDENT),
                                     (502, "z1000002", "New demo student", Role.STUDENT),
                                     (503, "z1000003", "New demo student3", Role.STUDENT),

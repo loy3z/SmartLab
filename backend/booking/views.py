@@ -1,10 +1,12 @@
+import csv
 import io
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, date, datetime, time
 from enum import Enum
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 from django.conf import settings
-from django.http import FileResponse
+from django.http import FileResponse, HttpResponse
 from rest_framework import status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny
@@ -17,7 +19,8 @@ from .runtime import get_service
 from .serializers import (AvailabilityQuerySerializer, BookingCreateSerializer, BookingRescheduleSerializer, BookingReviewSerializer,
                           DemoLoginSerializer, DemoRegisterSerializer, QualificationCreateSerializer, QualificationReviewSerializer,
                           OutlookProcessSerializer, BookingPolicySerializer, AuditQuerySerializer,
-                          UserListQuerySerializer, UserUpdateSerializer)
+                          UserListQuerySerializer, UserUpdateSerializer, ManagerCreateSerializer, ResourceStatusSerializer,
+                          AdminBookingQuerySerializer)
 
 def json_value(value):
     if isinstance(value, Enum):
@@ -146,7 +149,8 @@ class RequirementListView(APIView):
 class AvailabilityView(APIView):
     def get(self, request, resource_id):
         data = validated(AvailabilityQuerySerializer, request.query_params)
-        result = get_service().availability(request.user, str(resource_id), data["date"], data["duration_minutes"])
+        result = get_service().availability(request.user, str(resource_id), data["date"], data["duration_minutes"],
+                                            data.get("exclude_booking_id"))
         return Response(json_value(result))
 
 class QualificationListView(APIView):
@@ -243,16 +247,77 @@ class AdminQualificationReviewView(APIView):
         bookings = sync_after_write(service, *bookings)
         return Response({"submission": submission_json(record), "updated_bookings": json_value(bookings)})
 
+def staff_booking_rows(service, user, params):
+    data = validated(AdminBookingQuerySerializer, params)
+    records = service.booking_report(user, data["status"], data.get("resource_id"), data.get("student_id"),
+                                     data.get("since"), data.get("until"))
+    people = {item.id: item for item in service.repo.list_principals()}
+    resources = {item.id: item for item in service.repo.list_resources()}
+    return records, people, resources
+
+def staff_booking_json(booking, people, resources):
+    """Booking plus who booked it and what, for Admin/Manager lists and printouts."""
+    result = json_value(booking)
+    person, resource = people.get(booking.student_id), resources.get(booking.resource_id)
+    result["student"] = ({"id": person.id, "zid": person.zid, "display_name": person.display_name,
+                          "university_email": person.university_email} if person else None)
+    result["resource_name"] = resource.name if resource else None
+    result["resource_kind"] = resource.kind.value if resource else None
+    return result
+
 class AdminBookingListView(APIView):
+    """Admin/Manager booking list. Defaults to the manual-approval queue; status=ALL lists everything."""
     def get(self, request):
         service = get_service()
         service.require_staff(request.user)
-        service.process_due_requests()
-        requested = request.query_params.get("status", "PENDING_APPROVAL")
-        if requested not in BookingStatus._value2member_map_:
-            raise DomainError("VALIDATION_ERROR", "Unknown booking status.")
-        records = [item for item in service.repo.list_bookings() if item.status.value == requested]
-        return Response(collection(records))
+        records, people, resources = staff_booking_rows(service, request.user, request.query_params)
+        return Response(collection(records, lambda item: staff_booking_json(item, people, resources)))
+
+class AdminBookingExportView(APIView):
+    """Manager only: the same filters as the list (default status=ALL), as a CSV file for printing or Excel."""
+    def get(self, request):
+        service = get_service()
+        service.require_manager(request.user)
+        params = request.query_params.copy()
+        params.setdefault("status", "ALL")
+        records, people, resources = staff_booking_rows(service, request.user, params)
+        zone = ZoneInfo(settings.TIME_ZONE)
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["Booking ID", "Status", "Reason", "Resource", "Type", "Date", "Start", "End", "Minutes",
+                         "Student zID", "Student name", "Student email", "Purpose", "Submitted", "Decided by", "Decision reason"])
+        for item in records:
+            person, resource = people.get(item.student_id), resources.get(item.resource_id)
+            local = ZoneInfo(resource.timezone) if resource else zone
+            start, end = item.start.astimezone(local), item.end.astimezone(local)
+            reviewer = people.get(item.reviewed_by) if item.reviewed_by else None
+            writer.writerow([item.id, item.status.value, item.reason_code or "", resource.name if resource else item.resource_id,
+                             resource.kind.value if resource else "", start.date().isoformat(), start.strftime("%H:%M"),
+                             end.strftime("%H:%M"), int((item.end - item.start).total_seconds() // 60),
+                             person.zid if person else "", person.display_name if person else "",
+                             person.university_email if person else "", _csv_safe(item.purpose),
+                             item.created_at.astimezone(local).strftime("%Y-%m-%d %H:%M"),
+                             reviewer.zid if reviewer else (item.reviewed_by or ""), _csv_safe(item.decision_reason or "")])
+        response = HttpResponse("\ufeff" + buffer.getvalue(), content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = 'attachment; filename="bookings.csv"'
+        return response
+
+def _csv_safe(text):
+    """Stop spreadsheet apps from treating user text as a formula."""
+    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+
+class AdminResourceStatusView(APIView):
+    """Manager only: AVAILABLE / MAINTENANCE / CLOSED. Existing bookings are kept and listed for follow-up."""
+    def patch(self, request, resource_id):
+        service = get_service()
+        service.require_manager(request.user)
+        data = validated(ResourceStatusSerializer, request.data)
+        resource, affected = service.set_resource_status(request.user, str(resource_id), data["status"], data["reason"])
+        sync_after_write(service)
+        people = {item.id: item for item in service.repo.list_principals()}
+        resources = {resource.id: resource}
+        return Response({"resource": json_value(resource),
+                         "affected_bookings": [staff_booking_json(item, people, resources) for item in affected]})
 
 def audit_json(record, principals):
     result = json_value(record)
@@ -272,20 +337,38 @@ class AdminAuditListView(APIView):
         return Response({"count": total, "limit": data["limit"], "offset": data["offset"],
                          "results": [audit_json(item, principals) for item in records]})
 
+def user_json(service, user):
+    """A person plus their induction status, so the Manager can see who may become an administrator."""
+    result = json_value(user)
+    inductions = service.induction_summary(user.id)
+    result["inductions"] = json_value(inductions)
+    result["induction_status"] = "VERIFIED" if all(item["status"] == "VERIFIED" for item in inductions) else "INCOMPLETE"
+    return result
+
+class AdminManagerCreateView(APIView):
+    """Manager only ("Add manager"): the only way to create a Manager account."""
+    def post(self, request):
+        service = get_service()
+        service.require_manager(request.user)
+        data = validated(ManagerCreateSerializer, request.data)
+        created = service.create_manager(request.user, data["zid"], data["display_name"], data["university_email"])
+        return Response(user_json(service, created), status=status.HTTP_201_CREATED)
+
 class AdminUserListView(APIView):
     """Manager only: staff and user list for nominating roles."""
     def get(self, request):
         service = get_service()
         service.require_manager(request.user)
         data = validated(UserListQuerySerializer, request.query_params)
-        return Response(collection(service.list_users(request.user, data.get("role"), data["active"], data["q"])))
+        users = service.list_users(request.user, data.get("role"), data["active"], data["q"])
+        return Response(collection(users, lambda item: user_json(service, item)))
 
 class AdminUserDetailView(APIView):
     def patch(self, request, user_id):
         service = get_service()
         service.require_manager(request.user)
         data = validated(UserUpdateSerializer, request.data)
-        return Response(json_value(service.update_user(request.user, str(user_id), data.get("role"), data.get("active"))))
+        return Response(user_json(service, service.update_user(request.user, str(user_id), data.get("role"), data.get("active"))))
 
 class AdminBookingReviewView(APIView):
     def post(self, request, booking_id):
@@ -336,16 +419,20 @@ class OutlookRetryView(APIView):
         return Response(json_value(booking))
 
 
+def policy_json(resource):
+    return {"resource_id": resource.id, "pending_hold_minutes": resource.pending_hold_minutes,
+            "auto_approve_max_minutes": resource.auto_approve_max_minutes}
+
 class ResourceBookingPolicyView(APIView):
     def get(self, request, resource_id):
         service = get_service()
         service.require_staff(request.user)
-        resource = service.resource(str(resource_id))
-        return Response({"resource_id": resource.id, "pending_hold_minutes": resource.pending_hold_minutes})
+        return Response(policy_json(service.resource(str(resource_id))))
 
     def patch(self, request, resource_id):
         service = get_service()
         service.require_manager(request.user)
         data = validated(BookingPolicySerializer, request.data)
-        resource = service.set_pending_hold_minutes(request.user, str(resource_id), data["pending_hold_minutes"])
-        return Response({"resource_id": resource.id, "pending_hold_minutes": resource.pending_hold_minutes})
+        resource = service.set_booking_policy(request.user, str(resource_id), data.get("pending_hold_minutes"),
+                                              data.get("auto_approve_max_minutes"))
+        return Response(policy_json(resource))

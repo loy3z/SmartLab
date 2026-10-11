@@ -1,5 +1,5 @@
 import type { ApiError } from './api'
-import type { BookingStatus, QualificationStatus } from './types'
+import type { Booking, BookingStatus, QualificationStatus } from './types'
 
 export const TZ = 'Australia/Sydney'
 
@@ -23,6 +23,42 @@ export const STATUS_TEXT: Record<BookingStatus, string> = {
   REJECTED: 'Rejected',
   CANCELLED: 'Cancelled',
   EXPIRED: 'Expired',
+}
+
+/** Student-facing explanation of where a request stands, from status + reason_code (server is the source of truth). */
+export function bookingDetail(b: Booking): string {
+  switch (b.status) {
+    case 'APPROVED':
+      return b.reason_code === 'PROMOTED_FROM_WAITLIST'
+        ? 'The time freed up and your waitlisted request was approved automatically.'
+        : 'Your booking is confirmed.'
+    case 'WAITING_QUALIFICATION':
+      return b.hold_active && b.hold_until
+        ? `This time is held for you until ${fmtDateTime(b.hold_until)}. If your induction is not approved by then, you will join the waitlist.`
+        : 'Waiting for your induction to be reviewed.'
+    case 'WAITLISTED': {
+      const pos = b.waitlist_position ? `You are #${b.waitlist_position} on the waitlist. ` : ''
+      const why =
+        b.reason_code === 'HOLD_EXPIRED'
+          ? 'Your hold expired before your induction was approved. '
+          : b.reason_code === 'TIME_CONFLICT'
+            ? 'This time is already booked. '
+            : b.reason_code === 'TEMPORARY_HOLD_CONFLICT'
+              ? 'This time is held for an earlier request. '
+              : ''
+      return `${why}${pos}You will be approved automatically if the time frees up and your induction is valid.`
+    }
+    case 'PENDING_APPROVAL':
+      return 'Waiting for an admin to review this request.'
+    case 'REJECTED':
+      return b.reason_code === 'QUALIFICATION_REJECTED'
+        ? 'Your induction was rejected, so this request was rejected. Resubmit your induction, then book again.'
+        : 'This request was rejected.'
+    case 'CANCELLED':
+      return 'This request was cancelled.'
+    case 'EXPIRED':
+      return 'The start time passed before this request was approved.'
+  }
 }
 
 export const QUAL_TEXT: Record<QualificationStatus, string> = {
@@ -64,6 +100,16 @@ export function errorMessage(e: unknown): string {
     return `Bookings must be made at least ${range.min_advance_days ?? 7} days in advance. The earliest date you can book is ${fmtDate(range.earliest_date)}.`
   if (err?.code === 'BOOKING_TOO_FAR_AHEAD' && range?.latest_date)
     return `Bookings can be made at most ${range.max_advance_days ?? 30} days ahead. The latest date you can book is ${fmtDate(range.latest_date)}.`
+  if (err?.code === 'QUALIFICATION_REQUIRED') {
+    const q = (err.details as { qualification_status?: string })?.qualification_status
+    const why: Record<string, string> = {
+      NOT_SUBMITTED: 'You have not submitted your induction for this resource yet.',
+      REJECTED: 'Your induction was rejected. Please resubmit it.',
+      EXPIRED: 'Your induction has expired. Please resubmit it.',
+      VERIFIED: 'Your induction expires before the end of this booking. Please resubmit it or choose an earlier time.',
+    }
+    return (q && why[q]) || ERROR_TEXT.QUALIFICATION_REQUIRED
+  }
   if (err?.code && ERROR_TEXT[err.code]) return ERROR_TEXT[err.code]
   if (err?.code === 'VALIDATION_ERROR') return `Validation error: ${JSON.stringify(err.details)}`
   return err?.message ?? 'Something went wrong.'

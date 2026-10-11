@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { cancelBooking, listBookings, listResources, rescheduleBooking } from './api'
-import { errorMessage, fmtDateTime, STATUS_TEXT } from './format'
+import { bookingDetail, errorMessage, fmtDateTime, STATUS_TEXT } from './format'
 import { SlotPicker } from './SlotPicker'
 import type { Booking, Resource, Slot } from './types'
 
@@ -95,13 +95,13 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
         const res = resources[b.resource_id]
         return (
           <div key={b.id} className="bk-bcard">
-            <div className="bk-bhead"><h3>{res?.name ?? 'Resource'}</h3><span className={`bk-chip st-${b.status}`}>{STATUS_TEXT[b.status]}</span></div>
+            <div className="bk-bhead"><h3>{res?.name ?? 'Resource'}</h3><span className={`bk-chip st-${b.status}`}>{STATUS_TEXT[b.status]}{b.status === 'WAITLISTED' && b.waitlist_position ? ` · #${b.waitlist_position}` : ''}</span></div>
             <p>
               {fmtDateTime(b.start)} → {fmtDateTime(b.end)}
             </p>
-            {b.hold_active && b.hold_until && <p className="bk-muted">Time held until {fmtDateTime(b.hold_until)}</p>}
+            <p className="bk-muted">{bookingDetail(b)}</p>
             {b.purpose && <p className="bk-muted">Purpose: {b.purpose}</p>}
-            {b.decision_reason && <p className="bk-muted">Reason: {b.decision_reason}</p>}
+            {b.decision_reason && b.status === 'REJECTED' && <p className="bk-muted">Reason: {b.decision_reason}</p>}
             {b.outlook_sync?.status === 'SYNCED' && b.outlook_sync.web_link && (
               <p><a href={b.outlook_sync.web_link} target="_blank" rel="noreferrer">Open calendar</a></p>
             )}

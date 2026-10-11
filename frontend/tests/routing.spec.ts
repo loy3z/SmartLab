@@ -24,15 +24,17 @@ interface MockApi {
   loginBodies: unknown[]
   unexpected: string[]
   requests: string[]
+  managerUserRequests: string[]
 }
 
 const test = base.extend<{ api: MockApi }>({
   api: [async ({ page }, use) => {
-    const api: MockApi = { me: 'ok', config: { ...config }, login: 'ok', loginGate: null, verifiedRole: null, loginBodies: [], unexpected: [], requests: [] }
+    const api: MockApi = { me: 'ok', config: { ...config }, login: 'ok', loginGate: null, verifiedRole: null, loginBodies: [], unexpected: [], requests: [], managerUserRequests: [] }
     await page.route('**/api/v1/**', async (route) => {
       const request = route.request()
       const path = new URL(request.url()).pathname.replace('/api/v1/', '')
       api.requests.push(path)
+      if (path.startsWith('admin/users/')) api.managerUserRequests.push(`${request.method()} ${path}`)
       const json = (data: unknown, status = 200) => route.fulfill({ status, json: data })
       if (path === 'auth/config/') return json(api.config)
       if (path === 'auth/demo-login/' && request.method() === 'POST') {
@@ -59,6 +61,9 @@ const test = base.extend<{ api: MockApi }>({
         return json(user)
       }
       if (path === 'dashboard/') return json(dashboard)
+      if (path === 'admin/users/' && request.method() === 'GET' && user.role === 'MANAGER') {
+        return json({ count: accounts.length, results: accounts })
+      }
       if (['resources/', 'bookings/', 'qualifications/', 'qualification-requirements/', 'admin/qualifications/', 'admin/bookings/'].includes(path) && request.method() === 'GET') {
         return json(emptyList)
       }
@@ -128,6 +133,47 @@ for (const { role, home, heading, forbidden } of portals) {
     await signIn(page, role)
     await expect(page).toHaveURL(`http://127.0.0.1:5174/#${home}`)
     await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible()
+  })
+}
+
+test('Manager returns to user management after mock login and can reopen it from navigation without changing roles', async ({ page, api }) => {
+  await page.goto('/#/manager/users')
+  await signIn(page, 'MANAGER')
+  await expect(page).toHaveURL(/#\/manager\/users$/)
+  await expect(page).toHaveTitle('User management · UNSW SmartLab')
+  await expect(page.getByRole('heading', { name: 'User Management', exact: true })).toBeVisible()
+  const table = page.getByRole('table')
+  await expect(table.getByRole('row')).toHaveCount(accounts.length + 1)
+  await expect(table.getByRole('cell', { name: users.STUDENT.zid, exact: true })).toBeVisible()
+  await expect(table.getByRole('cell', { name: users.ADMIN.university_email, exact: true })).toBeVisible()
+  expect(api.managerUserRequests.length).toBeGreaterThan(0)
+  expect(api.managerUserRequests.every((request) => request === 'GET admin/users/')).toBe(true)
+  const navigation = page.getByRole('navigation', { name: 'Main navigation', exact: true })
+  const userManagement = navigation.getByRole('link', { name: 'User Management', exact: true })
+  await expect(userManagement).toHaveAttribute('aria-current', 'page')
+  await navigation.getByRole('link', { name: 'Room Management', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Room booking management', exact: true })).toBeVisible()
+  api.managerUserRequests.length = 0
+  await userManagement.click()
+  await expect(page.getByRole('heading', { name: 'User Management', exact: true })).toBeVisible()
+  await expect(table.getByRole('row')).toHaveCount(accounts.length + 1)
+  await expect(userManagement).toHaveAttribute('aria-current', 'page')
+  await expect(page).toHaveTitle('User management · UNSW SmartLab')
+  expect(api.managerUserRequests.length).toBeGreaterThan(0)
+  expect(api.managerUserRequests.every((request) => request === 'GET admin/users/')).toBe(true)
+})
+
+for (const role of ['STUDENT', 'ADMIN'] as const) {
+  test(`${role} cannot enter user management or request its user data`, async ({ page, api }) => {
+    await page.goto('/#/manager/users')
+    await signIn(page, role)
+    await expect(page).toHaveURL(role === 'STUDENT' ? /#\/dashboard$/ : /#\/admin\/qualifications$/)
+    await expect(page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'User Management', exact: true })).toHaveCount(0)
+    expect(api.managerUserRequests).toEqual([])
+    await page.goto('/#/manager/users')
+    await expect(page.getByRole('heading', { name: 'This page is not available for your role' })).toBeVisible()
+    await expect(page.getByRole('table')).toHaveCount(0)
+    expect(api.managerUserRequests).toEqual([])
   })
 }
 

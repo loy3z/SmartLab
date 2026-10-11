@@ -70,6 +70,7 @@ React Router's `HashRouter` keeps the existing `#/...` URLs. These work with sta
 | `#/admin/qualifications` | Admin, Manager | C: qualification review |
 | `#/admin/bookings` | Admin, Manager | C: booking review |
 | `#/manager/bookings` | Manager | C: room booking management |
+| `#/manager/users` | Manager | C: user list and Student/Admin role management |
 | `#/account`, `#/help` | All authenticated roles | A: account details and portal guidance |
 
 `src/App.tsx` wraps the application in `HashRouter`. `src/app/AppRouter.tsx` maps addresses to feature pages with `Routes` and `Route`. `ProtectedLayout` redirects anonymous users to login, and `RequireAccess` checks the permission map in `src/app/routes.ts`. An allowed deep link is saved in router location state and restored after login; explicit sign-out clears this destination. Loading and session-recovery errors are handled before protected pages can render.

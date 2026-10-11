@@ -120,3 +120,17 @@ export function reviewBooking(
     { decision, reason },
   )
 }
+
+export function listManagerUsers() {
+  return request<ListResponse<User>>('admin/users/')
+}
+
+export function updateUserRole(
+  userId: string,
+  role: 'STUDENT' | 'ADMIN',
+) {
+  return request<User>(`admin/users/${userId}/`, {
+    method: 'PATCH',
+    body: JSON.stringify({ role }),
+  })
+}

@@ -2,9 +2,9 @@ import type { Role } from '../features/booking/types.ts'
 
 const permissions: Record<string, readonly Role[]> = {
   '/dashboard': ['STUDENT'],
-  '/resources': ['STUDENT'],
-  '/bookings': ['STUDENT'],
-  '/induction': ['STUDENT'],
+  '/resources': ['STUDENT', 'ADMIN'],
+  '/bookings': ['STUDENT' , 'ADMIN'],
+  '/induction': ['STUDENT', 'ADMIN'],
   '/admin/qualifications': ['ADMIN', 'MANAGER'],
   '/admin/bookings': ['ADMIN', 'MANAGER'],
   '/manager/bookings': ['MANAGER'],

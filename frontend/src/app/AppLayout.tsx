@@ -56,12 +56,35 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
     .join('')
     .toUpperCase()
 
-  const mainItems: NavItem[] = user.role === 'STUDENT' ? [
-    { path: '/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
-    { path: '/resources', label: 'Book a Resource', icon: <CalendarIcon /> },
-    { path: '/induction', label: 'Induction & Training', icon: <CapIcon /> },
-    { path: '/bookings', label: 'My Bookings', icon: <CalendarIcon /> },
-  ] : []
+  const mainItems: NavItem[] =
+  user.role === 'STUDENT' || user.role === 'ADMIN'
+    ? [
+        ...(user.role === 'STUDENT'
+          ? [
+              {
+                path: '/dashboard',
+                label: 'Dashboard',
+                icon: <DashboardIcon />,
+              },
+            ]
+          : []),
+        {
+          path: '/resources',
+          label: 'Book a Resource',
+          icon: <CalendarIcon />,
+        },
+        {
+          path: '/induction',
+          label: 'Induction & Training',
+          icon: <CapIcon />,
+        },
+        {
+          path: '/bookings',
+          label: 'My Bookings',
+          icon: <CalendarIcon />,
+        },
+      ]
+    : []
   const staffItems: NavItem[] = isStaff ? [
     { path: '/admin/qualifications', label: 'Qualification Review', icon: <CapIcon /> },
     { path: '/admin/bookings', label: 'Booking Review', icon: <FileIcon /> },

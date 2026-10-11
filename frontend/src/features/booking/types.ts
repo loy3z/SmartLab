@@ -1,5 +1,7 @@
 export type ResourceKind = 'ROOM' | 'EQUIPMENT'
 
+export type ResourceStatus = 'AVAILABLE' | 'MAINTENANCE' | 'CLOSED'
+
 export interface Resource {
   id: string
   name: string
@@ -14,6 +16,8 @@ export interface Resource {
   closing_time: string
   timezone: string
   pending_hold_minutes: number
+  status: ResourceStatus
+  status_reason: string | null
 }
 
 export type SlotReason =
@@ -153,4 +157,21 @@ export interface User {
   role: Role
   university_email: string
   active: boolean
+}
+
+export interface UserInduction {
+  requirement_id: string
+  name: string
+  status:
+    | 'NOT_SUBMITTED'
+    | 'PENDING'
+    | 'VERIFIED'
+    | 'REJECTED'
+    | 'EXPIRED'
+  valid_until: string | null
+}
+
+export interface ManagedUser extends User {
+  inductions: UserInduction[]
+  induction_status: 'VERIFIED' | 'INCOMPLETE'
 }

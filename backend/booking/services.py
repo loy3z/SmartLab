@@ -74,6 +74,14 @@ class BookingService:
         if not actor.active or actor.role != Role.STUDENT:
             raise DomainError("FORBIDDEN", "This action requires an active student account.", 403)
 
+    def require_booking_user(self, actor):
+        if not actor.active or actor.role not in (Role.STUDENT, Role.ADMIN):
+            raise DomainError(
+                "FORBIDDEN",
+                "This action requires an active Student or Admin account.",
+                403,
+            )
+
     def require_staff(self, actor):
         """Admin and Manager: reviews, queues, audit. A Manager has every Admin permission."""
         if not actor.active or actor.role not in (Role.ADMIN, Role.MANAGER):
@@ -410,7 +418,7 @@ class BookingService:
         return changed
 
     def create_booking(self, actor, resource_id, start, end, purpose, idempotency_key=None):
-        self.require_student(actor)
+        self.require_booking_user(actor)
         self.process_due_requests()
         resource_id = str(resource_id)
         if not purpose.strip() or len(purpose) > 1000:
@@ -485,7 +493,7 @@ class BookingService:
         return submission
 
     def submit_qualification(self, actor, requirement_id, title, notes, data, filename, content_type):
-        self.require_student(actor)
+        self.require_booking_user(actor)
         requirement_id = str(requirement_id)
         if not title.strip() or len(title) > 160 or len(notes) > 2000:
             raise DomainError("VALIDATION_ERROR", "Check the qualification title and notes.")
@@ -644,7 +652,7 @@ class BookingService:
 
     def reschedule_booking(self, actor, booking_id, start, end):
         """Move a student's confirmed future booking to another valid free slot."""
-        self.require_student(actor)
+        self.require_booking_user(actor)
         self.process_due_requests()
         source = self.booking_for(actor, booking_id)
         if start.tzinfo is None or start.utcoffset() is None or end.tzinfo is None or end.utcoffset() is None:

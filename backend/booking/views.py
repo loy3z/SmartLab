@@ -160,7 +160,7 @@ class QualificationListView(APIView):
         return Response(collection(get_service().repo.list_submissions(student_id=request.user.id), submission_json))
 
     def post(self, request):
-        get_service().require_student(request.user)
+        get_service().require_booking_user(request.user)
         data = validated(QualificationCreateSerializer, request.data)
         file = data["file"]
         record = get_service().submit_qualification(request.user, str(data["requirement_id"]), data["title"], data["notes"], file.read(), file.name, file.content_type)
@@ -190,7 +190,7 @@ class BookingListView(APIView):
 
     def post(self, request):
         service = get_service()
-        service.require_student(request.user)
+        service.require_booking_user(request.user)
         data = validated(BookingCreateSerializer, request.data)
         booking, created = service.create_booking(request.user, str(data["resource_id"]), data["start"], data["end"], data["purpose"], request.headers.get("Idempotency-Key"))
         booking, = sync_after_write(service, booking)

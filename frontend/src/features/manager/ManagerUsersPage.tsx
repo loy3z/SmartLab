@@ -4,29 +4,58 @@ import {
   updateUserRole,
 } from '../booking/api'
 import { errorMessage } from '../booking/format'
-import type { User } from '../booking/types'
+import type { ManagedUser } from '../booking/types'
 
-const roleLabels = {
-  STUDENT: 'Student',
-  ADMIN: 'Admin',
-  MANAGER: 'Manager',
+type ListRole = 'STUDENT' | 'ADMIN'
+
+const inductionLabels = {
+  NOT_SUBMITTED: 'Not submitted',
+  PENDING: 'Pending review',
+  VERIFIED: 'Verified',
+  REJECTED: 'Rejected',
+  EXPIRED: 'Expired',
+}
+
+function canPromote(user: ManagedUser, now: number): boolean {
+  return (
+    user.induction_status === 'VERIFIED' &&
+    Array.isArray(user.inductions) &&
+    user.inductions.length > 0 &&
+    user.inductions.every(
+      (item) =>
+        item.status === 'VERIFIED' &&
+        (
+          item.valid_until === null ||
+          Date.parse(item.valid_until) > now
+        ),
+    )
+  )
 }
 
 export function ManagerUsersPage() {
-  const [users, setUsers] = useState<User[]>([])
+  const [users, setUsers] = useState<ManagedUser[]>([])
+  const [openList, setOpenList] = useState<ListRole | null>(null)
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
-  const [error, setError] = useState('')
+  const [loadError, setLoadError] = useState('')
+  const [actionError, setActionError] = useState('')
   const [success, setSuccess] = useState('')
   const [refresh, setRefresh] = useState(0)
+  const [now, setNow] = useState(() => Date.now())
 
   const mounted = useRef(false)
   const saving = useRef(false)
 
   useEffect(() => {
     mounted.current = true
+
+    const timer = window.setInterval(() => {
+      setNow(Date.now())
+    }, 15000)
+
     return () => {
       mounted.current = false
+      window.clearInterval(timer)
     }
   }, [])
 
@@ -36,15 +65,17 @@ export function ManagerUsersPage() {
     listManagerUsers()
       .then((data) => {
         if (!active) return
+
         setUsers(
           [...data.results].sort((a, b) =>
             a.zid.localeCompare(b.zid),
           ),
         )
-        setError('')
+        setNow(Date.now())
+        setLoadError('')
       })
       .catch((err: unknown) => {
-        if (active) setError(errorMessage(err))
+        if (active) setLoadError(errorMessage(err))
       })
       .finally(() => {
         if (active) setLoading(false)
@@ -56,154 +87,315 @@ export function ManagerUsersPage() {
   }, [refresh])
 
   function reload() {
+    if (saving.current || loading) return
+
     setLoading(true)
-    setError('')
+    setLoadError('')
+    setActionError('')
     setSuccess('')
     setRefresh((value) => value + 1)
   }
 
-  async function changeRole(user: User) {
-    if (saving.current || user.role === 'MANAGER') return
+  async function changeRole(user: ManagedUser) {
+    if (
+      saving.current ||
+      loading ||
+      loadError ||
+      user.role === 'MANAGER'
+    ) {
+      return
+    }
+
+    setActionError('')
+    setSuccess('')
+
+    if (user.role === 'STUDENT' && !canPromote(user, Date.now())) {
+      setActionError(
+        'All induction checks must be verified and valid before promotion.',
+      )
+      return
+    }
 
     const nextRole = user.role === 'STUDENT' ? 'ADMIN' : 'STUDENT'
+    const nextLabel = nextRole === 'ADMIN' ? 'Admin' : 'Student'
 
-    const confirmed = window.confirm(
-      `Change ${user.display_name} (${user.zid}) from ` +
-      `${roleLabels[user.role]} to ${roleLabels[nextRole]}?`,
-    )
-
-    if (!confirmed) return
+    if (
+      !window.confirm(
+        `Change ${user.display_name} (${user.zid}) to ${nextLabel}?`,
+      )
+    ) {
+      return
+    }
 
     saving.current = true
     setBusyId(user.id)
-    setError('')
-    setSuccess('')
 
     try {
-      const updatedUser = await updateUserRole(user.id, nextRole)
+      const updated = await updateUserRole(user.id, nextRole)
 
       if (!mounted.current) return
 
       setUsers((current) =>
         current.map((item) =>
-          item.id === updatedUser.id ? updatedUser : item,
+          item.id === updated.id ? updated : item,
         ),
       )
       setSuccess(
-        `${updatedUser.zid} is now ${roleLabels[updatedUser.role]}.`,
+        `${updated.display_name} (${updated.zid}) is now ${nextLabel}.`,
       )
-    } catch (err) {
-      if (mounted.current) setError(errorMessage(err))
+    } catch (err: unknown) {
+      if (mounted.current) setActionError(errorMessage(err))
     } finally {
       saving.current = false
-      if (mounted.current) setBusyId(null)
+
+      if (mounted.current) {
+        setBusyId(null)
+        setNow(Date.now())
+      }
     }
   }
 
+  const visibleUsers = users.filter((user) => user.role === openList)
+
   return (
-    <section className="app-card">
-      <h1>User Management</h1>
-      <p>
-        View all users and change roles between Student and Admin.
-      </p>
-
-      <button
-        type="button"
-        className="app-button app-button-secondary"
-        onClick={reload}
-        disabled={loading || busyId !== null}
+    <section>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 16,
+          marginBottom: 24,
+        }}
       >
-        Refresh
-      </button>
+        <div>
+          <h1 style={{ marginBottom: 8 }}>User Management</h1>
+          <p className="bk-muted" style={{ margin: 0 }}>
+            Select a list to view users and manage their roles.
+          </p>
+        </div>
 
-      {error && (
-        <p role="alert" className="bk-error">{error}</p>
-      )}
-      {success && <p role="status">{success}</p>}
+        <button
+          type="button"
+          className="app-button app-button-secondary"
+          onClick={reload}
+          disabled={loading || busyId !== null}
+        >
+          Refresh
+        </button>
+      </div>
 
-      {loading ? (
-        <p role="status">Loading users...</p>
-      ) : (
-        <>
-          <p>{users.length} users</p>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gap: 16,
+          marginBottom: 24,
+        }}
+      >
+        {(['STUDENT', 'ADMIN'] as const).map((role) => {
+          const selected = openList === role
+          const count = users.filter((user) => user.role === role).length
+          const label = role === 'STUDENT' ? 'Student List' : 'Admin List'
 
-          {users.length === 0 && !error && (
-            <p>No users found.</p>
-          )}
-
-          {users.length > 0 && (
-            <div style={{ overflowX: 'auto' }}>
-              <table
+          return (
+            <button
+              key={role}
+              type="button"
+              aria-expanded={selected}
+              aria-controls="user-list-panel"
+              disabled={busyId !== null}
+              onClick={() =>
+                setOpenList((current) => current === role ? null : role)
+              }
+              style={{
+                padding: '24px 20px',
+                borderRadius: 14,
+                border: selected
+                  ? '2px solid #d6a700'
+                  : '2px solid #e5e7eb',
+                background: selected ? '#fff7d6' : '#fff',
+                color: '#171717',
+                textAlign: 'left',
+                cursor: busyId !== null ? 'wait' : 'pointer',
+                font: 'inherit',
+              }}
+            >
+              <span
                 style={{
-                  width: '100%',
-                  borderCollapse: 'collapse',
-                  textAlign: 'left',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 8,
                 }}
               >
-                <thead>
-                  <tr>
-                    {['zID', 'Name', 'Email', 'Role', 'Status', 'Action']
-                      .map((heading) => (
-                        <th
-                          key={heading}
-                          scope="col"
+                <strong style={{ fontSize: 20 }}>{label}</strong>
+                <span aria-hidden="true">{selected ? '▴' : '▾'}</span>
+              </span>
+
+              <span
+                style={{
+                  display: 'block',
+                  marginTop: 8,
+                  color: '#666',
+                }}
+              >
+                {loading ? 'Loading...' : `${count} users`}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {loadError && (
+        <p role="alert" className="bk-error">{loadError}</p>
+      )}
+
+      {actionError && (
+        <p role="alert" className="bk-error">{actionError}</p>
+      )}
+
+      {success && <p role="status">{success}</p>}
+
+      <div id="user-list-panel">
+        {openList === null ? (
+          <p className="bk-muted">
+            Click Student List or Admin List to expand.
+          </p>
+        ) : (
+          <section className="app-card">
+            <h2 style={{ marginTop: 0 }}>
+              {openList === 'STUDENT' ? 'Students' : 'Administrators'}
+            </h2>
+
+            {openList === 'STUDENT' && (
+              <p className="bk-muted">
+                Students must pass all induction checks before becoming
+                an Admin. Refresh after reviewing induction evidence.
+              </p>
+            )}
+
+            {loading ? (
+              <p role="status">Loading users...</p>
+            ) : loadError ? (
+              <p>Unable to load the list. Click Refresh to try again.</p>
+            ) : visibleUsers.length === 0 ? (
+              <p className="bk-muted">No users in this list.</p>
+            ) : (
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {visibleUsers.map((user) => {
+                  const blocked =
+                    user.role === 'STUDENT' && !canPromote(user, now)
+
+                  return (
+                    <li
+                      key={user.id}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: 20,
+                        padding: '22px 0',
+                        borderBottom: '1px solid #e5e7eb',
+                      }}
+                    >
+                      <div style={{ flex: '1 1 240px', minWidth: 0 }}>
+                        <strong style={{ fontSize: 18 }}>
+                          {user.display_name || user.zid}
+                        </strong>
+
+                        <p style={{ margin: '8px 0 4px' }}>
+                          <b>zID:</b> {user.zid}
+                        </p>
+
+                        <p
                           style={{
-                            padding: 12,
-                            borderBottom: '1px solid #ddd',
+                            margin: 0,
+                            color: '#666',
+                            overflowWrap: 'anywhere',
                           }}
                         >
-                          {heading}
-                        </th>
-                      ))}
-                  </tr>
-                </thead>
+                          <b>Email:</b> {user.university_email || '—'}
+                        </p>
 
-                <tbody>
-                  {users.map((user) => (
-                    <tr key={user.id}>
-                      <td style={{ padding: 12 }}>{user.zid}</td>
-                      <td style={{ padding: 12 }}>
-                        {user.display_name}
-                      </td>
-                      <td style={{ padding: 12 }}>
-                        {user.university_email || '—'}
-                      </td>
-                      <td style={{ padding: 12 }}>
-                        {roleLabels[user.role]}
-                      </td>
-                      <td style={{ padding: 12 }}>
-                        {user.active ? 'Active' : 'Inactive'}
-                      </td>
-                      <td style={{ padding: 12 }}>
-                        {user.role === 'MANAGER' ? (
-                          <span>—</span>
-                        ) : (
-                          <button
-                            type="button"
-                            className="app-button app-button-secondary"
-                            disabled={busyId !== null || Boolean(error)}
-                            onClick={() => changeRole(user)}
-                            aria-label={
-                              `Change ${user.zid} to ` +
-                              (user.role === 'STUDENT' ? 'Admin' : 'Student')
-                            }
-                          >
-                            {busyId === user.id
-                              ? 'Saving...'
-                              : user.role === 'STUDENT'
-                                ? 'Make Admin'
-                                : 'Make Student'}
-                          </button>
+                        {!user.active && (
+                          <p className="bk-muted">Inactive account</p>
                         )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </>
-      )}
+
+                        {blocked && (
+                          <details style={{ marginTop: 12 }}>
+                            <summary style={{ cursor: 'pointer' }}>
+                              Induction incomplete — view details
+                            </summary>
+
+                            {user.inductions?.length ? (
+                              <ul style={{ paddingLeft: 20 }}>
+                                {user.inductions.map((item) => {
+                                  const expired =
+                                    item.status === 'VERIFIED' &&
+                                    item.valid_until !== null &&
+                                    !(
+                                      Date.parse(item.valid_until) > now
+                                    )
+
+                                  return (
+                                    <li key={item.requirement_id}>
+                                      {item.name}: {' '}
+                                      {expired
+                                        ? 'Expired or invalid'
+                                        : inductionLabels[item.status]}
+                                    </li>
+                                  )
+                                })}
+                              </ul>
+                            ) : (
+                              <p>No induction information available.</p>
+                            )}
+                          </details>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        className={
+                          user.role === 'STUDENT'
+                            ? 'app-button'
+                            : 'app-button app-button-secondary'
+                        }
+                        disabled={busyId !== null || blocked}
+                        onClick={() => changeRole(user)}
+                        aria-label={
+                          `${user.role === 'STUDENT' ? 'Promote' : 'Change'} ` +
+                          `${user.zid} to ` +
+                          (user.role === 'STUDENT' ? 'Admin' : 'Student')
+                        }
+                        title={
+                          blocked
+                            ? 'All inductions must be verified and valid.'
+                            : undefined
+                        }
+                        style={{
+                          flexShrink: 0,
+                          opacity: blocked ? 0.5 : 1,
+                          cursor: blocked ? 'not-allowed' : undefined,
+                        }}
+                      >
+                        {busyId === user.id
+                          ? 'Saving...'
+                          : user.role === 'STUDENT'
+                            ? 'Promote to Admin'
+                            : 'Change to Student'}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </section>
+        )}
+      </div>
     </section>
   )
 }

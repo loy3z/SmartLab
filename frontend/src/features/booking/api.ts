@@ -9,6 +9,8 @@ import type {
   Requirement,
   Resource,
   User,
+  ManagedUser,
+  ResourceStatus,
 } from './types'
 import { request, requestBlob } from '../../lib/api-client'
 export { ApiError, getToken, setToken } from '../../lib/api-client'
@@ -122,15 +124,42 @@ export function reviewBooking(
 }
 
 export function listManagerUsers() {
-  return request<ListResponse<User>>('admin/users/')
+  return request<ListResponse<ManagedUser>>('admin/users/')
 }
 
 export function updateUserRole(
   userId: string,
   role: 'STUDENT' | 'ADMIN',
 ) {
-  return request<User>(`admin/users/${userId}/`, {
+  return request<ManagedUser>(`admin/users/${userId}/`, {
     method: 'PATCH',
     body: JSON.stringify({ role }),
+  })
+}
+
+export function downloadAllBookings() {
+  return requestBlob('admin/bookings/export/?status=ALL')
+}
+
+export function downloadUserBookings(studentId: string) {
+  const params = new URLSearchParams({
+    status: 'ALL',
+    student_id: studentId,
+  })
+
+  return requestBlob(`admin/bookings/export/?${params.toString()}`)
+}
+
+export function updateResourceStatus(
+  resourceId: string,
+  status: ResourceStatus,
+  reason: string,
+) {
+  return request<{
+    resource: Resource
+    affected_bookings: Booking[]
+  }>(`admin/resources/${resourceId}/status/`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, reason }),
   })
 }

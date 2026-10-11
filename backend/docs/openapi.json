@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Sprint 1 Smart Lab and Room Booking API",
-    "version": "1.5.0",
+    "version": "1.5.1",
     "description": "Sprint 1 backend with Microsoft Graph one-way creation, rescheduling and cancellation of confirmed bookings. Confirmed events invite the student; room and equipment availability remains managed by the booking system. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Recurrence is deferred to Sprint 2. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z. Identity includes university_email. Requests for the same time are first-come-first-served with a waitlist: the first undecided request holds the slot for 30 minutes by default (Manager-configurable per resource); later requests, and a holder whose hold ends while still under review, are WAITLISTED and promoted automatically in order when the slot frees up. Bookings must start at least 7 and at most 30 days ahead (MIN_ADVANCE_DAYS / MAX_ADVANCE_DAYS). Authentication and resource-specific eligibility are separate. Verified induction expires a fixed number of days after approval (QUALIFICATION_VALIDITY_DAYS, default 120, one term); reviewers no longer supply an expiry. Admin and Manager can query the audit trail of requests, approvals, changes and cancellations. The prototype seed has 2 labs and 20 independently bookable devices. A Manager has every Admin permission and can also configure booking policies and nominate user roles or deactivate accounts."
   },
   "servers": [
@@ -883,7 +883,7 @@
           "Bookings"
         ],
         "summary": "Create a room or individual equipment booking request",
-        "description": "Requires a submitted induction for the selected resource. The local start date must be from today + MIN_ADVANCE_DAYS (default 7) to today + MAX_ADVANCE_DAYS (default 30): BOOKING_TOO_SOON / BOOKING_TOO_FAR_AHEAD (400, details.earliest_date, latest_date, min_advance_days, max_advance_days). Requests for the same time are handled first-come-first-served with a waitlist. If no APPROVED booking or active hold overlaps: a valid VERIFIED qualification through the booking end results in APPROVED; PENDING evidence makes this request the slot holder in WAITING_QUALIFICATION (or PENDING_APPROVAL at once if start is within the approval waiting period, default 24 hours) with hold_until = min(start, creation + pending_hold_minutes, default 30). If an APPROVED booking or active hold overlaps, the request becomes WAITLISTED (reason TIME_CONFLICT or TEMPORARY_HOLD_CONFLICT) with waitlist_position, even if qualified. When a hold ends while the holder is still undecided, the holder becomes WAITLISTED (reason HOLD_EXPIRED) and is promoted only once qualified; each request gets at most one hold. When time frees up (cancellation, rejection, expiry, rescheduling, a hold ending, or a waitlisted student's induction being verified) the earliest waitlisted request that now fits is promoted automatically: qualified -> APPROVED; induction under review and never held -> new holder; otherwise REJECTED (QUALIFICATION_REQUIRED); reason PROMOTED_FROM_WAITLIST. A student whose induction is under review may hold at most UNVERIFIED_PENDING_LIMIT (default 1) undecided requests per qualification. Only APPROVED creates an Outlook event. Undecided and waitlisted requests expire at their start time. HTTP 201 alone does not mean approved. Interval semantics are [start, end).",
+        "description": "Requires a submitted induction for the selected resource. The local start date must be from today + MIN_ADVANCE_DAYS (default 7) to today + MAX_ADVANCE_DAYS (default 30): BOOKING_TOO_SOON / BOOKING_TOO_FAR_AHEAD (400, details.earliest_date, latest_date, min_advance_days, max_advance_days). Requests for the same time are handled first-come-first-served with a waitlist. A student who already has an overlapping active request for this same resource receives DUPLICATE_BOOKING (409) instead of another waitlist record; terminal requests do not block rebooking and different resources remain independent. If no APPROVED booking or active hold overlaps: a valid VERIFIED qualification through the booking end results in APPROVED; PENDING evidence makes this request the slot holder in WAITING_QUALIFICATION (or PENDING_APPROVAL at once if start is within the approval waiting period, default 24 hours) with hold_until = min(start, creation + pending_hold_minutes, default 30). If an APPROVED booking or active hold overlaps, the request becomes WAITLISTED (reason TIME_CONFLICT or TEMPORARY_HOLD_CONFLICT) with waitlist_position, even if qualified. When a hold ends while the holder is still undecided, the holder becomes WAITLISTED (reason HOLD_EXPIRED) and is promoted only once qualified; each request gets at most one hold. When time frees up (cancellation, rejection, expiry, rescheduling, a hold ending, or a waitlisted student's induction being verified) the earliest waitlisted request that now fits is promoted automatically: qualified -> APPROVED; induction under review and never held -> new holder; otherwise REJECTED (QUALIFICATION_REQUIRED); reason PROMOTED_FROM_WAITLIST. A student whose induction is under review may hold at most UNVERIFIED_PENDING_LIMIT (default 1) undecided requests per qualification. Only APPROVED creates an Outlook event. Undecided and waitlisted requests expire at their start time. HTTP 201 alone does not mean approved. Interval semantics are [start, end).",
         "security": [
           {
             "BearerAuth": []
@@ -3031,7 +3031,8 @@
                 "available",
                 "reason_code",
                 "hold_until",
-                "held_by_me"
+                "held_by_me",
+                "requested_by_me"
               ],
               "properties": {
                 "start": {
@@ -3066,6 +3067,10 @@
                 "held_by_me": {
                   "type": "boolean",
                   "description": "True only when all blocking holds belong to the current user."
+                },
+                "requested_by_me": {
+                  "type": "boolean",
+                  "description": "True when the current user already has an overlapping active request for this resource; clients must not submit it again."
                 }
               }
             }

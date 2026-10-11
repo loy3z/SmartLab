@@ -31,6 +31,8 @@ export interface Slot {
   reason_code: SlotReason
   hold_until: string | null
   held_by_me: boolean
+  /** This user already has an overlapping active request for the resource. */
+  requested_by_me: boolean
 }
 
 export type QualificationStatus =

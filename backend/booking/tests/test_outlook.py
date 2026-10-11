@@ -185,12 +185,19 @@ class OutlookWorkflowTests(SimpleTestCase):
         self.assertTrue(all(call[-1] == original.event_id for call in self.provider.updates))
 
     def test_graph_failure_preserves_approved_booking_and_retry_recovers(self):
+        submission_id = self.submit()
+        reviewed = self.admin.post(
+            f"/api/v1/admin/qualifications/{submission_id}/review/",
+            {"decision": "VERIFIED"},
+            format="json",
+        )
+        self.assertEqual(reviewed.status_code, 200, reviewed.data)
         self.provider.error = OutlookError("GRAPH_HTTP_429", retry_after=120)
         booking = self.create().data
         self.assertEqual(booking["status"], "APPROVED")
         self.assertEqual(booking["outlook_sync"]["status"], "FAILED")
         self.assertEqual(booking["outlook_sync"]["last_error"], "GRAPH_HTTP_429")
-        self.assertEqual(self.create().data["status"], "WAITLISTED")
+        self.assertEqual(self.create(self.student).data["status"], "WAITLISTED")
         record = self.service.repo.get_outlook_sync(booking["id"])
         self.assertEqual(record.next_attempt_at, NOW + timedelta(seconds=120))
         self.sync.process_pending()

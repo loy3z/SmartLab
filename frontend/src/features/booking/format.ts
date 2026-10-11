@@ -77,6 +77,7 @@ const ERROR_TEXT: Record<string, string> = {
   OUTSIDE_OPENING_HOURS: 'Selected time is outside opening hours.',
   DURATION_LIMIT: 'Booking exceeds the maximum duration for this resource.',
   IDEMPOTENCY_CONFLICT: 'This request conflicted with an earlier one. Please try again.',
+  DUPLICATE_BOOKING: 'You already have an active request for this resource during the selected time.',
   REQUEST_NOT_CANCELLABLE: 'This booking can no longer be cancelled (already started or closed).',
   REQUEST_NOT_RESCHEDULABLE: 'Only future approved bookings can be rescheduled.',
   BOOKING_CONFLICT: 'That time is already booked.',

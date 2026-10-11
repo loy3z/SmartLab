@@ -105,34 +105,39 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
           {data.slots.map((s) => {
             const label = fmtTime(s.start)
             const held = s.reason_code === 'TEMPORARILY_HELD'
-            const note = s.available
-              ? ''
-              : s.reason_code === 'BOOKED'
-                ? 'Booked'
-                : held
-                  ? s.held_by_me
-                    ? 'Held by you'
-                    : 'Temporarily held'
-                  : s.reason_code === 'START_TIME_PASSED'
-                    ? 'Passed'
-                    : s.reason_code === 'TOO_SOON'
-                      ? 'Too soon'
-                      : s.reason_code === 'TOO_FAR_AHEAD'
-                        ? 'Too far ahead'
-                        : 'Unavailable'
-            const closed = OUTSIDE_WINDOW.includes(s.reason_code)
+            const mine = s.requested_by_me
+            const note = mine
+              ? 'Already requested'
+              : s.available
+                ? ''
+                : s.reason_code === 'BOOKED'
+                  ? 'Booked'
+                  : held
+                    ? s.held_by_me
+                      ? 'Held by you'
+                      : 'Temporarily held'
+                    : s.reason_code === 'START_TIME_PASSED'
+                      ? 'Passed'
+                      : s.reason_code === 'TOO_SOON'
+                        ? 'Too soon'
+                        : s.reason_code === 'TOO_FAR_AHEAD'
+                          ? 'Too far ahead'
+                          : 'Unavailable'
+            const closed = mine || OUTSIDE_WINDOW.includes(s.reason_code)
             return (
               <button
                 key={s.start}
                 type="button"
-                className={`bk-slot ${s.available ? '' : 'bk-slot-off'} ${selected === s.start ? 'bk-slot-on' : ''}`}
+                className={`bk-slot ${s.available && !mine ? '' : 'bk-slot-off'} ${selected === s.start ? 'bk-slot-on' : ''}`}
                 disabled={closed}
                 title={
-                  s.available
-                    ? 'Available'
-                    : closed
-                      ? 'Not bookable on this date'
-                      : 'Taken: a request here joins the waitlist and is approved automatically if the time frees up'
+                  mine
+                    ? 'You already have an overlapping request for this resource'
+                    : s.available
+                      ? 'Available'
+                      : closed
+                        ? 'Not bookable on this date'
+                        : 'Taken: a request here joins the waitlist and is approved automatically if the time frees up'
                 }
                 onClick={() => {
                   setSelected(s.start)
@@ -150,7 +155,8 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
       {data && data.slots.some((s) => !s.available && !OUTSIDE_WINDOW.includes(s.reason_code)) && (
         <p className="bk-muted">
           Booked or held times can still be requested: you join the waitlist in submission order and are approved
-          automatically if the time frees up and your induction is verified.
+          automatically if the time frees up and your induction is verified. You cannot submit the same resource and
+          overlapping time twice.
         </p>
       )}
     </div>

@@ -117,13 +117,7 @@ class UserUpdateSerializer(StrictSerializer):
 
 
 class BookingPolicySerializer(StrictSerializer):
-    pending_hold_minutes = serializers.IntegerField(min_value=1, max_value=20160, required=False)
-    auto_approve_max_minutes = serializers.IntegerField(min_value=1, max_value=1440, required=False)
-
-    def validate(self, attrs):
-        if not attrs:
-            raise serializers.ValidationError("Provide pending_hold_minutes and/or auto_approve_max_minutes.")
-        return attrs
+    pending_hold_minutes = serializers.IntegerField(min_value=1, max_value=20160)
 
 
 class ResourceStatusSerializer(StrictSerializer):

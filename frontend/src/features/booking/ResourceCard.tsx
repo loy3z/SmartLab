@@ -13,6 +13,7 @@ const CHIP: Record<InductionState, { text: string; ok: boolean }> = {
 }
 
 const NOTE: Partial<Record<InductionState, string>> = {
+  PENDING: 'You can request a booking once your induction is verified.',
   NOT_SUBMITTED: 'Submit induction to request a booking.',
   REJECTED: 'Resubmit induction to request a booking.',
   EXPIRED: 'Resubmit induction to request a booking.',

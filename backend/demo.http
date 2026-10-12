@@ -23,7 +23,7 @@ Content-Type: application/json
 
 {"zid": "z1000001"}
 
-### Demo login: student who needs to submit induction
+### Demo login: student who needs to submit induction (cannot book until an admin verifies it: 403 QUALIFICATION_REQUIRED)
 POST {{baseUrl}}/auth/demo-login/
 Content-Type: application/json
 
@@ -79,7 +79,8 @@ Content-Type: application/pdf
 GET {{baseUrl}}/resources/{{resourceId}}/availability/?date=2026-10-07&duration_minutes=60
 Authorization: Bearer {{studentToken}}
 
-### Create a booking. Start must be 7 to 30 days from today (MIN/MAX_ADVANCE_DAYS); update timestamps before replaying.
+### Create a booking. Needs a verified induction. Start must be 7 to 30 days from today (MIN/MAX_ADVANCE_DAYS); update timestamps before replaying.
+### Result is PENDING_APPROVAL (an admin decides within 24 hours, otherwise the system approves if the rules still hold) or WAITLISTED if the time is taken.
 POST {{baseUrl}}/bookings/
 Authorization: Bearer {{studentToken}}
 Content-Type: application/json
@@ -124,15 +125,15 @@ Content-Type: application/json
 
 {"decision": "REJECTED", "reason": "Please provide the required induction certificate"}
 
-### Pending booking approvals
+### Pending booking approvals (each shows review_due_at; an admin cannot approve their own request)
 GET {{baseUrl}}/admin/bookings/?status=PENDING_APPROVAL
 Authorization: Bearer {{adminToken}}
 
-### Waitlisted requests (promoted automatically in submission order; can only be rejected)
+### Waitlisted requests (move up to pending in submission order when time frees up; can only be rejected)
 GET {{baseUrl}}/admin/bookings/?status=WAITLISTED
 Authorization: Bearer {{adminToken}}
 
-### Approve booking. Requires valid induction and no approved/active-hold conflict.
+### Approve booking. Requires valid induction and no approved/pending-request conflict.
 POST {{baseUrl}}/admin/bookings/{{bookingId}}/review/
 Authorization: Bearer {{adminToken}}
 Content-Type: application/json
@@ -146,7 +147,7 @@ Content-Type: application/json
 
 {"decision": "REJECTED", "reason": "Please choose another time slot"}
 
-### Process due requests. Uses server time; clients cannot fast-forward time.
+### Process due requests. Uses server time; clients cannot fast-forward time. Decides pending requests whose review window has ended and expires requests that reached their start.
 POST {{baseUrl}}/admin/process-due/
 Authorization: Bearer {{adminToken}}
 Content-Type: application/json
@@ -196,16 +197,16 @@ Content-Type: application/json
 
 {"role": "ADMIN"}
 
-### Read a resource's temporary hold policy (Admin or Manager)
+### Read a resource's review window (Admin or Manager)
 GET {{baseUrl}}/admin/resources/{{resourceId}}/booking-policy/
 Authorization: Bearer {{managerToken}}
 
-### Configure future pending holds (Manager only; existing deadlines stay unchanged)
+### Set the admin review window in minutes (Manager only; default 1440 = 24 hours; existing deadlines stay unchanged)
 PATCH {{baseUrl}}/admin/resources/{{resourceId}}/booking-policy/
 Authorization: Bearer {{managerToken}}
 Content-Type: application/json
 
-{"pending_hold_minutes": 30}
+{"pending_hold_minutes": 1440}
 
 ### Outlook configuration and sync records (credentials are never returned)
 GET {{baseUrl}}/admin/outlook/
@@ -246,13 +247,6 @@ Authorization: Bearer {{managerToken}}
 Content-Type: application/json
 
 {"status": "AVAILABLE"}
-
-### Set the automatic-approval limit (Manager only; longer requests go to an admin)
-PATCH {{baseUrl}}/admin/resources/{{resourceId}}/booking-policy/
-Authorization: Bearer {{managerToken}}
-Content-Type: application/json
-
-{"auto_approve_max_minutes": 120}
 
 ### Add manager: the only way to create a Manager (Manager only; creates a new account)
 POST {{baseUrl}}/admin/users/managers/

@@ -36,9 +36,9 @@ class DemoSeedTests(BookingAPIFixtureMixin, SimpleTestCase):
         devices = [item for item in self.items(self.verified.get("/api/v1/resources/?kind=EQUIPMENT"))
                    if item["required_qualification_id"] == fixed_id(1)][:2]
         booked = self.create_booking(payload=self.payload(resource=devices[0]))
-        self.assertEqual(booked.data["status"], "APPROVED", booked.data)
+        self.assertEqual(booked.data["status"], "PENDING_APPROVAL", booked.data)
         other = self.create_booking(payload=self.payload(resource=devices[1]))
-        self.assertEqual(other.data["status"], "APPROVED", other.data)
+        self.assertEqual(other.data["status"], "PENDING_APPROVAL", other.data)  # each device has its own time
 
     def test_devices_can_be_found_by_location(self):
         lab2 = self.items(self.verified.get("/api/v1/resources/?kind=EQUIPMENT&q=lab room 2"))
@@ -85,7 +85,7 @@ class AuditTrailAPITests(BookingAPIFixtureMixin, SimpleTestCase):
     def test_booking_history_by_entity(self):
         data = self.audit(entity_id=self.room_booking["id"])
         self.assertEqual(self.actions(data), ["BOOKING_CANCELLED", "BOOKING_CREATED"])
-        self.assertEqual(data["results"][1]["details"]["status"], "APPROVED")
+        self.assertEqual(data["results"][1]["details"]["status"], "PENDING_APPROVAL")
 
     def test_filter_by_resource_includes_policy_changes_but_not_other_resources(self):
         self.manager.patch(f"/api/v1/admin/resources/{self.room['id']}/booking-policy/",

@@ -2,13 +2,12 @@
 
 import csv
 import io
-from dataclasses import replace
 from datetime import timedelta
 from uuid import uuid4
 
 from django.test import SimpleTestCase, override_settings
 
-from booking.domain import BookingStatus, Principal, QualificationStatus, ResourceStatus, Role
+from booking.domain import BookingStatus, Principal, ResourceStatus, Role
 from booking.exceptions import DomainError
 from booking.tests.test_api import BookingAPIFixtureMixin
 from booking.tests.test_services import BookingFixtureMixin
@@ -31,73 +30,17 @@ class ServiceFixture(BookingFixtureMixin):
         self.now += timedelta(seconds=1)  # requests arrive one after another
         return booking
 
+    def get(self, booking):
+        return self.repo.get_booking(booking.id)
+
     def status(self, booking):
         return self.repo.get_booking(booking.id).status
 
 
-class DurationApprovalTests(ServiceFixture, SimpleTestCase):
-    def test_up_to_120_minutes_is_automatic_and_longer_goes_to_a_reviewer(self):
-        self.qualification()
-        self.assertEqual(self.room.auto_approve_max_minutes, 120)
-        self.assertEqual(self.book_minutes(120).status, BookingStatus.APPROVED)
-        long = self.book_minutes(150, offset_minutes=180)
-        self.assertEqual((long.status, long.reason_code), (BookingStatus.PENDING_APPROVAL, "DURATION_REVIEW"))
-        self.assertEqual(long.hold_until, long.start)
-
-    def test_long_request_keeps_its_slot_until_decided_and_others_queue_behind_it(self):
-        self.qualification()
-        other = self.make_student("z3333333")
-        self.qualification(other)
-        long = self.book_minutes(180)
-        queued = self.book_minutes(60, other)
-        self.assertEqual((queued.status, queued.reason_code), (BookingStatus.WAITLISTED, "TEMPORARY_HOLD_CONFLICT"))
-        self.now += timedelta(days=1)  # far beyond the 30-minute induction hold
-        self.service.process_due_requests()
-        self.assertEqual(self.status(long), BookingStatus.PENDING_APPROVAL)
-        self.assertEqual(self.status(queued), BookingStatus.WAITLISTED)
-        self.service.review_booking(self.admin, long.id, "REJECTED", "Too long for a teaching week")
-        self.assertEqual(self.status(queued), BookingStatus.APPROVED)
-
-    def test_reviewer_can_approve_the_long_request(self):
-        self.qualification()
-        long = self.book_minutes(240)
-        approved = self.service.review_booking(self.admin, long.id, "APPROVED", "")
-        self.assertEqual((approved.status, approved.reason_code), (BookingStatus.APPROVED, "MANUALLY_APPROVED"))
-
-    def test_long_request_still_needs_review_after_induction_is_verified(self):
-        submission = self.qualification(status=QualificationStatus.PENDING)
-        long = self.book_minutes(180)
-        self.assertEqual(long.status, BookingStatus.WAITING_QUALIFICATION)
-        self.service.review_qualification(self.admin, submission.id, "VERIFIED")
-        current = self.repo.get_booking(long.id)
-        self.assertEqual((current.status, current.reason_code), (BookingStatus.PENDING_APPROVAL, "DURATION_REVIEW"))
-        self.assertEqual(current.hold_until, current.start)
-
-    def test_waitlisted_long_request_is_promoted_to_review_not_approval(self):
-        first, second = self.make_student("z3333333"), self.make_student("z4444444")
-        self.qualification(first)
-        self.qualification(second)
-        short = self.book_minutes(60, first)
-        long = self.book_minutes(180, second)
-        self.assertEqual(long.status, BookingStatus.WAITLISTED)
-        self.service.cancel_booking(first, short.id)
-        current = self.repo.get_booking(long.id)
-        self.assertEqual((current.status, current.reason_code), (BookingStatus.PENDING_APPROVAL, "DURATION_REVIEW"))
-        self.assertEqual(current.hold_until, current.start)
-
-    def test_reschedule_cannot_exceed_the_automatic_limit(self):
-        self.qualification()
-        booking = self.book_minutes(60)
-        with self.assertRaises(DomainError) as denied:
-            self.service.reschedule_booking(self.student, booking.id, self.start, self.start + timedelta(minutes=150))
-        self.assertEqual(denied.exception.code, "RESCHEDULE_NEEDS_REVIEW")
-        self.assertEqual(denied.exception.details, {"auto_approve_max_minutes": 120})
-        moved = self.service.reschedule_booking(self.student, booking.id, self.start, self.start + timedelta(minutes=120))
-        self.assertEqual(moved.end - moved.start, timedelta(minutes=120))
-
+class RescheduleAvailabilityTests(ServiceFixture, SimpleTestCase):
     def test_availability_can_ignore_the_booking_being_rescheduled(self):
         self.qualification()
-        booking = self.book_minutes(60)
+        booking = self.service.review_booking(self.admin, self.book_minutes(60).id, "APPROVED")
         day = self.start.date()
         def slot_at_start(**kwargs):
             result = self.service.availability(self.student, self.room.id, day, 90, **kwargs)
@@ -110,17 +53,11 @@ class DurationApprovalTests(ServiceFixture, SimpleTestCase):
         with self.assertRaises(DomainError):
             self.service.availability(other, self.room.id, day, 90, exclude_booking_id=booking.id)
 
-    def test_manager_sets_the_limit_per_resource(self):
+    def test_reschedule_may_change_the_length(self):
         self.qualification()
-        updated = self.service.set_booking_policy(self.manager, self.room.id, auto_approve_max_minutes=240)
-        self.assertEqual((updated.auto_approve_max_minutes, updated.pending_hold_minutes), (240, 30))
-        self.assertEqual(self.book_minutes(180).status, BookingStatus.APPROVED)
-        with self.assertRaises(DomainError) as denied:
-            self.service.set_booking_policy(self.admin, self.room.id, auto_approve_max_minutes=60)
-        self.assertEqual(denied.exception.status, 403)
-        for value in (0, 1441, True, None):
-            with self.subTest(value=value), self.assertRaises(DomainError):
-                self.service.set_booking_policy(self.manager, self.room.id, auto_approve_max_minutes=value)
+        booking = self.service.review_booking(self.admin, self.book_minutes(60).id, "APPROVED")
+        moved = self.service.reschedule_booking(self.student, booking.id, self.start, self.start + timedelta(minutes=180))
+        self.assertEqual((moved.status, moved.end - moved.start), (BookingStatus.APPROVED, timedelta(minutes=180)))
 
 
 class ResourceStatusTests(ServiceFixture, SimpleTestCase):
@@ -129,13 +66,18 @@ class ResourceStatusTests(ServiceFixture, SimpleTestCase):
 
     def test_maintenance_blocks_new_requests_but_keeps_existing_bookings(self):
         self.qualification()
-        kept = self.book_minutes(60)
+        kept = self.service.review_booking(self.admin, self.book_minutes(60).id, "APPROVED")
+        pending = self.book_minutes(60, offset_minutes=120)
         resource, affected = self.close()
         self.assertEqual((resource.status, resource.status_reason), (ResourceStatus.MAINTENANCE, "Fume hood repair"))
-        self.assertEqual([item.id for item in affected], [kept.id])
+        self.assertEqual([item.id for item in affected], [kept.id, pending.id])
         self.assertEqual(self.status(kept), BookingStatus.APPROVED)
+        self.now = pending.review_due_at  # nobody reviewed it while the room was closed
+        self.service.process_due_requests()
+        self.assertEqual((self.get(pending).status, self.get(pending).reason_code),
+                         (BookingStatus.REJECTED, "AUTO_REJECTED_RESOURCE_UNAVAILABLE"))
         with self.assertRaises(DomainError) as denied:
-            self.book_minutes(60, offset_minutes=120)
+            self.book_minutes(60, offset_minutes=240)
         self.assertEqual(denied.exception.code, "RESOURCE_UNAVAILABLE")
         self.assertEqual(denied.exception.details, {"resource_status": "MAINTENANCE", "status_reason": "Fume hood repair"})
 
@@ -159,7 +101,7 @@ class ResourceStatusTests(ServiceFixture, SimpleTestCase):
             self.service.review_booking(self.admin, queued.id, "APPROVED", "")
         resource, _ = self.service.set_resource_status(self.manager, self.room.id, "AVAILABLE", "ignored")
         self.assertIsNone(resource.status_reason)
-        self.assertEqual(self.status(queued), BookingStatus.APPROVED)
+        self.assertEqual(self.status(queued), BookingStatus.PENDING_APPROVAL)
 
     def test_rules_for_changing_status(self):
         with self.assertRaises(DomainError) as denied:
@@ -183,22 +125,6 @@ class ResourceStatusTests(ServiceFixture, SimpleTestCase):
 
 @override_settings(DEBUG=True, ENABLE_DEMO_AUTH=True, SEED_DEMO_DATA=True)
 class ManagerToolsAPITests(BookingAPIFixtureMixin, SimpleTestCase):
-    def test_long_request_through_the_api(self):
-        response = self.create_booking(payload=self.payload(minutes=180))
-        self.assertEqual(response.status_code, 201, response.data)
-        self.assertEqual((response.data["status"], response.data["reason_code"]), ("PENDING_APPROVAL", "DURATION_REVIEW"))
-        self.assertEqual(self.room["auto_approve_max_minutes"], 120)
-        availability = self.verified.get(f"/api/v1/resources/{self.room['id']}/availability/",
-                                         {"date": self.payload()["start"][:10], "duration_minutes": 150})
-        self.assertEqual((availability.data["needs_review"], availability.data["auto_approve_max_minutes"]), (True, 120))
-
-    def test_booking_policy_accepts_either_setting(self):
-        url = f"/api/v1/admin/resources/{self.room['id']}/booking-policy/"
-        changed = self.manager.patch(url, {"auto_approve_max_minutes": 90}, format="json")
-        self.assertEqual(changed.data, {"resource_id": self.room["id"], "pending_hold_minutes": 30, "auto_approve_max_minutes": 90})
-        self.assert_error(self.manager.patch(url, {}, format="json"), 400)
-        self.assertEqual(self.admin.get(url).data["auto_approve_max_minutes"], 90)
-
     def test_room_status_endpoint(self):
         booking = self.create_booking().data
         url = f"/api/v1/admin/resources/{self.room['id']}/status/"
@@ -239,11 +165,11 @@ class ManagerToolsAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual([item["details"]["zid"] for item in audit], ["z5123456"])
 
     def test_staff_booking_list_filters_and_shows_who_booked(self):
-        approved = self.create_booking().data
-        self.submit()
+        approved = self.create_approved()
+        self.verify_student()
         waiting = self.create_booking(self.student, self.payload(hour=14)).data
         default = self.items(self.admin.get("/api/v1/admin/bookings/"))
-        self.assertEqual(default, [])  # still the manual-approval queue by default
+        self.assertEqual([item["id"] for item in default], [waiting["id"]])  # still the approval queue by default
         everything = self.items(self.admin.get("/api/v1/admin/bookings/", {"status": "ALL"}))
         self.assertEqual([item["id"] for item in everything], [approved["id"], waiting["id"]])
         self.assertEqual(everything[0]["student"]["zid"], "z1000001")
@@ -261,7 +187,7 @@ class ManagerToolsAPITests(BookingAPIFixtureMixin, SimpleTestCase):
 
     def test_manager_exports_every_booking_as_csv(self):
         payload = {**self.payload(), "purpose": "=HYPERLINK(\"x\")"}
-        booking = self.create_booking(payload=payload).data
+        booking = self.create_approved(payload=payload)
         self.assert_error(self.admin.get("/api/v1/admin/bookings/export/"), 403)
         response = self.manager.get("/api/v1/admin/bookings/export/")
         self.assertEqual(response.status_code, 200)
@@ -277,9 +203,3 @@ class ManagerToolsAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         empty = self.manager.get("/api/v1/admin/bookings/export/", {"status": "CANCELLED"})
         self.assertEqual(len(list(csv.reader(io.StringIO(empty.content.decode("utf-8-sig"))))), 1)
 
-    def test_demo_seed_uses_the_default_limit(self):
-        resource = self.service.repo.get_resource(self.room["id"])
-        self.assertEqual(resource.auto_approve_max_minutes, 120)
-        now = self.service.now()
-        self.assertTrue(replace(resource, auto_approve_max_minutes=60).needs_review(now, now + timedelta(minutes=90)))
-        self.assertFalse(resource.needs_review(now, now + timedelta(minutes=120)))

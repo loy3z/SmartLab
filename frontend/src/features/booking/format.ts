@@ -11,12 +11,45 @@ export const fmtDateTime = (iso: string) =>
     new Date(iso),
   )
 
+const dayLabel = new Intl.DateTimeFormat('en-AU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: TZ })
+const dayKey = new Intl.DateTimeFormat('en-CA', { timeZone: TZ })
+
+/** "Mon 19 Oct" in Sydney time. */
+export const fmtDay = (iso: string) => dayLabel.format(new Date(iso))
+
+/** "1 h 30 min", "45 min", "2 h". */
+export function fmtDuration(minutes: number): string {
+  const m = Math.max(0, Math.round(minutes))
+  const h = Math.floor(m / 60)
+  const rest = m % 60
+  if (!h) return `${rest} min`
+  return rest ? `${h} h ${rest} min` : `${h} h`
+}
+
+export const minutesBetween = (start: string, end: string) => (Date.parse(end) - Date.parse(start)) / 60000
+
+/** "Mon 19 Oct · 4:00 pm – 4:30 pm" (the date is written once when both ends fall on the same day). */
+export function fmtRange(start: string, end: string): string {
+  const sameDay = dayKey.format(new Date(start)) === dayKey.format(new Date(end))
+  return sameDay
+    ? `${fmtDay(start)} · ${fmtTime(start)} – ${fmtTime(end)}`
+    : `${fmtDay(start)} ${fmtTime(start)} – ${fmtDay(end)} ${fmtTime(end)}`
+}
+
+/** "in 23 h 5 min" / "5 min ago" relative to now (ms). */
+export function fmtRelative(iso: string, now: number): string {
+  const diff = Math.round((Date.parse(iso) - now) / 60000)
+  if (Math.abs(diff) < 1) return 'just now'
+  const text = Math.abs(diff) >= 2880 ? `${Math.round(Math.abs(diff) / 1440)} days` : fmtDuration(Math.abs(diff))
+  return diff > 0 ? `in ${text}` : `${text} ago`
+}
+
 /** Today as YYYY-MM-DD in Sydney (resource-local date). */
 export const todaySydney = () =>
   new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date())
 
 export const STATUS_TEXT: Record<BookingStatus, string> = {
-  WAITING_QUALIFICATION: 'Submitted, waiting for qualification check',
+  WAITING_QUALIFICATION: 'Submitted, waiting for qualification check',  // earlier flow; no longer created
   WAITLISTED: 'Waitlisted',
   PENDING_APPROVAL: 'Waiting for admin approval',
   APPROVED: 'Approved',
@@ -29,8 +62,8 @@ export const STATUS_TEXT: Record<BookingStatus, string> = {
 export function bookingDetail(b: Booking): string {
   switch (b.status) {
     case 'APPROVED':
-      return b.reason_code === 'PROMOTED_FROM_WAITLIST'
-        ? 'The time freed up and your waitlisted request was approved automatically.'
+      return b.reason_code === 'AUTO_APPROVED_AFTER_REVIEW_WINDOW'
+        ? 'Your booking is confirmed. It was approved automatically because no admin decided within the review period.'
         : 'Your booking is confirmed.'
     case 'WAITING_QUALIFICATION':
       return b.hold_active && b.hold_until
@@ -39,21 +72,24 @@ export function bookingDetail(b: Booking): string {
     case 'WAITLISTED': {
       const pos = b.waitlist_position ? `You are #${b.waitlist_position} on the waitlist. ` : ''
       const why =
-        b.reason_code === 'HOLD_EXPIRED'
-          ? 'Your hold expired before your induction was approved. '
-          : b.reason_code === 'TIME_CONFLICT'
+        b.reason_code === 'TIME_CONFLICT'
             ? 'This time is already booked. '
             : b.reason_code === 'TEMPORARY_HOLD_CONFLICT'
               ? 'This time is held for an earlier request. '
               : ''
-      return `${why}${pos}You will be approved automatically if the time frees up and your induction is valid.`
+      return `${why}${pos}If the time frees up, your request moves up in submission order and goes to an admin for approval.`
     }
-    case 'PENDING_APPROVAL':
-      return 'Waiting for an admin to review this request.'
+    case 'PENDING_APPROVAL': {
+      const until = b.review_due_at ? ` until ${fmtDateTime(b.review_due_at)}` : ''
+      const moved = b.reason_code === 'PROMOTED_FROM_WAITLIST' ? 'The time freed up and your request moved up the waitlist. ' : ''
+      return `${moved}Waiting for an admin to approve it. The time is held for you${until}; if no admin decides by then, it is approved automatically as long as your induction is still valid and the time is free.`
+    }
     case 'REJECTED':
       return b.reason_code === 'QUALIFICATION_REJECTED'
         ? 'Your induction was rejected, so this request was rejected. Resubmit your induction, then book again.'
-        : 'This request was rejected.'
+        : b.reason_code?.startsWith('AUTO_REJECTED')
+          ? `This request was rejected automatically at the end of the review period${b.decision_reason ? `: ${b.decision_reason}` : '.'}`
+          : `This request was rejected${b.decision_reason ? `: ${b.decision_reason}` : '.'}`
     case 'CANCELLED':
       return 'This request was cancelled.'
     case 'EXPIRED':
@@ -64,7 +100,7 @@ export function bookingDetail(b: Booking): string {
 export const QUAL_TEXT: Record<QualificationStatus, string> = {
   NOT_CONFIGURED: 'This resource has no induction requirement set up yet and cannot be booked.',
   NOT_SUBMITTED: 'Please submit your induction documents first.',
-  PENDING: 'Your induction documents are awaiting review. You can still request a booking.',
+  PENDING: 'Your induction documents are awaiting review. You can request a booking once they are verified.',
   VERIFIED: 'Induction verified.',
   REJECTED: 'Your induction was rejected. Please resubmit.',
   EXPIRED: 'Your induction has expired. Please resubmit.',
@@ -84,8 +120,14 @@ const ERROR_TEXT: Record<string, string> = {
   BOOKING_HOLD_CONFLICT: 'That time is temporarily held by another request.',
   TOKEN_EXPIRED: 'Session expired. Please log in again.',
   INVALID_TOKEN: 'Session expired. Please log in again.',
-  REQUEST_WAITLISTED: 'This request is waitlisted and cannot be manually approved. It will be approved automatically when eligible and the slot is available.',
-  PENDING_REQUEST_LIMIT: 'Your induction is still under review, so you can only have one open request. Wait for the review or cancel the existing request.',
+  REQUEST_WAITLISTED: 'This request is waitlisted and cannot be approved yet. When the time frees up it moves to Awaiting approval.',
+  SELF_REVIEW_FORBIDDEN: 'You cannot review your own request or evidence. Ask another admin or a manager.',
+  RESOURCE_UNAVAILABLE: 'This resource is under maintenance or closed, so it cannot be booked right now.',
+  RESOURCE_POLICY_NOT_CONFIGURED: 'This resource has no induction requirement set up yet. Contact a manager.',
+  QUALIFICATION_NOT_VERIFIED: 'The student\'s induction is not verified, so this request cannot be approved.',
+  REQUEST_NOT_REVIEWABLE: 'This request has already been decided or moved. The list has been refreshed.',
+  ALREADY_REVIEWED: 'This has already been reviewed by someone else. The list has been refreshed.',
+  NETWORK_ERROR: 'Unable to reach SmartLab. Check your connection and try again.',
 }
 
 /** Format a YYYY-MM-DD date for display without shifting it through UTC. */
@@ -104,6 +146,7 @@ export function errorMessage(e: unknown): string {
   if (err?.code === 'QUALIFICATION_REQUIRED') {
     const q = (err.details as { qualification_status?: string })?.qualification_status
     const why: Record<string, string> = {
+      PENDING: 'Your induction is still being reviewed. You can request bookings once it is verified.',
       NOT_SUBMITTED: 'You have not submitted your induction for this resource yet.',
       REJECTED: 'Your induction was rejected. Please resubmit it.',
       EXPIRED: 'Your induction has expired. Please resubmit it.',
@@ -112,8 +155,32 @@ export function errorMessage(e: unknown): string {
     return (q && why[q]) || ERROR_TEXT.QUALIFICATION_REQUIRED
   }
   if (err?.code && ERROR_TEXT[err.code]) return ERROR_TEXT[err.code]
-  if (err?.code === 'VALIDATION_ERROR') return `Validation error: ${JSON.stringify(err.details)}`
+  if (err?.code === 'VALIDATION_ERROR') {
+    const first = Object.entries(err.details ?? {})[0]
+    if (first) {
+      const [field, problem] = first
+      const text = Array.isArray(problem) ? String(problem[0]) : String(problem)
+      return field === 'non_field_errors' ? text : `${field.replace(/_/g, ' ')}: ${text}`
+    }
+    return err.message || 'Please check the form and try again.'
+  }
   return err?.message ?? 'Something went wrong.'
 }
 
 export const newIdempotencyKey = () => `bk-${crypto.randomUUID()}`
+
+/** One-line confirmation shown after a request is accepted by the server. */
+export function submittedMessage(b: Booking): { title: string; message: string } {
+  const when = fmtRange(b.start, b.end)
+  if (b.status === 'WAITLISTED') {
+    return {
+      title: `Added to the waitlist${b.waitlist_position ? ` (#${b.waitlist_position})` : ''}`,
+      message: `${when}. That time is already taken; if it frees up, your request moves to an admin for approval.`,
+    }
+  }
+  if (b.status === 'APPROVED') return { title: 'Booking confirmed', message: when }
+  return {
+    title: 'Request submitted',
+    message: `${when}. Waiting for admin approval${b.review_due_at ? ` (decided by ${fmtDateTime(b.review_due_at)})` : ''}.`,
+  }
+}

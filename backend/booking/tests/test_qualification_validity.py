@@ -53,7 +53,7 @@ class QualificationValidityServiceTests(BookingFixtureMixin, SimpleTestCase):
         self.verify_pending()
         expiry = self.now + timedelta(days=120)  # 2030-05-07 10:00 Sydney (AEST)
         inside = self.book(start=expiry - timedelta(hours=1), end=expiry)
-        self.assertEqual(inside.status, BookingStatus.APPROVED)
+        self.assertEqual(inside.status, BookingStatus.PENDING_APPROVAL)
         with self.assertRaises(DomainError) as denied:
             self.book(start=expiry, end=expiry + timedelta(hours=1))
         self.assertEqual(denied.exception.status, 403)
@@ -75,20 +75,14 @@ class QualificationValidityServiceTests(BookingFixtureMixin, SimpleTestCase):
         renewed = self.service.submit_qualification(self.student, self.requirement.id, "Renewal", "", PDF, "cert.pdf", "application/pdf")
         reviewed, _ = self.service.review_qualification(self.admin, renewed.id, "VERIFIED")
         self.assertEqual(reviewed.valid_until, self.now + timedelta(days=120))
-        self.assertEqual(self.book(start=later, end=later + timedelta(hours=1)).status, BookingStatus.APPROVED)
+        self.assertEqual(self.book(start=later, end=later + timedelta(hours=1)).status, BookingStatus.PENDING_APPROVAL)
 
-    def test_waiting_request_beyond_new_expiry_goes_to_manual_review_and_cannot_be_approved(self):
-        submission = self.qualification(status=QualificationStatus.PENDING)
+    def test_request_ending_after_the_expiry_is_refused_at_submission(self):
+        self.verify_pending()
         start = datetime(2030, 5, 20, 10, tzinfo=SYDNEY)  # after the 120-day expiry
-        waiting = self.book(start=start, end=start + timedelta(hours=1))
-        self.assertEqual(waiting.status, BookingStatus.WAITING_QUALIFICATION)
-        _, changed = self.service.review_qualification(self.admin, submission.id, "VERIFIED")
-        self.assertEqual([(item.status, item.reason_code) for item in changed],
-                         [(BookingStatus.PENDING_APPROVAL, "QUALIFICATION_EXPIRES_BEFORE_END")])
         with self.assertRaises(DomainError) as denied:
-            self.service.review_booking(self.admin, waiting.id, "APPROVED")
-        self.assertEqual(denied.exception.code, "QUALIFICATION_NOT_VERIFIED")
-
+            self.book(start=start, end=start + timedelta(hours=1))
+        self.assertEqual(denied.exception.details["qualification_status"], "EXPIRES_BEFORE_END")
 
 @override_settings(DEBUG=True, ENABLE_DEMO_AUTH=True, SEED_DEMO_DATA=True)
 class QualificationValidityAPITests(BookingAPIFixtureMixin, SimpleTestCase):

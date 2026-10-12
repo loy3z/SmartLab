@@ -4,6 +4,7 @@ import { getDashboard, listRequirements, listResources } from '../booking/api'
 import { errorMessage, fmtDateTime, fmtTime, STATUS_TEXT, TZ } from '../booking/format'
 import { AlertIcon, CalendarIcon, CapIcon, CheckIcon, ClockIcon, DoorIcon } from '../booking/icons'
 import type { Dashboard, Qualification, Requirement, Resource, User } from '../booking/types'
+import { InductionRow } from '../induction/InductionRow'
 import './dashboard.css'
 
 type DashboardState =
@@ -18,13 +19,6 @@ type DashboardState =
       loadedAt: number
     }
 
-const qualificationLabels = {
-  VERIFIED: 'Verified',
-  PENDING: 'Under review',
-  REJECTED: 'Resubmit required',
-  EXPIRED: 'Expired',
-  NOT_SUBMITTED: 'Not submitted',
-}
 
 const dayFormat = new Intl.DateTimeFormat('en-AU', { day: 'numeric', timeZone: TZ })
 const monthFormat = new Intl.DateTimeFormat('en-AU', { month: 'short', timeZone: TZ })
@@ -218,22 +212,17 @@ function DashboardContent({ state }: { state: Extract<DashboardState, { status: 
               <p>{warnings.length ? 'Visit Induction & Training to check available requirements.' : 'No induction requirements are available yet.'}</p>
             </div>
           ) : (
-            <ul className="dash-induction-list">
-              {[...requirementById.values()].slice(0, 4).map((requirement) => {
-                const qualification = qualifications.get(requirement.id)
-                const status = qualification?.effective_status ?? 'NOT_SUBMITTED'
-                return (
-                  <li key={requirement.id}>
-                    <span className={`dash-induction-icon ${status === 'VERIFIED' ? 'is-verified' : ''}`}>
-                      {status === 'VERIFIED' ? <CheckIcon /> : <CapIcon />}
-                    </span>
-                    <div>
-                      <h3>{requirement.name}</h3>
-                      <span className={`dash-badge dash-qualification-status-${status}`}>{qualificationLabels[status]}</span>
-                    </div>
-                  </li>
-                )
-              })}
+            <ul className="ind-list dash-ind-list">
+              {[...requirementById.values()].slice(0, 4).map((requirement) => (
+                <li key={requirement.id}>
+                  <InductionRow
+                    requirement={requirement}
+                    latest={qualifications.get(requirement.id)}
+                    resources={resources}
+                    linkTo={`/induction?requirement=${requirement.id}`}
+                  />
+                </li>
+              ))}
             </ul>
           )}
           <footer className="dash-panel-footer"><Link className="dash-link" to="/induction">Manage induction & training <span aria-hidden="true">→</span></Link></footer>

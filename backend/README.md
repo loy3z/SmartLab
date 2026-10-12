@@ -4,22 +4,20 @@ Django 5.2 + Django REST Framework 3.16。提供学生时段查询、房间／�
 
 ## 已实现的范围
 
-- 所有已登录学生可以浏览资源和时段；须先提交对应 induction 资料，才能发送该资源的预约请求。
-- 资格有效且时段无冲突时，预约立即 `APPROVED`。
-- 资料仍在审核且时段无冲突时，预约为 `WAITING_QUALIFICATION`；从预约提交起满 24 小时后转 `PENDING_APPROVAL`。如果预约开始时间早于／等于该门槛，则直接进入人工审核，避免一直等待到使用开始。
-- 预约至少提前 7 天、最多提前 30 天（`MIN_ADVANCE_DAYS`／`MAX_ADVANCE_DAYS`，例：周六最早约下周六）；资料还在审核的学生，每项资格只能有 1 张未决申请（`UNVERIFIED_PENDING_LIMIT`）。管理员批准时重新检查资格和冲突，不能重复批准相同时段。
-- 同一时段严格先到先得：`APPROVED` 持续占用时段；时段空着时，资料待审的申请成为第一位并占住时段 30 分钟（Manager 可按资源调整）。占位期间后来的重叠申请进入等待名单 `WAITLISTED`，即使资格已通过也不能插队，管理员也不能直接批准候补。占位到期时资料仍未通过，原申请也进入候补（`HOLD_EXPIRED`），每张申请只有一次占位机会，之后要等资料通过才能被递补。时段空出来时（取消、拒绝、过期、改期、占位到期，或候补学生的资料通过），系统按提交顺序自动递补：资格已通过就直接获批，资料待审且没占过位就成为新的第一位。默认设置下，“24 小时转人工”只在占位超过 24 小时时才会出现。资格审核和预约审核是独立操作；24 小时不会自动获得资格。资料被拒时，该学生依赖这项资格的所有未决预约（包括候补）会被自动拒绝（`QUALIFICATION_REJECTED`，沿用资料的拒绝原因），时段立即交给下一位候补；学生重新上传资料后再预约。
-- 同一学生不能为同一资源重复提交时间重叠的有效申请；已有 `WAITING_QUALIFICATION`、`PENDING_APPROVAL`、`WAITLISTED` 或 `APPROVED` 记录时返回 `DUPLICATE_BOOKING`。取消、拒绝或过期后可重新申请；不同资源在同一时间仍可分别预约。
-- 学生查看自己的 dashboard、资格和预约，取消尚未开始的有效预约。Admin／Manager 查看审核队列并作出决定。
-- 资格有效且时段空着时，时长不超过资源的 `auto_approve_max_minutes`（默认 120 分钟，Manager 可按资源设置）才自动批准；更长的进入人工审批 `PENDING_APPROVAL`（`DURATION_REVIEW`），并占住时段直到管理员决定。已批准预约改期可以改时长，但不能超过这个上限。
+- 所有已登录学生可以浏览资源和时段，但**只有对应 induction 已通过且有效期覆盖整个预约的人才能提交申请**（学生和 Admin；Manager 不预约）。资料还在审核、被拒或已过期都不能申请。induction 只能由 Admin／Manager 人工审核。
+- **每个申请都先进入待审批 `PENDING_APPROVAL`**（`reason_code=AWAITING_REVIEW`），不算确认，但在审批期限内为申请人占住时段（`hold_until` = `review_due_at`）。Admin／Manager 可以随时批准或拒绝；审批期限（资源的 `pending_hold_minutes`，默认 1440 分钟即 24 小时，Manager 可按资源调整，且不晚于预约开始）到了还没人处理，系统自动处理：资格仍覆盖整个预约、资源可用、时段无已批准冲突就批准（`AUTO_APPROVED_AFTER_REVIEW_WINDOW`），否则拒绝（`AUTO_REJECTED_*`，`decision_reason` 写明原因），`reviewed_by` 为 `SYSTEM`。批准后才写入 Outlook。
+- 预约至少提前 7 天、最多提前 30 天（`MIN_ADVANCE_DAYS`／`MAX_ADVANCE_DAYS`，团队提议，待客户确认）。管理员批准时重新检查资格和冲突，不能重复批准相同时段。
+- 同一时段严格先到先得：已批准预约和审批期内的待审批申请占用时段；之后的重叠申请进入等待名单 `WAITLISTED`（`TIME_CONFLICT`／`TEMPORARY_HOLD_CONFLICT`），管理员不能直接批准候补，但可以拒绝。时段空出来时（取消、被拒、过期、改期、资源重新开放），系统按提交顺序递补：申请人资格仍有效就转为新的待审批申请（`PROMOTED_FROM_WAITLIST`，重新计算审批期限），否则拒绝。前一位获批后，候补保留为后备，到开始时间仍未轮到则 `EXPIRED`。资料被拒时，该学生依赖这项资格的所有未决申请（包括候补）会被一并拒绝（`QUALIFICATION_REJECTED`）。
+- 同一学生不能为同一资源重复提交时间重叠的有效申请；已有 `PENDING_APPROVAL`、`WAITLISTED` 或 `APPROVED` 记录时返回 `DUPLICATE_BOOKING`。取消、拒绝或过期后可重新申请；不同资源在同一时间仍可分别预约。
+- 学生查看自己的 dashboard、资格和预约，取消尚未开始的有效预约，改期已批准的未来预约（可以改时长）。Admin／Manager 查看审批队列并作出决定，也可以取消任何人的预约（`CANCELLED_BY_STAFF`）。
 - Manager 可以把房间或设备设为维修中／关闭（`PATCH /api/v1/admin/resources/{id}/status/`，需填原因）：暂停新申请、批准和递补，已有预约保留并列出供 Manager 决定是否取消；改回可用后候补自动递补。
 - Admin／Manager 可用 `GET /api/v1/admin/bookings/?status=ALL` 按资源、学生、日期查看所有人的预约（带学生 zID 和姓名）；Manager 可用 `GET /api/v1/admin/bookings/export/` 导出 CSV。
 - **Manager 拥有 Admin 的全部权限**，另外独有占位规则配置和人员管理：通过 `GET /api/v1/admin/users/` 查看人员名单，用 `PATCH /api/v1/admin/users/{id}/` 在 Student／Admin 之间调整角色或停用账号（学生必须所有 induction 都有效才能升为 Admin；不能改自己，至少保留一个 Manager，修改写审计）。人员列表带每个人的 induction 状态。Manager 只能通过网页上的 Add manager（`POST /api/v1/admin/users/managers/`）新建，不能把现有的人改成 Manager。
 - Admin／Manager 可通过 `GET /api/v1/admin/audit/` 按资源、学生、操作类型和时间查看审计记录（申请、审批、改期、取消、资格审核等），满足客户对操作轨迹的要求。
 
-已补齐客户 2026-10-07 要求的大学邮箱字段和 Pending 临时占位。有效占位阻止后来请求自动获批，管理员也不能越过占位批准重叠预约。冲突请求进入等待名单，不取得新的占位。每个资源目前关联一项资格要求，资格有效期必须覆盖预约结束时间。
+已按客户 2026-10-07 的要求实现：Pending 不算确认，可在可配置的时间内占住时段，不会让 B 悄悄抢走 A 正在审核的时段；冲突请求进入等待名单，不取得新的占位。每个资源目前关联一项资格要求，资格有效期必须覆盖预约结束时间。
 
-Manager 可通过 `GET /api/v1/admin/resources/{id}/booking-policy/` 查看规则，并用 `PATCH` 提交 `{"pending_hold_minutes":30}`。支持整数 1–20160 分钟（默认 30；设为 20160 相当于第一位保持到有结果），只影响之后创建的占位；Admin 可以读取，不能修改。新种子资源的默认值由 `DEFAULT_PENDING_HOLD_MINUTES` 设置，与 24 小时审批等待独立。占位截止时间不晚于预约开始时间，刷新页面、重复提交同一幂等请求和审批升级都不会延长占位。
+Manager 可通过 `GET /api/v1/admin/resources/{id}/booking-policy/` 查看审批期限，并用 `PATCH` 提交 `{"pending_hold_minutes":1440}`。支持整数 1–20160 分钟（默认 1440，即 24 小时），只影响之后进入待审批的申请；Admin 可以读取，不能修改。新种子资源的默认值由 `DEFAULT_PENDING_HOLD_MINUTES` 设置。审批期限不晚于预约开始时间，刷新页面、重复提交同一幂等请求都不会延长期限。
 
 已提供 Microsoft Graph 的真实 Outlook 日历适配器：批准预约后自动尝试创建事件，取消已批准预约时删除事件；同步状态独立于预约状态，失败可重试。默认关闭，个人账号演示步骤见 [outlook-setup.md](docs/outlook-setup.md)。真实连通需要本地配置微软授权，自动化测试使用模拟响应。
 
@@ -68,7 +66,7 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
 
 依赖的已验证精确版本保存在 `requirements-lock.txt`，可用它重建相同环境。
 
-这些测试使用临时内存数据，覆盖资格门槛、24 小时流转、自动／人工审批、临时占位与到期释放、并发冲突、Manager 规则权限、身份邮箱和 API 契约。数据库同学接入后，需要对自己的适配器额外运行事务和并发测试。
+这些测试使用临时内存数据，覆盖资格门槛、待审批与审批期限、人工审批与超时自动处理、等待名单递补、并发冲突、Manager 规则权限、身份邮箱和 API 契约。数据库同学接入后，需要对自己的适配器额外运行事务和并发测试。
 
 ## 接入正式数据库
 
@@ -78,7 +76,7 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
 
 1. 对资源和学生的锁定顺序保持一致。
 2. 在事务内重读最新资格，通过 `list_blocking_bookings` 查询已批准预约和未到期 Pending 占位，检查区间冲突，再保存状态和审计。
-3. 创建请求、人工批准、资格审核触发的重新判断使用相同锁定规则。
+3. 创建请求、人工批准、超时自动处理和等待名单递补使用相同锁定规则。
 4. 失败时完整回滚，避免两个并发请求都获批准。不能先查询可用性再独立写入预约。
 
 区间采用 `[start, end)`，前一预约的结束时间可等于后一预约的开始时间。数据库用带时区时间，API 输出 UTC；资源规则按 `Australia/Sydney` 解释。设备按独立单台建资源，不是设备型号的库存数量。
@@ -91,7 +89,7 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
 
 `AUTH_PROVIDER` 是真实认证适配器的配置入口：配置可无参数实例化的 provider 类，实现 `resolve_bearer(token: str) -> Principal`。provider 应验证凭证签名、有效期和受众，并将可信身份映射为数据库中的用户记录。当前演示 Bearer 认证不能代替学校 SSO。完成接入后，前端保留相同 `/auth/me/` 和业务接口，登录跳转／token 获取方式根据学校方案调整。
 
-24 小时计算依据服务器保存的 `created_at`，`APPROVAL_WAIT_HOURS` 默认 `24`。预约查询及操作会推进到期的状态，Admin 也可调用 `POST /api/v1/admin/process-due/`。这保证 API 再次访问时可看到正确状态；如果需要在无人访问系统时准时处理，正式部署应增加定时任务，调用同一个时间处理服务。
+审批期限保存在每张申请的 `review_due_at`（进入待审批时按资源的 `pending_hold_minutes` 计算）。预约查询及操作会推进到期的状态（超时自动处理、开始时间已过则过期），Admin 也可调用 `POST /api/v1/admin/process-due/`。这保证 API 再次访问时可看到正确状态；如果需要在无人访问系统时准时处理，正式部署应增加定时任务，调用同一个时间处理服务。
 
 资料仅本人和 Admin／Manager 能通过受保护下载接口读取。正式文件存储必须保持私有权限；同时补齐部署配置、SSO、数据库、后台任务与文件服务后，才能作为真实校园服务使用。
 

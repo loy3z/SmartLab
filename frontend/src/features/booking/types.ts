@@ -26,6 +26,7 @@ export type SlotReason =
   | 'TOO_FAR_AHEAD'
   | 'BOOKED'
   | 'TEMPORARILY_HELD'
+  | 'RESOURCE_UNAVAILABLE'
   | null
 
 export interface Slot {
@@ -60,6 +61,10 @@ export interface Availability {
   latest_date: string
   min_advance_days: number
   max_advance_days: number
+  resource_status?: ResourceStatus
+  status_reason?: string | null
+  /** The resource's admin review window in minutes. */
+  review_window_minutes?: number
 }
 
 export type BookingStatus =
@@ -92,10 +97,17 @@ export interface Booking {
   revision: number
   outlook_sync?: OutlookSync
   hold_until: string | null
+  /** End of the Admin review window for a pending request; afterwards the system decides. */
+  review_due_at: string | null
+  /** Admin/Manager id, or "SYSTEM" for an automatic decision. */
+  reviewed_by: string | null
   hold_active: boolean
   blocks_slot: boolean
   /** 1-based place among overlapping waitlisted requests; only meaningful when WAITLISTED. */
   waitlist_position?: number | null
+  /** Admin/Manager lists only: who made the request. */
+  student?: { id: string; zid: string; display_name: string; university_email: string } | null
+  resource_name?: string | null
 }
 
 export interface ListResponse<T> {
@@ -133,6 +145,8 @@ export interface Requirement {
 
 export interface Qualification {
   id: string
+  /** Admin/Manager lists only: whose evidence this is. */
+  student?: { id: string; zid: string; display_name: string; university_email: string } | null
   student_id: string
   requirement_id: string
   title: string

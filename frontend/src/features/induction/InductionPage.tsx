@@ -1,27 +1,22 @@
-import { useEffect, useState } from 'react'
-import {
-  listQualifications,
-  listRequirements,
-  submitQualification,
-} from '../booking/api'
-import type {
-  Qualification,
-  Requirement,
-} from '../booking/types'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router'
+import { Drawer, Facts } from '../../ui/components'
+import { useFeedback } from '../../ui/feedback-context'
+import { listQualifications, listRequirements, listResources, submitQualification } from '../booking/api'
+import { errorMessage, fmtDateTime } from '../booking/format'
+import type { Qualification, Requirement, Resource } from '../booking/types'
+import { EvidencePreview } from './EvidencePreview'
+import { InductionRow } from './InductionRow'
+import { describeInduction, latestByRequirement } from './status'
 
-import type { FormEvent } from 'react'
-
-const statusLabels = {
-  NOT_SUBMITTED: 'Not submitted',
-  PENDING: 'Pending review',
-  VERIFIED: 'Verified',
-  REJECTED: 'Rejected',
-  EXPIRED: 'Expired',
-}
+const MAX_BYTES = 5 * 1024 * 1024
 
 export function InductionPage() {
+  const feedback = useFeedback()
+  const [params, setParams] = useSearchParams()
   const [requirements, setRequirements] = useState<Requirement[]>([])
   const [qualifications, setQualifications] = useState<Qualification[]>([])
+  const [resources, setResources] = useState<Resource[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [requirementId, setRequirementId] = useState('')
@@ -30,271 +25,185 @@ export function InductionPage() {
   const [file, setFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [uploadError, setUploadError] = useState('')
-  const [success, setSuccess] = useState('')
+  const [viewing, setViewing] = useState<Qualification | null>(null)
+  const formRef = useRef<HTMLFormElement>(null)
+  const titleRef = useRef<HTMLInputElement>(null)
+  const handledParam = useRef('')
 
   useEffect(() => {
     let active = true
-
-    Promise.all([
-      listRequirements(),
-      listQualifications(),
-    ])
-      .then(([requirementsData, qualificationsData]) => {
+    Promise.all([listRequirements(), listQualifications(), listResources({})])
+      .then(([requirementsData, qualificationsData, resourceData]) => {
         if (!active) return
-
         setRequirements(requirementsData.results)
         setQualifications(qualificationsData.results)
+        setResources(resourceData.results)
       })
-      .catch((err: unknown) => {
-        if (!active) return
-
-        setError(
-          err instanceof Error
-            ? err.message
-            : 'Unable to load qualifications.',
-        )
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
-
-    return () => {
-      active = false
-    }
+      .catch((err: unknown) => active && setError(errorMessage(err)))
+      .finally(() => active && setLoading(false))
+    return () => { active = false }
   }, [])
+
+  const latest = latestByRequirement(qualifications)
+  const canUpload = (id: string) => describeInduction(latest.get(id)).action !== null
+
+  function startUpload(id: string) {
+    setRequirementId(id)
+    setUploadError('')
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    window.setTimeout(() => titleRef.current?.focus({ preventScroll: true }), 300)
+  }
+
+  // Deep link from the dashboard or a booking prompt: /induction?requirement=<id>
+  const wanted = params.get('requirement') ?? ''
+  useEffect(() => {
+    if (loading || !wanted || handledParam.current === wanted) return
+    handledParam.current = wanted
+    const current = latestByRequirement(qualifications).get(wanted)
+    const view = describeInduction(current)
+    if (current && view.status === 'PENDING') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setViewing(current)
+    } else if (requirements.some((r) => r.id === wanted) && view.action !== null) {
+      setRequirementId(wanted)
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      window.setTimeout(() => titleRef.current?.focus({ preventScroll: true }), 300)
+    }
+  }, [loading, wanted, qualifications, requirements])
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (submitting) return
-
     setUploadError('')
-    setSuccess('')
 
-    if (!requirementId || !title.trim() || !file) {
-        setUploadError('Select a requirement, enter a title and choose a file.')
-        return
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-        setUploadError('The file must be no larger than 5 MiB.')
-        return
-    }
-
-    if (!/\.(pdf|png|jpe?g)$/i.test(file.name)) {
-        setUploadError('Please choose a PDF, PNG or JPEG file.')
-        return
-    }
-
-    const latest = qualifications
-        .filter((item) => item.requirement_id === requirementId)
-        .sort((a, b) => b.submitted_at.localeCompare(a.submitted_at))[0]
-
-    if (
-        latest?.effective_status === 'VERIFIED' ||
-        latest?.effective_status === 'PENDING'
-    ) {
-        setUploadError('This qualification is already verified or awaiting review.')
-        return
+    const problem = !requirementId || !title.trim() || !file
+      ? 'Choose a requirement, enter a title and choose a file.'
+      : file.size > MAX_BYTES
+        ? 'The file must be no larger than 5 MiB.'
+        : !/\.(pdf|png|jpe?g)$/i.test(file.name)
+          ? 'Please choose a PDF, PNG or JPEG file.'
+          : !canUpload(requirementId)
+            ? 'This requirement is already verified or waiting for review.'
+            : ''
+    if (problem) {
+      setUploadError(problem)
+      return
     }
 
     const form = event.currentTarget
     setSubmitting(true)
-
     try {
-        const submission = await submitQualification(
-            requirementId,
-            title.trim(),
-            notes.trim(),
-            file,
-    )
-
-    setQualifications((previous) => [
-      submission,
-      ...previous.filter((item) => item.id !== submission.id),
-    ])
-
-    setSuccess('Evidence submitted successfully. It is now awaiting review.')
-    setRequirementId('')
-    setTitle('')
-    setNotes('')
-    setFile(null)
-    form.reset()
-  } catch (err: unknown) {
-    setUploadError(
-      err instanceof Error ? err.message : 'Upload failed. Please try again.',
-    )
-  } finally {
-    setSubmitting(false)
+      const submission = await submitQualification(requirementId, title.trim(), notes.trim(), file!)
+      setQualifications((previous) => [submission, ...previous.filter((item) => item.id !== submission.id)])
+      const name = requirements.find((r) => r.id === requirementId)?.name ?? 'Your induction'
+      feedback.success(`${name} is now waiting for an admin to review it. You can book once it is verified.`, 'Evidence submitted')
+      setRequirementId('')
+      setTitle('')
+      setNotes('')
+      setFile(null)
+      form.reset()
+      if (params.has('requirement')) setParams({}, { replace: true })
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (err: unknown) {
+      const text = errorMessage(err)
+      setUploadError(text)
+      feedback.error(text, 'Upload failed')
+    } finally {
+      setSubmitting(false)
+    }
   }
-}
+
+  const viewingRequirement = viewing ? requirements.find((r) => r.id === viewing.requirement_id) : undefined
 
   return (
     <div>
       <h1>Induction &amp; Training</h1>
+      <p className="bk-sub">Upload your training evidence. An admin checks it before you can book.</p>
 
-      <p className="bk-sub">
-        Submit your training evidence and check your qualification status.
-      </p>
-
-      <section className="bk-bcard">
+      <section className="bk-bcard" style={{ alignItems: 'stretch' }}>
         <h2>My qualifications</h2>
-
-        {loading && <p role="status">Loading qualifications...</p>}
-
-        {error && (
-          <p className="bk-error" role="alert">
-            {error}
-          </p>
+        {loading && <p role="status">Loading qualifications…</p>}
+        {error && <p className="bk-error" role="alert">{error}</p>}
+        {!loading && !error && requirements.length === 0 && <p className="bk-muted">No training requirements are available yet.</p>}
+        {!loading && !error && requirements.length > 0 && (
+          <ul className="ind-list">
+            {requirements.map((requirement) => (
+              <li key={requirement.id}>
+                <InductionRow
+                  requirement={requirement}
+                  latest={latest.get(requirement.id)}
+                  resources={resources}
+                  onUpload={startUpload}
+                  onView={setViewing}
+                  showDescription
+                />
+              </li>
+            ))}
+          </ul>
         )}
-
-        {!loading && !error && requirements.length === 0 && (
-          <p className="bk-muted">
-            No training requirements are currently available.
-          </p>
-        )}
-
-        {!loading && !error && requirements.map((requirement) => {
-          const latest = qualifications
-            .filter((item) => item.requirement_id === requirement.id)
-            .sort((a, b) =>
-              b.submitted_at.localeCompare(a.submitted_at),
-            )[0]
-
-          const status = latest?.effective_status ?? 'NOT_SUBMITTED'
-
-          return (
-            <div
-              key={requirement.id}
-              style={{
-                borderTop: '1px solid #e5e7eb',
-                padding: '16px 0',
-              }}
-            >
-              <h3>{requirement.name}</h3>
-
-              <p className="bk-muted">
-                {requirement.description}
-              </p>
-
-              <span
-                className={`bk-chip ${
-                  status === 'VERIFIED' ? 'is-ok' : 'is-warn'
-                }`}
-              >
-                {statusLabels[status]}
-              </span>
-            </div>
-          )
-        })}
       </section>
 
-      <section className="bk-bcard">
+      <section className="bk-bcard" style={{ alignItems: 'stretch' }}>
         <h2>Submit induction evidence</h2>
+        <p className="bk-muted">Upload a PDF, PNG or JPEG file, up to 5 MiB.</p>
+        {uploadError && <p className="bk-error" role="alert">{uploadError}</p>}
 
-        <p className="bk-muted">
-            Upload a PDF, PNG or JPEG file, up to 5 MiB.
-        </p>
-
-        {success && <p role="status">{success}</p>}
-
-        {uploadError && (
-            <p className="bk-error" role="alert">
-                {uploadError}
-            </p>
-        )}
-
-        <form onSubmit={handleSubmit}>
-            <fieldset
-            disabled={loading || !!error || submitting}
-            style={{
-                border: 0,
-                padding: 0,
-                margin: 0,
-                display: 'grid',
-                gap: '16px',
-                maxWidth: '600px',
-                minWidth: 0,
-            }}
-            >
-            <label style={{ display: 'grid', gap: '6px' }}>
-                Training requirement
-                <select
-                required
-                value={requirementId}
-                onChange={(event) => setRequirementId(event.target.value)}
-                >
+        <form ref={formRef} onSubmit={handleSubmit} style={{ scrollMarginTop: 90 }}>
+          <fieldset disabled={loading || !!error || submitting} style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: 16, maxWidth: 600, minWidth: 0 }}>
+            <label className="ui-field">
+              <span>Training requirement</span>
+              <select required value={requirementId} onChange={(event) => setRequirementId(event.target.value)}>
                 <option value="">Select a training requirement</option>
-
                 {requirements.map((requirement) => {
-                    const latest = qualifications
-                    .filter((item) => item.requirement_id === requirement.id)
-                    .sort((a, b) =>
-                        b.submitted_at.localeCompare(a.submitted_at),
-                    )[0]
-
-                    const blocked =
-                    latest?.effective_status === 'VERIFIED' ||
-                    latest?.effective_status === 'PENDING'
-
-                    return (
-                    <option
-                        key={requirement.id}
-                        value={requirement.id}
-                        disabled={blocked}
-                    >
-                        {requirement.name}
-                        {blocked
-                        ? ` (${statusLabels[latest.effective_status]})`
-                        : ''}
+                  const view = describeInduction(latest.get(requirement.id))
+                  return (
+                    <option key={requirement.id} value={requirement.id} disabled={view.action === null}>
+                      {requirement.name}{view.action === null ? ` (${view.label})` : ''}
                     </option>
-                    )
+                  )
                 })}
-                </select>
+              </select>
             </label>
-
-            <label style={{ display: 'grid', gap: '6px' }}>
-                Submission title
-                <input
-                required
-                maxLength={160}
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="e.g. Advanced laboratory training certificate"
-                />
+            <label className="ui-field">
+              <span>Submission title</span>
+              <input ref={titleRef} required maxLength={160} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. General laboratory induction certificate" />
             </label>
-
-            <label style={{ display: 'grid', gap: '6px' }}>
-                Notes (optional)
-                <textarea
-                rows={3}
-                maxLength={2000}
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                placeholder="Additional information for the reviewer"
-                />
+            <label className="ui-field">
+              <span>Notes (optional)</span>
+              <textarea rows={3} maxLength={2000} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Anything the reviewer should know" />
             </label>
-
-            <label style={{ display: 'grid', gap: '6px' }}>
-                Training evidence
-                <input
-                type="file"
-                required
-                accept=".pdf,.png,.jpg,.jpeg"
-                onChange={(event) =>
-                    setFile(event.target.files?.[0] ?? null)
-                }
-                />
+            <label className="ui-field">
+              <span>Training evidence</span>
+              <input type="file" required accept=".pdf,.png,.jpg,.jpeg" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
             </label>
-
-            <button
-                type="submit"
-                className="bk-btn-yellow"
-                disabled={!requirementId || !title.trim() || !file || submitting}
-            >
-                {submitting ? 'Submitting...' : 'Submit for review'}
+            <button type="submit" className="bk-btn-yellow" style={{ justifySelf: 'start' }} disabled={!requirementId || !title.trim() || !file || submitting}>
+              {submitting ? 'Submitting…' : 'Submit for review'}
             </button>
-            </fieldset>
+          </fieldset>
         </form>
-        </section>
+      </section>
+
+      {viewing && (
+        <Drawer
+          title={viewingRequirement?.name ?? 'Submission'}
+          subtitle={describeInduction(viewing).label}
+          onClose={() => {
+            setViewing(null)
+            if (params.has('requirement')) setParams({}, { replace: true })
+          }}
+        >
+          <Facts items={[
+            { label: 'Title', value: viewing.title },
+            { label: 'Submitted', value: fmtDateTime(viewing.submitted_at) },
+            { label: 'Status', value: describeInduction(viewing).detail },
+            ...(viewing.notes ? [{ label: 'Notes', value: viewing.notes }] : []),
+          ]} />
+          <section>
+            <h3>File</h3>
+            <EvidencePreview submissionId={viewing.id} fileName={viewing.title} />
+          </section>
+        </Drawer>
+      )}
     </div>
   )
 }

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from django.test import SimpleTestCase, override_settings
 
-from booking.domain import BookingStatus, QualificationStatus
+from booking.domain import BookingStatus
 from booking.exceptions import DomainError
 from booking.repository import MemoryRepository
 from booking.runtime import reset_runtime
@@ -50,14 +50,15 @@ class BookingWindowServiceTests(BookingFixtureMixin, SimpleTestCase):
         self.assert_refused("BOOKING_TOO_SOON", 6, hour=19)  # the last slot of day 6 is still too soon
 
     def test_first_and_last_days_of_the_window_are_bookable(self):
-        self.assertEqual(self.book_on(7, hour=8).status, BookingStatus.APPROVED)
-        self.assertEqual(self.book_on(30, hour=19).status, BookingStatus.APPROVED)
+        self.assertEqual(self.book_on(7, hour=8).status, BookingStatus.PENDING_APPROVAL)
+        self.assertEqual(self.book_on(30, hour=19).status, BookingStatus.PENDING_APPROVAL)
 
     def test_more_than_thirty_days_ahead_is_refused(self):
         self.assert_refused("BOOKING_TOO_FAR_AHEAD", 31, hour=8)
 
     def test_reschedule_must_also_stay_inside_the_window(self):
         booking = self.book_on(10)
+        booking = self.service.review_booking(self.admin, booking.id, "APPROVED")
         for days, code in ((3, "BOOKING_TOO_SOON"), (31, "BOOKING_TOO_FAR_AHEAD")):
             start, end = self.at(days)
             with self.subTest(days=days), self.assertRaises(DomainError) as denied:
@@ -72,14 +73,13 @@ class BookingWindowServiceTests(BookingFixtureMixin, SimpleTestCase):
         with self.assertRaises(DomainError) as denied:
             self.book(start=week_away[0], end=week_away[1])
         self.assertEqual(denied.exception.code, "BOOKING_TOO_SOON")
-        self.assertEqual(self.book(start=month_away[0], end=month_away[1]).status, BookingStatus.APPROVED)
+        self.assertEqual(self.book(start=month_away[0], end=month_away[1]).status, BookingStatus.PENDING_APPROVAL)
 
     def test_existing_requests_are_still_decided_once_they_are_inside_the_coming_week(self):
-        submission = self.qualification(self.other, status=QualificationStatus.PENDING)
-        pending = self.book(self.other, start=self.at(7)[0], end=self.at(7)[1])
-        self.assertEqual(pending.status, BookingStatus.WAITING_QUALIFICATION)
-        self.now += timedelta(days=3)
-        self.service.review_qualification(self.admin, submission.id, "VERIFIED")
+        pending = self.book(start=self.at(7)[0], end=self.at(7)[1])
+        self.assertEqual(pending.status, BookingStatus.PENDING_APPROVAL)
+        self.now += timedelta(days=3)  # now inside the coming week; the review window has ended meanwhile
+        self.service.process_due_requests()
         self.assertEqual(self.repo.get_booking(pending.id).status, BookingStatus.APPROVED)
 
     def test_availability_marks_days_outside_the_window(self):
@@ -122,7 +122,7 @@ class BookingWindowAPITests(BookingAPIFixtureMixin, SimpleTestCase):
                 self.assertEqual(response.data["error"]["code"], code)
                 self.assertEqual(response.data["error"]["details"]["earliest_date"], (today + timedelta(days=7)).isoformat())
                 self.assertEqual(response.data["error"]["details"]["latest_date"], (today + timedelta(days=30)).isoformat())
-        self.assertEqual(self.create_booking(payload=self.payload(day_offset=7)).data["status"], "APPROVED")
+        self.assertEqual(self.create_booking(payload=self.payload(day_offset=7)).data["status"], "PENDING_APPROVAL")
 
     def test_availability_reports_the_window_for_the_date_picker(self):
         today = NOW.astimezone(SYDNEY).date()

@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { EmptyState, PageHeader, RefreshStamp } from '../../ui/components'
+import { useFeedback } from '../../ui/feedback-context'
 import {
   cancelBooking,
   downloadAllBookings,
@@ -7,31 +9,22 @@ import {
   listResources,
   updateResourceStatus,
 } from '../booking/api'
-import type {
-  Booking,
-  Resource,
-  ResourceStatus,
-} from '../booking/types'
+import { errorMessage, fmtDuration, fmtRange, minutesBetween } from '../booking/format'
+import type { Booking, Resource, ResourceStatus } from '../booking/types'
 
 const STATUS_LABELS: Record<ResourceStatus, string> = {
   AVAILABLE: 'Available',
   MAINTENANCE: 'Maintenance',
   CLOSED: 'Closed',
 }
-
-interface RoomDraft {
-  status: ResourceStatus
-  reason: string
-}
+const STATUS_TONE: Record<ResourceStatus, string> = { AVAILABLE: 'is-green', MAINTENANCE: 'is-amber', CLOSED: 'is-red' }
 
 function saveCsv(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
-
   link.href = url
   link.download = filename
   document.body.appendChild(link)
-
   try {
     link.click()
   } finally {
@@ -40,475 +33,230 @@ function saveCsv(blob: Blob, filename: string) {
   }
 }
 
+const who = (b: Booking) => b.student?.display_name || b.student?.zid || b.student_id
+
 export function ManagerBookingsPage() {
+  const feedback = useFeedback()
   const [bookings, setBookings] = useState<Booking[]>([])
   const [rooms, setRooms] = useState<Resource[]>([])
-  const [drafts, setDrafts] = useState<Record<string, RoomDraft>>({})
   const [loading, setLoading] = useState(true)
-  const [busyId, setBusyId] = useState<string | null>(null)
-  const [savingRoomId, setSavingRoomId] = useState<string | null>(null)
+  const [loadedAt, setLoadedAt] = useState<number | null>(null)
   const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
+  const [busy, setBusy] = useState<string | null>(null)
   const [refresh, setRefresh] = useState(0)
-  const [now, setNow] = useState(() => Date.now())
-  const [downloading, setDownloading] = useState(false)
-  const [downloadError, setDownloadError] = useState('')
-  const [downloadingUserId, setDownloadingUserId] =
-    useState<string | null>(null)
-
-  const actionBusy =
-    loading || busyId !== null || savingRoomId !== null
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 30_000)
-    return () => window.clearInterval(timer)
-  }, [])
+  const [roomFilter, setRoomFilter] = useState('')
 
   useEffect(() => {
     let active = true
-
-    async function load() {
-      setLoading(true)
-      setError('')
-
-      try {
-        const [bookingData, resourceData] = await Promise.all([
-          listApprovedBookings(),
-          listResources({ kind: 'ROOM' }),
-        ])
-
+    Promise.all([listApprovedBookings(), listResources({ kind: 'ROOM' })])
+      .then(([bookingData, resourceData]) => {
         if (!active) return
-
-        const roomIds = new Set(
-          resourceData.results.map((room) => room.id),
-        )
-
+        const roomIds = new Set(resourceData.results.map((room) => room.id))
         setRooms(resourceData.results)
-        setBookings(
-          bookingData.results
-            .filter((booking) => roomIds.has(booking.resource_id))
-            .sort(
-              (a, b) =>
-                new Date(a.start).getTime() -
-                new Date(b.start).getTime(),
-            ),
-        )
-      } catch (err: unknown) {
-        if (active) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : 'Unable to load rooms and bookings.',
-          )
-        }
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-
-    void load()
-
-    return () => {
-      active = false
-    }
+        setBookings(bookingData.results
+          .filter((booking) => roomIds.has(booking.resource_id))
+          .sort((a, b) => Date.parse(a.start) - Date.parse(b.start)))
+        setLoadedAt(Date.now())
+        setError('')
+      })
+      .catch((err: unknown) => active && setError(errorMessage(err)))
+      .finally(() => active && setLoading(false))
+    return () => { active = false }
   }, [refresh])
 
-  function updateDraft(room: Resource, patch: Partial<RoomDraft>) {
-    setDrafts((previous) => {
-      const current = previous[room.id] ?? {
-        status: room.status,
-        reason: room.status_reason ?? '',
+  const reload = useCallback(() => {
+    setLoading(true)
+    setRefresh((value) => value + 1)
+  }, [])
+
+  const now = loadedAt ?? 0
+  const roomName = (id: string) => rooms.find((room) => room.id === id)?.name ?? 'Room'
+  const visibleBookings = useMemo(
+    () => bookings.filter((b) => (!roomFilter || b.resource_id === roomFilter) && Date.parse(b.end) > now),
+    [bookings, roomFilter, now],
+  )
+
+  async function changeStatus(room: Resource, status: ResourceStatus) {
+    if (busy) return
+    const upcoming = bookings.filter((b) => b.resource_id === room.id && Date.parse(b.end) > now).length
+    const answer = await feedback.confirm(status === 'AVAILABLE'
+      ? {
+        title: `Reopen ${room.name}?`,
+        message: 'Students can request it again. Waitlisted requests that now fit move to Awaiting approval.',
+        confirmLabel: 'Reopen room',
       }
-
-      return {
-        ...previous,
-        [room.id]: {
-          ...current,
-          ...patch,
-        },
-      }
-    })
-  }
-
-  async function handleSaveRoom(room: Resource) {
-    if (actionBusy) return
-
-    const draft = drafts[room.id] ?? {
-      status: room.status,
-      reason: room.status_reason ?? '',
-    }
-    const reason =
-      draft.status === 'AVAILABLE' ? '' : draft.reason.trim()
-
-    setError('')
-    setSuccess('')
-
-    if (draft.status !== 'AVAILABLE' && !reason) {
-      setError(`Please enter a reason for changing ${room.name}'s status.`)
-      return
-    }
-
-    setSavingRoomId(room.id)
-
-    try {
-      const result = await updateResourceStatus(
-        room.id,
-        draft.status,
-        reason,
-      )
-
-      setRooms((previous) =>
-        previous.map((item) =>
-          item.id === room.id ? result.resource : item,
-        ),
-      )
-
-      setDrafts((previous) => {
-        const next = { ...previous }
-        delete next[room.id]
-        return next
+      : {
+        title: `${status === 'MAINTENANCE' ? 'Put' : 'Close'} ${room.name}${status === 'MAINTENANCE' ? ' under maintenance' : ''}?`,
+        message: `New requests and approvals stop. ${upcoming ? `${upcoming} confirmed booking${upcoming === 1 ? ' is' : 's are'} kept; cancel them separately if needed.` : 'There are no upcoming confirmed bookings.'}`,
+        reason: { label: 'Reason (shown to students)', placeholder: 'e.g. Fume hood repairs until Friday', maxLength: 500 },
+        confirmLabel: status === 'MAINTENANCE' ? 'Start maintenance' : 'Close room',
+        danger: true,
       })
-
-      const message =
+    if (!answer.confirmed) return
+    setBusy(room.id)
+    try {
+      const result = await updateResourceStatus(room.id, status, status === 'AVAILABLE' ? '' : answer.reason)
+      const affected = result.affected_bookings.length
+      feedback.success(
         result.resource.status === 'AVAILABLE'
-          ? 'The room is open again. Eligible waitlisted requests may be automatically approved.'
-          : `Existing bookings are kept. ${result.affected_bookings.length} active requests or bookings may be affected.`
-
-      setSuccess(
-        `${room.name}: ${STATUS_LABELS[result.resource.status]}. ${message}`,
+          ? `${room.name} is open for requests again.`
+          : `${room.name} is now ${STATUS_LABELS[result.resource.status].toLowerCase()}. ${affected} existing request${affected === 1 ? '' : 's'} may be affected.`,
+        'Room status updated',
       )
-
-      // Reload because reopening may approve waitlisted bookings.
-      setRefresh((value) => value + 1)
     } catch (err: unknown) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to update room status.',
-      )
+      feedback.error(errorMessage(err), 'Status not changed')
     } finally {
-      setSavingRoomId(null)
+      setBusy(null)
+      reload()
     }
   }
 
-  async function handleCancel(booking: Booking, roomName: string) {
-    if (actionBusy) return
-
-    setError('')
-    setSuccess('')
-
-    if (new Date(booking.start).getTime() <= Date.now()) {
-      setError('This booking has already started and cannot be cancelled.')
+  async function handleCancel(booking: Booking) {
+    if (busy) return
+    if (Date.parse(booking.start) <= Date.now()) {
+      feedback.error('This booking has already started and cannot be cancelled.', 'Cannot cancel')
       return
     }
-
-    const confirmed = window.confirm(
-      `Cancel this booking?\n\nRoom: ${roomName}\nStudent ID: ${
-        booking.student_id
-      }\nStart: ${new Date(booking.start).toLocaleString()}`,
-    )
-
-    if (!confirmed) return
-
-    setBusyId(booking.id)
-
+    const answer = await feedback.confirm({
+      title: 'Cancel this booking?',
+      details: [
+        { label: 'Room', value: roomName(booking.resource_id) },
+        { label: 'Student', value: `${who(booking)}${booking.student?.zid ? ` (${booking.student.zid})` : ''}` },
+        { label: 'Time', value: fmtRange(booking.start, booking.end) },
+      ],
+      message: 'The time is released and offered to the waitlist. This cannot be undone.',
+      confirmLabel: 'Cancel booking',
+      cancelLabel: 'Keep booking',
+      danger: true,
+    })
+    if (!answer.confirmed) return
+    setBusy(booking.id)
     try {
       await cancelBooking(booking.id)
-
-      setBookings((previous) =>
-        previous.filter((item) => item.id !== booking.id),
-      )
-      setSuccess(
-        'Booking cancelled successfully. Eligible waitlisted requests may be automatically approved.',
-      )
-      setRefresh((value) => value + 1)
+      feedback.success(`${roomName(booking.resource_id)} · ${fmtRange(booking.start, booking.end)}`, 'Booking cancelled')
     } catch (err: unknown) {
-      setError(
-        err instanceof Error ? err.message : 'Cancellation failed.',
-      )
+      feedback.error(errorMessage(err), 'Cancellation failed')
     } finally {
-      setBusyId(null)
+      setBusy(null)
+      reload()
     }
   }
 
-  async function handleDownload() {
-    if (downloading) return
-
-    setDownloading(true)
-    setDownloadError('')
-
+  async function download(studentId?: string, label?: string) {
+    const key = studentId ?? 'all'
+    if (busy) return
+    setBusy(`csv-${key}`)
     try {
-      const blob = await downloadAllBookings()
-      saveCsv(blob, 'smartlab-all-bookings.csv')
+      const blob = studentId ? await downloadUserBookings(studentId) : await downloadAllBookings()
+      saveCsv(blob, studentId ? `smartlab-${label ?? studentId}-bookings.csv` : 'smartlab-all-bookings.csv')
+      feedback.success(studentId ? `Bookings for ${label ?? 'this student'} downloaded.` : 'All bookings downloaded as CSV.', 'Download ready')
     } catch (err: unknown) {
-      setDownloadError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to download bookings. Please try again.',
-      )
+      feedback.error(errorMessage(err), 'Download failed')
     } finally {
-      setDownloading(false)
-    }
-  }
-
-  async function handleDownloadUser(studentId: string) {
-    if (downloadingUserId !== null) return
-
-    setDownloadingUserId(studentId)
-    setDownloadError('')
-
-    try {
-      const blob = await downloadUserBookings(studentId)
-      saveCsv(blob, `smartlab-user-${studentId}-bookings.csv`)
-    } catch (err: unknown) {
-      setDownloadError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to download bookings for this user.',
-      )
-    } finally {
-      setDownloadingUserId(null)
+      setBusy(null)
     }
   }
 
   return (
     <div>
-      <h1>Room booking management</h1>
-      <p>Manage room availability and confirmed bookings.</p>
+      <PageHeader
+        title="Room booking management"
+        description="Open or close rooms and manage confirmed bookings."
+        actions={(
+          <>
+            <RefreshStamp at={loadedAt} onRefresh={reload} busy={loading && loadedAt !== null} />
+            <button type="button" className="ui-btn ui-btn-primary" disabled={busy !== null} onClick={() => void download()}>
+              {busy === 'csv-all' ? 'Preparing…' : 'Download all bookings (CSV)'}
+            </button>
+          </>
+        )}
+      />
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-        <button
-          type="button"
-          className="app-button"
-          disabled={actionBusy}
-          onClick={() => {
-            setSuccess('')
-            setRefresh((value) => value + 1)
-          }}
-        >
-          Refresh
-        </button>
-
-        <button
-          type="button"
-          className="app-button"
-          disabled={downloading || actionBusy}
-          onClick={() => void handleDownload()}
-        >
-          {downloading ? 'Downloading...' : 'Download All Bookings'}
-        </button>
-      </div>
-
-      <p className="bk-muted">
-        Download room and equipment bookings for all users, including
-        all statuses, as a CSV file.
-      </p>
-
-      {downloadError && (
-        <p role="alert" className="bk-error">{downloadError}</p>
-      )}
       {error && <p role="alert" className="bk-error">{error}</p>}
-      {success && <p role="status">{success}</p>}
-      {loading && <p>Loading rooms and bookings...</p>}
+      {loading && loadedAt === null && <p role="status">Loading rooms and bookings…</p>}
 
-      {!loading && (
+      {loadedAt !== null && (
         <>
-          <h2 style={{ marginTop: 28 }}>Room status management</h2>
-          <p className="bk-muted">
-            Maintenance and Closed stop new bookings and approvals.
-            Existing bookings are kept until cancelled.
-          </p>
-
-          {rooms.length === 0 && !error && <p>No rooms found.</p>}
-
-          <div style={{ display: 'grid', gap: 16 }}>
-            {rooms.map((room) => {
-              const draft = drafts[room.id] ?? {
-                status: room.status,
-                reason: room.status_reason ?? '',
-              }
-
-              const reasonRequired = draft.status !== 'AVAILABLE'
-              const nextReason = reasonRequired ? draft.reason.trim() : ''
-              const changed =
-                draft.status !== room.status ||
-                nextReason !== (room.status_reason ?? '')
-
-              return (
-                <section
-                  key={room.id}
-                  className="bk-bcard"
-                  style={{ padding: 20 }}
-                >
-                  <h3>{room.name}</h3>
-                  <p className="bk-muted">{room.location}</p>
-
-                  <p>
-                    <strong>Current status: </strong>
-                    <span
-                      className={`bk-chip ${
-                        room.status === 'AVAILABLE' ? 'is-ok' : 'is-warn'
-                      }`}
-                    >
-                      {STATUS_LABELS[room.status]}
-                    </span>
-                  </p>
-
-                  {room.status_reason && (
-                    <p>
-                      <strong>Current reason: </strong>
-                      {room.status_reason}
-                    </p>
-                  )}
-
-                  <form
-                    onSubmit={(event) => {
-                      event.preventDefault()
-                      void handleSaveRoom(room)
-                    }}
-                    style={{ display: 'grid', gap: 12, maxWidth: 560 }}
-                  >
-                    <label htmlFor={`status-${room.id}`}>New status</label>
-                    <select
-                      id={`status-${room.id}`}
-                      value={draft.status}
-                      disabled={actionBusy}
-                      onChange={(event) =>
-                        updateDraft(room, {
-                          status: event.target.value as ResourceStatus,
-                        })
-                      }
-                      style={{ padding: 10, width: '100%' }}
-                    >
-                      <option value="AVAILABLE">Available</option>
-                      <option value="MAINTENANCE">Maintenance</option>
-                      <option value="CLOSED">Closed</option>
-                    </select>
-
-                    {reasonRequired && (
-                      <>
-                        <label htmlFor={`reason-${room.id}`}>
-                          Reason (required)
-                        </label>
-                        <textarea
-                          id={`reason-${room.id}`}
-                          value={draft.reason}
-                          required
-                          maxLength={500}
-                          rows={3}
-                          disabled={actionBusy}
-                          placeholder="For example: Air conditioning repairs."
-                          onChange={(event) =>
-                            updateDraft(room, { reason: event.target.value })
-                          }
-                          style={{
-                            padding: 10,
-                            width: '100%',
-                            boxSizing: 'border-box',
-                            resize: 'vertical',
-                          }}
-                        />
-                      </>
-                    )}
-
-                    <button
-                      type="submit"
-                      className="app-button"
-                      disabled={
-                        actionBusy ||
-                        !changed ||
-                        (reasonRequired && !draft.reason.trim())
-                      }
-                      style={{ justifySelf: 'start' }}
-                    >
-                      {savingRoomId === room.id ? 'Saving...' : 'Save status'}
-                    </button>
-                  </form>
-                </section>
-              )
-            })}
-          </div>
-
-          <h2 style={{ marginTop: 32 }}>Confirmed room bookings</h2>
-
-          {bookings.length === 0 && !error && (
-            <p>No confirmed room bookings.</p>
+          <h2 className="bk-h2">Rooms</h2>
+          {rooms.length === 0 ? <EmptyState icon="–" title="No rooms found" /> : (
+            <div className="ui-table-wrap">
+              <table className="ui-table">
+                <thead>
+                  <tr><th>Room</th><th>Status</th><th className="ui-hide-sm">Reason</th><th className="ui-num">Upcoming</th><th><span className="sr-only">Actions</span></th></tr>
+                </thead>
+                <tbody>
+                  {rooms.map((room) => (
+                    <tr key={room.id}>
+                      <td><span className="ui-primary-text">{room.name}</span><span className="ui-sub-text">{room.location}</span></td>
+                      <td><span className={`ui-pill ${STATUS_TONE[room.status]}`}>{STATUS_LABELS[room.status]}</span></td>
+                      <td className="ui-hide-sm">{room.status_reason || <span className="bk-muted">—</span>}</td>
+                      <td className="ui-num">{bookings.filter((b) => b.resource_id === room.id && Date.parse(b.end) > now).length}</td>
+                      <td>
+                        <div className="ui-actions">
+                          {room.status === 'AVAILABLE' ? (
+                            <>
+                              <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy !== null} onClick={() => void changeStatus(room, 'MAINTENANCE')}>Maintenance</button>
+                              <button type="button" className="ui-btn ui-btn-reject ui-btn-sm" disabled={busy !== null} onClick={() => void changeStatus(room, 'CLOSED')}>Close</button>
+                            </>
+                          ) : (
+                            <button type="button" className="ui-btn ui-btn-approve ui-btn-sm" disabled={busy !== null} onClick={() => void changeStatus(room, 'AVAILABLE')}>{busy === room.id ? 'Saving…' : 'Reopen'}</button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
 
-          <div style={{ display: 'grid', gap: 16, marginTop: 16 }}>
-            {bookings.map((booking) => {
-              const room = rooms.find(
-                (item) => item.id === booking.resource_id,
-              )
-              const roomName = room?.name ?? booking.resource_id
-              const started = new Date(booking.start).getTime() <= now
-
-              return (
-                <section
-                  key={booking.id}
-                  className="bk-bcard"
-                  style={{ padding: 20 }}
-                >
-                  <h3>{roomName}</h3>
-                  <span className="bk-chip is-ok">Approved</span>
-
-                  {room && room.status !== 'AVAILABLE' && (
-                    <p className="bk-error">
-                      Room status: {STATUS_LABELS[room.status]}.
-                      This booking has not been automatically cancelled.
-                    </p>
-                  )}
-
-                  <p>
-                    <strong>Student ID: </strong>{booking.student_id}
-                  </p>
-                  <p>
-                    <strong>Start: </strong>
-                    {new Date(booking.start).toLocaleString()}
-                  </p>
-                  <p>
-                    <strong>End: </strong>
-                    {new Date(booking.end).toLocaleString()}
-                  </p>
-                  <p><strong>Purpose: </strong>{booking.purpose}</p>
-
-                  <div
-                    style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}
-                  >
-                    <button
-                      type="button"
-                      className="app-button"
-                      disabled={actionBusy || started}
-                      onClick={() => void handleCancel(booking, roomName)}
-                    >
-                      {busyId === booking.id
-                        ? 'Cancelling...'
-                        : 'Cancel booking'}
-                    </button>
-
-                    <button
-                      type="button"
-                      className="app-button"
-                      disabled={downloadingUserId !== null || actionBusy}
-                      onClick={() =>
-                        void handleDownloadUser(booking.student_id)
-                      }
-                    >
-                      {downloadingUserId === booking.student_id
-                        ? 'Downloading...'
-                        : 'Download User Bookings'}
-                    </button>
-                  </div>
-
-                  {started && (
-                    <p className="bk-muted">
-                      This booking has started or ended and cannot be cancelled.
-                    </p>
-                  )}
-                </section>
-              )
-            })}
+          <div className="ui-toolbar" style={{ marginTop: 28 }}>
+            <h2 className="bk-h2" style={{ margin: 0 }}>Upcoming confirmed bookings</h2>
+            <div className="ui-filters">
+              <select aria-label="Filter by room" value={roomFilter} onChange={(e) => setRoomFilter(e.target.value)}>
+                <option value="">All rooms</option>
+                {rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}
+              </select>
+            </div>
           </div>
+          {visibleBookings.length === 0 ? (
+            <EmptyState icon="–" title="No upcoming confirmed bookings">Approved room bookings appear here.</EmptyState>
+          ) : (
+            <div className="ui-table-wrap">
+              <table className="ui-table">
+                <thead>
+                  <tr><th>Time</th><th>Room</th><th>Student</th><th className="ui-hide-sm">Purpose</th><th><span className="sr-only">Actions</span></th></tr>
+                </thead>
+                <tbody>
+                  {visibleBookings.map((booking) => {
+                    const room = rooms.find((item) => item.id === booking.resource_id)
+                    const started = Date.parse(booking.start) <= now
+                    return (
+                      <tr key={booking.id}>
+                        <td>{fmtRange(booking.start, booking.end)}<span className="ui-sub-text">{fmtDuration(minutesBetween(booking.start, booking.end))}</span></td>
+                        <td>
+                          {room?.name ?? 'Room'}
+                          {room && room.status !== 'AVAILABLE' && <span className="ui-sub-text" style={{ color: 'var(--red)' }}>Room {STATUS_LABELS[room.status].toLowerCase()}</span>}
+                        </td>
+                        <td><span className="ui-primary-text">{who(booking)}</span><span className="ui-sub-text">{booking.student?.zid}</span></td>
+                        <td className="ui-hide-sm">{booking.purpose}</td>
+                        <td>
+                          <div className="ui-actions">
+                            <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy !== null} title="Download this student's bookings as CSV" onClick={() => void download(booking.student_id, booking.student?.zid)}>
+                              {busy === `csv-${booking.student_id}` ? 'Preparing…' : 'Student CSV'}
+                            </button>
+                            <button type="button" className="ui-btn ui-btn-reject ui-btn-sm" disabled={busy !== null || started} title={started ? 'Already started' : undefined} onClick={() => void handleCancel(booking)}>
+                              {busy === booking.id ? 'Cancelling…' : 'Cancel'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
     </div>

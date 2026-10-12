@@ -236,7 +236,17 @@ class AdminQualificationListView(APIView):
         if requested not in QualificationStatus._value2member_map_:
             raise DomainError("VALIDATION_ERROR", "Use PENDING, VERIFIED or REJECTED.")
         records = [item for item in service.repo.list_submissions() if item.status.value == requested]
-        return Response(collection(records, submission_json))
+        people = {item.id: item for item in service.repo.list_principals()}
+
+        def staff_submission_json(record):
+            # Reviewers need to know whose evidence it is, not only the internal id.
+            result = submission_json(record)
+            person = people.get(record.student_id)
+            result["student"] = ({"id": person.id, "zid": person.zid, "display_name": person.display_name,
+                                  "university_email": person.university_email} if person else None)
+            return result
+
+        return Response(collection(records, staff_submission_json))
 
 class AdminQualificationReviewView(APIView):
     def post(self, request, submission_id):
@@ -420,8 +430,7 @@ class OutlookRetryView(APIView):
 
 
 def policy_json(resource):
-    return {"resource_id": resource.id, "pending_hold_minutes": resource.pending_hold_minutes,
-            "auto_approve_max_minutes": resource.auto_approve_max_minutes}
+    return {"resource_id": resource.id, "pending_hold_minutes": resource.pending_hold_minutes}
 
 class ResourceBookingPolicyView(APIView):
     def get(self, request, resource_id):
@@ -433,6 +442,5 @@ class ResourceBookingPolicyView(APIView):
         service = get_service()
         service.require_manager(request.user)
         data = validated(BookingPolicySerializer, request.data)
-        resource = service.set_booking_policy(request.user, str(resource_id), data.get("pending_hold_minutes"),
-                                              data.get("auto_approve_max_minutes"))
+        resource = service.set_booking_policy(request.user, str(resource_id), data["pending_hold_minutes"])
         return Response(policy_json(resource))

@@ -76,8 +76,9 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
                 </div>
                 <small>{req.description || 'Required before requesting a booking.'}</small>
               </div>
+              {state === 'PENDING' && <span className="bk-muted">Under review. You can book once it is verified.</span>}
               {!ok && state !== 'PENDING' && (
-                <Link className="bk-btn-yellow" to="/induction">
+                <Link className="bk-btn-yellow" to={`/induction?requirement=${req.id}`}>
                   <UploadIcon size={18} /> Upload induction
                 </Link>
               )}

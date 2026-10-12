@@ -96,6 +96,17 @@ class OutlookWorkflowTests(SimpleTestCase):
     def create(self, client=None, **headers):
         return (client or self.client).post("/api/v1/bookings/", self.payload(), format="json", **headers)
 
+    def approve(self, booking_id):
+        return self.admin.post(f"/api/v1/admin/bookings/{booking_id}/review/", {"decision": "APPROVED"}, format="json")
+
+    def create_approved(self, client=None):
+        """Every request starts pending; the Admin approval is what writes the Outlook event."""
+        created = self.create(client)
+        self.assertEqual(created.status_code, 201, created.data)
+        approved = self.approve(created.data["id"])
+        self.assertEqual(approved.status_code, 200, approved.data)
+        return approved.data
+
     def submit(self):
         response = self.student.post("/api/v1/qualifications/", {
             "requirement_id": self.room.required_qualification_id, "title": "Induction",
@@ -103,40 +114,39 @@ class OutlookWorkflowTests(SimpleTestCase):
         self.assertEqual(response.status_code, 201)
         return response.data["id"]
 
-    def test_auto_approval_creates_exactly_one_event_and_returns_sync_state(self):
+    def test_approval_creates_exactly_one_event_and_returns_sync_state(self):
         first = self.create(HTTP_IDEMPOTENCY_KEY="outlook-demo-1")
         second = self.create(HTTP_IDEMPOTENCY_KEY="outlook-demo-1")
-        self.assertEqual(first.status_code, 201)
-        self.assertEqual(second.status_code, 200)
-        self.assertEqual(first.data["outlook_sync"]["status"], "SYNCED")
+        self.assertEqual((first.status_code, second.status_code), (201, 200))
+        self.assertEqual(first.data["outlook_sync"]["status"], "NOT_REQUIRED")
+        approved = self.approve(first.data["id"]).data
+        self.assertEqual(approved["outlook_sync"]["status"], "SYNCED")
+        self.assert_error_code(self.approve(first.data["id"]), "REQUEST_NOT_REVIEWABLE")
         self.assertEqual(len(self.provider.creates), 1)
         self.assertEqual(self.client.get(f"/api/v1/bookings/{first.data['id']}/").data["outlook_sync"]["status"], "SYNCED")
         self.assertEqual(self.client.get("/api/v1/dashboard/").data["bookings"][0]["outlook_sync"]["status"], "SYNCED")
 
-    def test_pending_request_is_not_written_but_qualification_auto_approval_is(self):
-        submission_id = self.submit()
-        booking = self.create(self.student)
-        self.assertEqual(booking.data["status"], "WAITING_QUALIFICATION")
+    def assert_error_code(self, response, code):
+        self.assertEqual(response.data["error"]["code"], code, response.data)
+
+    def test_pending_request_is_not_written_but_automatic_approval_is(self):
+        booking = self.create()
+        self.assertEqual(booking.data["status"], "PENDING_APPROVAL")
         self.assertEqual(booking.data["outlook_sync"]["status"], "NOT_REQUIRED")
         self.assertEqual(self.provider.creates, [])
-        reviewed = self.admin.post(f"/api/v1/admin/qualifications/{submission_id}/review/", {"decision": "VERIFIED"}, format="json")
-        self.assertEqual(reviewed.status_code, 200)
-        self.assertEqual(reviewed.data["updated_bookings"][0]["outlook_sync"]["status"], "SYNCED")
-        self.assertEqual(len(self.provider.creates), 1)
+        self.service.clock = lambda: NOW + timedelta(hours=24)
+        self.admin.post("/api/v1/admin/process-due/", {}, format="json")
+        self.sync.process_pending()
+        self.assertEqual([call[0] for call in self.provider.creates], [booking.data["id"]])
 
-    def test_manual_approval_is_also_written(self):
-        submission_id = self.submit()
-        self.service.wait_hours = 96
-        booking = self.create(self.student)
-        self.assertEqual(booking.data["status"], "PENDING_APPROVAL")
-        self.admin.post(f"/api/v1/admin/qualifications/{submission_id}/review/", {"decision": "VERIFIED"}, format="json")
+    def test_rejected_request_is_never_written(self):
+        booking = self.create().data
+        result = self.admin.post(f"/api/v1/admin/bookings/{booking['id']}/review/", {"decision": "REJECTED", "reason": "Class booking"}, format="json")
+        self.assertEqual((result.status_code, result.data["outlook_sync"]["status"]), (200, "NOT_REQUIRED"))
         self.assertEqual(self.provider.creates, [])
-        result = self.admin.post(f"/api/v1/admin/bookings/{booking.data['id']}/review/", {"decision": "APPROVED"}, format="json")
-        self.assertEqual(result.status_code, 200)
-        self.assertEqual(result.data["outlook_sync"]["status"], "SYNCED")
 
     def test_cancellation_deletes_original_event_once(self):
-        booking = self.create().data
+        booking = self.create_approved()
         path = f"/api/v1/bookings/{booking['id']}/cancel/"
         result = self.client.post(path, {}, format="json")
         self.client.post(path, {}, format="json")
@@ -147,7 +157,7 @@ class OutlookWorkflowTests(SimpleTestCase):
         self.assertEqual(len(self.provider.deletes), 1)
 
     def test_reschedule_updates_the_existing_event_and_preserves_its_identity(self):
-        booking = self.create().data
+        booking = self.create_approved()
         original = self.service.repo.get_outlook_sync(booking["id"])
         new_start = (NOW.astimezone(SYDNEY) + timedelta(days=4)).replace(hour=14, minute=0)
         result = self.client.post(f"/api/v1/bookings/{booking['id']}/reschedule/", {
@@ -165,7 +175,7 @@ class OutlookWorkflowTests(SimpleTestCase):
         self.assertEqual(self.service.repo.get_outlook_sync(booking["id"]).event_id, original.event_id)
 
     def test_failed_reschedule_sync_keeps_new_booking_time_and_retry_updates_event(self):
-        booking = self.create().data
+        booking = self.create_approved()
         original = self.service.repo.get_outlook_sync(booking["id"])
         self.provider.error = OutlookError("GRAPH_NETWORK_ERROR")
         new_start = (NOW.astimezone(SYDNEY) + timedelta(days=5)).replace(hour=15, minute=0)
@@ -193,7 +203,7 @@ class OutlookWorkflowTests(SimpleTestCase):
         )
         self.assertEqual(reviewed.status_code, 200, reviewed.data)
         self.provider.error = OutlookError("GRAPH_HTTP_429", retry_after=120)
-        booking = self.create().data
+        booking = self.create_approved()
         self.assertEqual(booking["status"], "APPROVED")
         self.assertEqual(booking["outlook_sync"]["status"], "FAILED")
         self.assertEqual(booking["outlook_sync"]["last_error"], "GRAPH_HTTP_429")
@@ -209,7 +219,7 @@ class OutlookWorkflowTests(SimpleTestCase):
 
     @override_settings(OUTLOOK_SYNC_ON_WRITE=False)
     def test_cancel_before_processing_does_not_create_an_event(self):
-        booking = self.create().data
+        booking = self.create_approved()
         self.client.post(f"/api/v1/bookings/{booking['id']}/cancel/", {}, format="json")
         self.sync.process_pending()
         self.assertEqual(self.provider.creates, [])
@@ -221,9 +231,9 @@ class OutlookWorkflowTests(SimpleTestCase):
             record = self.service.repo.list_bookings()[0]
             self.service.cancel_booking(self.service.repo.get_principal(record.student_id), record.id)
         self.provider.on_create = cancel_during_http
-        result = self.create()
-        self.assertEqual(result.data["status"], "CANCELLED")
-        record = self.service.repo.get_outlook_sync(result.data["id"])
+        result = self.create_approved()
+        self.assertEqual(result["status"], "CANCELLED")
+        record = self.service.repo.get_outlook_sync(result["id"])
         self.assertEqual(record.action, "DELETE")
         self.assertEqual(record.status, "SYNCED")
         self.assertEqual(len(self.provider.creates), 1)
@@ -231,7 +241,7 @@ class OutlookWorkflowTests(SimpleTestCase):
 
     def test_unknown_create_outcome_is_recovered_before_cancellation(self):
         self.provider.error = OutlookError("GRAPH_NETWORK_ERROR")
-        booking = self.create().data
+        booking = self.create_approved()
         self.provider.error = None
         self.client.post(f"/api/v1/bookings/{booking['id']}/cancel/", {}, format="json")
         self.assertEqual(len(self.provider.creates), 2)
@@ -239,7 +249,7 @@ class OutlookWorkflowTests(SimpleTestCase):
         self.assertEqual(len(self.provider.deletes), 1)
 
     def test_failed_delete_keeps_cancelled_booking_and_original_event_for_retry(self):
-        booking = self.create().data
+        booking = self.create_approved()
         original = self.service.repo.get_outlook_sync(booking["id"])
         self.provider.error = OutlookError("GRAPH_NETWORK_ERROR")
         result = self.client.post(f"/api/v1/bookings/{booking['id']}/cancel/", {}, format="json")
@@ -256,17 +266,16 @@ class OutlookWorkflowTests(SimpleTestCase):
 
     def test_missing_outlook_configuration_is_visible_without_failing_booking(self):
         self.sync.provider = MicrosoftGraphCalendar()
-        result = self.create()
-        self.assertEqual(result.status_code, 201)
-        self.assertEqual(result.data["status"], "APPROVED")
-        self.assertEqual(result.data["outlook_sync"]["last_error"], "OUTLOOK_NOT_CONFIGURED")
+        result = self.create_approved()
+        self.assertEqual(result["status"], "APPROVED")
+        self.assertEqual(result["outlook_sync"]["last_error"], "OUTLOOK_NOT_CONFIGURED")
 
     def test_other_worker_cannot_claim_an_in_progress_event(self):
         other_worker = CalendarSyncService(self.service.repo, self.provider, enabled=True, clock=lambda: NOW)
         def try_duplicate():
             other_worker.process_booking(self.service.repo.list_bookings()[0].id)
         self.provider.on_create = try_duplicate
-        self.create()
+        self.create_approved()
         self.assertEqual(len(self.provider.creates), 1)
 
     def test_outbox_rolls_back_with_booking_transaction(self):
@@ -297,7 +306,7 @@ class OutlookWorkflowTests(SimpleTestCase):
         self.service = reset_runtime()
         self.service.clock = lambda: NOW
         self.service.min_advance_days, self.service.max_advance_days = 0, 7  # workflow tests book a few days ahead; see test_booking_window.py
-        booking = self.create().data
+        booking = self.create_approved()
         self.assertEqual(booking["outlook_sync"]["status"], "DISABLED")
         self.assertEqual(self.provider.creates, [])
 

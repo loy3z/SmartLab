@@ -1,8 +1,7 @@
 """Rejecting induction evidence ends every pending booking that depends on it."""
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from uuid import uuid4
-from zoneinfo import ZoneInfo
 
 from django.test import SimpleTestCase, override_settings
 
@@ -11,14 +10,19 @@ from booking.domain import (BookingStatus, QualificationRequirement, Qualificati
 from booking.tests.test_api import BookingAPIFixtureMixin
 from booking.tests.test_services import BookingFixtureMixin
 
-SYDNEY = ZoneInfo("Australia/Sydney")
-PDF = b"%PDF-1.4\nInduction certificate\n%%EOF"
 REASON = "Certificate does not cover this laboratory"
 
 
 class QualificationRejectionServiceTests(BookingFixtureMixin, SimpleTestCase):
+    """A person books with a verified induction, later uploads new evidence (for example after it expired),
+    and that new evidence is rejected: their undecided requests that depend on it cannot be approved."""
+
     def reject(self, submission):
         return self.service.review_qualification(self.admin, submission.id, "REJECTED", REASON)
+
+    def new_evidence(self, principal=None):
+        self.now += timedelta(seconds=1)
+        return self.qualification(principal, status=QualificationStatus.PENDING)
 
     def assert_rejected_by_qualification(self, booking_id):
         booking = self.repo.get_booking(booking_id)
@@ -28,64 +32,50 @@ class QualificationRejectionServiceTests(BookingFixtureMixin, SimpleTestCase):
         self.assertEqual(booking.reviewed_by, self.admin.id)
         self.assertFalse(booking.blocks_resource_at(self.now))
 
-    def test_waiting_request_is_rejected_and_slot_released_immediately(self):
-        submission = self.qualification(status=QualificationStatus.PENDING)
-        waiting = self.book()
-        self.assertTrue(waiting.hold_is_active(self.now))
-        _, changed = self.reject(submission)
+    def test_pending_request_is_rejected_and_slot_passed_to_the_queue(self):
+        self.qualification()
+        self.qualification(self.other)
+        pending = self.book()
+        queued = self.book(self.other)
+        self.assertEqual(queued.status, BookingStatus.WAITLISTED)
+        _, changed = self.reject(self.new_evidence())
+        self.assertEqual([item.id for item in changed], [pending.id])
+        self.assert_rejected_by_qualification(pending.id)
+        self.assertEqual(self.repo.get_booking(queued.id).status, BookingStatus.PENDING_APPROVAL)
+
+    def test_waitlisted_requests_are_rejected_too_but_approved_bookings_are_kept(self):
+        self.qualification()
+        self.qualification(self.other)
+        approved = self.book_approved()
+        holder = self.book(self.other, start=self.end, end=self.end + timedelta(hours=1))
+        waiting = self.book(start=self.end, end=self.end + timedelta(hours=1))
+        self.assertEqual(waiting.status, BookingStatus.WAITLISTED)
+        _, changed = self.reject(self.new_evidence())
         self.assertEqual([item.id for item in changed], [waiting.id])
         self.assert_rejected_by_qualification(waiting.id)
-        # The hold no longer protects the slot, so a qualified student is approved at once.
-        self.qualification(self.other)
-        self.assertEqual(self.book(self.other).status, BookingStatus.APPROVED)
-
-    def test_escalated_and_conflicting_requests_are_rejected_too(self):
-        self.service.unverified_pending_limit = 2
-        submission = self.qualification(status=QualificationStatus.PENDING)
-        soon = datetime(2030, 1, 7, 15, tzinfo=SYDNEY)  # within 24 hours of now (11:00 Sydney)
-        escalated = self.book(start=soon, end=soon + timedelta(hours=1))
-        self.assertEqual(escalated.reason_code, "REQUEST_STARTS_BEFORE_REVIEW")
-        self.qualification(self.other)
-        self.book(self.other)  # approved booking on the default slot
-        conflicting = self.book()
-        self.assertEqual((conflicting.status, conflicting.reason_code), (BookingStatus.WAITLISTED, "TIME_CONFLICT"))
-        _, changed = self.reject(submission)
-        self.assertCountEqual([item.id for item in changed], [escalated.id, conflicting.id])
-        for booking in (escalated, conflicting):
-            self.assert_rejected_by_qualification(booking.id)
+        self.assertEqual(self.repo.get_booking(approved.id).status, BookingStatus.APPROVED)
+        self.assertEqual(self.repo.get_booking(holder.id).status, BookingStatus.PENDING_APPROVAL)
 
     def test_other_requirements_and_other_students_are_untouched(self):
         advanced = QualificationRequirement(str(uuid4()), "Advanced training", "")
         self.repo.save_requirement(advanced)
         studio = Resource(str(uuid4()), "Studio", ResourceKind.ROOM, "Building B", "", required_qualification_id=advanced.id)
         self.repo.save_resource(studio)
-        submission = self.qualification(status=QualificationStatus.PENDING)
+        self.qualification()
         self.repo.save_submission(QualificationSubmission(
             id=str(uuid4()), student_id=self.student.id, requirement_id=advanced.id, title="Advanced", notes="",
-            file_id="private-file", submitted_at=self.now))
+            file_id="private-file", submitted_at=self.now, status=QualificationStatus.VERIFIED))
         studio_booking = self.book(resource_id=studio.id)
-        self.qualification(self.other, status=QualificationStatus.PENDING)
+        self.qualification(self.other)
         other_booking = self.book(self.other, start=self.start + timedelta(hours=2), end=self.end + timedelta(hours=2))
-        self.reject(submission)
-        self.assertEqual(self.repo.get_booking(studio_booking.id).status, BookingStatus.WAITING_QUALIFICATION)
-        self.assertEqual(self.repo.get_booking(other_booking.id).status, BookingStatus.WAITING_QUALIFICATION)
-
-    def test_student_can_resubmit_and_book_the_same_slot_again(self):
-        submission = self.qualification(status=QualificationStatus.PENDING)
-        first = self.book()
-        self.reject(submission)
-        self.now += timedelta(minutes=1)
-        resubmitted = self.service.submit_qualification(self.student, self.requirement.id, "Corrected", "", PDF, "cert.pdf", "application/pdf")
-        again = self.book()
-        self.assertNotEqual(again.id, first.id)
-        self.assertEqual(again.status, BookingStatus.WAITING_QUALIFICATION)
-        self.assertTrue(again.hold_is_active(self.now))
-        self.service.review_qualification(self.admin, resubmitted.id, "VERIFIED")
-        self.assertEqual(self.repo.get_booking(again.id).status, BookingStatus.APPROVED)
+        self.reject(self.new_evidence())
+        self.assertEqual(self.repo.get_booking(studio_booking.id).status, BookingStatus.PENDING_APPROVAL)
+        self.assertEqual(self.repo.get_booking(other_booking.id).status, BookingStatus.PENDING_APPROVAL)
 
     def test_rejection_is_recorded_in_the_audit_trail(self):
-        submission = self.qualification(status=QualificationStatus.PENDING)
+        self.qualification()
         booking = self.book()
+        submission = self.new_evidence()
         self.reject(submission)
         record = [item for item in self.repo.list_audit() if item.entity_id == booking.id][-1]
         self.assertEqual(record.action, "BOOKING_REJECTED")
@@ -96,20 +86,18 @@ class QualificationRejectionServiceTests(BookingFixtureMixin, SimpleTestCase):
 
 @override_settings(DEBUG=True, ENABLE_DEMO_AUTH=True, SEED_DEMO_DATA=True)
 class QualificationRejectionAPITests(BookingAPIFixtureMixin, SimpleTestCase):
-    def test_student_sees_rejected_induction_and_rejected_booking_with_reason(self):
+    def test_student_sees_rejected_induction_and_cannot_book_until_resubmitted_and_verified(self):
         submission = self.submit()
-        booking = self.create_booking(self.student).data
-        self.assertEqual(booking["status"], "WAITING_QUALIFICATION")
+        self.assert_error(self.create_booking(self.student), 403)
         reviewed = self.admin.post(f"/api/v1/admin/qualifications/{submission['id']}/review/",
                                    {"decision": "REJECTED", "reason": REASON}, format="json")
         self.assertEqual(reviewed.status_code, 200, reviewed.data)
-        self.assertEqual([(item["id"], item["status"]) for item in reviewed.data["updated_bookings"]],
-                         [(booking["id"], "REJECTED")])
+        self.assertEqual(reviewed.data["updated_bookings"], [])
         dashboard = self.student.get("/api/v1/dashboard/").data
-        self.assertEqual(dashboard["qualifications"][0]["status"], "REJECTED")
-        self.assertEqual(dashboard["qualifications"][0]["rejection_reason"], REASON)
-        detail = self.student.get(f"/api/v1/bookings/{booking['id']}/").data
-        self.assertEqual((detail["status"], detail["reason_code"], detail["decision_reason"]),
-                         ("REJECTED", "QUALIFICATION_REJECTED", REASON))
-        self.assertFalse(detail["blocks_slot"])
-        self.assertEqual(dashboard["counts"]["REJECTED"], 1)
+        self.assertEqual((dashboard["qualifications"][0]["status"], dashboard["qualifications"][0]["rejection_reason"]),
+                         ("REJECTED", REASON))
+        refused = self.create_booking(self.student)
+        self.assert_error(refused, 403)
+        self.assertEqual(refused.data["error"]["details"]["qualification_status"], "REJECTED")
+        self.verify_student()
+        self.assertEqual(self.create_booking(self.student).data["status"], "PENDING_APPROVAL")

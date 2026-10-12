@@ -1,401 +1,268 @@
-import { useEffect, useRef, useState } from 'react'
-import {
-  listManagerUsers,
-  updateUserRole,
-} from '../booking/api'
-import { errorMessage } from '../booking/format'
-import type { ManagedUser } from '../booking/types'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { EmptyState, PageHeader, RefreshStamp, Tabs } from '../../ui/components'
+import { useFeedback } from '../../ui/feedback-context'
+import { useAuth } from '../auth/auth-context'
+import { createManager, listManagerUsers, updateUserRole } from '../booking/api'
+import { errorMessage, fmtDateTime } from '../booking/format'
+import type { ManagedUser, Role, UserInduction } from '../booking/types'
 
-type ListRole = 'STUDENT' | 'ADMIN'
+type Filter = 'ALL' | Role
 
-const inductionLabels = {
-  NOT_SUBMITTED: 'Not submitted',
-  PENDING: 'Pending review',
-  VERIFIED: 'Verified',
-  REJECTED: 'Rejected',
-  EXPIRED: 'Expired',
+const ROLE_LABEL: Record<Role, string> = { STUDENT: 'Student', ADMIN: 'Admin', MANAGER: 'Manager' }
+const ROLE_TONE: Record<Role, string> = { STUDENT: 'is-grey', ADMIN: 'is-blue', MANAGER: 'is-amber' }
+const INDUCTION_LABEL: Record<UserInduction['status'], string> = {
+  NOT_SUBMITTED: 'Not submitted', PENDING: 'Under review', VERIFIED: 'Verified', REJECTED: 'Rejected', EXPIRED: 'Expired',
 }
 
+const current = (item: UserInduction, now: number) =>
+  item.status === 'VERIFIED' && (item.valid_until === null || Date.parse(item.valid_until) > now)
+
+/** A student may become an Admin only when every induction is verified and current. */
 function canPromote(user: ManagedUser, now: number): boolean {
+  return Array.isArray(user.inductions) && user.inductions.length > 0 && user.inductions.every((item) => current(item, now))
+}
+
+function InductionSummary({ user, now }: { user: ManagedUser; now: number }) {
+  if (user.role === 'MANAGER') return <span className="bk-muted">—</span>
+  const items = user.inductions ?? []
+  const ok = items.filter((item) => current(item, now)).length
+  const tone = items.length && ok === items.length ? 'is-green' : ok ? 'is-amber' : 'is-grey'
   return (
-    user.induction_status === 'VERIFIED' &&
-    Array.isArray(user.inductions) &&
-    user.inductions.length > 0 &&
-    user.inductions.every(
-      (item) =>
-        item.status === 'VERIFIED' &&
-        (
-          item.valid_until === null ||
-          Date.parse(item.valid_until) > now
-        ),
-    )
+    <details className="um-ind">
+      <summary><span className={`ui-pill ${tone}`}>{ok}/{items.length} verified</span></summary>
+      <ul>
+        {items.map((item) => (
+          <li key={item.requirement_id}>
+            <span>{item.name}</span>
+            <span className="bk-muted">
+              {item.status === 'VERIFIED' && !current(item, now) ? 'Expired' : INDUCTION_LABEL[item.status]}
+              {item.status === 'VERIFIED' && item.valid_until && current(item, now) ? ` · until ${fmtDateTime(item.valid_until).split(',')[0]}` : ''}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
   )
 }
 
 export function ManagerUsersPage() {
+  const feedback = useFeedback()
+  const { user: me } = useAuth()
   const [users, setUsers] = useState<ManagedUser[]>([])
-  const [openList, setOpenList] = useState<ListRole | null>(null)
+  const [filter, setFilter] = useState<Filter>('ALL')
+  const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadedAt, setLoadedAt] = useState<number | null>(null)
+  const [error, setError] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
-  const [loadError, setLoadError] = useState('')
-  const [actionError, setActionError] = useState('')
-  const [success, setSuccess] = useState('')
   const [refresh, setRefresh] = useState(0)
-  const [now, setNow] = useState(() => Date.now())
-
-  const mounted = useRef(false)
-  const saving = useRef(false)
-
-  useEffect(() => {
-    mounted.current = true
-
-    const timer = window.setInterval(() => {
-      setNow(Date.now())
-    }, 15000)
-
-    return () => {
-      mounted.current = false
-      window.clearInterval(timer)
-    }
-  }, [])
+  const [adding, setAdding] = useState(false)
 
   useEffect(() => {
     let active = true
-
     listManagerUsers()
       .then((data) => {
         if (!active) return
-
-        setUsers(
-          [...data.results].sort((a, b) =>
-            a.zid.localeCompare(b.zid),
-          ),
-        )
-        setNow(Date.now())
-        setLoadError('')
+        setUsers([...data.results].sort((a, b) => a.zid.localeCompare(b.zid)))
+        setLoadedAt(Date.now())
+        setError('')
       })
-      .catch((err: unknown) => {
-        if (active) setLoadError(errorMessage(err))
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
-
-    return () => {
-      active = false
-    }
+      .catch((err: unknown) => active && setError(errorMessage(err)))
+      .finally(() => active && setLoading(false))
+    return () => { active = false }
   }, [refresh])
 
-  function reload() {
-    if (saving.current || loading) return
-
+  const reload = useCallback(() => {
     setLoading(true)
-    setLoadError('')
-    setActionError('')
-    setSuccess('')
     setRefresh((value) => value + 1)
-  }
+  }, [])
+
+  const now = loadedAt ?? 0
+  const counts = useMemo(() => ({
+    ALL: users.length,
+    STUDENT: users.filter((u) => u.role === 'STUDENT').length,
+    ADMIN: users.filter((u) => u.role === 'ADMIN').length,
+    MANAGER: users.filter((u) => u.role === 'MANAGER').length,
+  }), [users])
+
+  const rows = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    return users.filter((u) => (filter === 'ALL' || u.role === filter) &&
+      (!term || [u.zid, u.display_name, u.university_email].some((v) => v.toLowerCase().includes(term))))
+  }, [users, filter, search])
 
   async function changeRole(user: ManagedUser) {
-    if (
-      saving.current ||
-      loading ||
-      loadError ||
-      user.role === 'MANAGER'
-    ) {
-      return
-    }
-
-    setActionError('')
-    setSuccess('')
-
-    if (user.role === 'STUDENT' && !canPromote(user, Date.now())) {
-      setActionError(
-        'All induction checks must be verified and valid before promotion.',
-      )
-      return
-    }
-
+    if (busyId || user.role === 'MANAGER') return
     const nextRole = user.role === 'STUDENT' ? 'ADMIN' : 'STUDENT'
-    const nextLabel = nextRole === 'ADMIN' ? 'Admin' : 'Student'
-
-    if (
-      !window.confirm(
-        `Change ${user.display_name} (${user.zid}) to ${nextLabel}?`,
-      )
-    ) {
+    if (nextRole === 'ADMIN' && !canPromote(user, Date.now())) {
+      feedback.error(`${user.display_name} must have every induction verified and current before becoming an Admin.`, 'Cannot promote yet')
       return
     }
-
-    saving.current = true
+    const answer = await feedback.confirm({
+      title: nextRole === 'ADMIN' ? `Make ${user.display_name} an Admin?` : `Change ${user.display_name} back to Student?`,
+      details: [{ label: 'zID', value: user.zid }, { label: 'Email', value: user.university_email }],
+      message: nextRole === 'ADMIN'
+        ? 'Admins review induction evidence and booking requests. They can still book for themselves but cannot approve their own requests.'
+        : 'They lose access to the review pages. Their bookings are kept.',
+      confirmLabel: nextRole === 'ADMIN' ? 'Make Admin' : 'Change to Student',
+      danger: nextRole === 'STUDENT',
+    })
+    if (!answer.confirmed) return
     setBusyId(user.id)
-
     try {
       const updated = await updateUserRole(user.id, nextRole)
-
-      if (!mounted.current) return
-
-      setUsers((current) =>
-        current.map((item) =>
-          item.id === updated.id ? updated : item,
-        ),
-      )
-      setSuccess(
-        `${updated.display_name} (${updated.zid}) is now ${nextLabel}.`,
-      )
+      setUsers((list) => list.map((item) => (item.id === updated.id ? updated : item)))
+      feedback.success(`${updated.display_name} (${updated.zid}) is now ${ROLE_LABEL[updated.role]}.`, 'Role updated')
     } catch (err: unknown) {
-      if (mounted.current) setActionError(errorMessage(err))
+      feedback.error(errorMessage(err), 'Role not changed')
+      reload()
     } finally {
-      saving.current = false
-
-      if (mounted.current) {
-        setBusyId(null)
-        setNow(Date.now())
-      }
+      setBusyId(null)
     }
   }
-
-  const visibleUsers = users.filter((user) => user.role === openList)
 
   return (
     <section>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: 16,
-          marginBottom: 24,
-        }}
-      >
-        <div>
-          <h1 style={{ marginBottom: 8 }}>User Management</h1>
-          <p className="bk-muted" style={{ margin: 0 }}>
-            Select a list to view users and manage their roles.
-          </p>
+      <PageHeader
+        title="User Management"
+        description="See everyone's role and induction status. Promote trusted students to Admin, or add a new Manager."
+        actions={(
+          <>
+            <RefreshStamp at={loadedAt} onRefresh={reload} busy={loading && loadedAt !== null} />
+            <button type="button" className="ui-btn ui-btn-primary" onClick={() => setAdding(true)}>+ Add manager</button>
+          </>
+        )}
+      />
+
+      <div className="ui-toolbar">
+        <Tabs
+          label="Filter by role"
+          value={filter}
+          onChange={setFilter}
+          items={[
+            { key: 'ALL', label: 'Everyone', count: loadedAt ? counts.ALL : null },
+            { key: 'STUDENT', label: 'Students', count: loadedAt ? counts.STUDENT : null },
+            { key: 'ADMIN', label: 'Admins', count: loadedAt ? counts.ADMIN : null },
+            { key: 'MANAGER', label: 'Managers', count: loadedAt ? counts.MANAGER : null },
+          ]}
+        />
+        <div className="ui-filters">
+          <input type="search" aria-label="Search users" placeholder="Search name, zID or email" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-
-        <button
-          type="button"
-          className="app-button app-button-secondary"
-          onClick={reload}
-          disabled={loading || busyId !== null}
-        >
-          Refresh
-        </button>
       </div>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-          gap: 16,
-          marginBottom: 24,
-        }}
-      >
-        {(['STUDENT', 'ADMIN'] as const).map((role) => {
-          const selected = openList === role
-          const count = users.filter((user) => user.role === role).length
-          const label = role === 'STUDENT' ? 'Student List' : 'Admin List'
+      {error && <p role="alert" className="bk-error">{error}</p>}
+      {loading && loadedAt === null && <p role="status">Loading users…</p>}
 
-          return (
-            <button
-              key={role}
-              type="button"
-              aria-expanded={selected}
-              aria-controls="user-list-panel"
-              disabled={busyId !== null}
-              onClick={() =>
-                setOpenList((current) => current === role ? null : role)
-              }
-              style={{
-                padding: '24px 20px',
-                borderRadius: 14,
-                border: selected
-                  ? '2px solid #d6a700'
-                  : '2px solid #e5e7eb',
-                background: selected ? '#fff7d6' : '#fff',
-                color: '#171717',
-                textAlign: 'left',
-                cursor: busyId !== null ? 'wait' : 'pointer',
-                font: 'inherit',
-              }}
-            >
-              <span
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-              >
-                <strong style={{ fontSize: 20 }}>{label}</strong>
-                <span aria-hidden="true">{selected ? '▴' : '▾'}</span>
-              </span>
+      {loadedAt !== null && rows.length === 0 && <EmptyState icon="–" title="No users found">{search ? 'Try a different search.' : 'No one has this role yet.'}</EmptyState>}
 
-              <span
-                style={{
-                  display: 'block',
-                  marginTop: 8,
-                  color: '#666',
-                }}
-              >
-                {loading ? 'Loading...' : `${count} users`}
-              </span>
-            </button>
-          )
-        })}
-      </div>
-
-      {loadError && (
-        <p role="alert" className="bk-error">{loadError}</p>
-      )}
-
-      {actionError && (
-        <p role="alert" className="bk-error">{actionError}</p>
-      )}
-
-      {success && <p role="status">{success}</p>}
-
-      <div id="user-list-panel">
-        {openList === null ? (
-          <p className="bk-muted">
-            Click Student List or Admin List to expand.
-          </p>
-        ) : (
-          <section className="app-card">
-            <h2 style={{ marginTop: 0 }}>
-              {openList === 'STUDENT' ? 'Students' : 'Administrators'}
-            </h2>
-
-            {openList === 'STUDENT' && (
-              <p className="bk-muted">
-                Students must pass all induction checks before becoming
-                an Admin. Refresh after reviewing induction evidence.
-              </p>
-            )}
-
-            {loading ? (
-              <p role="status">Loading users...</p>
-            ) : loadError ? (
-              <p>Unable to load the list. Click Refresh to try again.</p>
-            ) : visibleUsers.length === 0 ? (
-              <p className="bk-muted">No users in this list.</p>
-            ) : (
-              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                {visibleUsers.map((user) => {
-                  const blocked =
-                    user.role === 'STUDENT' && !canPromote(user, now)
-
-                  return (
-                    <li
-                      key={user.id}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                        gap: 20,
-                        padding: '22px 0',
-                        borderBottom: '1px solid #e5e7eb',
-                      }}
-                    >
-                      <div style={{ flex: '1 1 240px', minWidth: 0 }}>
-                        <strong style={{ fontSize: 18 }}>
-                          {user.display_name || user.zid}
-                        </strong>
-
-                        <p style={{ margin: '8px 0 4px' }}>
-                          <b>zID:</b> {user.zid}
-                        </p>
-
-                        <p
-                          style={{
-                            margin: 0,
-                            color: '#666',
-                            overflowWrap: 'anywhere',
-                          }}
-                        >
-                          <b>Email:</b> {user.university_email || '—'}
-                        </p>
-
-                        {!user.active && (
-                          <p className="bk-muted">Inactive account</p>
+      {rows.length > 0 && (
+        <div className="ui-table-wrap">
+          <table className="ui-table">
+            <thead>
+              <tr><th>Name</th><th>zID</th><th className="ui-hide-sm">Email</th><th>Role</th><th>Induction</th><th><span className="sr-only">Actions</span></th></tr>
+            </thead>
+            <tbody>
+              {rows.map((user) => {
+                const blocked = user.role === 'STUDENT' && !canPromote(user, now)
+                const self = me?.id === user.id
+                return (
+                  <tr key={user.id}>
+                    <td>
+                      <span className="ui-primary-text">{user.display_name || user.zid}</span>
+                      {!user.active && <span className="ui-sub-text">Inactive account</span>}
+                      {self && <span className="ui-sub-text">You</span>}
+                    </td>
+                    <td>{user.zid}</td>
+                    <td className="ui-hide-sm">{user.university_email}</td>
+                    <td><span className={`ui-pill ${ROLE_TONE[user.role]}`}>{ROLE_LABEL[user.role]}</span></td>
+                    <td><InductionSummary user={user} now={now} /></td>
+                    <td>
+                      <div className="ui-actions">
+                        {user.role === 'STUDENT' && (
+                          <button
+                            type="button"
+                            className="ui-btn ui-btn-ghost ui-btn-sm"
+                            disabled={busyId !== null || blocked}
+                            title={blocked ? 'Every induction must be verified and current first.' : undefined}
+                            aria-label={`Promote ${user.zid} to Admin`}
+                            onClick={() => void changeRole(user)}
+                          >
+                            {busyId === user.id ? 'Saving…' : 'Make Admin'}
+                          </button>
                         )}
-
-                        {blocked && (
-                          <details style={{ marginTop: 12 }}>
-                            <summary style={{ cursor: 'pointer' }}>
-                              Induction incomplete — view details
-                            </summary>
-
-                            {user.inductions?.length ? (
-                              <ul style={{ paddingLeft: 20 }}>
-                                {user.inductions.map((item) => {
-                                  const expired =
-                                    item.status === 'VERIFIED' &&
-                                    item.valid_until !== null &&
-                                    !(
-                                      Date.parse(item.valid_until) > now
-                                    )
-
-                                  return (
-                                    <li key={item.requirement_id}>
-                                      {item.name}: {' '}
-                                      {expired
-                                        ? 'Expired or invalid'
-                                        : inductionLabels[item.status]}
-                                    </li>
-                                  )
-                                })}
-                              </ul>
-                            ) : (
-                              <p>No induction information available.</p>
-                            )}
-                          </details>
+                        {user.role === 'ADMIN' && (
+                          <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busyId !== null} aria-label={`Change ${user.zid} to Student`} onClick={() => void changeRole(user)}>
+                            {busyId === user.id ? 'Saving…' : 'Change to Student'}
+                          </button>
                         )}
                       </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-                      <button
-                        type="button"
-                        className={
-                          user.role === 'STUDENT'
-                            ? 'app-button'
-                            : 'app-button app-button-secondary'
-                        }
-                        disabled={busyId !== null || blocked}
-                        onClick={() => changeRole(user)}
-                        aria-label={
-                          `${user.role === 'STUDENT' ? 'Promote' : 'Change'} ` +
-                          `${user.zid} to ` +
-                          (user.role === 'STUDENT' ? 'Admin' : 'Student')
-                        }
-                        title={
-                          blocked
-                            ? 'All inductions must be verified and valid.'
-                            : undefined
-                        }
-                        style={{
-                          flexShrink: 0,
-                          opacity: blocked ? 0.5 : 1,
-                          cursor: blocked ? 'not-allowed' : undefined,
-                        }}
-                      >
-                        {busyId === user.id
-                          ? 'Saving...'
-                          : user.role === 'STUDENT'
-                            ? 'Promote to Admin'
-                            : 'Change to Student'}
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </section>
-        )}
-      </div>
+      {adding && (
+        <AddManagerDialog
+          onClose={() => setAdding(false)}
+          onCreated={(created) => {
+            setAdding(false)
+            setUsers((list) => [...list, created].sort((a, b) => a.zid.localeCompare(b.zid)))
+            feedback.success(`${created.display_name} (${created.zid}) can now sign in as a Manager.`, 'Manager added')
+          }}
+        />
+      )}
     </section>
+  )
+}
+
+function AddManagerDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (user: ManagedUser) => void }) {
+  const ref = useRef<HTMLDialogElement>(null)
+  const [zid, setZid] = useState('')
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const dialog = ref.current
+    if (dialog && !dialog.open) dialog.showModal()
+  }, [])
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    if (busy) return
+    if (!/^[zZ]\d{7}$/.test(zid.trim())) return setError('zID must be z followed by 7 digits, e.g. z5123456.')
+    setBusy(true)
+    setError('')
+    try {
+      onCreated(await createManager({ zid: zid.trim().toLowerCase(), display_name: name.trim(), university_email: email.trim() }))
+    } catch (err) {
+      const e = err as { code?: string }
+      setError(e?.code === 'USER_EXISTS' ? 'Someone with this zID already exists.' : errorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <dialog ref={ref} className="ui-dialog" aria-labelledby="add-manager-title" onCancel={(e) => { e.preventDefault(); onClose() }}>
+      <form className="ui-dialog-card" onSubmit={submit}>
+        <h2 id="add-manager-title">Add a manager</h2>
+        <p className="ui-dialog-message">Creates a new Manager account. Managers have every admin permission and can manage rooms and users.</p>
+        <label className="ui-field"><span>zID</span><input required autoFocus value={zid} placeholder="z5123456" onChange={(e) => setZid(e.target.value)} /></label>
+        <label className="ui-field"><span>Full name</span><input required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} /></label>
+        <label className="ui-field"><span>University email</span><input required type="email" maxLength={254} value={email} placeholder="z5123456@ad.unsw.edu.au" onChange={(e) => setEmail(e.target.value)} /></label>
+        {error && <p className="bk-error" role="alert">{error}</p>}
+        <div className="ui-dialog-actions">
+          <button type="button" className="ui-btn ui-btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="submit" className="ui-btn ui-btn-primary" disabled={busy || !zid.trim() || !name.trim() || !email.trim()}>{busy ? 'Adding…' : 'Add manager'}</button>
+        </div>
+      </form>
+    </dialog>
   )
 }

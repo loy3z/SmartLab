@@ -24,7 +24,7 @@ class BookingFixtureMixin:
         self.now = datetime(2030, 1, 7, 0, tzinfo=timezone.utc)
         self.repo = MemoryRepository()
         self.service = BookingService(
-            self.repo, MemoryFileStorage(), clock=lambda: self.now, wait_hours=24,
+            self.repo, MemoryFileStorage(), clock=lambda: self.now,
             # Workflow tests book a few days ahead; the booking window has its own tests in test_booking_window.py.
             min_advance_days=0, max_advance_days=7,
         )
@@ -44,11 +44,6 @@ class BookingFixtureMixin:
         self.repo.save_resource(self.room)
         self.start = datetime(2030, 1, 10, 10, tzinfo=ZoneInfo("Australia/Sydney"))
         self.end = self.start + timedelta(hours=1)
-
-    def use_long_hold(self):
-        """Manager-configured hold that outlasts the 24-hour review window (default is 30 minutes)."""
-        self.room = replace(self.room, pending_hold_minutes=20160)
-        self.repo.save_resource(self.room)
 
     def qualification(self, principal=None, status=QualificationStatus.VERIFIED, valid_until=None):
         principal = principal or self.student
@@ -71,6 +66,11 @@ class BookingFixtureMixin:
         arguments.update(overrides)
         return self.service.create_booking(principal or self.student, **arguments)[0]
 
+    def book_approved(self, principal=None, **overrides):
+        """Submit a request and have the Admin approve it (every request starts pending)."""
+        booking = self.book(principal, **overrides)
+        return self.service.review_booking(self.admin, booking.id, "APPROVED")
+
 class BookingWorkflowTests(BookingFixtureMixin, SimpleTestCase):
     def test_parallel_submissions_cannot_double_book_a_resource(self):
         self.qualification(self.student)
@@ -84,12 +84,10 @@ class BookingWorkflowTests(BookingFixtureMixin, SimpleTestCase):
         with ThreadPoolExecutor(max_workers=2) as pool:
             results = list(pool.map(submit, (self.student, self.other)))
 
-        self.assertCountEqual(
-            [booking.status for booking in results],
-            [BookingStatus.APPROVED, BookingStatus.WAITLISTED],
-        )
-        approved = [b for b in self.repo.list_bookings() if b.status == BookingStatus.APPROVED]
-        self.assertEqual(len(approved), 1)
+        self.assertCountEqual([booking.status for booking in results],
+                              [BookingStatus.PENDING_APPROVAL, BookingStatus.WAITLISTED])
+        holders = [b for b in self.repo.list_bookings() if b.status == BookingStatus.PENDING_APPROVAL]
+        self.assertEqual(len(holders), 1)
 
     def test_parallel_retries_with_same_key_return_one_booking(self):
         self.qualification()
@@ -109,13 +107,27 @@ class BookingWorkflowTests(BookingFixtureMixin, SimpleTestCase):
         submission = self.qualification(valid_until=self.end - timedelta(seconds=1))
         with self.assertRaises(DomainError) as denied:
             self.book()
-        self.assertEqual(denied.exception.status, 403)
+        self.assertEqual((denied.exception.status, denied.exception.details["qualification_status"]), (403, "EXPIRES_BEFORE_END"))
         self.repo.save_submission(replace(submission, valid_until=self.end))
-        self.assertEqual(self.book().status, BookingStatus.APPROVED)
+        self.assertEqual(self.book().status, BookingStatus.PENDING_APPROVAL)
+
+    def test_only_a_verified_induction_allows_a_request(self):
+        for status in (QualificationStatus.PENDING, QualificationStatus.REJECTED):
+            with self.subTest(status=status):
+                self.qualification(status=status)
+                with self.assertRaises(DomainError) as denied:
+                    self.book()
+                self.assertEqual((denied.exception.code, denied.exception.details["qualification_status"]),
+                                 ("QUALIFICATION_REQUIRED", status.value))
+                self.now += timedelta(seconds=1)
+        with self.assertRaises(DomainError):
+            self.book(self.other)  # never submitted
+        self.qualification()
+        self.assertEqual(self.book().status, BookingStatus.PENDING_APPROVAL)
 
     def test_latest_rejected_or_expired_submission_blocks_new_requests(self):
         self.qualification()
-        original = self.book()
+        original = self.book_approved()
         self.now += timedelta(seconds=1)
         self.qualification(status=QualificationStatus.REJECTED)
         with self.assertRaises(DomainError) as denied:
@@ -129,77 +141,55 @@ class BookingWorkflowTests(BookingFixtureMixin, SimpleTestCase):
             self.book(start=self.start + timedelta(hours=2), end=self.end + timedelta(hours=2))
         self.assertEqual(expired.exception.status, 403)
 
-    def test_24_hour_escalation_and_exact_start_expiration(self):
-        self.use_long_hold()
-        self.qualification(status=QualificationStatus.PENDING)
+    def test_pending_request_is_decided_automatically_when_the_review_window_ends(self):
+        self.qualification()
         booking = self.book()
-        self.assertEqual(booking.status, BookingStatus.WAITING_QUALIFICATION)
-        self.now += timedelta(hours=24) - timedelta(microseconds=1)
-        self.service.process_due_requests()
-        self.assertEqual(self.repo.get_booking(booking.id).status, BookingStatus.WAITING_QUALIFICATION)
-        self.now += timedelta(microseconds=1)
-        changed = self.service.process_due_requests()
-        self.assertEqual(len(changed), 1)
-        self.assertEqual(self.repo.get_booking(booking.id).status, BookingStatus.PENDING_APPROVAL)
+        self.assertEqual((booking.status, booking.reason_code), (BookingStatus.PENDING_APPROVAL, "AWAITING_REVIEW"))
+        self.assertEqual(booking.hold_until, self.now + timedelta(hours=24))
+        self.assertEqual(booking.review_due_at, booking.hold_until)
+        self.now = booking.review_due_at - timedelta(microseconds=1)
         self.assertEqual(self.service.process_due_requests(), [])
-        self.now = self.start
+        self.now = booking.review_due_at
+        changed = self.service.process_due_requests()
+        self.assertEqual([(item.status, item.reason_code, item.reviewed_by) for item in changed],
+                         [(BookingStatus.APPROVED, "AUTO_APPROVED_AFTER_REVIEW_WINDOW", "SYSTEM")])
+        self.assertEqual(self.service.process_due_requests(), [])
+
+    def test_review_window_never_runs_past_the_start_and_undecided_requests_expire_at_start(self):
+        self.qualification()
+        self.room = replace(self.room, pending_hold_minutes=20160)
+        self.repo.save_resource(self.room)
+        booking = self.book()
+        self.assertEqual(booking.review_due_at, booking.start)
+        self.now = booking.start
         self.service.process_due_requests()
         self.assertEqual(self.repo.get_booking(booking.id).status, BookingStatus.EXPIRED)
 
-    def test_request_starting_within_24_hours_enters_manual_review_immediately(self):
-        self.qualification(status=QualificationStatus.PENDING)
-        start = self.now.astimezone(ZoneInfo("Australia/Sydney")).replace(hour=15)
-        booking = self.book(start=start, end=start + timedelta(hours=1))
-        self.assertEqual(booking.status, BookingStatus.PENDING_APPROVAL)
-        self.assertEqual(booking.reason_code, "REQUEST_STARTS_BEFORE_REVIEW")
-
-    def test_qualification_review_reassesses_waiting_requests_and_respects_conflicts(self):
-        submission = self.qualification(status=QualificationStatus.PENDING)
-        waiting = self.book()
-        self.qualification(self.other)
-        self.now = waiting.hold_until
-        winner = self.book(self.other)
-        reviewed, changed = self.service.review_qualification(
-            self.admin, submission.id, "VERIFIED"
-        )
-        self.assertEqual(reviewed.status, QualificationStatus.VERIFIED)
-        # Its 30-minute hold ended before the winner booked, so it was already waitlisted
-        # (HOLD_EXPIRED) and stays queued behind the winner after verification.
-        self.assertEqual(changed, [])
-        self.assertEqual((self.repo.get_booking(waiting.id).status, self.repo.get_booking(waiting.id).reason_code),
-                         (BookingStatus.WAITLISTED, "HOLD_EXPIRED"))
-        with self.assertRaises(DomainError) as conflict:
-            self.service.review_booking(self.admin, waiting.id, "APPROVED")
-        self.assertEqual(conflict.exception.code, "REQUEST_WAITLISTED")
-        self.service.cancel_booking(self.other, winner.id)
-        promoted = self.repo.get_booking(waiting.id)
-        self.assertEqual((promoted.status, promoted.reason_code), (BookingStatus.APPROVED, "PROMOTED_FROM_WAITLIST"))
-
-    def test_qualification_review_does_not_auto_approve_already_escalated_request(self):
-        self.use_long_hold()
-        submission = self.qualification(status=QualificationStatus.PENDING)
+    def test_window_end_rejects_a_request_that_no_longer_follows_the_rules(self):
+        self.qualification()
         booking = self.book()
-        self.now += timedelta(hours=24)
-        self.service.process_due_requests()
-        self.service.review_qualification(self.admin, submission.id, "VERIFIED")
-        self.assertEqual(self.repo.get_booking(booking.id).status, BookingStatus.PENDING_APPROVAL)
-        approved = self.service.review_booking(self.admin, booking.id, "APPROVED")
-        self.assertEqual(approved.status, BookingStatus.APPROVED)
+        self.now += timedelta(seconds=1)
+        self.qualification(valid_until=booking.end - timedelta(seconds=1))  # renewed evidence ends before the booking
+        self.now = booking.review_due_at
+        changed = self.service.process_due_requests()
+        self.assertEqual([(item.status, item.reason_code) for item in changed],
+                         [(BookingStatus.REJECTED, "AUTO_REJECTED_QUALIFICATION")])
+        self.assertIn("EXPIRES_BEFORE_END", changed[0].decision_reason)
 
-    def test_qualification_review_observes_24_hour_deadline_without_a_prior_poll(self):
-        self.use_long_hold()
-        submission = self.qualification(status=QualificationStatus.PENDING)
-        booking = self.book()
-        self.now += timedelta(hours=24)
-        self.service.review_qualification(self.admin, submission.id, "VERIFIED")
-        self.assertEqual(self.repo.get_booking(booking.id).status, BookingStatus.PENDING_APPROVAL)
+    def test_admin_can_decide_before_the_window_ends(self):
+        self.qualification()
+        approved = self.service.review_booking(self.admin, self.book().id, "APPROVED")
+        self.assertEqual((approved.status, approved.reason_code), (BookingStatus.APPROVED, "MANUALLY_APPROVED"))
+        rejected = self.service.review_booking(self.admin, self.book(start=self.end, end=self.end + timedelta(hours=1)).id,
+                                               "REJECTED", "Room reserved for a class")
+        self.assertEqual((rejected.status, rejected.decision_reason), (BookingStatus.REJECTED, "Room reserved for a class"))
+        self.now += timedelta(days=2)
+        self.assertEqual(self.service.process_due_requests(), [])
 
     def test_qualification_and_booking_rejections_require_reason_at_service_boundary(self):
-        self.use_long_hold()
-        submission = self.qualification(status=QualificationStatus.PENDING)
+        submission = self.qualification(self.other, status=QualificationStatus.PENDING)
+        self.qualification()
         booking = self.book()
-        self.now += timedelta(hours=24)
-        self.service.process_due_requests()
         for review in (
             lambda: self.service.review_qualification(self.admin, submission.id, "REJECTED"),
             lambda: self.service.review_booking(self.admin, booking.id, "REJECTED"),
@@ -210,10 +200,8 @@ class BookingWorkflowTests(BookingFixtureMixin, SimpleTestCase):
         self.assertEqual(self.repo.get_booking(booking.id).status, BookingStatus.PENDING_APPROVAL)
 
     def test_booking_review_rechecks_current_qualification(self):
-        self.service.wait_hours = 96  # starts before the review window ends: manual review at once
-        self.qualification(status=QualificationStatus.PENDING)
+        self.qualification()
         candidate = self.book()
-        self.assertEqual(candidate.status, BookingStatus.PENDING_APPROVAL)
         self.now += timedelta(seconds=1)
         self.qualification(status=QualificationStatus.REJECTED)  # recorded directly, bypassing review side effects
         with self.assertRaises(DomainError) as invalid:
@@ -228,9 +216,7 @@ class BookingWorkflowTests(BookingFixtureMixin, SimpleTestCase):
         equipment = replace(self.room, id=str(uuid4()), name="Microscope", kind=ResourceKind.EQUIPMENT)
         self.repo.save_resource(equipment)
         independent = self.book(resource_id=equipment.id)
-        self.assertEqual(
-            [first.status, adjacent.status, independent.status], [BookingStatus.APPROVED] * 3
-        )
+        self.assertEqual([first.status, adjacent.status, independent.status], [BookingStatus.PENDING_APPROVAL] * 3)
 
     def test_inactive_resource_and_unaligned_or_cross_day_times_are_rejected(self):
         self.qualification()
@@ -248,7 +234,7 @@ class BookingWorkflowTests(BookingFixtureMixin, SimpleTestCase):
 
     def test_completed_booking_cannot_be_retroactively_cancelled(self):
         self.qualification()
-        booking = self.book()
+        booking = self.book_approved()
         self.now = booking.end
         with self.assertRaises(DomainError):
             self.service.cancel_booking(self.student, booking.id)

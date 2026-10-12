@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Sprint 1 Smart Lab and Room Booking API",
-    "version": "1.6.0",
-    "description": "Sprint 1 backend with Microsoft Graph one-way creation, rescheduling and cancellation of confirmed bookings. Confirmed events invite the student; room and equipment availability remains managed by the booking system. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Recurrence is deferred to Sprint 2. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z. Identity includes university_email. Requests for the same time are first-come-first-served with a waitlist: the first undecided request holds the slot for 30 minutes by default (Manager-configurable per resource); later requests, and a holder whose hold ends while still under review, are WAITLISTED and promoted automatically in order when the slot frees up. Bookings must start at least 7 and at most 30 days ahead (MIN_ADVANCE_DAYS / MAX_ADVANCE_DAYS). Authentication and resource-specific eligibility are separate. Verified induction expires a fixed number of days after approval (QUALIFICATION_VALIDITY_DAYS, default 120, one term); reviewers no longer supply an expiry. Admin and Manager can query the audit trail of requests, approvals, changes and cancellations. The prototype seed has 2 labs and 20 independently bookable devices. A Manager has every Admin permission and can also configure booking policies and nominate user roles or deactivate accounts. Qualified requests up to a resource's auto_approve_max_minutes (default 120) are approved automatically; longer ones become PENDING_APPROVAL (reason DURATION_REVIEW) and hold the slot until an Admin/Manager decides. A Manager can mark a resource MAINTENANCE or CLOSED (new requests paused, existing bookings kept) and list or export every booking. Managers are created only with Add manager (POST /admin/users/managers/); a student becomes an Admin only when every induction is verified and current."
+    "version": "1.7.0",
+    "description": "Sprint 1 backend with Microsoft Graph one-way creation, rescheduling and cancellation of confirmed bookings. Confirmed events invite the student; room and equipment availability remains managed by the booking system. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Recurrence is deferred to Sprint 2. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z. Identity includes university_email. Only users whose induction for the resource is verified and current may submit requests. Every request starts as PENDING_APPROVAL and holds its slot during a review window (pending_hold_minutes, default 1440 = 24 hours, Manager-configurable per resource, capped at the booking start). An Admin or Manager approves or rejects it within the window; if nobody decides, the system approves it when it still follows the rules (AUTO_APPROVED_AFTER_REVIEW_WINDOW) and rejects it otherwise (AUTO_REJECTED_*). Requests for time that is already taken or held are WAITLISTED in submission order and, when the time frees up, become PENDING_APPROVAL with a fresh review window. Induction evidence is always reviewed manually. Bookings must start at least 7 and at most 30 days ahead (MIN_ADVANCE_DAYS / MAX_ADVANCE_DAYS). Authentication and resource-specific eligibility are separate. Verified induction expires a fixed number of days after approval (QUALIFICATION_VALIDITY_DAYS, default 120, one term); reviewers no longer supply an expiry. Admin and Manager can query the audit trail of requests, approvals, changes and cancellations. The prototype seed has 2 labs and 20 independently bookable devices. A Manager has every Admin permission and can also configure booking policies and nominate user roles or deactivate accounts. Admins are students nominated by a Manager: they can book like students but cannot approve their own requests or evidence. Managers do not book. A Manager can mark a resource MAINTENANCE or CLOSED (new requests paused, existing bookings kept) and list or export every booking. Managers are created only with Add manager (POST /admin/users/managers/); a student becomes an Admin only when every induction is verified and current."
   },
   "servers": [
     {
@@ -450,7 +450,7 @@
           "Resources"
         ],
         "summary": "Find resource time slots",
-        "description": "Returns a snapshot. APPROVED bookings and active pending holds occupy slots. TEMPORARILY_HELD includes hold_until and held_by_me without disclosing other users. Dates outside the booking window are TOO_SOON or TOO_FAR_AHEAD; earliest_date and latest_date bound the date picker. All timestamps are UTC ISO 8601. can_request reports the resource-specific qualification submission gate, not automatic approval or slot availability.",
+        "description": "Returns a snapshot. APPROVED bookings and active pending holds occupy slots. TEMPORARILY_HELD includes hold_until and held_by_me without disclosing other users. Dates outside the booking window are TOO_SOON or TOO_FAR_AHEAD; earliest_date and latest_date bound the date picker. All timestamps are UTC ISO 8601. can_request is true only for a Student or Admin whose induction for this resource is VERIFIED and current and when the resource is AVAILABLE; it does not mean a slot is free or that a request will be approved. review_window_minutes is the resource's Admin review window.",
         "security": [
           {
             "BearerAuth": []
@@ -893,7 +893,7 @@
           "Bookings"
         ],
         "summary": "Create a room or individual equipment booking request",
-        "description": "Requires a submitted induction for the selected resource. The local start date must be from today + MIN_ADVANCE_DAYS (default 7) to today + MAX_ADVANCE_DAYS (default 30): BOOKING_TOO_SOON / BOOKING_TOO_FAR_AHEAD (400, details.earliest_date, latest_date, min_advance_days, max_advance_days). Requests for the same time are handled first-come-first-served with a waitlist. A student who already has an overlapping active request for this same resource receives DUPLICATE_BOOKING (409) instead of another waitlist record; terminal requests do not block rebooking and different resources remain independent. If no APPROVED booking or active hold overlaps: a valid VERIFIED qualification through the booking end results in APPROVED when the booking is no longer than the resource's auto_approve_max_minutes (default 120), otherwise PENDING_APPROVAL with reason DURATION_REVIEW and hold_until = start (the slot is held until an Admin/Manager decides; the same applies after induction verification or waitlist promotion); PENDING evidence makes this request the slot holder in WAITING_QUALIFICATION (or PENDING_APPROVAL at once if start is within the approval waiting period, default 24 hours) with hold_until = min(start, creation + pending_hold_minutes, default 30). If an APPROVED booking or active hold overlaps, the request becomes WAITLISTED (reason TIME_CONFLICT or TEMPORARY_HOLD_CONFLICT) with waitlist_position, even if qualified. When a hold ends while the holder is still undecided, the holder becomes WAITLISTED (reason HOLD_EXPIRED) and is promoted only once qualified; each request gets at most one hold. When time frees up (cancellation, rejection, expiry, rescheduling, a hold ending, or a waitlisted student's induction being verified) the earliest waitlisted request that now fits is promoted automatically: qualified -> APPROVED; induction under review and never held -> new holder; otherwise REJECTED (QUALIFICATION_REQUIRED); reason PROMOTED_FROM_WAITLIST. A student whose induction is under review may hold at most UNVERIFIED_PENDING_LIMIT (default 1) undecided requests per qualification. Only APPROVED creates an Outlook event. Undecided and waitlisted requests expire at their start time. HTTP 201 alone does not mean approved. Interval semantics are [start, end).",
+        "description": "Student or Admin only (Managers do not book). Requires a VERIFIED, unexpired induction for the selected resource through the booking end; otherwise 403 QUALIFICATION_REQUIRED (details.qualification_status, requirement_id), including while evidence is still PENDING. The local start date must be from today + MIN_ADVANCE_DAYS (default 7) to today + MAX_ADVANCE_DAYS (default 30): BOOKING_TOO_SOON / BOOKING_TOO_FAR_AHEAD (400, details.earliest_date, latest_date, min_advance_days, max_advance_days). A user who already has an overlapping active request for this same resource receives DUPLICATE_BOOKING (409); terminal requests do not block rebooking and different resources remain independent. If no APPROVED booking or active pending request overlaps, the request becomes PENDING_APPROVAL (reason AWAITING_REVIEW) with review_due_at = hold_until = min(start, now + pending_hold_minutes, default 1440). An Admin/Manager decides within that window; when it ends undecided the system re-checks the rules and sets APPROVED (AUTO_APPROVED_AFTER_REVIEW_WINDOW) or REJECTED (AUTO_REJECTED_QUALIFICATION, AUTO_REJECTED_RESOURCE_UNAVAILABLE or AUTO_REJECTED_CONFLICT), reviewed_by SYSTEM. If an APPROVED booking or active pending request overlaps, the request becomes WAITLISTED (reason TIME_CONFLICT or TEMPORARY_HOLD_CONFLICT) with waitlist_position. When time frees up (cancellation, rejection, expiry, rescheduling, an automatic rejection or a resource reopening) the earliest waitlisted request that now fits becomes PENDING_APPROVAL (PROMOTED_FROM_WAITLIST) with a fresh review window, or REJECTED (QUALIFICATION_REQUIRED) if its induction is no longer valid. Only APPROVED creates an Outlook event. Undecided and waitlisted requests expire at their start time. HTTP 201 never means approved. Interval semantics are [start, end).",
         "security": [
           {
             "BearerAuth": []
@@ -941,7 +941,7 @@
             }
           },
           "403": {
-            "description": "Student-only action or qualification submission gate failed.",
+            "description": "QUALIFICATION_REQUIRED (no verified, current induction for this resource, including evidence still under review) or the caller is a Manager.",
             "content": {
               "application/json": {
                 "schema": {
@@ -961,7 +961,7 @@
             }
           },
           "409": {
-            "description": "Idempotency key conflicts with a different request, resource policy is not configured, or PENDING_REQUEST_LIMIT (details.limit, details.pending_booking_ids) while the student's induction is under review. RESOURCE_UNAVAILABLE when the resource is under maintenance or closed.",
+            "description": "Idempotency key conflicts with a different request, DUPLICATE_BOOKING, resource policy is not configured (RESOURCE_POLICY_NOT_CONFIGURED), or RESOURCE_UNAVAILABLE when the resource is under maintenance or closed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1070,7 +1070,7 @@
           "Bookings"
         ],
         "summary": "Cancel my booking request",
-        "description": "Only future active requests (including WAITLISTED) may be cancelled. Checks ownership and current state. Cancelling an approved booking or a slot holder promotes the next waitlisted request automatically; refresh availability afterwards. Repeating cancellation returns the already-cancelled booking. Send an empty body or {}.",
+        "description": "Only future active requests (including WAITLISTED) may be cancelled. Checks ownership and current state. Cancelling an approved booking or a pending request promotes the next waitlisted request automatically; refresh availability afterwards. Repeating cancellation returns the already-cancelled booking. Send an empty body or {}.",
         "security": [
           {
             "BearerAuth": []
@@ -1158,7 +1158,7 @@
           "Bookings"
         ],
         "summary": "Reschedule my approved booking",
-        "description": "Moves a future approved booking after rechecking resource rules, the booking horizon, qualification validity and conflicts. The old period is released and offered to the waitlist. A successful Outlook sync updates the existing event rather than creating another event. The new length may differ from the old one but must not exceed the resource's auto_approve_max_minutes (409 RESCHEDULE_NEEDS_REVIEW with details.auto_approve_max_minutes); for a longer booking, cancel and submit a new request.",
+        "description": "Moves a future approved booking after rechecking resource rules, the booking horizon, qualification validity and conflicts; the booking stays APPROVED. The old period is released and offered to the waitlist. A successful Outlook sync updates the existing event rather than creating another event. The new length may differ from the old one within the resource's max_booking_minutes.",
         "security": [
           {
             "BearerAuth": []
@@ -1364,7 +1364,8 @@
               "default": "PENDING"
             }
           }
-        ]
+        ],
+        "description": "Each item also includes student {id, zid, display_name, university_email} so reviewers can see whose evidence it is."
       }
     },
     "/api/v1/admin/qualifications/{id}/review/": {
@@ -1374,7 +1375,7 @@
           "Administration"
         ],
         "summary": "Verify or reject induction evidence",
-        "description": "Admin or Manager only. Qualification and booking decisions are independent. A VERIFIED decision sets valid_until to the review time plus the configured validity period (default 120 days, one term) and re-evaluates the student's WAITING_QUALIFICATION bookings for resources requiring this qualification and approves their waitlisted requests whose time is free. A REJECTED decision requires a reason and rejects all of the student's pending bookings (WAITING_QUALIFICATION and PENDING_APPROVAL) for those resources with reason_code QUALIFICATION_REJECTED and the same reason, releasing their slots at once. updated_bookings lists every booking changed. valid_until is not accepted in the request; sending it returns 400.",
+        "description": "Admin or Manager only; an Admin cannot review their own evidence (SELF_REVIEW_FORBIDDEN). Evidence is always reviewed manually. A VERIFIED decision sets valid_until to the review time plus the configured validity period (default 120 days, one term); it lets the user submit booking requests but does not approve any booking. A REJECTED decision requires a reason and rejects the user's undecided bookings (PENDING_APPROVAL and WAITLISTED) for resources requiring this qualification with reason_code QUALIFICATION_REJECTED and the same reason, releasing their slots and offering them to the waitlist. updated_bookings lists every booking changed. valid_until is not accepted in the request; sending it returns 400.",
         "security": [
           {
             "BearerAuth": []
@@ -1580,7 +1581,7 @@
           "Administration"
         ],
         "summary": "Approve or reject a booking request",
-        "description": "Admin or Manager only. APPROVED is allowed only for PENDING_APPROVAL requests; it re-checks resource-specific qualification through the booking end and conflicts with APPROVED bookings and active holds, excluding this request's own ID. A WAITLISTED request cannot be approved (REQUEST_WAITLISTED, 409); it is promoted automatically in order. REJECTED (reason required) may be applied to PENDING_APPROVAL or WAITLISTED requests; rejecting a slot holder promotes the next waitlisted request. BOOKING_HOLD_CONFLICT (409) includes details.hold_until; BOOKING_CONFLICT (409) indicates an approved blocker.",
+        "description": "Admin or Manager only; an Admin cannot decide their own request (SELF_REVIEW_FORBIDDEN, 403). Decide within the request's review window (review_due_at); afterwards the system decides automatically. APPROVED is allowed only for PENDING_APPROVAL requests; it re-checks resource-specific qualification through the booking end and conflicts with APPROVED bookings and other active pending requests, excluding this request's own ID. A WAITLISTED request cannot be approved (REQUEST_WAITLISTED, 409); it moves up in order. REJECTED (reason required) may be applied to PENDING_APPROVAL or WAITLISTED requests; rejecting a pending request offers its time to the next waitlisted request. BOOKING_HOLD_CONFLICT (409) includes details.hold_until; BOOKING_CONFLICT (409) indicates an approved blocker.",
         "security": [
           {
             "BearerAuth": []
@@ -1638,7 +1639,7 @@
             }
           },
           "409": {
-            "description": "Missing valid qualification, approved or active-hold conflict, REQUEST_WAITLISTED, or invalid booking state.",
+            "description": "Missing valid qualification, approved or pending-request conflict, REQUEST_WAITLISTED, or invalid booking state.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2036,7 +2037,7 @@
           "Administration"
         ],
         "summary": "Process due booking state transitions",
-        "description": "Uses server time; clients cannot advance the clock. Requests waiting 24 hours move to PENDING_APPROVAL. Unapproved requests reaching their start time expire. A production scheduler can invoke the same service.",
+        "description": "Uses server time; clients cannot advance the clock. Pending requests whose review window has ended are approved automatically if they still follow the rules, otherwise rejected (reviewed_by SYSTEM). Undecided and waitlisted requests reaching their start time expire. Freed time is offered to the waitlist. Reads and writes also run this, and a production scheduler can invoke the same service.",
         "security": [
           {
             "BearerAuth": []
@@ -2364,7 +2365,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Current per-resource pending hold policy.",
+            "description": "Current per-resource review window.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2410,8 +2411,8 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Set pending hold and automatic-approval limit",
-        "description": "Active Manager only; Admin cannot write. Send pending_hold_minutes (1-20160, default 30) and/or auto_approve_max_minutes (1-1440, default 120). Only future requests use the new values; existing holds and decisions stay unchanged. Writes an audit entry.",
+        "summary": "Set the Admin review window",
+        "description": "Active Manager only; Admin cannot write. Send pending_hold_minutes (the review window in minutes, 1-20160, default 1440 = 24 hours). Only requests that become pending afterwards use the new value; existing deadlines and decisions stay unchanged. Writes an audit entry.",
         "security": [
           {
             "BearerAuth": []
@@ -2430,7 +2431,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Current per-resource pending hold policy.",
+            "description": "Current per-resource review window.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2956,7 +2957,6 @@
           "closing_time",
           "timezone",
           "pending_hold_minutes",
-          "auto_approve_max_minutes",
           "status",
           "status_reason"
         ],
@@ -3013,15 +3013,8 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 20160,
-            "description": "Minutes a newly created first-place pending request holds its slot, capped at the booking start. Default 30. When the hold ends while the request is still undecided, it moves to WAITLISTED (reason HOLD_EXPIRED) and is promoted only once its induction is verified. The maximum 20160 exceeds the booking horizon, which effectively holds the slot until the request is decided.",
-            "example": 30
-          },
-          "auto_approve_max_minutes": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 1440,
-            "example": 120,
-            "description": "Qualified requests up to this many minutes are approved automatically; longer ones need an Admin/Manager (DURATION_REVIEW). Default 120 (DEFAULT_AUTO_APPROVE_MAX_MINUTES); Manager-configurable per resource."
+            "description": "Admin review window in minutes (the column name is kept for the database). A new or promoted PENDING_APPROVAL request holds its slot until min(start, now + this value); if no Admin/Manager decides by then, the system approves it when it still follows the rules and rejects it otherwise. Default 1440 (24 hours); 1-20160.",
+            "example": 1440
           },
           "status": {
             "type": "string",
@@ -3030,7 +3023,7 @@
               "MAINTENANCE",
               "CLOSED"
             ],
-            "description": "Set by a Manager. Only AVAILABLE accepts new requests, approvals and waitlist promotions; existing bookings are kept."
+            "description": "Set by a Manager. Only AVAILABLE accepts new requests, approvals and waitlist promotions; pending requests that reach their review deadline while the resource is unavailable are rejected automatically; approved bookings are kept."
           },
           "status_reason": {
             "type": "string",
@@ -3222,22 +3215,23 @@
               "CANCELLED",
               "EXPIRED"
             ],
-            "description": "WAITING_QUALIFICATION and PENDING_APPROVAL are undecided requests that may hold their slot; WAITLISTED is queued behind an earlier booking or request and never holds a slot; only APPROVED is confirmed."
+            "description": "PENDING_APPROVAL is an undecided request that holds its slot until review_due_at; WAITLISTED is queued behind an earlier booking or request and never holds a slot; only APPROVED is confirmed. WAITING_QUALIFICATION is kept for old data only and is no longer created."
           },
           "reason_code": {
             "type": "string",
             "nullable": true,
-            "description": "Why the request is in its status, e.g. AUTO_APPROVED, DURATION_REVIEW (longer than auto_approve_max_minutes; waits for a reviewer while holding the slot), QUALIFICATION_PENDING, TIME_CONFLICT, TEMPORARY_HOLD_CONFLICT, HOLD_EXPIRED, PROMOTED_FROM_WAITLIST, CANCELLED_BY_USER, CANCELLED_BY_STAFF."
+            "description": "Why the request is in its status, e.g. AWAITING_REVIEW, AUTO_APPROVED_AFTER_REVIEW_WINDOW, AUTO_REJECTED_QUALIFICATION, AUTO_REJECTED_RESOURCE_UNAVAILABLE, AUTO_REJECTED_CONFLICT, TIME_CONFLICT, TEMPORARY_HOLD_CONFLICT, PROMOTED_FROM_WAITLIST, QUALIFICATION_REQUIRED, QUALIFICATION_REJECTED, START_TIME_PASSED, CANCELLED_BY_USER, CANCELLED_BY_STAFF."
           },
           "review_due_at": {
             "type": "string",
             "format": "date-time",
-            "nullable": true
+            "nullable": true,
+            "description": "End of the Admin review window for a PENDING_APPROVAL request (same as hold_until). After it the system approves or rejects the request automatically."
           },
           "reviewed_by": {
             "type": "string",
-            "format": "uuid",
-            "nullable": true
+            "nullable": true,
+            "description": "Id of the Admin/Manager who decided, or SYSTEM for an automatic decision."
           },
           "reviewed_at": {
             "type": "string",
@@ -3268,11 +3262,11 @@
           },
           "hold_active": {
             "type": "boolean",
-            "description": "Pending status and hold_until strictly later than server time."
+            "description": "PENDING_APPROVAL and hold_until strictly later than server time."
           },
           "blocks_slot": {
             "type": "boolean",
-            "description": "True for APPROVED or an undecided request whose hold is active. Never true for WAITLISTED."
+            "description": "True for APPROVED or a pending request whose review window is active. Never true for WAITLISTED."
           },
           "waitlist_position": {
             "type": "integer",
@@ -3379,8 +3373,7 @@
           "max_advance_days",
           "resource_status",
           "status_reason",
-          "auto_approve_max_minutes",
-          "needs_review"
+          "review_window_minutes"
         ],
         "properties": {
           "resource_id": {
@@ -3454,7 +3447,8 @@
             }
           },
           "can_request": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "True only for a Student/Admin whose induction for this resource is VERIFIED and current, while the resource is AVAILABLE."
           },
           "qualification_status": {
             "type": "string",
@@ -3498,13 +3492,10 @@
             "type": "string",
             "nullable": true
           },
-          "auto_approve_max_minutes": {
+          "review_window_minutes": {
             "type": "integer",
-            "example": 120
-          },
-          "needs_review": {
-            "type": "boolean",
-            "description": "duration_minutes is longer than auto_approve_max_minutes, so a request would wait for an Admin/Manager."
+            "example": 1440,
+            "description": "The resource's Admin review window (pending_hold_minutes)."
           }
         },
         "additionalProperties": false
@@ -4030,30 +4021,25 @@
       },
       "BookingPolicyRequest": {
         "type": "object",
-        "required": [],
+        "required": [
+          "pending_hold_minutes"
+        ],
         "properties": {
           "pending_hold_minutes": {
             "type": "integer",
             "minimum": 1,
             "maximum": 20160,
-            "description": "Minutes a newly created first-place pending request holds its slot, capped at the booking start. Default 30. When the hold ends while the request is still undecided, it moves to WAITLISTED (reason HOLD_EXPIRED) and is promoted only once its induction is verified. The maximum 20160 exceeds the booking horizon, which effectively holds the slot until the request is decided."
-          },
-          "auto_approve_max_minutes": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 1440,
-            "description": "Qualified requests up to this many minutes are approved automatically; longer ones need an Admin/Manager (DURATION_REVIEW). Default 120 (DEFAULT_AUTO_APPROVE_MAX_MINUTES); Manager-configurable per resource."
+            "description": "Admin review window in minutes (the column name is kept for the database). A new or promoted PENDING_APPROVAL request holds its slot until min(start, now + this value); if no Admin/Manager decides by then, the system approves it when it still follows the rules and rejects it otherwise. Default 1440 (24 hours); 1-20160.",
+            "example": 1440
           }
         },
-        "additionalProperties": false,
-        "minProperties": 1
+        "additionalProperties": false
       },
       "BookingPolicyResponse": {
         "type": "object",
         "required": [
           "resource_id",
-          "pending_hold_minutes",
-          "auto_approve_max_minutes"
+          "pending_hold_minutes"
         ],
         "properties": {
           "resource_id": {
@@ -4064,13 +4050,8 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 20160,
-            "description": "Minutes a newly created first-place pending request holds its slot, capped at the booking start. Default 30. When the hold ends while the request is still undecided, it moves to WAITLISTED (reason HOLD_EXPIRED) and is promoted only once its induction is verified. The maximum 20160 exceeds the booking horizon, which effectively holds the slot until the request is decided."
-          },
-          "auto_approve_max_minutes": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 1440,
-            "description": "Qualified requests up to this many minutes are approved automatically; longer ones need an Admin/Manager (DURATION_REVIEW). Default 120 (DEFAULT_AUTO_APPROVE_MAX_MINUTES); Manager-configurable per resource."
+            "description": "Admin review window in minutes (the column name is kept for the database). A new or promoted PENDING_APPROVAL request holds its slot until min(start, now + this value); if no Admin/Manager decides by then, the system approves it when it still follows the rules and rejects it otherwise. Default 1440 (24 hours); 1-20160.",
+            "example": 1440
           }
         },
         "additionalProperties": false

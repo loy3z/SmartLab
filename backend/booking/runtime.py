@@ -50,8 +50,7 @@ def seed_demo_data(service):
     for number, name, kind, location, needs_advanced in DEMO_RESOURCES:
         service.repo.save_resource(Resource(fixed_id(number), name, kind, location, "Single resource; demonstration data.",
             required_qualification_id=advanced.id if needs_advanced else requirement.id,
-            pending_hold_minutes=settings.DEFAULT_PENDING_HOLD_MINUTES,
-            auto_approve_max_minutes=settings.DEFAULT_AUTO_APPROVE_MAX_MINUTES))
+            pending_hold_minutes=settings.DEFAULT_PENDING_HOLD_MINUTES))
     for number, zid, name, role in [(501, "z1000001", "Qualified demo student", Role.STUDENT),
                                     (502, "z1000002", "New demo student", Role.STUDENT),
                                     (503, "z1000003", "New demo student3", Role.STUDENT),
@@ -75,11 +74,10 @@ def get_service():
             from .storage import MemoryFileStorage
             if not settings.DEBUG and (isinstance(repo, MemoryRepository) or isinstance(storage, MemoryFileStorage)):
                 raise ImproperlyConfigured("Configure durable repository and private file-storage adapters outside DEBUG mode.")
-            _service = BookingService(repo, storage, wait_hours=settings.APPROVAL_WAIT_HOURS,
+            _service = BookingService(repo, storage,
                                       qualification_validity_days=settings.QUALIFICATION_VALIDITY_DAYS,
                                       min_advance_days=settings.MIN_ADVANCE_DAYS,
-                                      max_advance_days=settings.MAX_ADVANCE_DAYS,
-                                      unverified_pending_limit=settings.UNVERIFIED_PENDING_LIMIT)
+                                      max_advance_days=settings.MAX_ADVANCE_DAYS)
             _service.calendar_sync = CalendarSyncService(repo, import_string(settings.OUTLOOK_PROVIDER_FACTORY)(),
                 enabled=settings.OUTLOOK_ENABLED, clock=lambda: _service.now())
             if settings.SEED_DEMO_DATA:

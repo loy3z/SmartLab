@@ -34,9 +34,10 @@ export function listResources(params: { kind?: string; q?: string }) {
   return request<ListResponse<Resource>>(`resources/?${qs}`)
 }
 
-export const getAvailability = (id: string, date: string, durationMinutes: number) =>
+export const getAvailability = (id: string, date: string, durationMinutes: number, excludeBookingId?: string) =>
   request<Availability>(
-    `resources/${id}/availability/?date=${date}&duration_minutes=${durationMinutes}`,
+    `resources/${id}/availability/?date=${date}&duration_minutes=${durationMinutes}` +
+      (excludeBookingId ? `&exclude_booking_id=${excludeBookingId}` : ''),
   )
 
 export const createBooking = (
@@ -102,14 +103,17 @@ export function listApprovedBookings() {
   )
 }
 export function listAdminBookings(
-  status:
-    | 'WAITING_QUALIFICATION'
-    | 'WAITLISTED'
-    | 'PENDING_APPROVAL' = 'WAITLISTED',
+  status: 'WAITLISTED' | 'PENDING_APPROVAL' = 'PENDING_APPROVAL',
 ) {
   return request<ListResponse<Booking>>(
     `admin/bookings/?status=${status}`,
   )
+}
+
+/** Admin/Manager: every booking of one student (all statuses). */
+export function listStudentBookings(studentId: string) {
+  const params = new URLSearchParams({ status: 'ALL', student_id: studentId })
+  return request<ListResponse<Booking>>(`admin/bookings/?${params}`)
 }
 
 export function reviewBooking(
@@ -135,6 +139,11 @@ export function updateUserRole(
     method: 'PATCH',
     body: JSON.stringify({ role }),
   })
+}
+
+/** Manager only ("Add manager"): creates a new Manager account. */
+export function createManager(data: { zid: string; display_name: string; university_email: string }) {
+  return post<ManagedUser>('admin/users/managers/', data)
 }
 
 export function downloadAllBookings() {

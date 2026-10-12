@@ -64,7 +64,7 @@ class UserManagementAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         changed = self.patch("z1000002", {"role": "ADMIN"})
         self.assertEqual((changed.status_code, changed.data["role"]), (200, "ADMIN"))
         self.assertEqual(self.student.get("/api/v1/admin/bookings/").status_code, 200)
-        self.assert_error(self.create_booking(self.student), 403)  # staff cannot book
+        self.assertEqual(self.create_booking(self.student).status_code, 201)  # an Admin (tutor) may still book
         self.patch("z1000002", {"role": "STUDENT"})
         self.assert_error(self.student.get("/api/v1/admin/bookings/"), 403)
 

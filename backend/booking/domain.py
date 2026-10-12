@@ -49,12 +49,8 @@ class BookingStatus(str, Enum):
     EXPIRED = "EXPIRED"
 
 
-# Upper bound for a resource's pending hold (two weeks, longer than the booking horizon, so the
-# maximum effectively holds the slot until the request is decided). The system default is 30.
+# Upper bound for a resource's review window (two weeks). The default window is 24 hours.
 MAX_PENDING_HOLD_MINUTES = 20160
-# Qualified requests up to this many minutes are approved automatically; longer ones go to an
-# Admin/Manager (Sprint 1 default 120, configurable per resource by a Manager).
-DEFAULT_AUTO_APPROVE_MAX_MINUTES = 120
 
 
 def _require_aware(**timestamps: datetime | None) -> None:
@@ -106,8 +102,8 @@ class Resource:
     opening_time: time = time(8)
     closing_time: time = time(20)
     timezone: str = "Australia/Sydney"
-    pending_hold_minutes: int = 30
-    auto_approve_max_minutes: int = DEFAULT_AUTO_APPROVE_MAX_MINUTES
+    # Review window: a pending request holds its slot this long while an Admin decides; then the system decides.
+    pending_hold_minutes: int = 1440
     status: ResourceStatus = ResourceStatus.AVAILABLE
     status_reason: str | None = None
 
@@ -115,9 +111,6 @@ class Resource:
         if isinstance(self.pending_hold_minutes, bool) or not isinstance(self.pending_hold_minutes, int) \
                 or not 1 <= self.pending_hold_minutes <= MAX_PENDING_HOLD_MINUTES:
             raise ValueError(f"pending_hold_minutes must be an integer from 1 to {MAX_PENDING_HOLD_MINUTES}.")
-        if isinstance(self.auto_approve_max_minutes, bool) or not isinstance(self.auto_approve_max_minutes, int) \
-                or not 1 <= self.auto_approve_max_minutes <= 1440:
-            raise ValueError("auto_approve_max_minutes must be an integer from 1 to 1440.")
         if not isinstance(self.status, ResourceStatus):
             object.__setattr__(self, "status", ResourceStatus(self.status))
 
@@ -125,10 +118,6 @@ class Resource:
     def bookable(self) -> bool:
         """Accepts new requests and approvals: listed (active) and not under maintenance or closed."""
         return self.active and self.status == ResourceStatus.AVAILABLE
-
-    def needs_review(self, start: datetime, end: datetime) -> bool:
-        """Longer than the automatic-approval limit, so an Admin/Manager must approve it."""
-        return (end - start).total_seconds() > self.auto_approve_max_minutes * 60
 
 
 @dataclass(frozen=True)

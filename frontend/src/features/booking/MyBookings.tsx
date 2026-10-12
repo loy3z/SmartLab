@@ -1,26 +1,39 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router'
+import { EmptyState } from '../../ui/components'
+import { useFeedback } from '../../ui/feedback-context'
 import { cancelBooking, listBookings, listResources, rescheduleBooking } from './api'
-import { bookingDetail, errorMessage, fmtDateTime, STATUS_TEXT } from './format'
-import { SlotPicker } from './SlotPicker'
-import type { Booking, Resource, Slot } from './types'
+import { bookingDetail, errorMessage, fmtDuration, fmtRange, minutesBetween, STATUS_TEXT } from './format'
+import { SlotPicker, type SlotRange } from './SlotPicker'
+import type { Booking, Resource } from './types'
 
-function RescheduleBox({ booking, resource, onDone }: { booking: Booking; resource: Resource; onDone: (updated: Booking) => void }) {
-  const [slot, setSlot] = useState<Slot | null>(null)
-  const [error, setError] = useState('')
+function RescheduleBox({ booking, resource, onDone, onClose }: {
+  booking: Booking
+  resource: Resource
+  onDone: (updated: Booking) => void
+  onClose: () => void
+}) {
+  const feedback = useFeedback()
+  const [range, setRange] = useState<SlotRange | null>(null)
   const [busy, setBusy] = useState(false)
-  const [open, setOpen] = useState(false)
-  const duration = (new Date(booking.end).getTime() - new Date(booking.start).getTime()) / 60000
-
-  if (!open) return <button className="bk-btn-outline bk-sm" onClick={() => setOpen(true)}>Reschedule</button>
+  const duration = minutesBetween(booking.start, booking.end)
 
   async function save() {
-    if (!slot) return
+    if (!range) return
+    const ok = await feedback.confirm({
+      title: 'Move this booking?',
+      details: [
+        { label: 'From', value: fmtRange(booking.start, booking.end) },
+        { label: 'To', value: fmtRange(range.start, range.end) },
+      ],
+      confirmLabel: 'Move booking',
+    })
+    if (!ok.confirmed) return
     setBusy(true)
-    setError('')
     try {
-      onDone(await rescheduleBooking(booking.id, slot.start, slot.end))
+      onDone(await rescheduleBooking(booking.id, range.start, range.end))
     } catch (e) {
-      setError(errorMessage(e))
+      feedback.error(errorMessage(e), 'Booking not moved')
     } finally {
       setBusy(false)
     }
@@ -28,35 +41,32 @@ function RescheduleBox({ booking, resource, onDone }: { booking: Booking; resour
 
   return (
     <div className="bk-resched">
-      <p className="bk-muted">Pick a new start time ({duration} min, same length as now).</p>
-      <SlotPicker
-        resource={{ ...resource, slot_minutes: duration, max_booking_minutes: duration }}
-        onSelect={setSlot}
-        hideQualification
-      />
-      {slot && <p>New time: {fmtDateTime(slot.start)} → {fmtDateTime(slot.end)}</p>}
-      <button className="bk-btn-yellow bk-sm" disabled={!slot || busy} onClick={save}>Confirm reschedule</button>{' '}
-      <button className="bk-btn-outline bk-sm" onClick={() => setOpen(false)}>Close</button>
-      {error && <p className="bk-error">{error}</p>}
+      <SlotPicker resource={resource} onSelect={setRange} hideQualification fixedMinutes={duration} excludeBookingId={booking.id} />
+      <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+        <button className="ui-btn ui-btn-primary ui-btn-sm" disabled={!range || busy} onClick={save}>{busy ? 'Saving…' : 'Confirm new time'}</button>
+        <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose}>Close</button>
+      </div>
     </div>
   )
 }
 
+const ACTIVE = ['WAITING_QUALIFICATION', 'WAITLISTED', 'PENDING_APPROVAL', 'APPROVED']
+
 export function MyBookings({ refreshKey }: { refreshKey: number }) {
+  const feedback = useFeedback()
   const [bookings, setBookings] = useState<Booking[]>([])
   const [resources, setResources] = useState<Record<string, Resource>>({})
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(0)
-  const [notice, setNotice] = useState('')
+  const [rescheduling, setRescheduling] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    setLoading(true)
     setError('')
     try {
       const [b, r] = await Promise.all([listBookings(), listResources({})])
       setNow(Date.now())
-      setBookings(b.results)
+      setBookings([...b.results].sort((x, y) => Date.parse(y.created_at) - Date.parse(x.created_at)))
       setResources(Object.fromEntries(r.results.map((x) => [x.id, x])))
     } catch (e) {
       setError(errorMessage(e))
@@ -71,67 +81,77 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
   }, [load, refreshKey])
 
   async function cancel(b: Booking) {
-    if (!window.confirm('Cancel this booking?')) return
-    setNotice('')
-    let failure = ''
+    const name = resources[b.resource_id]?.name ?? 'this resource'
+    const ok = await feedback.confirm({
+      title: b.status === 'APPROVED' ? 'Cancel this booking?' : 'Withdraw this request?',
+      details: [{ label: 'Resource', value: name }, { label: 'Time', value: fmtRange(b.start, b.end) }],
+      message: 'The time is released for other students. This cannot be undone.',
+      confirmLabel: b.status === 'APPROVED' ? 'Cancel booking' : 'Withdraw request',
+      cancelLabel: 'Keep it',
+      danger: true,
+    })
+    if (!ok.confirmed) return
     try {
       await cancelBooking(b.id)
-      setNotice('Your booking has been cancelled.')
+      feedback.success(`${name}, ${fmtRange(b.start, b.end)}`, b.status === 'APPROVED' ? 'Booking cancelled' : 'Request withdrawn')
     } catch (e) {
-      failure = errorMessage(e)
+      feedback.error(errorMessage(e), 'Could not cancel')
     }
     await load()
-    if (failure) setError(failure)
   }
 
   async function rescheduled(b: Booking) {
-    setNotice(
-      `Booking rescheduled. New time: ${fmtDateTime(b.start)} → ${fmtDateTime(b.end)}. ` +
-        (b.outlook_sync && b.outlook_sync.status !== 'DISABLED' && b.outlook_sync.status !== 'NOT_REQUIRED'
-          ? 'Your calendar event will be updated.'
-          : ''),
-    )
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    setRescheduling(null)
+    const calendar = b.outlook_sync && b.outlook_sync.status !== 'DISABLED' && b.outlook_sync.status !== 'NOT_REQUIRED'
+    feedback.success(`New time: ${fmtRange(b.start, b.end)}.${calendar ? ' Your calendar event will be updated.' : ''}`, 'Booking moved')
     await load()
   }
 
   const future = (b: Booking) => new Date(b.start).getTime() > now
-  const cancellable = (b: Booking) =>
-    future(b) && ['WAITING_QUALIFICATION', 'WAITLISTED', 'PENDING_APPROVAL', 'APPROVED'].includes(b.status)
+  const cancellable = (b: Booking) => future(b) && ACTIVE.includes(b.status)
 
   return (
     <div>
       <h1>My bookings</h1>
       <p className="bk-sub">Your requests and their current status.</p>
-      {loading && <p>Loading…</p>}
-      {notice && (
-        <p className="bk-notice" role="status">
-          {notice}
-          <button aria-label="Dismiss" onClick={() => setNotice('')}>×</button>
-        </p>
+      {loading && <p role="status">Loading…</p>}
+      {error && <p className="bk-error" role="alert">{error}</p>}
+      {!loading && !error && bookings.length === 0 && (
+        <EmptyState icon="+" title="No bookings yet">
+          <Link to="/resources">Browse rooms and equipment</Link> to make your first request.
+        </EmptyState>
       )}
-      {error && <p className="bk-error">{error}</p>}
-      {!loading && bookings.length === 0 && <p>No bookings yet.</p>}
       {bookings.map((b) => {
         const res = resources[b.resource_id]
         return (
           <div key={b.id} className="bk-bcard">
-            <div className="bk-bhead"><h3>{res?.name ?? 'Resource'}</h3><span className={`bk-chip st-${b.status}`}>{STATUS_TEXT[b.status]}{b.status === 'WAITLISTED' && b.waitlist_position ? ` · #${b.waitlist_position}` : ''}</span></div>
-            <p>
-              {fmtDateTime(b.start)} → {fmtDateTime(b.end)}
-            </p>
+            <div className="bk-bhead">
+              <h3>{res?.name ?? 'Resource'}</h3>
+              <span className={`bk-chip st-${b.status}`}>{STATUS_TEXT[b.status]}{b.status === 'WAITLISTED' && b.waitlist_position ? ` · #${b.waitlist_position}` : ''}</span>
+            </div>
+            <p><b>{fmtRange(b.start, b.end)}</b> <span className="bk-muted">· {fmtDuration(minutesBetween(b.start, b.end))}</span></p>
             <p className="bk-muted">{bookingDetail(b)}</p>
             {b.purpose && <p className="bk-muted">Purpose: {b.purpose}</p>}
-            {b.decision_reason && b.status === 'REJECTED' && <p className="bk-muted">Reason: {b.decision_reason}</p>}
             {b.outlook_sync?.status === 'SYNCED' && b.outlook_sync.web_link && (
               <p><a href={b.outlook_sync.web_link} target="_blank" rel="noreferrer">Open calendar</a></p>
             )}
             {b.outlook_sync?.status === 'FAILED' && (
               <p className="bk-muted">Calendar sync failed; your booking is unaffected. Contact an admin.</p>
             )}
-            {cancellable(b) && <button className="bk-btn-outline bk-sm" onClick={() => cancel(b)}>Cancel</button>}
-            {b.status === 'APPROVED' && future(b) && res && (
-              <RescheduleBox booking={b} resource={res} onDone={rescheduled} />
+            {(cancellable(b) || (b.status === 'APPROVED' && future(b) && res)) && rescheduling !== b.id && (
+              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                {b.status === 'APPROVED' && future(b) && res && (
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setRescheduling(b.id)}>Reschedule</button>
+                )}
+                {cancellable(b) && (
+                  <button className="ui-btn ui-btn-reject ui-btn-sm" onClick={() => cancel(b)}>
+                    {b.status === 'APPROVED' ? 'Cancel booking' : 'Withdraw request'}
+                  </button>
+                )}
+              </div>
+            )}
+            {rescheduling === b.id && res && (
+              <RescheduleBox booking={b} resource={res} onDone={rescheduled} onClose={() => setRescheduling(null)} />
             )}
           </div>
         )

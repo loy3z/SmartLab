@@ -15,7 +15,7 @@ export function HelpPage({ user }: { user: User }) {
       <article className="app-card"><h2>3. Keep track of requests</h2><p>View approval and waitlist updates in My Bookings. You can cancel future requests or reschedule eligible approved bookings. Refresh the page to see the latest status.</p><Link to="/bookings">View my bookings →</Link></article>
     </> : <>
       <article className="app-card"><h2>Review induction evidence</h2><p>Review submitted documents, approve qualifications or explain why a student needs to resubmit. Qualification review is separate from booking approval.</p><Link to="/admin/qualifications">Open qualification review →</Link></article>
-      <article className="app-card"><h2>Review booking requests</h2><p>Check pending requests and record your decision. Waitlisted requests are promoted automatically when eligible and a slot becomes available.</p><Link to="/admin/bookings">Open booking review →</Link></article>
+      <article className="app-card"><h2>Review booking requests</h2><p>Approve or reject requests before their review deadline; if nobody decides in time, the system approves requests that still follow the rules and rejects the rest. When a time frees up, the next waitlisted request moves to Awaiting approval.</p><Link to="/admin/bookings">Open booking review →</Link></article>
     </>}
     <article className="app-card"><h2>Calendar updates</h2><p>When Outlook integration is enabled, approved bookings can be sent to the connected calendar. A calendar sync failure does not cancel your booking. Contact your laboratory administrator if you need help.</p><Link to={homePath(user.role)}>Return to my portal →</Link></article>
   </div></section>

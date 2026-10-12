@@ -93,3 +93,7 @@
   .dash-error > div { flex-basis: calc(100% - 50px); }
   .dash-error > button { margin-left: 46px; }
 }
+.dash-ind-list > li { padding: 4px 24px; border-top: 1px solid #edf0f3; }
+.dash-ind-list .ind-row.is-link { box-shadow: none; }
+.dash-ind-list .ind-actions { align-self: center; }
+@media (max-width: 700px) { .dash-ind-list > li { padding: 4px 19px; } }

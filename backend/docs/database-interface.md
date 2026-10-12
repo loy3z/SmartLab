@@ -1,6 +1,6 @@
 # Sprint 1 数据库接口交接
 
-业务使用 `booking/repository.py` 的 `Repository` Protocol 和 `booking/domain.py` 的实体。数据库负责人实现适配器，通过 `REPOSITORY_FACTORY` 接入；附件继续通过 `FILE_STORAGE_FACTORY` 接入私有存储。当前提供内存适配器用于联调，本次未增加 ORM 模型或数据库迁移。
+业务使用 `booking/repository.py` 的 `Repository` Protocol 和 `booking/domain.py` 的实体。数据库负责人实现适配器，通过 `REPOSITORY_FACTORY` 接入；附件继续通过 `FILE_STORAGE_FACTORY` 接入私有存储。当前有两种适配器：内存适配器（默认，用于演示和单元测试）和 PostgreSQL 适配器（`booking/postgres.py`，建表脚本和本地搭建步骤见 `database/README.md`，集成测试见 `booking/tests/test_postgres.py`）。没有使用 Django ORM 模型或 Django 迁移；表结构改动要同时更新 `database/schema.sql`，并在 `database/migrations/` 里加升级脚本。
 
 ## 客户补充要求对应字段
 

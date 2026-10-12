@@ -1,5 +1,28 @@
-INSERT INTO public.app_users (id, zid, display_name, role, university_email, active) VALUES ('77d442a3-fec0-489c-a8ed-ff1ac32d764e', 'z554046', 'Demo z554046', 'STUDENT', 'z554046@example.invalid', 't');
-INSERT INTO public.app_users (id, zid, display_name, role, university_email, active) VALUES ('14b00e7d-5b65-490e-b258-99d00fbbe25a', 'z5546692', 'Demo z5546692', 'ADMIN', 'z5546692@example.invalid', 't');
-INSERT INTO public.app_users (id, zid, display_name, role, university_email, active) VALUES ('56cc3d36-0f7b-44a5-84fe-41b196396576', 'z5550599', 'Demo z5550599', 'STUDENT', 'z5550599@example.invalid', 't');
-INSERT INTO public.app_users (id, zid, display_name, role, university_email, active) VALUES ('7ebb0156-a731-49f2-afe7-480c4de11c7a', 'z5615320', 'Demo z5615320', 'STUDENT', 'z5615320@example.invalid', 't');
-INSERT INTO public.app_users (id, zid, display_name, role, university_email, active) VALUES ('10601e6e-3d8f-4d27-9c57-cc8465f50f16', 'z5659271', 'Demo z5659271', 'MANAGER', 'z5659271@example.invalid', 't');
+--
+-- Demo accounts for local development. Same zIDs and ids as the in-memory demo (booking/runtime.py),
+-- so the demo login, tests and docs work the same with either storage.
+-- All names and zIDs are invented; never commit real student data.
+--
+
+INSERT INTO public.app_users (id, zid, display_name, role, university_email, active) VALUES
+    ('00000000-0000-0000-0000-000000000501', 'z1000001', 'Qualified demo student', 'STUDENT', 'z1000001@ad.unsw.edu.au', true),
+    ('00000000-0000-0000-0000-000000000502', 'z1000002', 'New demo student', 'STUDENT', 'z1000002@ad.unsw.edu.au', true),
+    ('00000000-0000-0000-0000-000000000503', 'z1000003', 'New demo student3', 'STUDENT', 'z1000003@ad.unsw.edu.au', true),
+    ('00000000-0000-0000-0000-000000000504', 'z1000004', 'New demo student4', 'STUDENT', 'z1000004@ad.unsw.edu.au', true),
+    ('00000000-0000-0000-0000-000000000901', 'z9000001', 'Demo administrator', 'ADMIN', 'z9000001@ad.unsw.edu.au', true),
+    ('00000000-0000-0000-0000-000000000902', 'z9000002', 'Demo manager', 'MANAGER', 'z9000002@ad.unsw.edu.au', true);
+
+-- z1000001 already has a verified general induction (valid for 120 days from import), so the booking
+-- flow can be tried straight away. The others start with no induction.
+INSERT INTO public.stored_file (id, original_name, content_type, size, owner_id, data) VALUES
+    ('00000000-0000-0000-0000-000000000701', 'demo-induction.pdf', 'application/pdf',
+     octet_length(convert_to(E'%PDF-1.4\nDemo seeded induction evidence\n%%EOF', 'UTF8')),
+     '00000000-0000-0000-0000-000000000501',
+     convert_to(E'%PDF-1.4\nDemo seeded induction evidence\n%%EOF', 'UTF8'));
+
+INSERT INTO public.qualification_submission
+    (id, student_id, requirement_id, title, notes, file_id, submitted_at, status, reviewed_by, reviewed_at, valid_until)
+VALUES
+    ('00000000-0000-0000-0000-000000000601', '00000000-0000-0000-0000-000000000501', '00000000-0000-0000-0000-000000000001',
+     'Seeded demo induction', 'Development fixture', '00000000-0000-0000-0000-000000000701', now(), 'VERIFIED',
+     '00000000-0000-0000-0000-000000000901', now(), now() + interval '120 days');

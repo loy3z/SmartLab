@@ -1,4 +1,4 @@
-"""API-only configuration. No application database is provisioned here."""
+"""API configuration. The database is optional: see USE_POSTGRES below and database/README.md."""
 import os
 import secrets
 from pathlib import Path
@@ -17,6 +17,9 @@ INSTALLED_APPS = ["rest_framework", "booking"]
 MIDDLEWARE = ["django.middleware.security.SecurityMiddleware", "booking.middleware.CorsMiddleware", "django.middleware.common.CommonMiddleware"]
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
+# Persistence is chosen by REPOSITORY_FACTORY (below). Only the PostgreSQL adapter needs a Django
+# database connection; the in-memory demo runs without PostgreSQL or psycopg installed.
+USE_POSTGRES = os.getenv("REPOSITORY_FACTORY", "").endswith("postgres.PostgresRepository")
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -26,7 +29,7 @@ DATABASES = {
         "HOST": os.getenv("DB_HOST", "localhost"),
         "PORT": os.getenv("DB_PORT", "5432"),
     }
-}
+} if USE_POSTGRES else {"default": {"ENGINE": "django.db.backends.dummy"}}
 USE_TZ = True
 TIME_ZONE = "Australia/Sydney"
 LANGUAGE_CODE = "en-au"

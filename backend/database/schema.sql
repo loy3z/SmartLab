@@ -10,7 +10,6 @@
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
-SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -64,7 +63,6 @@ CREATE TABLE public.app_users (
     role text NOT NULL,
     university_email text CONSTRAINT app_users_email_not_null NOT NULL,
     active boolean DEFAULT true NOT NULL,
-    passowrd text,
     CONSTRAINT app_users_role_check CHECK ((role = ANY (ARRAY['STUDENT'::text, 'ADMIN'::text, 'MANAGER'::text])))
 );
 
@@ -102,7 +100,10 @@ CREATE TABLE public.bookable_resource (
     opening_time time without time zone NOT NULL,
     closing_time time without time zone NOT NULL,
     timezone text DEFAULT 'Australia/Sydney'::text NOT NULL,
-    pending_hold_minutes integer DEFAULT 30 NOT NULL,
+    pending_hold_minutes integer DEFAULT 1440 NOT NULL,
+    status text DEFAULT 'AVAILABLE'::text NOT NULL,
+    status_reason text,
+    CONSTRAINT bookable_resource_status_check CHECK (((status = ANY (ARRAY['AVAILABLE'::text, 'MAINTENANCE'::text, 'CLOSED'::text])) AND ((status_reason IS NULL) OR (char_length(status_reason) <= 500)))),
     CONSTRAINT bookable_resource_rules_check CHECK (((kind = ANY (ARRAY['ROOM'::text, 'EQUIPMENT'::text])) AND (slot_minutes > 0) AND (max_booking_minutes > 0) AND (closing_time > opening_time) AND ((pending_hold_minutes >= 1) AND (pending_hold_minutes <= 20160))))
 );
 
@@ -344,6 +345,13 @@ CREATE INDEX audit_record_entity_idx ON public.audit_record USING btree (entity_
 --
 
 CREATE INDEX booking_pending_hold_idx ON public.booking USING btree (hold_until) WHERE (status = ANY (ARRAY['WAITING_QUALIFICATION'::text, 'PENDING_APPROVAL'::text]));
+
+
+--
+-- Name: booking_review_due_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX booking_review_due_idx ON public.booking USING btree (review_due_at) WHERE (status = 'PENDING_APPROVAL'::text);
 
 
 --

@@ -1,0 +1,488 @@
+--
+-- PostgreSQL database dump
+--
+
+\restrict RFnq4Lcuo0qu5mjdAilspMYGCvAqoclsEh9CVV7p0jEAIdzLaGy3BEEUunfwWD6
+
+-- Dumped from database version 18.6
+-- Dumped by pg_dump version 18.6
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: public; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA IF NOT EXISTS public;
+
+
+--
+-- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON SCHEMA public IS 'standard public schema';
+
+
+--
+-- Name: reject_audit_record_mutation(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.reject_audit_record_mutation() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    RAISE EXCEPTION
+        'Audit records are append-only. Operation % is not allowed.',
+        TG_OP;
+    RETURN NULL;
+END;
+$$;
+
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: app_users; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.app_users (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    zid text NOT NULL,
+    display_name text NOT NULL,
+    role text NOT NULL,
+    university_email text CONSTRAINT app_users_email_not_null NOT NULL,
+    active boolean DEFAULT true NOT NULL,
+    passowrd text,
+    CONSTRAINT app_users_role_check CHECK ((role = ANY (ARRAY['STUDENT'::text, 'ADMIN'::text, 'MANAGER'::text])))
+);
+
+
+--
+-- Name: audit_record; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_record (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    actor_id text NOT NULL,
+    action text NOT NULL,
+    entity_type text NOT NULL,
+    entity_id text NOT NULL,
+    at timestamp with time zone NOT NULL,
+    details jsonb DEFAULT '{}'::jsonb NOT NULL,
+    CONSTRAINT audit_record_details_check CHECK ((jsonb_typeof(details) = 'object'::text))
+);
+
+
+--
+-- Name: bookable_resource; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.bookable_resource (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name text NOT NULL,
+    kind text NOT NULL,
+    location text DEFAULT ''::text NOT NULL,
+    description text DEFAULT ''::text NOT NULL,
+    active boolean DEFAULT true NOT NULL,
+    required_qualification_id uuid,
+    slot_minutes integer NOT NULL,
+    max_booking_minutes integer NOT NULL,
+    opening_time time without time zone NOT NULL,
+    closing_time time without time zone NOT NULL,
+    timezone text DEFAULT 'Australia/Sydney'::text NOT NULL,
+    pending_hold_minutes integer DEFAULT 30 NOT NULL,
+    CONSTRAINT bookable_resource_rules_check CHECK (((kind = ANY (ARRAY['ROOM'::text, 'EQUIPMENT'::text])) AND (slot_minutes > 0) AND (max_booking_minutes > 0) AND (closing_time > opening_time) AND ((pending_hold_minutes >= 1) AND (pending_hold_minutes <= 20160))))
+);
+
+
+--
+-- Name: booking; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.booking (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    student_id uuid NOT NULL,
+    resource_id uuid NOT NULL,
+    start timestamp with time zone NOT NULL,
+    "end" timestamp with time zone NOT NULL,
+    purpose text NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    status text NOT NULL,
+    reason_code text,
+    review_due_at timestamp with time zone,
+    reviewed_by text,
+    reviewed_at timestamp with time zone,
+    decision_reason text,
+    updated_at timestamp with time zone,
+    revision integer DEFAULT 1 NOT NULL,
+    hold_until timestamp with time zone,
+    CONSTRAINT booking_revision_check CHECK ((revision >= 1)),
+    CONSTRAINT booking_status_check CHECK ((status = ANY (ARRAY['WAITING_QUALIFICATION'::text, 'PENDING_APPROVAL'::text, 'WAITLISTED'::text, 'APPROVED'::text, 'REJECTED'::text, 'CANCELLED'::text, 'EXPIRED'::text]))),
+    CONSTRAINT booking_time_check CHECK (("end" > start))
+);
+
+
+--
+-- Name: outlook_sync_record; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.outlook_sync_record (
+    booking_id uuid NOT NULL,
+    action text NOT NULL,
+    status text NOT NULL,
+    calendar_path text NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    revision integer DEFAULT 1 NOT NULL,
+    booking_revision integer DEFAULT 1 NOT NULL,
+    event_id text,
+    web_link text,
+    ical_uid text,
+    attempts integer DEFAULT 0 NOT NULL,
+    create_attempted boolean DEFAULT false NOT NULL,
+    next_attempt_at timestamp with time zone,
+    lease_until timestamp with time zone,
+    last_error text,
+    last_success_at timestamp with time zone,
+    CONSTRAINT outlook_sync_action_check CHECK ((action = ANY (ARRAY['CREATE'::text, 'UPDATE'::text, 'DELETE'::text]))),
+    CONSTRAINT outlook_sync_attempts_check CHECK ((attempts >= 0)),
+    CONSTRAINT outlook_sync_revision_check CHECK (((revision >= 1) AND (booking_revision >= 1))),
+    CONSTRAINT outlook_sync_status_check CHECK ((status = ANY (ARRAY['PENDING'::text, 'IN_PROGRESS'::text, 'SYNCED'::text, 'FAILED'::text])))
+);
+
+
+--
+-- Name: qualification_requirement; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.qualification_requirement (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name text NOT NULL,
+    description text DEFAULT ''::text NOT NULL
+);
+
+
+--
+-- Name: qualification_submission; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.qualification_submission (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    student_id uuid NOT NULL,
+    requirement_id uuid NOT NULL,
+    title text NOT NULL,
+    notes text DEFAULT ''::text NOT NULL,
+    file_id uuid NOT NULL,
+    submitted_at timestamp with time zone NOT NULL,
+    status text DEFAULT 'PENDING'::text NOT NULL,
+    reviewed_by text,
+    reviewed_at timestamp with time zone,
+    rejection_reason text,
+    valid_until timestamp with time zone,
+    storage_order bigint NOT NULL,
+    CONSTRAINT qualification_submission_status_check CHECK ((status = ANY (ARRAY['PENDING'::text, 'VERIFIED'::text, 'REJECTED'::text]))),
+    CONSTRAINT qualification_submission_validity_check CHECK ((((status = 'VERIFIED'::text) AND (valid_until IS NOT NULL)) OR ((status = ANY (ARRAY['PENDING'::text, 'REJECTED'::text])) AND (valid_until IS NULL))))
+);
+
+
+--
+-- Name: qualification_submission_storage_order_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.qualification_submission ALTER COLUMN storage_order ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.qualification_submission_storage_order_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: stored_file; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.stored_file (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    original_name text NOT NULL,
+    content_type text NOT NULL,
+    size bigint NOT NULL,
+    owner_id uuid NOT NULL,
+    data bytea NOT NULL,
+    CONSTRAINT stored_file_size_check CHECK (((size >= 0) AND (size = octet_length(data))))
+);
+
+
+--
+-- Name: TABLE stored_file; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.stored_file IS 'for instruction';
+
+
+--
+-- Name: CONSTRAINT stored_file_size_check ON stored_file; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON CONSTRAINT stored_file_size_check ON public.stored_file IS 'must have data';
+
+
+--
+-- Name: app_users app_users_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.app_users
+    ADD CONSTRAINT app_users_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: app_users app_users_zid_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.app_users
+    ADD CONSTRAINT app_users_zid_unique UNIQUE (zid);
+
+
+--
+-- Name: audit_record audit_record_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_record
+    ADD CONSTRAINT audit_record_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bookable_resource bookable_resource_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bookable_resource
+    ADD CONSTRAINT bookable_resource_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: booking booking_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking
+    ADD CONSTRAINT booking_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: outlook_sync_record outlook_sync_record_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.outlook_sync_record
+    ADD CONSTRAINT outlook_sync_record_pkey PRIMARY KEY (booking_id);
+
+
+--
+-- Name: qualification_requirement qualification_requirement_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.qualification_requirement
+    ADD CONSTRAINT qualification_requirement_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: qualification_submission qualification_submission_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.qualification_submission
+    ADD CONSTRAINT qualification_submission_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: stored_file stored_file_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.stored_file
+    ADD CONSTRAINT stored_file_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: audit_record_action_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_record_action_idx ON public.audit_record USING btree (action);
+
+
+--
+-- Name: audit_record_actor_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_record_actor_idx ON public.audit_record USING btree (actor_id);
+
+
+--
+-- Name: audit_record_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_record_at_idx ON public.audit_record USING btree (at DESC);
+
+
+--
+-- Name: audit_record_entity_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_record_entity_idx ON public.audit_record USING btree (entity_type, entity_id);
+
+
+--
+-- Name: booking_pending_hold_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX booking_pending_hold_idx ON public.booking USING btree (hold_until) WHERE (status = ANY (ARRAY['WAITING_QUALIFICATION'::text, 'PENDING_APPROVAL'::text]));
+
+
+--
+-- Name: booking_resource_queue_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX booking_resource_queue_idx ON public.booking USING btree (resource_id, status, created_at, id);
+
+
+--
+-- Name: booking_resource_time_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX booking_resource_time_idx ON public.booking USING btree (resource_id, start, "end");
+
+
+--
+-- Name: booking_student_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX booking_student_status_idx ON public.booking USING btree (student_id, status);
+
+
+--
+-- Name: fki_bookable_resource_qualification_fkey; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX fki_bookable_resource_qualification_fkey ON public.bookable_resource USING btree (required_qualification_id);
+
+
+--
+-- Name: fki_stored_file_owner_fkey; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX fki_stored_file_owner_fkey ON public.stored_file USING btree (owner_id);
+
+
+--
+-- Name: outlook_sync_retry_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX outlook_sync_retry_idx ON public.outlook_sync_record USING btree (next_attempt_at, lease_until) WHERE (status <> 'SYNCED'::text);
+
+
+--
+-- Name: qualification_submission_file_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX qualification_submission_file_idx ON public.qualification_submission USING btree (file_id);
+
+
+--
+-- Name: qualification_submission_requirement_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX qualification_submission_requirement_idx ON public.qualification_submission USING btree (requirement_id);
+
+
+--
+-- Name: qualification_submission_student_requirement_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX qualification_submission_student_requirement_idx ON public.qualification_submission USING btree (student_id, requirement_id, submitted_at DESC);
+
+
+--
+-- Name: audit_record audit_record_append_only; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER audit_record_append_only BEFORE DELETE OR UPDATE OR TRUNCATE ON public.audit_record FOR EACH STATEMENT EXECUTE FUNCTION public.reject_audit_record_mutation();
+
+
+--
+-- Name: bookable_resource bookable_resource_qualification_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bookable_resource
+    ADD CONSTRAINT bookable_resource_qualification_fkey FOREIGN KEY (required_qualification_id) REFERENCES public.qualification_requirement(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: booking booking_resource_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking
+    ADD CONSTRAINT booking_resource_fk FOREIGN KEY (resource_id) REFERENCES public.bookable_resource(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: booking booking_student_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking
+    ADD CONSTRAINT booking_student_fk FOREIGN KEY (student_id) REFERENCES public.app_users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: outlook_sync_record outlook_sync_booking_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.outlook_sync_record
+    ADD CONSTRAINT outlook_sync_booking_fk FOREIGN KEY (booking_id) REFERENCES public.booking(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: qualification_submission qualification_submission_file_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.qualification_submission
+    ADD CONSTRAINT qualification_submission_file_fk FOREIGN KEY (file_id) REFERENCES public.stored_file(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: qualification_submission qualification_submission_requirement_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.qualification_submission
+    ADD CONSTRAINT qualification_submission_requirement_fk FOREIGN KEY (requirement_id) REFERENCES public.qualification_requirement(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: qualification_submission qualification_submission_student_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.qualification_submission
+    ADD CONSTRAINT qualification_submission_student_fk FOREIGN KEY (student_id) REFERENCES public.app_users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: stored_file stored_file_owner_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.stored_file
+    ADD CONSTRAINT stored_file_owner_fkey FOREIGN KEY (owner_id) REFERENCES public.app_users(id) ON DELETE RESTRICT;
+
+
+--
+-- PostgreSQL database dump complete
+--
+
+\unrestrict RFnq4Lcuo0qu5mjdAilspMYGCvAqoclsEh9CVV7p0jEAIdzLaGy3BEEUunfwWD6
+

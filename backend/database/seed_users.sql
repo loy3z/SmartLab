@@ -1,0 +1,5 @@
+INSERT INTO public.app_users (id, zid, display_name, role, university_email, active) VALUES ('77d442a3-fec0-489c-a8ed-ff1ac32d764e', 'z554046', 'Demo z554046', 'STUDENT', 'z554046@example.invalid', 't');
+INSERT INTO public.app_users (id, zid, display_name, role, university_email, active) VALUES ('14b00e7d-5b65-490e-b258-99d00fbbe25a', 'z5546692', 'Demo z5546692', 'ADMIN', 'z5546692@example.invalid', 't');
+INSERT INTO public.app_users (id, zid, display_name, role, university_email, active) VALUES ('56cc3d36-0f7b-44a5-84fe-41b196396576', 'z5550599', 'Demo z5550599', 'STUDENT', 'z5550599@example.invalid', 't');
+INSERT INTO public.app_users (id, zid, display_name, role, university_email, active) VALUES ('7ebb0156-a731-49f2-afe7-480c4de11c7a', 'z5615320', 'Demo z5615320', 'STUDENT', 'z5615320@example.invalid', 't');
+INSERT INTO public.app_users (id, zid, display_name, role, university_email, active) VALUES ('10601e6e-3d8f-4d27-9c57-cc8465f50f16', 'z5659271', 'Demo z5659271', 'MANAGER', 'z5659271@example.invalid', 't');

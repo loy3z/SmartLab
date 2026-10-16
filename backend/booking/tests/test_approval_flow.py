@@ -140,16 +140,65 @@ class ApprovalFlowServiceTests(BookingFixtureMixin, SimpleTestCase):
         self.service.reschedule_booking(self.a, first.id, later, later + timedelta(hours=1))
         self.assertEqual(self.state(waiting)[0], BookingStatus.PENDING_APPROVAL)
 
-    def test_admin_may_book_but_cannot_approve_their_own_request(self):
-        tutor = replace(self.c, role=Role.ADMIN)
-        self.repo.save_principal(tutor)
-        own = self.book(tutor)
-        self.assertEqual(own.status, BookingStatus.PENDING_APPROVAL)
-        with self.assertRaises(DomainError) as denied:
-            self.service.review_booking(tutor, own.id, "APPROVED")
-        self.assertEqual(denied.exception.code, "SELF_REVIEW_FORBIDDEN")
-        with self.assertRaises(DomainError):
-            self.book(self.manager, start=self.end, end=self.end + timedelta(hours=1))  # managers do not book
+    def test_staff_do_not_book(self):
+        """Admins and Managers are staff: they review and manage, they do not book."""
+        for staff in (replace(self.c, role=Role.ADMIN), self.manager, self.admin):
+            self.repo.save_principal(staff)
+            with self.subTest(role=staff.role), self.assertRaises(DomainError) as denied:
+                self.book(staff)
+            self.assertEqual(denied.exception.code, "FORBIDDEN")
+
+    def test_adjacent_periods_and_other_resources_do_not_conflict(self):
+        first = self.book(self.a)
+        after = self.book(self.b, start=self.end, end=self.end + timedelta(hours=1))
+        before = self.book(self.c, start=self.start - timedelta(hours=1), end=self.start)
+        other_room = replace(self.room, id=str(uuid4()), name="Second laboratory")
+        self.repo.save_resource(other_room)
+        elsewhere = self.book(self.d, resource_id=other_room.id)
+        self.assertEqual([item.status for item in (first, after, before, elsewhere)], [BookingStatus.PENDING_APPROVAL] * 4)
+
+    def test_rejecting_a_waitlisted_request_keeps_everyone_elses_order(self):
+        first = self.book(self.a)
+        second, third, fourth = (self.book(person) for person in (self.b, self.c, self.d))
+        self.service.review_booking(self.admin, third.id, "REJECTED", "Duplicate request")
+        self.assertEqual(self.state(first)[0], BookingStatus.PENDING_APPROVAL)
+        self.service.cancel_booking(self.a, first.id)
+        self.assertEqual([self.state(item)[0] for item in (second, third, fourth)],
+                         [BookingStatus.PENDING_APPROVAL, BookingStatus.REJECTED, BookingStatus.WAITLISTED])
+
+    def test_review_window_is_capped_at_the_start_and_an_undecided_request_expires_then(self):
+        self.service.min_advance_days = 0
+        soon = self.now + timedelta(hours=3)
+        start = soon.astimezone(SYDNEY).replace(minute=0, second=0, microsecond=0)
+        if not 8 <= start.hour < 19:  # keep inside opening hours whatever the fixture clock is
+            start = (start + timedelta(days=1)).replace(hour=10)
+            self.now = start - timedelta(hours=3)
+        booking = self.book(self.a, start=start, end=start + timedelta(hours=1))
+        self.assertEqual(booking.review_due_at, start)
+        self.now = start
+        self.service.process_due_requests()
+        self.assertEqual(self.state(booking), (BookingStatus.EXPIRED, "START_TIME_PASSED"))
+
+    def test_parallel_requests_create_only_one_pending_request(self):
+        import threading
+        barrier, results = threading.Barrier(4), []
+
+        def request(person):
+            barrier.wait()
+            results.append(self.service.create_booking(person, self.room.id, self.start, self.end, "Race")[0].status)
+
+        threads = [threading.Thread(target=request, args=(person,)) for person in (self.a, self.b, self.c, self.d)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(sorted(item.value for item in results), ["PENDING_APPROVAL"] + ["WAITLISTED"] * 3)
+
+    def test_promotions_are_audited(self):
+        first, second = self.book(self.a), self.book(self.b)
+        self.service.cancel_booking(self.a, first.id)
+        actions = [(item.action, item.actor_id) for item in self.repo.list_audit() if item.entity_id == second.id]
+        self.assertIn(("BOOKING_PROMOTED", "SYSTEM"), actions)
 
     def test_manager_sets_the_review_window_for_new_requests_only(self):
         first = self.book(self.a)
@@ -215,31 +264,28 @@ class ApprovalFlowAPITests(BookingAPIFixtureMixin, SimpleTestCase):
 
     def test_manager_policy_endpoint(self):
         url = f"/api/v1/admin/resources/{self.room['id']}/booking-policy/"
-        self.assertEqual(self.admin.get(url).data, {"resource_id": self.room["id"], "pending_hold_minutes": 1440})
+        self.assert_error(self.admin.get(url), 403)  # rules belong to Managers; Admins approve
+        self.assertEqual(self.manager.get(url).data, {"resource_id": self.room["id"], "pending_hold_minutes": 1440})
         self.assert_error(self.admin.patch(url, {"pending_hold_minutes": 60}, format="json"), 403)
         self.assertEqual(self.manager.patch(url, {"pending_hold_minutes": 60}, format="json").data["pending_hold_minutes"], 60)
         for body in ({}, {"pending_hold_minutes": 0}, {"pending_hold_minutes": 60, "auto_approve_max_minutes": 120}):
             with self.subTest(body=body):
                 self.assert_error(self.manager.patch(url, body, format="json"), 400)
 
-    def test_waitlist_position_and_admin_can_book(self):
+    def test_waitlist_position_and_staff_cannot_book(self):
         first = self.create_booking().data
-        admin = next(item for item in self.service.repo.list_principals() if item.zid == "z9000001")
+        other = next(item for item in self.service.repo.list_principals() if item.zid == "z1000003")
         self.service.repo.save_submission(QualificationSubmission(
-            str(uuid4()), admin.id, self.requirement_id, "Certificate", "", "file", NOW,
+            str(uuid4()), other.id, self.requirement_id, "Certificate", "", "file", NOW,
             status=QualificationStatus.VERIFIED, reviewed_by="seed", reviewed_at=NOW))
-        tutor_queue = self.create_booking(self.admin)  # Admins are tutor-like students and may book
-        self.assertEqual((tutor_queue.status_code, tutor_queue.data["status"], tutor_queue.data["waitlist_position"]),
-                         (201, "WAITLISTED", 1))
+        queued = self.create_booking(self.login("z1000003"))
+        self.assertEqual((queued.status_code, queued.data["status"], queued.data["waitlist_position"]), (201, "WAITLISTED", 1))
         self.verified.post(f"/api/v1/bookings/{first['id']}/cancel/", {}, format="json")
-        own = self.admin.get(f"/api/v1/bookings/{tutor_queue.data['id']}/").data
-        self.assertEqual((own["status"], own["reason_code"]), ("PENDING_APPROVAL", "PROMOTED_FROM_WAITLIST"))
-        refused = self.admin.post(f"/api/v1/admin/bookings/{own['id']}/review/", {"decision": "APPROVED"}, format="json")
-        self.assert_error(refused, 403)
-        self.assertEqual(refused.data["error"]["code"], "SELF_REVIEW_FORBIDDEN")
-        self.assertEqual(self.manager.post(f"/api/v1/admin/bookings/{own['id']}/review/", {"decision": "APPROVED"},
-                                           format="json").data["status"], "APPROVED")
-        self.assert_error(self.create_booking(self.manager, self.payload(hour=14)), 403)
+        moved = self.admin.get("/api/v1/admin/bookings/").data["results"]
+        self.assertEqual([(item["id"], item["reason_code"]) for item in moved], [(queued.data["id"], "PROMOTED_FROM_WAITLIST")])
+        for staff in (self.admin, self.manager):
+            with self.subTest(staff=staff):
+                self.assert_error(self.create_booking(staff, self.payload(hour=14)), 403)
 
 
 @override_settings(DEBUG=True, ENABLE_DEMO_AUTH=True, SEED_DEMO_DATA=True, OUTLOOK_ENABLED=True, OUTLOOK_SYNC_ON_WRITE=True)

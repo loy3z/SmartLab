@@ -24,6 +24,12 @@ export const demoLogin = (zid: string) => request<AuthResponse>('auth/demo-login
 }, { authenticated: false })
 export const demoRegister = (data: { zid: string; display_name: string; university_email: string }) =>
   request<AuthResponse>('auth/demo-register/', { method: 'POST', body: JSON.stringify(data) }, { authenticated: false })
+/** Staff sign-in page (Admins and Managers). Students use university sign-in. */
+export const staffSignIn = (zid: string, password: string) =>
+  request<AuthResponse>('auth/staff-sign-in/', { method: 'POST', body: JSON.stringify({ zid, password }) }, { authenticated: false })
+/** First staff sign-in: the invite code from a Manager plus a new password. */
+export const staffActivate = (data: { zid: string; invite_code: string; password: string }) =>
+  request<AuthResponse>('auth/staff-activate/', { method: 'POST', body: JSON.stringify(data) }, { authenticated: false })
 export const getDashboard = () => request<Dashboard>('dashboard/')
 export const downloadQualification = (id: string) => requestBlob(`qualifications/${id}/file/`)
 
@@ -131,19 +137,20 @@ export function listManagerUsers() {
   return request<ListResponse<ManagedUser>>('admin/users/')
 }
 
-export function updateUserRole(
-  userId: string,
-  role: 'STUDENT' | 'ADMIN',
-) {
+/** Manager only: deactivate (sign-in blocked) or reactivate an account. Roles never change. */
+export function setUserActive(userId: string, active: boolean) {
   return request<ManagedUser>(`admin/users/${userId}/`, {
     method: 'PATCH',
-    body: JSON.stringify({ role }),
+    body: JSON.stringify({ active }),
   })
 }
 
-/** Manager only ("Add manager"): creates a new Manager account. */
-export function createManager(data: { zid: string; display_name: string; university_email: string }) {
-  return post<ManagedUser>('admin/users/managers/', data)
+/** Manager only: clear a staff member's password and issue a new invite code. */
+export const resetStaffAccess = (userId: string) => post<ManagedUser>(`admin/users/${userId}/reset-access/`, {})
+
+/** Manager only ("Add staff"): creates a new Admin or Manager account. */
+export function createStaff(data: { zid: string; display_name: string; university_email: string; role: 'ADMIN' | 'MANAGER' }) {
+  return post<ManagedUser>('admin/users/staff/', data)
 }
 
 export function downloadAllBookings() {

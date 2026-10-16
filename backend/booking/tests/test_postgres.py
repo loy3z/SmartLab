@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.db import connection, connections
-from django.test import TransactionTestCase
+from django.test import override_settings, TransactionTestCase
 
 from booking.domain import (
     AuditRecord, BookingStatus, Principal, QualificationRequirement, QualificationStatus,
@@ -97,6 +97,32 @@ class PostgresAdapterTests(TransactionTestCase):
         record = AuditRecord(str(uuid4()), self.admin.id, "TEST", "booking", str(uuid4()), self.now, {"nested": {"ok": True}})
         self.repo.append_audit(record)
         self.assertIn(record, self.repo.list_audit())
+
+    def test_prerequisites_and_equipment_rooms_round_trip(self):
+        advanced = QualificationRequirement(str(uuid4()), "Advanced", "", prerequisite_ids=(self.requirement.id,))
+        self.repo.save_requirement(advanced)
+        self.assertEqual(self.repo.get_requirement(advanced.id).prerequisite_ids, (self.requirement.id,))
+        device = Resource(str(uuid4()), "Microscope", ResourceKind.EQUIPMENT, "Laboratory", "",
+                          required_qualification_id=advanced.id, room_id=self.room.id)
+        self.repo.save_resource(device)
+        self.assertEqual(self.repo.get_resource(device.id), device)
+        with self.assertRaises(DomainError) as denied:  # Advanced needs the General induction first
+            self.service.submit_qualification(self.a, advanced.id, "Advanced", "", b"x", "a.pdf", "application/pdf")
+        self.assertEqual(denied.exception.code, "PREREQUISITE_REQUIRED")
+
+    @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+    def test_staff_invite_activation_and_sign_in_are_persisted(self):
+        staff = self.service.create_staff(self.manager, f"z{uuid4().int % 10_000_000:07d}", "New admin",
+                                          "new.admin@ad.unsw.edu.au", Role.ADMIN)
+        code = self.repo.get_credential(staff.id).invite_code
+        self.assertEqual(self.service.staff_access(staff), {"activation_status": "AWAITING_ACTIVATION", "invite_code": code})
+        self.service.activate_staff(staff.zid, code, "new-password-1")
+        credential = self.repo.get_credential(staff.id)
+        self.assertIsNone(credential.invite_code)
+        self.assertTrue(credential.activated)
+        self.assertEqual(self.service.staff_sign_in(staff.zid, "new-password-1").role, Role.ADMIN)
+        self.service.reset_staff_access(self.manager, staff.id)
+        self.assertFalse(self.repo.get_credential(staff.id).activated)
 
     def test_resource_status_is_persisted(self):
         self.service.set_resource_status(self.manager, self.room.id, "MAINTENANCE", "Repairs")

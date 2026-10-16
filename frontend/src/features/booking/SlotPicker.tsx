@@ -37,7 +37,7 @@ function kindOf(slot: Slot): CellKind {
   return 'taken'
 }
 
-function cellTitle(slot: Slot, kind: CellKind): string {
+function cellTitle(slot: Slot, kind: CellKind, minDays: number, maxDays: number): string {
   const when = `${fmtTime(slot.start)} – ${fmtTime(slot.end)}`
   switch (kind) {
     case 'free': return `${when}: available`
@@ -45,7 +45,10 @@ function cellTitle(slot: Slot, kind: CellKind): string {
     case 'held': return `${when}: awaiting approval for another request${slot.hold_until ? ` (decided by ${fmtDateTime(slot.hold_until)})` : ''}. You can still join the waitlist.`
     case 'taken': return `${when}: booked. You can still join the waitlist.`
     default:
-      return `${when}: ${slot.reason_code === 'START_TIME_PASSED' ? 'already passed' : slot.reason_code === 'TOO_SOON' ? 'too soon (book at least a week ahead)' : slot.reason_code === 'TOO_FAR_AHEAD' ? 'too far ahead' : 'not bookable'}`
+      return `${when}: ${slot.reason_code === 'START_TIME_PASSED' ? 'already passed'
+        : slot.reason_code === 'TOO_SOON' ? `too soon (book at least ${minDays} day${minDays === 1 ? '' : 's'} ahead)`
+          : slot.reason_code === 'TOO_FAR_AHEAD' ? `too far ahead (at most ${maxDays} days)`
+            : slot.reason_code === 'RESOURCE_UNAVAILABLE' ? 'not open for new requests' : 'not bookable'}`
   }
 }
 
@@ -89,9 +92,28 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
         setProblem('')
         onSelectRef.current(null)
       })
-      .catch((e) => !cancelled && (setData(null), setError(errorMessage(e))))
+      .catch((e) => {
+        if (cancelled) return
+        // Never leave an old selection usable after a failed refresh.
+        setData(null)
+        setRange(null)
+        setError(errorMessage(e))
+        onSelectRef.current(null)
+        onEligibilityRef.current?.(false)
+      })
     return () => { cancelled = true }
   }, [resource.id, date, step, excludeBookingId, refreshKey])
+
+  /** Changing the day drops the current selection and pauses submitting until the new day has loaded. */
+  function changeDate(next: string) {
+    if (next === date) return
+    setRange(null)
+    setProblem('')
+    setData(null)
+    onSelectRef.current(null)
+    onEligibilityRef.current?.(false)
+    setDate(next)
+  }
 
   const slots = useMemo(() => data?.slots ?? [], [data])
   const kinds = useMemo(() => slots.map(kindOf), [slots])
@@ -160,24 +182,27 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
             <strong>{resourceClosed ? `This resource is ${data.resource_status === 'MAINTENANCE' ? 'under maintenance' : 'closed'}` : 'You cannot request this resource yet'}</strong>
             {resourceClosed ? (data.status_reason || 'New requests are paused for now.') : status ? QUAL_TEXT[status] : ''}
           </div>
-          {!resourceClosed && status && ['NOT_SUBMITTED', 'REJECTED', 'EXPIRED'].includes(status) && resource.required_qualification_id && (
+          {!resourceClosed && status && ['NOT_SUBMITTED', 'REJECTED', 'EXPIRED', 'EXPIRES_BEFORE_END'].includes(status) && resource.required_qualification_id && (
             <Link className="ui-btn ui-btn-primary ui-btn-sm" to={`/induction?requirement=${resource.required_qualification_id}`}>Upload induction</Link>
+          )}
+          {!resourceClosed && status === 'PREREQUISITE_REQUIRED' && data.missing_prerequisite_id && (
+            <Link className="ui-btn ui-btn-primary ui-btn-sm" to={`/induction?requirement=${data.missing_prerequisite_id}`}>Open General induction</Link>
           )}
         </div>
       )}
 
       <div className="ui-tl-head">
         <span className="ui-tl-day">{fmtDate(date)}</span>
-        <button type="button" className="ui-icon-btn" aria-label="Previous day" disabled={atStart} onClick={() => setDate(addDays(date, -1))}>‹</button>
+        <button type="button" className="ui-icon-btn" aria-label="Previous day" disabled={atStart} onClick={() => changeDate(addDays(date, -1))}>‹</button>
         <input
           type="date"
           aria-label="Date"
           value={date}
           min={data?.earliest_date ?? todaySydney()}
           max={data?.latest_date}
-          onChange={(e) => e.target.value && setDate(e.target.value)}
+          onChange={(e) => e.target.value && changeDate(e.target.value)}
         />
-        <button type="button" className="ui-icon-btn" aria-label="Next day" disabled={atEnd} onClick={() => setDate(addDays(date, 1))}>›</button>
+        <button type="button" className="ui-icon-btn" aria-label="Next day" disabled={atEnd} onClick={() => changeDate(addDays(date, 1))}>›</button>
       </div>
       <p className="bk-muted" style={{ marginTop: 6 }}>
         Times in {TZ}.
@@ -215,8 +240,8 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
                       className={cls}
                       disabled={kind === 'closed'}
                       aria-pressed={Boolean(sel)}
-                      aria-label={cellTitle(s, kind)}
-                      title={cellTitle(s, kind)}
+                      aria-label={cellTitle(s, kind, data.min_advance_days, data.max_advance_days)}
+                      title={cellTitle(s, kind, data.min_advance_days, data.max_advance_days)}
                       onMouseEnter={() => setHover(i)}
                       onClick={() => pick(i)}
                     />

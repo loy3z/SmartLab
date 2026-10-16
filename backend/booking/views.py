@@ -17,10 +17,10 @@ from .domain import Booking, BookingStatus, Principal, QualificationStatus, Reso
 from .exceptions import DomainError
 from .runtime import get_service
 from .serializers import (AvailabilityQuerySerializer, BookingCreateSerializer, BookingRescheduleSerializer, BookingReviewSerializer,
-                          DemoLoginSerializer, DemoRegisterSerializer, QualificationCreateSerializer, QualificationReviewSerializer,
+                          DemoLoginSerializer, DemoRegisterSerializer, StaffActivateSerializer, StaffSignInSerializer, QualificationCreateSerializer, QualificationReviewSerializer,
                           OutlookProcessSerializer, BookingPolicySerializer, AuditQuerySerializer,
                           UserListQuerySerializer, UserUpdateSerializer, ManagerCreateSerializer, ResourceStatusSerializer,
-                          AdminBookingQuerySerializer)
+                          AdminBookingQuerySerializer, StaffCreateSerializer, PrerequisiteSerializer)
 
 def json_value(value):
     if isinstance(value, Enum):
@@ -96,7 +96,9 @@ class AuthConfigView(PublicView):
     def get(self, request):
         demo = settings.DEBUG and settings.ENABLE_DEMO_AUTH
         return Response({"mode": "demo" if demo else "external_provider_required", "demo_auth_enabled": demo,
-                         "demo_registration_enabled": demo, "sso_connected": False, "token_type": "Bearer"})
+                         "demo_registration_enabled": demo, "sso_connected": False, "token_type": "Bearer",
+                         # Admins and Managers sign in on the staff page with zID + password (prototype; uses the same token).
+                         "staff_sign_in_enabled": demo})
 
 class DemoRegisterView(PublicView):
     def post(self, request):
@@ -119,7 +121,24 @@ class DemoLoginView(PublicView):
         principal = next((item for item in get_service().repo.list_principals() if item.zid == data["zid"] and item.active), None)
         if principal is None:
             raise DomainError("INVALID_DEMO_USER", "Create this demo student account first or use a seeded demo zID.", 401)
+        if principal.is_staff:
+            # University (student) sign-in is for students only; staff use the staff sign-in page.
+            raise DomainError("USE_STAFF_SIGN_IN", "Admins and Managers sign in on the staff sign-in page.", 403)
         return Response(session_result(principal))
+
+class StaffSignInView(PublicView):
+    """Staff sign-in page: zID + password. The account's role decides Admin or Manager access."""
+    def post(self, request):
+        require_demo_mode()
+        data = validated(StaffSignInSerializer, request.data)
+        return Response(session_result(get_service().staff_sign_in(data["zid"], data["password"])))
+
+class StaffActivateView(PublicView):
+    """First staff sign-in: invite code from the Manager + a new password. Signs the user in."""
+    def post(self, request):
+        require_demo_mode()
+        data = validated(StaffActivateSerializer, request.data)
+        return Response(session_result(get_service().activate_staff(data["zid"], data["invite_code"], data["password"])))
 
 class MeView(APIView):
     def get(self, request):
@@ -348,15 +367,35 @@ class AdminAuditListView(APIView):
                          "results": [audit_json(item, principals) for item in records]})
 
 def user_json(service, user):
-    """A person plus their induction status, so the Manager can see who may become an administrator."""
+    """A person plus their induction status (students) and whether they are staff."""
     result = json_value(user)
+    result["is_staff"] = user.is_staff
+    result.update(service.staff_access(user))
     inductions = service.induction_summary(user.id)
     result["inductions"] = json_value(inductions)
     result["induction_status"] = "VERIFIED" if all(item["status"] == "VERIFIED" for item in inductions) else "INCOMPLETE"
     return result
 
+class AdminStaffCreateView(APIView):
+    """Manager only ("Add staff"): create an Admin or Manager account. Students are never promoted to staff."""
+    def post(self, request):
+        service = get_service()
+        service.require_manager(request.user)
+        data = validated(StaffCreateSerializer, request.data)
+        created = service.create_staff(request.user, data["zid"], data["display_name"], data["university_email"], data["role"])
+        return Response(user_json(service, created), status=status.HTTP_201_CREATED)
+
+class RequirementDetailView(APIView):
+    """Manager only: set which inductions must be verified first (e.g. Advanced needs General)."""
+    def patch(self, request, requirement_id):
+        service = get_service()
+        service.require_manager(request.user)
+        data = validated(PrerequisiteSerializer, request.data)
+        updated = service.set_prerequisites(request.user, str(requirement_id), [str(item) for item in data["prerequisite_ids"]])
+        return Response(json_value(updated))
+
 class AdminManagerCreateView(APIView):
-    """Manager only ("Add manager"): the only way to create a Manager account."""
+    """Manager only ("Add manager"): kept for existing clients; same as Add staff with role MANAGER."""
     def post(self, request):
         service = get_service()
         service.require_manager(request.user)
@@ -365,7 +404,7 @@ class AdminManagerCreateView(APIView):
         return Response(user_json(service, created), status=status.HTTP_201_CREATED)
 
 class AdminUserListView(APIView):
-    """Manager only: staff and user list for nominating roles."""
+    """Manager only: students (read only) and staff (roles and account status)."""
     def get(self, request):
         service = get_service()
         service.require_manager(request.user)
@@ -379,6 +418,13 @@ class AdminUserDetailView(APIView):
         service.require_manager(request.user)
         data = validated(UserUpdateSerializer, request.data)
         return Response(user_json(service, service.update_user(request.user, str(user_id), data.get("role"), data.get("active"))))
+
+class AdminUserResetAccessView(APIView):
+    """Manager only: clear a staff member's password and issue a new invite code."""
+    def post(self, request, user_id):
+        service = get_service()
+        service.require_manager(request.user)
+        return Response(user_json(service, service.reset_staff_access(request.user, str(user_id))))
 
 class AdminBookingReviewView(APIView):
     def post(self, request, booking_id):
@@ -433,9 +479,10 @@ def policy_json(resource):
     return {"resource_id": resource.id, "pending_hold_minutes": resource.pending_hold_minutes}
 
 class ResourceBookingPolicyView(APIView):
+    """Manager only (Admins approve and review; rules belong to Managers)."""
     def get(self, request, resource_id):
         service = get_service()
-        service.require_staff(request.user)
+        service.require_manager(request.user)
         return Response(policy_json(service.resource(str(resource_id))))
 
     def patch(self, request, resource_id):

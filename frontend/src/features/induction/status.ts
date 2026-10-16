@@ -1,5 +1,5 @@
 import { TZ } from '../booking/format'
-import type { Qualification, Resource } from '../booking/types'
+import type { Qualification, Requirement, Resource } from '../booking/types'
 
 export type InductionStatus = 'NOT_SUBMITTED' | 'PENDING' | 'VERIFIED' | 'REJECTED' | 'EXPIRED'
 export type Tone = 'grey' | 'amber' | 'green' | 'red'
@@ -27,7 +27,26 @@ export function latestByRequirement(qualifications: Qualification[]): Map<string
   return latest
 }
 
-export function describeInduction(latest: Qualification | undefined): InductionView {
+/** Name of the first prerequisite (e.g. General for Advanced) that is not verified and current, if any. */
+export function blockingPrerequisite(requirement: Requirement, latest: Map<string, Qualification>, all: Requirement[]): string | null {
+  for (const id of requirement.prerequisite_ids ?? []) {
+    if (latest.get(id)?.effective_status !== 'VERIFIED') return all.find((item) => item.id === id)?.name ?? 'a prerequisite induction'
+  }
+  return null
+}
+
+export function describeInduction(latest: Qualification | undefined, blockedBy: string | null = null): InductionView {
+  const view = describeOwn(latest)
+  if (!blockedBy) return view
+  if (view.action) {
+    // Evidence for this requirement is accepted only after the prerequisite is verified.
+    return { ...view, tone: 'grey', label: view.status === 'NOT_SUBMITTED' ? 'Locked' : view.label, action: null,
+      detail: `Complete ${blockedBy} first. You can upload this once it is verified.` }
+  }
+  return { ...view, detail: `${view.detail} You also need a current ${blockedBy} to book.` }
+}
+
+function describeOwn(latest: Qualification | undefined): InductionView {
   const status: InductionStatus = latest?.effective_status ?? 'NOT_SUBMITTED'
   switch (status) {
     case 'VERIFIED':

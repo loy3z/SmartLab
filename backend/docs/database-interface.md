@@ -13,10 +13,13 @@
 | Booking | `revision: int` | 改期功能新增，默认 1，每次改期加 1 |
 | Booking | `status` | 新增 `WAITLISTED`（候补），需要放宽状态字段的取值约束 |
 | OutlookSyncRecord | `booking_revision`、`ical_uid`、`last_success_at` | 改期同步新增，均需持久化 |
+| QualificationRequirement | `prerequisite_ids: tuple[str, ...]` | 第 5 周新增。列 `prerequisite_ids uuid[] NOT NULL DEFAULT '{}'`，不能包含自己；循环由业务层检查。演示数据：Advanced 的前置是 General |
+| StaffCredential | `principal_id`、`password_hash`、`invite_code`、`updated_at` | staff 登录新增，表 `staff_credential`（主键 `principal_id`，外键指向 `app_users`）。只有 Admin／Manager 有；`password_hash` 是 Django 密码哈希，激活前为空；`invite_code` 激活后为空。仓储方法 `get_credential(principal_id)`、`save_credential(credential)`。单独成表，避免密码哈希跟着用户对象被返回 |
+| Resource | `room_id: str \| None` | 第 5 周新增。设备所在房间（外键指向房间资源）；房间本身为空（检查约束 `room_id IS NULL OR kind='EQUIPMENT'`）。仅用于显示和分组，房间状态不影响设备 |
 
 `hold_active`、`blocks_slot`、`waitlist_position` 是 API 根据状态、提交顺序和服务端时间计算的响应字段，不需要持久化。申请状态取值仍是七种：`WAITING_QUALIFICATION`、`PENDING_APPROVAL`、`WAITLISTED`、`APPROVED`、`REJECTED`、`CANCELLED`、`EXPIRED`。`WAITING_QUALIFICATION` 只为兼容旧数据保留，新流程不再产生（只有 induction 已通过的学生才能提交）。
 
-Manager 可以通过 `POST admin/users/managers/` 新建 Manager 账号（`save_principal`，zID 唯一、小写保存，写 `MANAGER_CREATED` 审计；这是创建 Manager 的唯一方式），通过 `PATCH admin/users/{id}/` 在 Student／Admin 之间调整 `role`（学生升 Admin 前检查每项 induction 的最新提交都已通过且未过期，用到 `list_requirements` 和 `list_submissions`）和修改 `active`，业务层调用 `save_principal` 保存，并在同一事务里写入 `USER_UPDATED` 审计记录；`atomic` 会同时锁住所有 Manager 和被修改的用户，防止并发操作导致系统里没有启用的 Manager。演示用户可以直接写进数据库，`role` 只能是 `STUDENT`／`ADMIN`／`MANAGER`，至少要有一个启用的 Manager。
+学生和员工（Admin／Manager）是两类账号，只有学生预约。Manager 通过 `POST admin/users/staff/` 新建 Admin 或 Manager 账号（`save_principal`，zID 唯一、小写保存，写 `ADMIN_CREATED`／`MANAGER_CREATED` 审计），通过 `PATCH admin/users/{id}/` 修改 `active`（角色创建后固定，Student／Admin／Manager 不能互转），业务层调用 `save_principal` 保存，并在同一事务里写入 `USER_UPDATED` 审计记录；停用学生时，同时把该学生的未决申请改为 `REJECTED`（`ACCOUNT_DEACTIVATED`）并递补；`atomic` 会同时锁住所有 Manager 和被修改的用户，防止并发操作导致系统里没有启用的 Manager。演示用户可以直接写进数据库，`role` 只能是 `STUDENT`／`ADMIN`／`MANAGER`，至少要有一个启用的 Manager。
 
 `Principal` 构造器现在要求邮箱参数；认证适配器和数据库映射必须同步更新。演示注册使用 EmailField 校验格式，尚未验证邮箱所有权或学校域名，不能当作正式认证证明。管理员／Manager 角色只由受信任来源或系统所有者指定，不能从学生注册请求接收。
 
@@ -52,10 +55,11 @@ WHERE resource_id = :resource_id
 
 ## 审批流程（客户确认版）
 
-- 只有 induction 已审核通过且在有效期内的学生／Admin 才能提交；否则业务层返回 403 `QUALIFICATION_REQUIRED`，不写任何预约记录。
+- 只有 induction（及其前置）已审核通过且在有效期内的学生才能提交；否则业务层返回 403 `QUALIFICATION_REQUIRED`，不写任何预约记录。
+- 创建、人工批准、自动处理、递补、改期都调用 `BookingService.rule_violation`，按顺序检查：账号启用 → 资源可用 → 时间合法 → 预约窗口（仅创建和改期）→ 资格及前置资格。数据库适配器只需保证在锁内能读到最新的用户、资源、资格记录。
 - 时段空闲的申请一律进入 `PENDING_APPROVAL`（`reason_code=AWAITING_REVIEW`），写入 `hold_until = review_due_at = min(start, 提交时间 + pending_hold_minutes)`，在期限内阻挡重叠时段。有阻挡记录的申请为 `WAITLISTED`，`hold_until=None`，**不阻挡任何时段**。`list_blocking_bookings` 的查询条件不用改。
 - Admin／Manager 在期限内批准（`APPROVED`）或拒绝（`REJECTED`）。Admin 不能审批自己的申请。
-- 期限到了仍未决：`process_due_requests` 在资源锁内重查规则，仍符合（资格有效、资源可用、无冲突）则 `APPROVED`（`reason_code=AUTO_APPROVED_AFTER_REVIEW_WINDOW`），否则 `REJECTED`（`AUTO_REJECTED_QUALIFICATION`／`AUTO_REJECTED_RESOURCE_UNAVAILABLE`／`AUTO_REJECTED_CONFLICT`）；`reviewed_by='SYSTEM'`，写审计。自动批准同样生成 Outlook 同步待办。
+- 期限到了仍未决：`process_due_requests` 在资源锁内重查规则，仍符合（账号启用、资格有效、资源可用、无冲突）则 `APPROVED`（`reason_code=AUTO_APPROVED_AFTER_REVIEW_WINDOW`），否则 `REJECTED`（`AUTO_REJECTED_ACCOUNT_INACTIVE`／`AUTO_REJECTED_QUALIFICATION`／`AUTO_REJECTED_RESOURCE_UNAVAILABLE`／`AUTO_REJECTED_BOOKING_RULES`／`AUTO_REJECTED_CONFLICT`）；`reviewed_by='SYSTEM'`，写审计。自动批准同样生成 Outlook 同步待办。使用数据库时由定时命令 `python manage.py process_due` 触发（见 database/README.md）。
 - 预约开始时仍未决的申请（含候补）改为 `EXPIRED`。取消、拒绝、过期立即失去阻挡效力；`hold_until` 保留供追溯。
 - 学生的 induction 被拒绝时，其未决申请（`PENDING_APPROVAL`／`WAITLISTED`）一并 `REJECTED`（`QUALIFICATION_REJECTED`）。induction 通过不会自动批准任何预约。
 - 已删除：`auto_approve_max_minutes`、120 分钟内自动批准、资料审核中先预约、30 分钟占位、`HOLD_EXPIRED`、未验证学生的未决申请数量限制。
@@ -65,7 +69,7 @@ WHERE resource_id = :resource_id
 业务层的 `_promote_waitlist(resource_id)` 在**同一事务、持有该资源锁**时运行，处理该资源全部 `WAITLISTED` 预约：
 
 1. 按 `(created_at, id)` 升序遍历。**顺序就是先到先得的依据**，`created_at` 需保存到微秒；如有条件，建议加一个单调递增的序号列作为最终排序依据，避免同一时刻提交时顺序不确定。
-2. 已过开始时间的候补改为 `EXPIRED`；仍有阻挡记录的跳过；资源不可用时跳过；否则资格有效的改为 `PENDING_APPROVAL`（`reason_code=PROMOTED_FROM_WAITLIST`，重新计算 `hold_until`／`review_due_at`），资格失效的改为 `REJECTED`（`QUALIFICATION_REQUIRED`）。同时写审计 `BOOKING_PROMOTED`／`BOOKING_REJECTED`（actor 为 `SYSTEM`）。递补不会直接获批，仍要走审批期限。
+2. 已过开始时间的候补改为 `EXPIRED`；仍有阻挡记录的跳过；资源不可用时跳过；否则仍符合规则的改为 `PENDING_APPROVAL`（`reason_code=PROMOTED_FROM_WAITLIST`，重新计算 `hold_until`／`review_due_at`），不符合的改为 `REJECTED`（`reason_code` 为规则检查的错误码，如 `QUALIFICATION_REQUIRED`、`ACCOUNT_INACTIVE`）。同时写审计 `BOOKING_PROMOTED`／`BOOKING_REJECTED`（actor 为 `SYSTEM`）。递补不会直接获批，仍要走审批期限。
 3. 触发时机：取消、拒绝、过期、改期、自动拒绝，以及资源恢复 `AVAILABLE`。
 
 递补会修改**其他学生**的预约，但只持有资源锁。这是可以的，因为所有会改变同一资源占用情况的写操作（创建、审批、取消、改期、资料审核、时间推进）都会先锁住该资源。数据库适配器必须保证：`atomic` 嵌套调用时复用外层事务（或使用 savepoint），并且不会在已持有资源锁的情况下，再按不同顺序去锁其他资源。
@@ -80,11 +84,12 @@ WHERE resource_id = :resource_id
 
 同一资源／学生锁内还必须检查该学生是否已经有与新时段重叠的有效申请（状态为 `PENDING_APPROVAL`、`WAITLISTED` 或 `APPROVED`；旧数据中的 `WAITING_QUALIFICATION` 也算）。存在时业务层返回 `DUPLICATE_BOOKING`，不能再创建一条候补记录。终态记录不阻止重新申请；不同资源同一时间不属于重复预约。
 
-规则更新写入 `RESOURCE_BOOKING_POLICY_UPDATED` 审计，保存前后分钟数。身份、资料、资格有效期、审批与取消的现有字段及审计继续持久化。`QualificationSubmission.valid_until` 在 VERIFIED 时由业务服务设定（审核时间加 `QUALIFICATION_VALIDITY_DAYS`），PENDING／REJECTED 为空；`QUALIFICATION_VERIFIED` 审计的 details 带 `valid_until`。审计查询接口 `GET admin/audit/` 目前在业务层对 `list_audit()` 的结果做筛选和分页；数据量变大后，数据库适配器应为审计表的 `at`、`entity_type`＋`entity_id`、`actor_id`、`action` 建索引，必要时再把筛选下推到查询中（结果需与现有测试一致）。审计记录只追加，不修改、不删除。每个资源目前关联一项 `required_qualification_id`，不同资源可以不同；不要改成用户全局 inducted 布尔值。未来多项前置资格需单独扩展关系和接口。
+规则更新写入 `RESOURCE_BOOKING_POLICY_UPDATED` 审计，保存前后分钟数。身份、资料、资格有效期、审批与取消的现有字段及审计继续持久化。`QualificationSubmission.valid_until` 在 VERIFIED 时由业务服务设定（审核时间加可配置规则 `qualification_validity_days`，默认 120 天），PENDING／REJECTED 为空；`QUALIFICATION_VERIFIED` 审计的 details 带 `valid_until`。审计查询接口 `GET admin/audit/` 目前在业务层对 `list_audit()` 的结果做筛选和分页；数据量变大后，数据库适配器应为审计表的 `at`、`entity_type`＋`entity_id`、`actor_id`、`action` 建索引，必要时再把筛选下推到查询中（结果需与现有测试一致）。审计记录只追加，不修改、不删除。每个资源关联一项 `required_qualification_id`，不同资源可以不同；该要求的前置项记录在 `qualification_requirement.prerequisite_ids`。不要改成用户全局 inducted 布尔值。
 
 ## 接入／迁移建议
 
 - 既有用户邮箱应从可信身份数据补齐；不要编造正式用户邮箱。
+- 已有数据库升级到第 5 周结构：运行 `database/migrations/002_week5_rules.sql`（可重复执行），它新增 `prerequisite_ids` 和 `room_id`，并按演示数据设置 Advanced→General 前置和设备所在房间。之后运行 `003_staff_sign_in.sql` 新增 `staff_credential` 表。
 - 既有资源设置 `pending_hold_minutes=1440`（默认 24 小时），或使用客户确认的初始值。删除 `auto_approve_max_minutes` 列（如已建）。环境变量 `DEFAULT_PENDING_HOLD_MINUTES` 仅用于创建演示种子数据，不能覆盖数据库中的 Manager 配置。
 - 既有 Pending 预约若 `review_due_at` 为空，可按迁移时间 + `pending_hold_minutes` 补齐（不晚于开始时间）；既有 `WAITING_QUALIFICATION` 记录可人工处理或改为 `REJECTED`。既有 APPROVED 继续占用，终态继续释放。
 - 时间字段使用带时区存储；API 输出 UTC，开放时间规则使用资源时区。

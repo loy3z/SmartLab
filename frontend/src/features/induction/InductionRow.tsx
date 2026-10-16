@@ -14,6 +14,8 @@ interface Props {
   /** Induction page: show the latest submission. */
   onView?: (submission: Qualification) => void
   showDescription?: boolean
+  /** Name of a prerequisite that is not verified and current (e.g. General for Advanced). */
+  blockedBy?: string | null
 }
 
 type Step = { label: string; state: 'done' | 'current' | 'failed' | 'todo' }
@@ -28,8 +30,8 @@ function steps(status: string): Step[] {
   }
 }
 
-export function InductionRow({ requirement, latest, resources, linkTo, onUpload, onView, showDescription }: Props) {
-  const view = describeInduction(latest)
+export function InductionRow({ requirement, latest, resources, linkTo, onUpload, onView, showDescription, blockedBy = null }: Props) {
+  const view = describeInduction(latest, blockedBy)
   const unlocks = unlocksText(requirement.id, resources)
   const icon = view.tone === 'green' ? <CheckIcon /> : view.tone === 'amber' ? <ClockIcon /> : view.tone === 'red' ? <AlertIcon /> : <CapIcon />
   const actionLabel = view.action === 'reupload' ? 'Re-upload' : 'Upload'

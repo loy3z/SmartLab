@@ -28,6 +28,15 @@ class DemoRegisterSerializer(StrictSerializer):
 class DemoLoginSerializer(StrictSerializer):
     zid = serializers.RegexField(r"^z[0-9]{7}$")
 
+class StaffSignInSerializer(StrictSerializer):
+    zid = serializers.RegexField(r"^[zZ][0-9]{7}$")
+    password = serializers.CharField(max_length=128, trim_whitespace=False)
+
+class StaffActivateSerializer(StrictSerializer):
+    zid = serializers.RegexField(r"^[zZ][0-9]{7}$")
+    invite_code = serializers.CharField(max_length=20)
+    password = serializers.CharField(max_length=128, trim_whitespace=False)
+
 class BookingCreateSerializer(StrictSerializer):
     resource_id = serializers.UUIDField()
     start = AwareDateTimeField()
@@ -129,6 +138,14 @@ class ManagerCreateSerializer(StrictSerializer):
     zid = serializers.RegexField(r"^[zZ]\d{7}$")
     display_name = serializers.CharField(max_length=120)
     university_email = serializers.EmailField(max_length=254)
+
+
+class StaffCreateSerializer(ManagerCreateSerializer):
+    role = serializers.ChoiceField(choices=["ADMIN", "MANAGER"])
+
+
+class PrerequisiteSerializer(StrictSerializer):
+    prerequisite_ids = serializers.ListField(child=serializers.UUIDField(), max_length=20, allow_empty=True)
 
 
 BOOKING_STATUS_VALUES = ["WAITING_QUALIFICATION", "PENDING_APPROVAL", "WAITLISTED", "APPROVED", "REJECTED", "CANCELLED", "EXPIRED"]

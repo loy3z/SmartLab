@@ -7,7 +7,7 @@ import { errorMessage, fmtDateTime } from '../booking/format'
 import type { Qualification, Requirement, Resource } from '../booking/types'
 import { EvidencePreview } from './EvidencePreview'
 import { InductionRow } from './InductionRow'
-import { describeInduction, latestByRequirement } from './status'
+import { blockingPrerequisite, describeInduction, latestByRequirement } from './status'
 
 const MAX_BYTES = 5 * 1024 * 1024
 
@@ -45,7 +45,11 @@ export function InductionPage() {
   }, [])
 
   const latest = latestByRequirement(qualifications)
-  const canUpload = (id: string) => describeInduction(latest.get(id)).action !== null
+  const blockedBy = (id: string) => {
+    const requirement = requirements.find((item) => item.id === id)
+    return requirement ? blockingPrerequisite(requirement, latest, requirements) : null
+  }
+  const canUpload = (id: string) => describeInduction(latest.get(id), blockedBy(id)).action !== null
 
   function startUpload(id: string) {
     setRequirementId(id)
@@ -59,8 +63,10 @@ export function InductionPage() {
   useEffect(() => {
     if (loading || !wanted || handledParam.current === wanted) return
     handledParam.current = wanted
-    const current = latestByRequirement(qualifications).get(wanted)
-    const view = describeInduction(current)
+    const latestMap = latestByRequirement(qualifications)
+    const current = latestMap.get(wanted)
+    const target = requirements.find((r) => r.id === wanted)
+    const view = describeInduction(current, target ? blockingPrerequisite(target, latestMap, requirements) : null)
     if (current && view.status === 'PENDING') {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setViewing(current)
@@ -136,6 +142,7 @@ export function InductionPage() {
                   onUpload={startUpload}
                   onView={setViewing}
                   showDescription
+                  blockedBy={blockedBy(requirement.id)}
                 />
               </li>
             ))}
@@ -155,10 +162,11 @@ export function InductionPage() {
               <select required value={requirementId} onChange={(event) => setRequirementId(event.target.value)}>
                 <option value="">Select a training requirement</option>
                 {requirements.map((requirement) => {
-                  const view = describeInduction(latest.get(requirement.id))
+                  const lockedBy = blockedBy(requirement.id)
+                  const view = describeInduction(latest.get(requirement.id), lockedBy)
                   return (
                     <option key={requirement.id} value={requirement.id} disabled={view.action === null}>
-                      {requirement.name}{view.action === null ? ` (${view.label})` : ''}
+                      {requirement.name}{lockedBy && view.action === null ? ` (needs ${lockedBy} first)` : view.action === null ? ` (${view.label})` : ''}
                     </option>
                   )
                 })}

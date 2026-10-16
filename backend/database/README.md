@@ -5,9 +5,11 @@
 ## 包含的文件和数据
 
 - `database/schema.sql`：8 张表、约束、索引、序列和审计保护触发器。
-- `database/seed_resources.sql`：2 条培训要求、2 个房间、20 台设备。
+- `database/seed_resources.sql`：2 条培训要求（Advanced 要求先通过 General）、2 个房间、20 台设备（记录所在房间）。
 - `database/seed_users.sql`：6 个演示账号（与内存版演示数据相同的假 zID 和 id），以及 z1000001 一条已通过的 induction。全部是编造的数据，不要把真实学生的 zID 提交进 Git。
 - `database/migrations/001_client_approval_flow.sql`：给按旧版脚本建过库的同学用的升级脚本（见第 2 节）。
+- `database/migrations/002_week5_rules.sql`：第 5 周升级脚本：前置 induction（`prerequisite_ids`）和设备所在房间（`room_id`），见第 2 节。
+- `database/migrations/003_staff_sign_in.sql`：staff 登录：新表 `staff_credential`（密码哈希和邀请码），见第 2 节。
 - `booking/tests/test_postgres.py`：用真实 PostgreSQL 跑的适配器集成测试（见第 6 节）。
 - `booking/postgres.py`：数据库及上传文件存储适配器。
 - `requirements-postgres.txt`：后端依赖及 PostgreSQL 驱动。
@@ -53,6 +55,24 @@ if ($LASTEXITCODE -ne 0) { throw '导入失败，导入事务已回滚。请先�
 
 ```powershell
 & "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\001_client_approval_flow.sql'
+```
+
+### 已经建过库，升级到第 5 周（2026-10-14 之前建的库都需要）
+
+第 5 周新增两列：`qualification_requirement.prerequisite_ids`（前置 induction）和 `bookable_resource.room_id`（设备所在房间）。不想重建的话执行下面的脚本（可以重复执行，不删除任何数据）；如果还没执行过 001，先执行 001：
+
+```powershell
+& "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\002_week5_rules.sql'
+```
+
+执行后在 pgAdmin 里看 `qualification_requirement` 表，Advanced 那一行的 `prerequisite_ids` 应该是 General 的 id。
+
+### 升级到 staff 登录（执行过 002 之后）
+
+新增 `staff_credential` 表，存 Admin／Manager 的密码哈希和邀请码。脚本会给演示账号 z9000001、z9000002 设好演示密码 `smartlab-staff-demo`；其他已有的 Admin／Manager 会得到一个邀请码，Manager 在人员管理页能看到，对方用它在 staff 登录页激活。可以重复执行：
+
+```powershell
+& "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\003_staff_sign_in.sql'
 ```
 
 ## 3. 安装后端依赖和配置连接
@@ -107,7 +127,7 @@ npm.cmd run dev
 
 ## 5. 演示登录和验证
 
-当前登录页使用 zID，不校验密码，是模拟的 SSO 登录。
+学生用大学登录（模拟 SSO，只填 zID，不校验密码）；Admin 和 Manager 点登录页的 **Staff sign-in**，用 zID + 密码登录。
 
 | zID | 角色 | 说明 |
 | --- | --- | --- |
@@ -115,12 +135,22 @@ npm.cmd run dev
 | z1000002 | STUDENT | 没有 induction |
 | z1000003 | STUDENT | 没有 induction |
 | z1000004 | STUDENT | 没有 induction |
-| z9000001 | ADMIN | 审核资料和预约 |
-| z9000002 | MANAGER | 房间状态、导出、人员管理 |
+| z9000001 | ADMIN | 审核资料和预约；staff 登录，演示密码 `smartlab-staff-demo` |
+| z9000002 | MANAGER | 房间状态、导出、人员管理；staff 登录，演示密码 `smartlab-staff-demo` |
 
 建议走一遍：z1000002 上传测试材料 → z9000001 审核通过 → z1000002 预约 → z9000001 批准。然后停掉后端再启动，确认数据还在。只使用可分享的测试附件。新操作写入各自的本地数据库，不会自动进入 Git。后端重启后如果登录失效，重新登录；开发模式未固定密钥时会生成新的临时密钥。
 
 日常启动不需要再次导入 SQL：启动 PostgreSQL、在后端终端重新设置环境变量并运行后端，再启动前端即可。
+
+### 定时处理到期申请
+
+审批期限到了的申请会在有人访问网页时顺带处理。为了没人访问时也能按时自动批准／拒绝，在设置了同样环境变量的终端里定时运行（例如每分钟一次，用 Windows 任务计划程序或服务器的 cron）：
+
+```powershell
+python manage.py process_due
+```
+
+输出 `Decided or expired N request(s).`。演示时也可以手动运行一次。该命令只能用于数据库模式，内存模式会直接报错退出。
 
 ## 6. 用真实数据库跑适配器测试
 
@@ -130,13 +160,13 @@ npm.cmd run dev
 python manage.py test booking.tests.test_postgres -v 2
 ```
 
-这组测试覆盖：各类记录读写和类型、房间状态、上传附件、完整审批流程（待审批 → 批准 → 取消 → 候补递补 → 24 小时到期自动批准）、事务回滚、审计记录不可修改，以及两个人同时申请同一时段时只有一人进入待审批。
+这组测试覆盖：各类记录读写和类型、房间状态、前置 induction 和设备所在房间、staff 邀请码激活和密码登录、上传附件、完整审批流程（待审批 → 批准 → 取消 → 候补递补 → 24 小时到期自动批准）、事务回滚、审计记录不可修改，以及两个人同时申请同一时段时只有一人进入待审批。
 
 其余测试（`python manage.py test booking`）使用内存存储，跑之前先把 `REPOSITORY_FACTORY` 和 `FILE_STORAGE_FACTORY` 两个变量清掉（或新开一个终端）。
 
 ## 验证范围和当前限制
 
-2026-10-12 在全新的 PostgreSQL 16 数据库上验证过：三个 SQL 文件可以完整导入；升级脚本执行后的结构与新版 `schema.sql` 完全一致；第 6 节的 9 个集成测试全部通过；前后端完整流程（上传、审核、预约、批准、改房间状态）的数据都写入了数据库，重启后端后仍在。
+2026-10-12 在全新的 PostgreSQL 16 数据库上验证过：三个 SQL 文件可以完整导入；升级脚本执行后的结构与新版 `schema.sql` 完全一致；2026-10-14 复验：按上一版（第 4 周）脚本建的库执行 002（连续两次）后，表结构以及培训要求、资源数据都与新版脚本完全一致；第 6 节的集成测试全部通过（加入 staff 登录后为 11 个）；002 之后再执行 003，结构同样与新版 `schema.sql` 一致；`process_due` 命令可在数据库模式运行；前后端完整流程（上传、审核、预约、批准、改房间状态）的数据都写入了数据库，重启后端后仍在。
 
 这是当前本地联调适配方案。适配器使用数据库级 advisory lock 串行化所有写入：并发申请同一时段的正确性已有测试覆盖，但没有做压力测试，不能据此宣称已通过生产性能验收。
 

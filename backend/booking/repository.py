@@ -21,6 +21,7 @@ from .domain import (
     QualificationRequirement,
     QualificationSubmission,
     Resource,
+    StaffCredential,
 )
 
 
@@ -63,6 +64,8 @@ class Repository(Protocol):
     def get_outlook_sync(self, booking_id: str) -> OutlookSyncRecord | None: ...
     def list_outlook_sync(self) -> list[OutlookSyncRecord]: ...
     def save_outlook_sync(self, record: OutlookSyncRecord) -> None: ...
+    def get_credential(self, principal_id: str) -> StaffCredential | None: ...
+    def save_credential(self, credential: StaffCredential) -> None: ...
 
 
 class MemoryRepository:
@@ -82,6 +85,7 @@ class MemoryRepository:
         self._bookings: dict[str, Booking] = {}
         self._audit: list[AuditRecord] = []
         self._outlook_sync: dict[str, OutlookSyncRecord] = {}
+        self._credentials: dict[str, StaffCredential] = {}
 
     @contextmanager
     def atomic(
@@ -98,6 +102,7 @@ class MemoryRepository:
                 self._bookings.copy(),
                 deepcopy(self._audit),
                 self._outlook_sync.copy(),
+                self._credentials.copy(),
             )
             try:
                 yield
@@ -110,6 +115,7 @@ class MemoryRepository:
                     self._bookings,
                     self._audit,
                     self._outlook_sync,
+                    self._credentials,
                 ) = snapshot
                 raise
 
@@ -218,6 +224,7 @@ class MemoryRepository:
             self._bookings.clear()
             self._audit.clear()
             self._outlook_sync.clear()
+            self._credentials.clear()
 
     def get_outlook_sync(self, booking_id: str) -> OutlookSyncRecord | None:
         with self._lock:
@@ -230,3 +237,11 @@ class MemoryRepository:
     def save_outlook_sync(self, record: OutlookSyncRecord) -> None:
         with self._lock:
             self._outlook_sync[record.booking_id] = record
+
+    def get_credential(self, principal_id: str) -> StaffCredential | None:
+        with self._lock:
+            return self._credentials.get(principal_id)
+
+    def save_credential(self, credential: StaffCredential) -> None:
+        with self._lock:
+            self._credentials[credential.principal_id] = credential

@@ -1,4 +1,5 @@
-"""Manager-only staff list: change student/admin roles, (de)activate accounts, add managers."""
+"""Manager-only user list. Students and staff (Admin, Manager) are separate accounts: staff are added with
+Add staff, keep the role they were created with, and never come from promoting a student."""
 
 from dataclasses import replace
 from datetime import timedelta
@@ -34,11 +35,15 @@ class UserManagementAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(response.status_code, 201, response.data)
         return self.user(zid)
 
+    def add_staff(self, zid, role):
+        return self.manager.post("/api/v1/admin/users/staff/", {
+            "zid": zid, "display_name": f"Staff {zid}", "university_email": f"{zid}@ad.unsw.edu.au", "role": role}, format="json")
+
     def test_only_an_active_manager_can_see_or_change_the_list(self):
         for client in (self.verified, self.student, self.admin):
             with self.subTest(client=client):
                 self.assert_error(client.get(USERS), 403)
-                self.assert_error(self.patch("z1000002", {"role": "ADMIN"}, client), 403)
+                self.assert_error(self.patch("z9000001", {"role": "MANAGER"}, client), 403)
         self.assert_error(self.client.get(USERS), 401)
 
     def test_list_and_filters(self):
@@ -48,7 +53,10 @@ class UserManagementAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual({item["zid"] for item in everyone}, {item.zid for item in seeded})
         self.assertTrue({"z1000001", "z9000001", "z9000002"} <= {item["zid"] for item in everyone})
         self.assertEqual(set(everyone[0]), {"id", "zid", "display_name", "role", "active", "university_email",
-                                            "inductions", "induction_status"})
+                                            "inductions", "induction_status", "is_staff",
+                                            "activation_status", "invite_code"})
+        self.assertEqual({item["zid"]: item["is_staff"] for item in everyone}["z9000001"], True)
+        self.assertEqual({item["zid"]: item["is_staff"] for item in everyone}["z1000001"], False)
         for role in (Role.STUDENT, Role.ADMIN, Role.MANAGER):
             with self.subTest(role=role):
                 listed = self.items(self.manager.get(USERS, {"role": role.value}))
@@ -59,31 +67,52 @@ class UserManagementAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertTrue(all("z1000" in item["zid"] for item in students))
         self.assert_error(self.manager.get(USERS, {"role": "OWNER"}), 400)
 
-    def test_promoting_and_demoting_takes_effect_on_the_next_request(self):
-        self.pass_inductions("z1000002")
-        changed = self.patch("z1000002", {"role": "ADMIN"})
-        self.assertEqual((changed.status_code, changed.data["role"]), (200, "ADMIN"))
-        self.assertEqual(self.student.get("/api/v1/admin/bookings/").status_code, 200)
-        self.assertEqual(self.create_booking(self.student).status_code, 201)  # an Admin (tutor) may still book
-        self.patch("z1000002", {"role": "STUDENT"})
-        self.assert_error(self.student.get("/api/v1/admin/bookings/"), 403)
+    def test_students_are_never_given_a_staff_role(self):
+        self.pass_inductions("z1000002")  # passing every induction proves lab eligibility, not employment
+        for role in ("ADMIN", "MANAGER"):
+            with self.subTest(role=role):
+                refused = self.patch("z1000002", {"role": role})
+                self.assert_error(refused, 409)
+                self.assertEqual(refused.data["error"]["code"], "ROLE_CHANGE_NOT_ALLOWED")
+        self.assertEqual(self.user("z1000002").role, Role.STUDENT)
 
-    def test_student_must_pass_every_induction_to_become_admin(self):
-        # z1000001 has only the general induction; the advanced one is still missing.
-        refused = self.patch("z1000001", {"role": "ADMIN"})
+    def test_staff_are_not_turned_into_students(self):
+        refused = self.patch("z9000001", {"role": "STUDENT"})
         self.assert_error(refused, 409)
-        error = refused.data["error"]
-        self.assertEqual(error["code"], "INDUCTION_REQUIRED_FOR_ADMIN")
-        self.assertIn("Qualified demo student (z1000001) must pass every induction", error["message"])
-        self.assertEqual([item["name"] for item in error["details"]["missing_inductions"]], ["Advanced laboratory training"])
-        self.assertEqual(self.user("z1000001").role, Role.STUDENT)
-        for status, valid_until in ((QualificationStatus.PENDING, None), (QualificationStatus.REJECTED, None),
-                                    (QualificationStatus.VERIFIED, self.service.now() - timedelta(days=1))):
-            with self.subTest(status=status, expired=valid_until is not None):
-                self.pass_inductions("z1000002", status, valid_until)
-                self.assert_error(self.patch("z1000002", {"role": "ADMIN"}), 409)
-        self.pass_inductions("z1000002")
-        self.assertEqual(self.patch("z1000002", {"role": "ADMIN"}).data["role"], "ADMIN")
+        self.assertEqual(refused.data["error"]["code"], "ROLE_CHANGE_NOT_ALLOWED")
+
+    def test_add_staff_creates_admin_or_manager_accounts(self):
+        admin = self.add_staff("z5111111", "ADMIN")
+        self.assertEqual((admin.status_code, admin.data["role"], admin.data["is_staff"]), (201, "ADMIN", True))
+        self.assertEqual(self.add_staff("z5222222", "MANAGER").data["role"], "MANAGER")
+        self.assert_error(self.add_staff("z5333333", "STUDENT"), 400)
+        duplicate = self.add_staff("z1000001", "ADMIN")
+        self.assert_error(duplicate, 409)
+        self.assertEqual(duplicate.data["error"]["code"], "USER_EXISTS")
+        for client in (self.admin, self.verified):
+            with self.subTest(client=client):
+                self.assert_error(client.post("/api/v1/admin/users/staff/", {
+                    "zid": "z5444444", "display_name": "X", "university_email": "z5444444@ad.unsw.edu.au", "role": "ADMIN"},
+                    format="json"), 403)
+
+    def test_admin_and_manager_roles_are_fixed(self):
+        other = self.add_manager()
+        for zid, role in (("z9000001", "MANAGER"), (other.zid, "ADMIN")):
+            with self.subTest(zid=zid):
+                refused = self.patch(zid, {"role": role})
+                self.assert_error(refused, 409)
+                self.assertEqual(refused.data["error"]["code"], "ROLE_CHANGE_NOT_ALLOWED")
+        self.assertEqual((self.user("z9000001").role, self.user(other.zid).role), (Role.ADMIN, Role.MANAGER))
+        self.assert_error(self.admin.get(USERS), 403)
+        # Sending the current role is not a change.
+        self.assertEqual(self.patch("z9000001", {"role": "ADMIN", "active": True}).status_code, 200)
+
+    def test_deactivating_a_student_rejects_their_undecided_requests(self):
+        pending = self.create_booking().data
+        self.assertEqual(pending["status"], "PENDING_APPROVAL")
+        self.patch("z1000001", {"active": False})
+        booking = self.service.repo.get_booking(pending["id"])
+        self.assertEqual((booking.status.value, booking.reason_code), ("REJECTED", "ACCOUNT_DEACTIVATED"))
 
     def test_list_shows_each_persons_induction_status(self):
         people = {item["zid"]: item for item in self.items(self.manager.get(USERS))}
@@ -93,27 +122,11 @@ class UserManagementAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.pass_inductions("z1000003")
         self.assertEqual(self.patch("z1000003", {"active": True}).data["induction_status"], "VERIFIED")
 
-    def test_admins_can_be_moved_back_without_an_induction_check(self):
-        self.assertEqual(self.patch("z9000001", {"role": "STUDENT"}).data["role"], "STUDENT")
-        self.assertEqual(self.patch("z9000001", {"role": "ADMIN"}).status_code, 409)  # now a student without inductions
-
-    def test_manager_role_comes_only_from_add_manager(self):
-        for zid in ("z1000002", "z9000001"):
-            with self.subTest(zid=zid):
-                response = self.patch(zid, {"role": "MANAGER"})
-                self.assert_error(response, 403)
-                self.assertEqual(response.data["error"]["code"], "MANAGER_ROLE_NOT_ASSIGNABLE")
-        other = self.add_manager()
-        demoted = self.patch(other.zid, {"role": "ADMIN"})
-        self.assert_error(demoted, 403)
-        self.assertEqual(demoted.data["error"]["code"], "MANAGER_ROLE_NOT_ASSIGNABLE")
-        self.assertEqual(self.patch(other.zid, {"active": False}).data["active"], False)  # deactivating is still allowed
-
     def test_a_new_manager_can_manage_others(self):
         other = self.add_manager()
         client = self.login(other.zid)
-        self.pass_inductions("z1000002")
-        self.assertEqual(self.patch("z1000002", {"role": "ADMIN"}, client).status_code, 200)
+        self.assertEqual(self.patch("z9000001", {"active": False}, client).data["active"], False)
+        self.assertEqual(self.patch(other.zid, {"active": False}).data["active"], False)
 
     def test_deactivated_users_are_locked_out_until_reactivated(self):
         self.assertEqual(self.patch("z1000001", {"active": False}).data["active"], False)
@@ -134,13 +147,12 @@ class UserManagementAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assert_error(self.manager.patch(f"{USERS}00000000-0000-0000-0000-000000000999/", {"role": "ADMIN"}, format="json"), 404)
 
     def test_changes_are_audited(self):
-        self.pass_inductions("z1000002")
-        self.patch("z1000002", {"role": "ADMIN"})
+        self.patch("z9000001", {"active": False})
         record = self.items(self.manager.get("/api/v1/admin/audit/", {"action": "USER_UPDATED"}))
         self.assertEqual(len(record), 1)
         self.assertEqual(record[0]["actor"]["zid"], "z9000002")
-        self.assertEqual({key: record[0]["details"][key] for key in ("zid", "previous_role", "role")},
-                         {"zid": "z1000002", "previous_role": "STUDENT", "role": "ADMIN"})
+        self.assertEqual({key: record[0]["details"][key] for key in ("zid", "previous_active", "active", "role")},
+                         {"zid": "z9000001", "previous_active": True, "active": False, "role": "ADMIN"})
 
     def test_two_managers_cannot_lock_everyone_out_concurrently(self):
         second = self.add_manager()

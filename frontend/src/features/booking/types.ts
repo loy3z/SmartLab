@@ -18,6 +18,8 @@ export interface Resource {
   pending_hold_minutes: number
   status: ResourceStatus
   status_reason: string | null
+  /** Equipment: the room it is kept in. Rooms: null. */
+  room_id: string | null
 }
 
 export type SlotReason =
@@ -47,6 +49,9 @@ export type QualificationStatus =
   | 'VERIFIED'
   | 'REJECTED'
   | 'EXPIRED'
+  | 'EXPIRES_BEFORE_END'
+  /** A prerequisite induction (e.g. General for Advanced) is not verified and current. */
+  | 'PREREQUISITE_REQUIRED'
 
 export interface Availability {
   resource_id: string
@@ -65,6 +70,8 @@ export interface Availability {
   status_reason?: string | null
   /** The resource's admin review window in minutes. */
   review_window_minutes?: number
+  /** Set when qualification_status is PREREQUISITE_REQUIRED. */
+  missing_prerequisite_id?: string | null
 }
 
 export type BookingStatus =
@@ -129,6 +136,8 @@ export interface AuthConfig {
   demo_registration_enabled: boolean
   sso_connected: boolean
   token_type: 'Bearer'
+  /** Admins and Managers sign in on the staff page with zID + password. */
+  staff_sign_in_enabled?: boolean
 }
 
 export interface Dashboard {
@@ -141,6 +150,8 @@ export interface Requirement {
   id: string
   name: string
   description: string
+  /** Inductions that must be verified and current first (e.g. General before Advanced). */
+  prerequisite_ids: string[]
 }
 
 export interface Qualification {
@@ -186,6 +197,12 @@ export interface UserInduction {
 }
 
 export interface ManagedUser extends User {
+  /** Admins and Managers are staff accounts; students are never promoted to staff. */
+  is_staff: boolean
+  /** Staff only: AWAITING_ACTIVATION until they choose a password with the invite code. Null for students. */
+  activation_status: 'AWAITING_ACTIVATION' | 'ACTIVATED' | null
+  /** Staff only, while awaiting activation: the code the Manager hands over. */
+  invite_code: string | null
   inductions: UserInduction[]
   induction_status: 'VERIFIED' | 'INCOMPLETE'
 }

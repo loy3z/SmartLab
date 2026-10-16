@@ -73,6 +73,11 @@ class Principal:
             raise ValueError("A university email address is required for each principal.")
 
     @property
+    def is_staff(self) -> bool:
+        """Admins and Managers are university staff. Staff review and manage; they do not book."""
+        return self.role in (Role.ADMIN, Role.MANAGER)
+
+    @property
     def is_authenticated(self) -> bool:
         return True
 
@@ -82,10 +87,36 @@ class Principal:
 
 
 @dataclass(frozen=True)
+class StaffCredential:
+    """How an Admin or Manager signs in on the staff page (students use university sign-in instead).
+
+    Kept apart from Principal so a password hash can never appear in a user response. A Manager creates
+    the staff account with an invite code; the staff member activates it by choosing a password, which
+    clears the code. Resetting access clears the password and issues a new code.
+    """
+    principal_id: str
+    password_hash: str | None = None  # Django password hash; None until the account is activated
+    invite_code: str | None = None    # one-time code handed over by a Manager; None once activated
+    updated_at: datetime | None = None
+
+    @property
+    def activated(self) -> bool:
+        return self.password_hash is not None
+
+
+@dataclass(frozen=True)
 class QualificationRequirement:
     id: str
     name: str
     description: str
+    # Requirements that must be verified and current first (e.g. Advanced needs General). Stored data,
+    # not code: change it with BookingService.set_prerequisites or in the database.
+    prerequisite_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "prerequisite_ids", tuple(str(item) for item in self.prerequisite_ids))
+        if self.id in self.prerequisite_ids:
+            raise ValueError("A requirement cannot be its own prerequisite.")
 
 
 @dataclass(frozen=True)
@@ -106,8 +137,15 @@ class Resource:
     pending_hold_minutes: int = 1440
     status: ResourceStatus = ResourceStatus.AVAILABLE
     status_reason: str | None = None
+    # Equipment: the room it is kept in. Rooms: None. Display and grouping only; a room being closed
+    # does not stop its equipment being borrowed.
+    room_id: str | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.kind, ResourceKind):
+            object.__setattr__(self, "kind", ResourceKind(self.kind))
+        if self.kind == ResourceKind.ROOM and self.room_id is not None:
+            raise ValueError("A room cannot belong to another room.")
         if isinstance(self.pending_hold_minutes, bool) or not isinstance(self.pending_hold_minutes, int) \
                 or not 1 <= self.pending_hold_minutes <= MAX_PENDING_HOLD_MINUTES:
             raise ValueError(f"pending_hold_minutes must be an integer from 1 to {MAX_PENDING_HOLD_MINUTES}.")

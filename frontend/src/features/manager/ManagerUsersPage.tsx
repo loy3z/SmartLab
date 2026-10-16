@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { EmptyState, PageHeader, RefreshStamp, Tabs } from '../../ui/components'
 import { useFeedback } from '../../ui/feedback-context'
 import { useAuth } from '../auth/auth-context'
-import { createManager, listManagerUsers, updateUserRole } from '../booking/api'
+import { createStaff, listManagerUsers, resetStaffAccess, setUserActive } from '../booking/api'
 import { errorMessage, fmtDateTime } from '../booking/format'
 import type { ManagedUser, Role, UserInduction } from '../booking/types'
 
@@ -17,13 +17,16 @@ const INDUCTION_LABEL: Record<UserInduction['status'], string> = {
 const current = (item: UserInduction, now: number) =>
   item.status === 'VERIFIED' && (item.valid_until === null || Date.parse(item.valid_until) > now)
 
-/** A student may become an Admin only when every induction is verified and current. */
-function canPromote(user: ManagedUser, now: number): boolean {
-  return Array.isArray(user.inductions) && user.inductions.length > 0 && user.inductions.every((item) => current(item, now))
+type StaffRole = 'ADMIN' | 'MANAGER'
+
+const STAFF_HELP: Record<StaffRole, string> = {
+  ADMIN: 'Admins review induction evidence and booking requests. Staff accounts do not book resources.',
+  MANAGER: 'Managers can do everything an Admin can, and also manage users, resources and every booking.',
 }
 
 function InductionSummary({ user, now }: { user: ManagedUser; now: number }) {
-  if (user.role === 'MANAGER') return <span className="bk-muted">—</span>
+  // Staff do not book, so inductions only matter for students.
+  if (user.role !== 'STUDENT') return <span className="bk-muted">—</span>
   const items = user.inductions ?? []
   const ok = items.filter((item) => current(item, now)).length
   const tone = items.length && ok === items.length ? 'is-green' : ok ? 'is-amber' : 'is-grey'
@@ -45,6 +48,20 @@ function InductionSummary({ user, now }: { user: ManagedUser; now: number }) {
   )
 }
 
+/** Staff sign in on the staff page. Until they activate, show the invite code the Manager hands over. */
+function StaffAccess({ user, onCopy }: { user: ManagedUser; onCopy: (code: string) => void }) {
+  if (user.activation_status === 'ACTIVATED') return <span className="ui-pill is-green">Activated</span>
+  return (
+    <span className="um-invite">
+      <span className="ui-pill is-amber">Awaiting activation</span>
+      {user.invite_code && <>
+        <code aria-label={`Invite code for ${user.zid}`}>{user.invite_code}</code>
+        <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => onCopy(user.invite_code ?? '')}>Copy</button>
+      </>}
+    </span>
+  )
+}
+
 export function ManagerUsersPage() {
   const feedback = useFeedback()
   const { user: me } = useAuth()
@@ -54,9 +71,9 @@ export function ManagerUsersPage() {
   const [loading, setLoading] = useState(true)
   const [loadedAt, setLoadedAt] = useState<number | null>(null)
   const [error, setError] = useState('')
-  const [busyId, setBusyId] = useState<string | null>(null)
   const [refresh, setRefresh] = useState(0)
   const [adding, setAdding] = useState(false)
+  const [busyId, setBusyId] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -91,30 +108,61 @@ export function ManagerUsersPage() {
       (!term || [u.zid, u.display_name, u.university_email].some((v) => v.toLowerCase().includes(term))))
   }, [users, filter, search])
 
-  async function changeRole(user: ManagedUser) {
-    if (busyId || user.role === 'MANAGER') return
-    const nextRole = user.role === 'STUDENT' ? 'ADMIN' : 'STUDENT'
-    if (nextRole === 'ADMIN' && !canPromote(user, Date.now())) {
-      feedback.error(`${user.display_name} must have every induction verified and current before becoming an Admin.`, 'Cannot promote yet')
-      return
-    }
+  async function toggleActive(user: ManagedUser) {
+    if (busyId) return
+    const deactivate = user.active
     const answer = await feedback.confirm({
-      title: nextRole === 'ADMIN' ? `Make ${user.display_name} an Admin?` : `Change ${user.display_name} back to Student?`,
-      details: [{ label: 'zID', value: user.zid }, { label: 'Email', value: user.university_email }],
-      message: nextRole === 'ADMIN'
-        ? 'Admins review induction evidence and booking requests. They can still book for themselves but cannot approve their own requests.'
-        : 'They lose access to the review pages. Their bookings are kept.',
-      confirmLabel: nextRole === 'ADMIN' ? 'Make Admin' : 'Change to Student',
-      danger: nextRole === 'STUDENT',
+      title: deactivate ? `Deactivate ${user.display_name}?` : `Reactivate ${user.display_name}?`,
+      details: [{ label: 'zID', value: user.zid }, { label: 'Role', value: ROLE_LABEL[user.role] }],
+      message: !deactivate
+        ? `They can sign in again as ${ROLE_LABEL[user.role]}.`
+        : user.role === 'STUDENT'
+          ? 'They can no longer sign in. Their requests that are awaiting approval or on the waitlist are rejected now and the time passes to the next person; approved bookings stay and can be reviewed in Room booking management.'
+          : 'They can no longer sign in. Use this when someone leaves the role; add their replacement with Add staff.',
+      confirmLabel: deactivate ? 'Deactivate' : 'Reactivate',
+      danger: deactivate,
     })
     if (!answer.confirmed) return
     setBusyId(user.id)
     try {
-      const updated = await updateUserRole(user.id, nextRole)
+      const updated = await setUserActive(user.id, !deactivate)
       setUsers((list) => list.map((item) => (item.id === updated.id ? updated : item)))
-      feedback.success(`${updated.display_name} (${updated.zid}) is now ${ROLE_LABEL[updated.role]}.`, 'Role updated')
+      feedback.success(`${updated.display_name} (${updated.zid}) ${updated.active ? 'can sign in again' : 'can no longer sign in'}.`,
+        updated.active ? 'Account reactivated' : 'Account deactivated')
     } catch (err: unknown) {
-      feedback.error(errorMessage(err), 'Role not changed')
+      feedback.error(errorMessage(err), deactivate ? 'Not deactivated' : 'Not reactivated')
+      reload()
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function copyCode(code: string) {
+    try {
+      await navigator.clipboard.writeText(code)
+      feedback.success(`Invite code ${code} copied.`, 'Copied')
+    } catch {
+      feedback.error(`Copy it by hand: ${code}`, 'Could not copy')
+    }
+  }
+
+  async function resetAccess(user: ManagedUser) {
+    if (busyId) return
+    const answer = await feedback.confirm({
+      title: `Reset sign-in for ${user.display_name}?`,
+      details: [{ label: 'zID', value: user.zid }, { label: 'Role', value: ROLE_LABEL[user.role] }],
+      message: 'Their current password stops working and a new invite code is shown here. Give them the code; they choose a new password on the Staff sign-in page. Their role does not change.',
+      confirmLabel: 'Reset access',
+      danger: true,
+    })
+    if (!answer.confirmed) return
+    setBusyId(user.id)
+    try {
+      const updated = await resetStaffAccess(user.id)
+      setUsers((list) => list.map((item) => (item.id === updated.id ? updated : item)))
+      feedback.success(`New invite code for ${updated.zid}: ${updated.invite_code}. It is also shown in the list.`, 'Access reset')
+    } catch (err: unknown) {
+      feedback.error(errorMessage(err), 'Access not reset')
       reload()
     } finally {
       setBusyId(null)
@@ -125,11 +173,11 @@ export function ManagerUsersPage() {
     <section>
       <PageHeader
         title="User Management"
-        description="See everyone's role and induction status. Promote trusted students to Admin, or add a new Manager."
+        description="See every account. Students book resources; Admins review requests and evidence; Managers set the rules and manage people. Each role is fixed when the account is created: to replace someone, add the new account and deactivate the old one."
         actions={(
           <>
             <RefreshStamp at={loadedAt} onRefresh={reload} busy={loading && loadedAt !== null} />
-            <button type="button" className="ui-btn ui-btn-primary" onClick={() => setAdding(true)}>+ Add manager</button>
+            <button type="button" className="ui-btn ui-btn-primary" onClick={() => setAdding(true)}>+ Add staff</button>
           </>
         )}
       />
@@ -160,40 +208,46 @@ export function ManagerUsersPage() {
         <div className="ui-table-wrap">
           <table className="ui-table">
             <thead>
-              <tr><th>Name</th><th>zID</th><th className="ui-hide-sm">Email</th><th>Role</th><th>Induction</th><th><span className="sr-only">Actions</span></th></tr>
+              <tr><th>Name</th><th>zID</th><th className="ui-hide-sm">Email</th><th>Role</th><th>Induction / sign-in</th><th><span className="sr-only">Actions</span></th></tr>
             </thead>
             <tbody>
               {rows.map((user) => {
-                const blocked = user.role === 'STUDENT' && !canPromote(user, now)
                 const self = me?.id === user.id
                 return (
                   <tr key={user.id}>
                     <td>
                       <span className="ui-primary-text">{user.display_name || user.zid}</span>
-                      {!user.active && <span className="ui-sub-text">Inactive account</span>}
                       {self && <span className="ui-sub-text">You</span>}
                     </td>
                     <td>{user.zid}</td>
                     <td className="ui-hide-sm">{user.university_email}</td>
-                    <td><span className={`ui-pill ${ROLE_TONE[user.role]}`}>{ROLE_LABEL[user.role]}</span></td>
-                    <td><InductionSummary user={user} now={now} /></td>
+                    <td>
+                      <span className={`ui-pill ${ROLE_TONE[user.role]}`}>{ROLE_LABEL[user.role]}</span>
+                      {!user.active && <> <span className="ui-pill is-red">Inactive</span></>}
+                    </td>
+                    <td>{user.is_staff ? <StaffAccess user={user} onCopy={(code) => void copyCode(code)} /> : <InductionSummary user={user} now={now} />}</td>
                     <td>
                       <div className="ui-actions">
-                        {user.role === 'STUDENT' && (
+                        {user.is_staff && !self && user.active && (
                           <button
                             type="button"
                             className="ui-btn ui-btn-ghost ui-btn-sm"
-                            disabled={busyId !== null || blocked}
-                            title={blocked ? 'Every induction must be verified and current first.' : undefined}
-                            aria-label={`Promote ${user.zid} to Admin`}
-                            onClick={() => void changeRole(user)}
+                            disabled={busyId !== null}
+                            aria-label={`Reset access for ${user.zid}`}
+                            onClick={() => void resetAccess(user)}
                           >
-                            {busyId === user.id ? 'Saving…' : 'Make Admin'}
+                            Reset access
                           </button>
                         )}
-                        {user.role === 'ADMIN' && (
-                          <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busyId !== null} aria-label={`Change ${user.zid} to Student`} onClick={() => void changeRole(user)}>
-                            {busyId === user.id ? 'Saving…' : 'Change to Student'}
+                        {!self && (
+                          <button
+                            type="button"
+                            className="ui-btn ui-btn-ghost ui-btn-sm"
+                            disabled={busyId !== null}
+                            aria-label={`${user.active ? 'Deactivate' : 'Reactivate'} ${user.zid}`}
+                            onClick={() => void toggleActive(user)}
+                          >
+                            {busyId === user.id ? 'Saving…' : user.active ? 'Deactivate' : 'Reactivate'}
                           </button>
                         )}
                       </div>
@@ -207,12 +261,12 @@ export function ManagerUsersPage() {
       )}
 
       {adding && (
-        <AddManagerDialog
+        <AddStaffDialog
           onClose={() => setAdding(false)}
           onCreated={(created) => {
             setAdding(false)
             setUsers((list) => [...list, created].sort((a, b) => a.zid.localeCompare(b.zid)))
-            feedback.success(`${created.display_name} (${created.zid}) can now sign in as a Manager.`, 'Manager added')
+            feedback.success(`Give ${created.display_name} the invite code ${created.invite_code}. They activate their ${created.role === 'ADMIN' ? 'Admin' : 'Manager'} account on the Staff sign-in page; the code also stays in the list until then.`, 'Staff added')
           }}
         />
       )}
@@ -220,8 +274,9 @@ export function ManagerUsersPage() {
   )
 }
 
-function AddManagerDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (user: ManagedUser) => void }) {
+function AddStaffDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (user: ManagedUser) => void }) {
   const ref = useRef<HTMLDialogElement>(null)
+  const [role, setRole] = useState<StaffRole>('ADMIN')
   const [zid, setZid] = useState('')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -240,7 +295,7 @@ function AddManagerDialog({ onClose, onCreated }: { onClose: () => void; onCreat
     setBusy(true)
     setError('')
     try {
-      onCreated(await createManager({ zid: zid.trim().toLowerCase(), display_name: name.trim(), university_email: email.trim() }))
+      onCreated(await createStaff({ zid: zid.trim().toLowerCase(), display_name: name.trim(), university_email: email.trim(), role }))
     } catch (err) {
       const e = err as { code?: string }
       setError(e?.code === 'USER_EXISTS' ? 'Someone with this zID already exists.' : errorMessage(err))
@@ -250,17 +305,24 @@ function AddManagerDialog({ onClose, onCreated }: { onClose: () => void; onCreat
   }
 
   return (
-    <dialog ref={ref} className="ui-dialog" aria-labelledby="add-manager-title" onCancel={(e) => { e.preventDefault(); onClose() }}>
+    <dialog ref={ref} className="ui-dialog" aria-labelledby="add-staff-title" onCancel={(e) => { e.preventDefault(); onClose() }}>
       <form className="ui-dialog-card" onSubmit={submit}>
-        <h2 id="add-manager-title">Add a manager</h2>
-        <p className="ui-dialog-message">Creates a new Manager account. Managers have every admin permission and can manage rooms and users.</p>
+        <h2 id="add-staff-title">Add staff</h2>
+        <p className="ui-dialog-message">Creates a new staff account and an invite code. They activate it on the Staff sign-in page by choosing a password. The role cannot be changed later: to replace someone, add a new account and deactivate the old one. Staff do not book resources, and existing student accounts cannot be turned into staff.</p>
+        <label className="ui-field"><span>Role</span>
+          <select value={role} onChange={(e) => setRole(e.target.value as StaffRole)}>
+            <option value="ADMIN">Admin</option>
+            <option value="MANAGER">Manager</option>
+          </select>
+        </label>
+        <p className="bk-muted">{STAFF_HELP[role]}</p>
         <label className="ui-field"><span>zID</span><input required autoFocus value={zid} placeholder="z5123456" onChange={(e) => setZid(e.target.value)} /></label>
         <label className="ui-field"><span>Full name</span><input required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} /></label>
         <label className="ui-field"><span>University email</span><input required type="email" maxLength={254} value={email} placeholder="z5123456@ad.unsw.edu.au" onChange={(e) => setEmail(e.target.value)} /></label>
         {error && <p className="bk-error" role="alert">{error}</p>}
         <div className="ui-dialog-actions">
           <button type="button" className="ui-btn ui-btn-ghost" onClick={onClose}>Cancel</button>
-          <button type="submit" className="ui-btn ui-btn-primary" disabled={busy || !zid.trim() || !name.trim() || !email.trim()}>{busy ? 'Adding…' : 'Add manager'}</button>
+          <button type="submit" className="ui-btn ui-btn-primary" disabled={busy || !zid.trim() || !name.trim() || !email.trim()}>{busy ? 'Adding…' : `Add ${role === 'ADMIN' ? 'admin' : 'manager'}`}</button>
         </div>
       </form>
     </dialog>

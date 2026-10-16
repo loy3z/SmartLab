@@ -4,12 +4,16 @@ from threading import RLock
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.utils.module_loading import import_string
-from .domain import Principal, QualificationRequirement, QualificationStatus, QualificationSubmission, Resource, ResourceKind, Role
+from .domain import (Principal, QualificationRequirement, QualificationStatus, QualificationSubmission, Resource, ResourceKind, Role,
+                     StaffCredential)
 from .services import BookingService
 from .calendar_sync import CalendarSyncService
 
 _service = None
 _lock = RLock()
+
+# Demo password "smartlab-staff-demo" for the seeded Admin and Manager (fake accounts, development only).
+DEMO_STAFF_PASSWORD_HASH = "pbkdf2_sha256$1000000$smartlabdemostaff1$VEZGh4DfYxawq0X9qmaNEO0lg4UNdhtLIxnXrS21Btw="
 
 def fixed_id(number):
     return f"00000000-0000-0000-0000-{number:012d}"
@@ -42,15 +46,20 @@ DEMO_RESOURCES = [
     (220, "Data Logger 001", ResourceKind.EQUIPMENT, "Lab Room 1", False),
 ]
 
+ROOM_IDS = {"Lab Room 1": fixed_id(101), "Lab Room 2": fixed_id(102)}
+
 def seed_demo_data(service):
     requirement = QualificationRequirement(fixed_id(1), "General laboratory induction", "Demo requirement; replace with client-approved training rules.")
     service.repo.save_requirement(requirement)
-    advanced = QualificationRequirement(fixed_id(2), "Advanced laboratory training", "Separate prerequisite for Lab Room 2 and its specialist devices.")
+    # Advanced training needs a verified, current General induction first (stored data; change with set_prerequisites).
+    advanced = QualificationRequirement(fixed_id(2), "Advanced laboratory training", "Separate prerequisite for Lab Room 2 and its specialist devices.",
+                                        prerequisite_ids=(requirement.id,))
     service.repo.save_requirement(advanced)
     for number, name, kind, location, needs_advanced in DEMO_RESOURCES:
         service.repo.save_resource(Resource(fixed_id(number), name, kind, location, "Single resource; demonstration data.",
             required_qualification_id=advanced.id if needs_advanced else requirement.id,
-            pending_hold_minutes=settings.DEFAULT_PENDING_HOLD_MINUTES))
+            pending_hold_minutes=service.rules().default_review_window_minutes,
+            room_id=ROOM_IDS.get(location) if kind == ResourceKind.EQUIPMENT else None))
     for number, zid, name, role in [(501, "z1000001", "Qualified demo student", Role.STUDENT),
                                     (502, "z1000002", "New demo student", Role.STUDENT),
                                     (503, "z1000003", "New demo student3", Role.STUDENT),
@@ -58,6 +67,9 @@ def seed_demo_data(service):
                                     (901, "z9000001", "Demo administrator", Role.ADMIN),
                                     (902, "z9000002", "Demo manager", Role.MANAGER)]:
         service.repo.save_principal(Principal(fixed_id(number), zid, name, role, f"{zid}@ad.unsw.edu.au"))
+        if role != Role.STUDENT:
+            # Demo staff are already activated with the demo password (see README); same hash as seed_users.sql.
+            service.repo.save_credential(StaffCredential(fixed_id(number), password_hash=DEMO_STAFF_PASSWORD_HASH))
     now = service.now()
     evidence = service.storage.save(b"%PDF-1.4\nDemo seeded induction evidence\n%%EOF", "demo-induction.pdf", "application/pdf", fixed_id(501))
     service.repo.save_submission(QualificationSubmission(fixed_id(601), fixed_id(501), requirement.id, "Seeded demo induction", "Development fixture", evidence.id, now,
@@ -74,10 +86,7 @@ def get_service():
             from .storage import MemoryFileStorage
             if not settings.DEBUG and (isinstance(repo, MemoryRepository) or isinstance(storage, MemoryFileStorage)):
                 raise ImproperlyConfigured("Configure durable repository and private file-storage adapters outside DEBUG mode.")
-            _service = BookingService(repo, storage,
-                                      qualification_validity_days=settings.QUALIFICATION_VALIDITY_DAYS,
-                                      min_advance_days=settings.MIN_ADVANCE_DAYS,
-                                      max_advance_days=settings.MAX_ADVANCE_DAYS)
+            _service = BookingService(repo, storage, rules=import_string(settings.RULES_PROVIDER)())
             _service.calendar_sync = CalendarSyncService(repo, import_string(settings.OUTLOOK_PROVIDER_FACTORY)(),
                 enabled=settings.OUTLOOK_ENABLED, clock=lambda: _service.now())
             if settings.SEED_DEMO_DATA:

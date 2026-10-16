@@ -5,11 +5,10 @@ import { errorMessage } from '../booking/format'
 import type { AuthConfig } from '../booking/types'
 import './mock-sso.css'
 
+// University sign-in is for students. Admins and Managers use the staff sign-in page.
 const demoAccounts = [
   ['z1000001', 'Student with induction'],
   ['z1000002', 'Student without induction'],
-  ['z9000001', 'Administrator'],
-  ['z9000002', 'Manager'],
 ] as const
 
 export function MockSsoPage({ notice = '' }: { notice?: string }) {
@@ -139,7 +138,7 @@ export function MockSsoPage({ notice = '' }: { notice?: string }) {
           <div className="mock-sso-options-content">
             <p>Enter one of these demo zIDs above, then select <strong>Next</strong>.</p>
             <dl>{demoAccounts.map(([zid, name]) => <div key={zid}><dt>{name}</dt><dd><code>{zid}</code></dd></div>)}</dl>
-            <p>Student training descriptions refer to the initial demo data.</p>
+            <p>Student training descriptions refer to the initial demo data. Admins and Managers sign in on the <Link to="/staff/login">staff sign-in page</Link>.</p>
           </div>
         </details>}
       </main>

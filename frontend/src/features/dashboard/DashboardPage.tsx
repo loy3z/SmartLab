@@ -5,6 +5,7 @@ import { errorMessage, fmtDateTime, fmtTime, STATUS_TEXT, TZ } from '../booking/
 import { AlertIcon, CalendarIcon, CapIcon, CheckIcon, ClockIcon, DoorIcon } from '../booking/icons'
 import type { Dashboard, Qualification, Requirement, Resource, User } from '../booking/types'
 import { InductionRow } from '../induction/InductionRow'
+import { blockingPrerequisite } from '../induction/status'
 import './dashboard.css'
 
 type DashboardState =
@@ -138,6 +139,7 @@ function DashboardContent({ state }: { state: Extract<DashboardState, { status: 
         id: qualification.requirement_id,
         name: qualification.title || 'Induction submission',
         description: '',
+        prerequisite_ids: [],
       })
     }
   }
@@ -220,6 +222,7 @@ function DashboardContent({ state }: { state: Extract<DashboardState, { status: 
                     latest={qualifications.get(requirement.id)}
                     resources={resources}
                     linkTo={`/induction?requirement=${requirement.id}`}
+                    blockedBy={blockingPrerequisite(requirement, qualifications, [...requirementById.values()])}
                   />
                 </li>
               ))}

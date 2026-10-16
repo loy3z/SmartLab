@@ -104,6 +104,8 @@ export const QUAL_TEXT: Record<QualificationStatus, string> = {
   VERIFIED: 'Induction verified.',
   REJECTED: 'Your induction was rejected. Please resubmit.',
   EXPIRED: 'Your induction has expired. Please resubmit.',
+  EXPIRES_BEFORE_END: 'Your induction expires before this booking would end. Choose an earlier date or renew it first.',
+  PREREQUISITE_REQUIRED: 'This resource needs an advanced induction, and you first need a current General laboratory induction.',
 }
 
 const ERROR_TEXT: Record<string, string> = {
@@ -128,6 +130,18 @@ const ERROR_TEXT: Record<string, string> = {
   REQUEST_NOT_REVIEWABLE: 'This request has already been decided or moved. The list has been refreshed.',
   ALREADY_REVIEWED: 'This has already been reviewed by someone else. The list has been refreshed.',
   NETWORK_ERROR: 'Unable to reach SmartLab. Check your connection and try again.',
+  ACCOUNT_INACTIVE: "The requester's account is no longer active, so this request cannot be approved.",
+  USE_STAFF_SIGN_IN: 'Admins and Managers sign in on the Staff sign-in page.',
+  STUDENT_USES_SSO: 'Students sign in with university sign-in, not on the staff page.',
+  INVALID_CREDENTIALS: 'The zID or password is not correct.',
+  ACCOUNT_NOT_ACTIVATED: 'This account is not activated yet. Choose "First time? Activate your account" and use the invite code from your Manager.',
+  INVALID_INVITE_CODE: 'The zID or invite code is not correct. Ask your Manager for a new code.',
+  ACCOUNT_DEACTIVATED: 'This account has been deactivated. Contact a Manager.',
+  LAST_MANAGER: 'At least one active Manager must remain. Add another Manager before deactivating this one.',
+  SELF_MODIFICATION_FORBIDDEN: 'You cannot deactivate your own account. Ask another Manager.',
+  ROLE_CHANGE_NOT_ALLOWED: 'Roles are fixed when an account is created. Add a new staff account instead.',
+  PREREQUISITE_CYCLE: 'These prerequisites would form a loop.',
+  FORBIDDEN: 'Your account cannot do this.',
 }
 
 /** Format a YYYY-MM-DD date for display without shifting it through UTC. */
@@ -151,9 +165,13 @@ export function errorMessage(e: unknown): string {
       REJECTED: 'Your induction was rejected. Please resubmit it.',
       EXPIRED: 'Your induction has expired. Please resubmit it.',
       VERIFIED: 'Your induction expires before the end of this booking. Please resubmit it or choose an earlier time.',
+      EXPIRES_BEFORE_END: 'Your induction expires before the end of this booking. Please resubmit it or choose an earlier time.',
+      PREREQUISITE_REQUIRED: 'You need a current General laboratory induction before booking this resource.',
     }
     return (q && why[q]) || ERROR_TEXT.QUALIFICATION_REQUIRED
   }
+  if (err?.code === 'PREREQUISITE_REQUIRED')
+    return err.message || 'Complete the prerequisite induction first.'
   if (err?.code && ERROR_TEXT[err.code]) return ERROR_TEXT[err.code]
   if (err?.code === 'VALIDATION_ERROR') {
     const first = Object.entries(err.details ?? {})[0]

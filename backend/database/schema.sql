@@ -103,6 +103,8 @@ CREATE TABLE public.bookable_resource (
     pending_hold_minutes integer DEFAULT 1440 NOT NULL,
     status text DEFAULT 'AVAILABLE'::text NOT NULL,
     status_reason text,
+    room_id uuid,
+    CONSTRAINT bookable_resource_room_check CHECK (((room_id IS NULL) OR (kind = 'EQUIPMENT'::text))),
     CONSTRAINT bookable_resource_status_check CHECK (((status = ANY (ARRAY['AVAILABLE'::text, 'MAINTENANCE'::text, 'CLOSED'::text])) AND ((status_reason IS NULL) OR (char_length(status_reason) <= 500)))),
     CONSTRAINT bookable_resource_rules_check CHECK (((kind = ANY (ARRAY['ROOM'::text, 'EQUIPMENT'::text])) AND (slot_minutes > 0) AND (max_booking_minutes > 0) AND (closing_time > opening_time) AND ((pending_hold_minutes >= 1) AND (pending_hold_minutes <= 20160))))
 );
@@ -170,7 +172,9 @@ CREATE TABLE public.outlook_sync_record (
 CREATE TABLE public.qualification_requirement (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     name text NOT NULL,
-    description text DEFAULT ''::text NOT NULL
+    description text DEFAULT ''::text NOT NULL,
+    prerequisite_ids uuid[] DEFAULT '{}'::uuid[] NOT NULL,
+    CONSTRAINT qualification_requirement_not_own_prerequisite CHECK ((NOT (id = ANY (prerequisite_ids))))
 );
 
 
@@ -436,6 +440,14 @@ ALTER TABLE ONLY public.bookable_resource
 -- Name: booking booking_resource_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
+ALTER TABLE ONLY public.bookable_resource
+    ADD CONSTRAINT bookable_resource_room_fkey FOREIGN KEY (room_id) REFERENCES public.bookable_resource(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: booking booking_resource_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
 ALTER TABLE ONLY public.booking
     ADD CONSTRAINT booking_resource_fk FOREIGN KEY (resource_id) REFERENCES public.bookable_resource(id) ON DELETE RESTRICT;
 
@@ -487,6 +499,25 @@ ALTER TABLE ONLY public.qualification_submission
 ALTER TABLE ONLY public.stored_file
     ADD CONSTRAINT stored_file_owner_fkey FOREIGN KEY (owner_id) REFERENCES public.app_users(id) ON DELETE RESTRICT;
 
+
+--
+-- Name: staff_credential; Type: TABLE; Schema: public; Owner: -
+-- How Admins and Managers sign in on the staff page (students use university sign-in and have no row).
+-- password_hash is a Django password hash; invite_code is set until the account is activated.
+--
+
+CREATE TABLE public.staff_credential (
+    principal_id uuid NOT NULL,
+    password_hash text,
+    invite_code text,
+    updated_at timestamp with time zone
+);
+
+ALTER TABLE ONLY public.staff_credential
+    ADD CONSTRAINT staff_credential_pkey PRIMARY KEY (principal_id);
+
+ALTER TABLE ONLY public.staff_credential
+    ADD CONSTRAINT staff_credential_principal_fkey FOREIGN KEY (principal_id) REFERENCES public.app_users(id) ON DELETE CASCADE;
 
 --
 -- PostgreSQL database dump complete

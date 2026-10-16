@@ -30,7 +30,11 @@ Open the Local URL printed by Vite (normally `http://localhost:5173`). `/api` is
 
 The sign-in page reads `GET /api/v1/auth/config/`. Demo login and student registration appear only when the backend enables them. No password is requested in demo mode; it is not university SSO. If demo authentication is disabled, the page explains that university sign-in is not connected. The current API does not provide an SSO redirect flow.
 
-The primary **University sign-in (Demo)** link opens `#/login/mock-sso`, a separate simulated university sign-in page with a campus background and centred white card. Enter an existing demo zID (for example `z1000001`) or its `@ad.unsw.edu.au` email form, then select **Next** or press Enter. Input is trimmed and matched case-insensitively; other email domains are rejected. The email form is only an alias for a demo zID, not verification of university identity or mailbox ownership. **Sign-in options** lists the four seeded accounts.
+The primary **University sign-in (Demo)** link opens `#/login/mock-sso`, a separate simulated university sign-in page with a campus background and centred white card. Enter an existing demo zID (for example `z1000001`) or its `@ad.unsw.edu.au` email form, then select **Next** or press Enter. Input is trimmed and matched case-insensitively; other email domains are rejected. The email form is only an alias for a demo zID, not verification of university identity or mailbox ownership. **Sign-in options** lists the seeded student accounts.
+
+University sign-in is for students only: the backend refuses staff zIDs there (`USE_STAFF_SIGN_IN`).
+
+**Staff sign-in** (`#/staff/login`, linked from the sign-in page) is for Admins and Managers: zID + password (`auth/staff-sign-in/`). A Manager adds staff in User Management, which shows an invite code until the person activates; **First time? Activate your account** takes the zID, invite code and a new password (`auth/staff-activate/`). A forgotten password is handled by the Manager's **Reset access**, which issues a new code. Students are refused on the staff page (`STUDENT_USES_SSO`). The demo staff password is `smartlab-staff-demo`.
 
 The form calls the existing `auth/demo-login/` API; the backend issues the session token and `auth/me/` determines the user's role. The original zID form and student registration remain under **Other demo sign-in options** on the SmartLab sign-in page. **Back to SmartLab** cancels the mock sign-in, ignores any pending login response, and preserves an allowed return destination for the next attempt.
 
@@ -40,15 +44,15 @@ This demonstrates the sign-in journey, session restoration, role-specific naviga
 | --- | --- | --- |
 | `z1000001` | Student with general induction | Dashboard |
 | `z1000002` | Student without induction | Dashboard |
-| `z9000001` | Administrator | Qualification review |
-| `z9000002` | Manager | Room management |
+| `z9000001` | Administrator (Staff sign-in, password `smartlab-staff-demo`) | Qualification review |
+| `z9000002` | Manager (Staff sign-in, password `smartlab-staff-demo`) | Room management |
 
 ### Tutor demonstration
 
 1. Start both servers with demo authentication enabled, then open `http://localhost:5173/#/login` (sign out first if already logged in).
 2. Select **University sign-in (Demo)** and show the simulation notice.
 3. Enter `z1000001@ad.unsw.edu.au` and select **Next** to open the student dashboard. Use the account menu to show the current user's details.
-4. Sign out and repeat with `z9000001` (Administrator) or `z9000002` (Manager) to show the different portal and access permissions.
+4. Sign out, choose **Staff sign-in** and sign in as `z9000001` (Administrator) or `z9000002` (Manager) with `smartlab-staff-demo` to show the staff portal and its permissions.
 5. To demonstrate returning after login, sign out, open `#/bookings`, then complete the mock sign-in as a student. SmartLab returns to My Bookings.
 
 Entering a demo identity signs into the same existing backend account; it does not create a new account or reset its bookings or training records. Account descriptions reflect the initial seed data. In-memory changes reset when the backend process restarts.
@@ -62,16 +66,21 @@ React Router's `HashRouter` keeps the existing `#/...` URLs. These work with sta
 | URL fragment | Access | Feature owner |
 | --- | --- | --- |
 | `#/login` | Public | A: sign-in and demo registration |
-| `#/login/mock-sso` | Public, demo mode only | A: simulated university sign-in form |
+| `#/login/mock-sso` | Public, demo mode only | A: simulated university sign-in form (students) |
+| `#/staff/login` | Public, demo mode only | A: staff sign-in and first-time activation (Admins, Managers) |
 | `#/dashboard` | Student | A: booking counts, upcoming bookings and induction overview |
-| `#/resources` | Student | B: resource search and booking |
+| `#/resources` | Student | B: resource search and booking (Rooms / Equipment tabs, equipment grouped by room) |
 | `#/bookings` | Student | B: bookings, cancellation and rescheduling |
 | `#/induction` | Student | C: evidence upload and review status |
 | `#/admin/qualifications` | Admin, Manager | C: qualification review |
 | `#/admin/bookings` | Admin, Manager | C: booking review |
 | `#/manager/bookings` | Manager | C: room booking management |
-| `#/manager/users` | Manager | C: user list and Student/Admin role management |
+| `#/manager/users` | Manager | C: user list, Add staff (Admin or Manager; the role is fixed once created) with invite codes, reset staff access, deactivate/reactivate accounts |
 | `#/account`, `#/help` | All authenticated roles | A: account details and portal guidance |
+
+Only students book. Admins and Managers are staff accounts: they never see the booking, induction or dashboard pages, and an Admin cannot open any `#/manager/...` page. Students are never promoted to staff, and Admin and Manager do not switch: each role is fixed when the account is created. Managers create staff accounts with **Add staff**.
+
+Induction prerequisites come from each requirement's `prerequisite_ids` (for example Advanced needs General). Until the prerequisite is verified the dependent induction shows as **Locked**, its upload is disabled, and resources that need it show which induction to complete first. Room maintenance does not affect the equipment kept in that room; each card shows its own status and reason.
 
 `src/App.tsx` wraps the application in `HashRouter`. `src/app/AppRouter.tsx` maps addresses to feature pages with `Routes` and `Route`. `ProtectedLayout` redirects anonymous users to login, and `RequireAccess` checks the permission map in `src/app/routes.ts`. An allowed deep link is saved in router location state and restored after login; explicit sign-out clears this destination. Loading and session-recovery errors are handled before protected pages can render.
 
@@ -112,7 +121,7 @@ For a manual walkthrough, sign in as each role, refresh a protected URL, use Bac
 ## Integration boundaries
 
 - University SSO still requires backend implementation and a frontend redirect/callback contract.
-- Backend data currently lives in memory and resets when its process restarts.
+- Backend data lives in memory by default and resets when its process restarts; PostgreSQL mode keeps it (see `backend/database/README.md`).
 - Outlook is configured on the backend; the frontend displays booking sync results. No Microsoft secrets belong in this app.
 - Account details are read-only because the backend does not offer profile editing.
 - Resource management, reporting, and more detailed administration pages remain separate Frontend C work.

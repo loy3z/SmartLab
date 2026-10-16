@@ -58,6 +58,9 @@ if not 1 <= QUALIFICATION_VALIDITY_DAYS <= 3650:
     raise ValueError("QUALIFICATION_VALIDITY_DAYS must be from 1 to 3650")
 if not 1 <= DEFAULT_PENDING_HOLD_MINUTES <= 20160:
     raise ValueError("DEFAULT_PENDING_HOLD_MINUTES must be from 1 to 20160")
+# Where booking rules are read from (booking/rules.py). Swap for a provider that reads Manager-edited
+# values from the database without changing booking code.
+RULES_PROVIDER = os.getenv("RULES_PROVIDER", "booking.rules.SettingsRulesProvider")
 # Team proposal (not client-confirmed): earliest and latest bookable start date, in days from today.
 MIN_ADVANCE_DAYS = int(os.getenv("MIN_ADVANCE_DAYS", "7"))
 MAX_ADVANCE_DAYS = int(os.getenv("MAX_ADVANCE_DAYS", "30"))

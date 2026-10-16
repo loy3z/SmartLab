@@ -57,17 +57,13 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
     .toUpperCase()
 
   const mainItems: NavItem[] =
-  user.role === 'STUDENT' || user.role === 'ADMIN'
+  user.role === 'STUDENT'
     ? [
-        ...(user.role === 'STUDENT'
-          ? [
-              {
-                path: '/dashboard',
-                label: 'Dashboard',
-                icon: <DashboardIcon />,
-              },
-            ]
-          : []),
+        {
+          path: '/dashboard',
+          label: 'Dashboard',
+          icon: <DashboardIcon />,
+        },
         {
           path: '/resources',
           label: 'Book a Resource',

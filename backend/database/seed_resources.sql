@@ -55,6 +55,17 @@ INSERT INTO public.bookable_resource (id, name, kind, location, description, act
 
 
 --
+-- Advanced training needs a current General induction first; equipment is linked to the room it is kept in.
+--
+
+UPDATE public.qualification_requirement SET prerequisite_ids = ARRAY['00000000-0000-0000-0000-000000000001'::uuid]
+    WHERE id = '00000000-0000-0000-0000-000000000002';
+UPDATE public.bookable_resource AS item SET room_id = room.id
+    FROM public.bookable_resource AS room
+    WHERE item.kind = 'EQUIPMENT' AND room.kind = 'ROOM' AND room.name = item.location;
+
+
+--
 -- PostgreSQL database dump complete
 --
 

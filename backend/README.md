@@ -4,24 +4,43 @@ Django 5.2 + Django REST Framework 3.16。提供学生时段查询、房间／�
 
 ## 已实现的范围
 
-- 所有已登录学生可以浏览资源和时段，但**只有对应 induction 已通过且有效期覆盖整个预约的人才能提交申请**（学生和 Admin；Manager 不预约）。资料还在审核、被拒或已过期都不能申请。induction 只能由 Admin／Manager 人工审核。
+- **只有学生预约**。Admin 和 Manager 是员工（staff）账号，负责审核和管理，不预约资源，也看不到预约和 induction 页面。学生可以浏览资源和时段，但**只有对应 induction 已通过且有效期覆盖整个预约时才能提交申请**；资料还在审核、被拒或已过期都不能申请。induction 只能由 Admin／Manager 人工审核。
+- **前置 induction**：一项 induction 可以要求先通过另一项（`QualificationRequirement.prerequisite_ids`，数据库列 `prerequisite_ids uuid[]`）。演示数据中 Advanced laboratory training 要求先有 General laboratory induction：General 未通过时不能提交 Advanced 资料，Admin 也不能通过 Advanced；预约 Advanced 资源时，General 和 Advanced **都必须有效并覆盖整个预约**（缺 General 时 `qualification_status=PREREQUISITE_REQUIRED`）。Manager 可用 `PATCH /api/v1/admin/qualification-requirements/{id}/` 设置 `{"prerequisite_ids":[...]}`，不允许形成循环。
+- **统一规则检查**：创建申请、Admin 批准、超时自动处理、候补递补、改期都调用同一个 `BookingService.rule_violation`，按顺序检查账号是否启用、资源是否可用、时间是否合法、（创建和改期时）预约窗口、资格及前置资格。任何路径都不会绕过其中一项。
+- **账号状态**：停用学生账号时，该学生所有未决申请（待审批和候补）立即拒绝（`ACCOUNT_DEACTIVATED`）并递补下一位；已批准的预约保留，由 Manager 决定是否取消。批准或自动处理时也会再次检查账号是否启用（`AUTO_REJECTED_ACCOUNT_INACTIVE`）。
+- **房间和设备**：设备记录所在房间（`room_id`），页面按房间分组显示。房间维修／关闭只暂停该房间本身的预约，**不影响**房间里设备的借用；设备有自己的状态。
 - **每个申请都先进入待审批 `PENDING_APPROVAL`**（`reason_code=AWAITING_REVIEW`），不算确认，但在审批期限内为申请人占住时段（`hold_until` = `review_due_at`）。Admin／Manager 可以随时批准或拒绝；审批期限（资源的 `pending_hold_minutes`，默认 1440 分钟即 24 小时，Manager 可按资源调整，且不晚于预约开始）到了还没人处理，系统自动处理：资格仍覆盖整个预约、资源可用、时段无已批准冲突就批准（`AUTO_APPROVED_AFTER_REVIEW_WINDOW`），否则拒绝（`AUTO_REJECTED_*`，`decision_reason` 写明原因），`reviewed_by` 为 `SYSTEM`。批准后才写入 Outlook。
-- 预约至少提前 7 天、最多提前 30 天（`MIN_ADVANCE_DAYS`／`MAX_ADVANCE_DAYS`，团队提议，待客户确认）。管理员批准时重新检查资格和冲突，不能重复批准相同时段。
+- 预约至少提前 7 天、最多提前 30 天（团队提议，待客户确认）。这些数字不写死在代码里，见下文“可配置规则”。管理员批准时重新检查资格和冲突，不能重复批准相同时段。
 - 同一时段严格先到先得：已批准预约和审批期内的待审批申请占用时段；之后的重叠申请进入等待名单 `WAITLISTED`（`TIME_CONFLICT`／`TEMPORARY_HOLD_CONFLICT`），管理员不能直接批准候补，但可以拒绝。时段空出来时（取消、被拒、过期、改期、资源重新开放），系统按提交顺序递补：申请人资格仍有效就转为新的待审批申请（`PROMOTED_FROM_WAITLIST`，重新计算审批期限），否则拒绝。前一位获批后，候补保留为后备，到开始时间仍未轮到则 `EXPIRED`。资料被拒时，该学生依赖这项资格的所有未决申请（包括候补）会被一并拒绝（`QUALIFICATION_REJECTED`）。
 - 同一学生不能为同一资源重复提交时间重叠的有效申请；已有 `PENDING_APPROVAL`、`WAITLISTED` 或 `APPROVED` 记录时返回 `DUPLICATE_BOOKING`。取消、拒绝或过期后可重新申请；不同资源在同一时间仍可分别预约。
 - 学生查看自己的 dashboard、资格和预约，取消尚未开始的有效预约，改期已批准的未来预约（可以改时长）。Admin／Manager 查看审批队列并作出决定，也可以取消任何人的预约（`CANCELLED_BY_STAFF`）。
 - Manager 可以把房间或设备设为维修中／关闭（`PATCH /api/v1/admin/resources/{id}/status/`，需填原因）：暂停新申请、批准和递补，已有预约保留并列出供 Manager 决定是否取消；改回可用后候补自动递补。
 - Admin／Manager 可用 `GET /api/v1/admin/bookings/?status=ALL` 按资源、学生、日期查看所有人的预约（带学生 zID 和姓名）；Manager 可用 `GET /api/v1/admin/bookings/export/` 导出 CSV。
-- **Manager 拥有 Admin 的全部权限**，另外独有占位规则配置和人员管理：通过 `GET /api/v1/admin/users/` 查看人员名单，用 `PATCH /api/v1/admin/users/{id}/` 在 Student／Admin 之间调整角色或停用账号（学生必须所有 induction 都有效才能升为 Admin；不能改自己，至少保留一个 Manager，修改写审计）。人员列表带每个人的 induction 状态。Manager 只能通过网页上的 Add manager（`POST /api/v1/admin/users/managers/`）新建，不能把现有的人改成 Manager。
+- **Manager 拥有 Admin 的全部权限**，另外独有审批期限配置、资源状态和人员管理；**Admin 不能访问任何 Manager 页面和接口**（包括读取审批期限）。人员管理：`GET /api/v1/admin/users/` 查看人员名单（带 `is_staff` 和学生的 induction 状态）；Add staff（`POST /api/v1/admin/users/staff/`，`role` 为 `ADMIN` 或 `MANAGER`）新建员工账号；`PATCH /api/v1/admin/users/{id}/` 停用或恢复账号。**Student、Admin、Manager 是三种分开的账号，角色在创建时确定，之后不能互换**（学生不能升为员工，Admin 和 Manager 也不能互相切换，`ROLE_CHANGE_NOT_ALLOWED` 409）；要换人就新建账号、停用旧账号。不能修改自己，至少保留一个启用的 Manager，修改写审计。旧接口 `POST /api/v1/admin/users/managers/` 保留，等同于 Add staff 选 Manager。
 - Admin／Manager 可通过 `GET /api/v1/admin/audit/` 按资源、学生、操作类型和时间查看审计记录（申请、审批、改期、取消、资格审核等），满足客户对操作轨迹的要求。
 
 已按客户 2026-10-07 的要求实现：Pending 不算确认，可在可配置的时间内占住时段，不会让 B 悄悄抢走 A 正在审核的时段；冲突请求进入等待名单，不取得新的占位。每个资源目前关联一项资格要求，资格有效期必须覆盖预约结束时间。
 
-Manager 可通过 `GET /api/v1/admin/resources/{id}/booking-policy/` 查看审批期限，并用 `PATCH` 提交 `{"pending_hold_minutes":1440}`。支持整数 1–20160 分钟（默认 1440，即 24 小时），只影响之后进入待审批的申请；Admin 可以读取，不能修改。新种子资源的默认值由 `DEFAULT_PENDING_HOLD_MINUTES` 设置。审批期限不晚于预约开始时间，刷新页面、重复提交同一幂等请求都不会延长期限。
+Manager 可通过 `GET /api/v1/admin/resources/{id}/booking-policy/` 查看审批期限，并用 `PATCH` 提交 `{"pending_hold_minutes":1440}`。支持整数 1–20160 分钟（默认 1440，即 24 小时），只影响之后进入待审批的申请；Admin 不能读取或修改。新种子资源的默认值来自可配置规则 `default_review_window_minutes`。
+
+## 可配置规则（给客户留的接口）
+
+客户以后可能调整的全局数字集中在 `booking/rules.py` 的 `BookingRules`，业务代码只通过 `RulesProvider.current()` 读取，每次检查都重新读取：
+
+| 规则 | 字段 | 默认值 | 环境变量 |
+| --- | --- | --- | --- |
+| 最少提前天数 | `min_advance_days` | 7 | `MIN_ADVANCE_DAYS` |
+| 最多提前天数 | `max_advance_days` | 30 | `MAX_ADVANCE_DAYS` |
+| induction 有效天数 | `qualification_validity_days` | 120 | `QUALIFICATION_VALIDITY_DAYS` |
+| 新资源默认审批期限（分钟） | `default_review_window_minutes` | 1440 | `DEFAULT_PENDING_HOLD_MINUTES` |
+
+- 现在：默认的 `SettingsRulesProvider` 读取上面的环境变量，改值后重启即可。
+- 以后：如果客户要在 Manager 页面上修改，新建一个读取数据库表的类，实现 `current()` 返回 `BookingRules`，再把环境变量 `RULES_PROVIDER` 指向它（例如 `RULES_PROVIDER=my_app.rules.DatabaseRulesProvider`）。预约、审批和资格代码都不需要改。
+- 属于单个资源的规则（开放时间、时段长度、最长时长、审批期限、所需 induction、状态）仍保存在资源记录上。审批期限不晚于预约开始时间，刷新页面、重复提交同一幂等请求都不会延长期限。
 
 已提供 Microsoft Graph 的真实 Outlook 日历适配器：批准预约后自动尝试创建事件，取消已批准预约时删除事件；同步状态独立于预约状态，失败可重试。默认关闭，个人账号演示步骤见 [outlook-setup.md](docs/outlook-setup.md)。真实连通需要本地配置微软授权，自动化测试使用模拟响应。
 
-真实学校 SSO、正式数据库、邮件通知、设备领取／归还、报表和资源管理后台待后续接入。重复预约及更完整的 Manager 规则配置安排到 Sprint 2（改期和等待名单已提前实现）。现在使用仓储和文件存储接口搭配内存演示适配器；演示数据、附件和日历事件对应关系在进程重启后丢失，只能使用单进程运行。
+真实学校 SSO、邮件通知、设备领取／归还、报表和资源增删改后台待后续接入（PostgreSQL 适配器已可用，见 [database/README.md](database/README.md)）。重复预约及更完整的 Manager 规则配置安排到 Sprint 2（改期和等待名单已提前实现）。现在使用仓储和文件存储接口搭配内存演示适配器；演示数据、附件和日历事件对应关系在进程重启后丢失，只能使用单进程运行。
 
 ## 本地启动（PowerShell）
 
@@ -40,18 +59,26 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
 
 环境变量示例在 [.env.example](.env.example)。将其复制为 `.env` 不会自动加载，请设置进程环境变量，或自行使用环境加载工具。
 
-`ENABLE_DEMO_AUTH` 默认关闭，只有 `DEBUG=true` 且显式开启时，演示登录／注册接口才可用。演示登录仅供本地演示：它不检查密码，不能开放给真实用户。演示 token 有效期 3600 秒，使用 `Authorization: Bearer <access_token>`。
+`ENABLE_DEMO_AUTH` 默认关闭，只有 `DEBUG=true` 且显式开启时，登录接口才可用。token 有效期 3600 秒，使用 `Authorization: Bearer <access_token>`。
+
+**两个登录入口**（角色始终由账号决定，不由入口决定）：
+
+- **学生**：大学登录（目前是模拟 SSO，`POST /api/v1/auth/demo-login/`，只填 zID，不检查密码）。staff 的 zID 在这里会被拒绝（403 `USE_STAFF_SIGN_IN`）。
+- **Admin／Manager**：staff 登录页，zID + 密码（`POST /api/v1/auth/staff-sign-in/`）。学生的 zID 在这里会被拒绝（403 `STUDENT_USES_SSO`）。
+- **新 staff 怎么来**：Manager 在人员管理页 Add staff，系统生成一个邀请码（如 `K7Q4-9MZD`），在人员列表里显示，直到对方激活。对方在 staff 登录页选"首次激活"，填 zID、邀请码和自己设的密码（至少 8 位，`POST /api/v1/auth/staff-activate/`），激活后邀请码作废。
+- **忘记密码**：Manager 点 Reset access（`POST /api/v1/admin/users/{id}/reset-access/`），旧密码失效，生成新邀请码，对方重新激活。角色不变。
+- 密码只存 Django 的密码哈希，单独存在 `StaffCredential`／`staff_credential` 表里，不会出现在任何接口响应中。这是拿到学校 SSO 之前的原型方案；staff 也接入 SSO 后，替换登录方式即可，角色判断不用改。
 
 演示身份：
 
-| zID | 角色 | 用途 |
+| zID | 角色 | 登录方式 |
 | --- | --- | --- |
-| `z1000001` | STUDENT | 已有有效 induction 的学生 |
-| `z1000002` | STUDENT | 需要先上传 induction 的学生 |
-| `z9000001` | ADMIN | 审核资格与预约 |
-| `z9000002` | MANAGER | 审核资格与预约 |
+| `z1000001` | STUDENT | 大学登录（模拟）；已有有效 General induction |
+| `z1000002` | STUDENT | 大学登录（模拟）；需要先上传 induction |
+| `z9000001` | ADMIN | staff 登录，演示密码 `smartlab-staff-demo` |
+| `z9000002` | MANAGER | staff 登录，演示密码 `smartlab-staff-demo` |
 
-调用 `POST /api/v1/auth/demo-login/` 并发送 `{"zid":"z1000001"}` 即可获得 token。`demo-register` 只能创建 STUDENT，不允许请求体决定管理员角色。可以用 [demo.http](demo.http) 演示完整调用流程。
+调用 `POST /api/v1/auth/demo-login/` 并发送 `{"zid":"z1000001"}` 即可获得学生 token；staff 调用 `POST /api/v1/auth/staff-sign-in/` 并发送 `{"zid":"z9000002","password":"smartlab-staff-demo"}`。演示密码只用于这两个假账号。`demo-register` 只能创建 STUDENT，不允许请求体决定管理员角色。可以用 [demo.http](demo.http) 演示完整调用流程。
 
 演示注册必须提供 `zid`、`display_name`、`university_email`。演示邮箱只检查格式，不验证学校归属或邮箱所有权；正式认证由可信 SSO 声明提供。种子身份使用对应 `zID@ad.unsw.edu.au` 演示地址。
 
@@ -108,3 +135,13 @@ Sprint 1 采用固定规则：资格审核通过后，有效期为审核时间�
 数据库适配器新增 `get_outlook_sync(booking_id)`、`list_outlook_sync()`、`save_outlook_sync(record)`，实体为 `OutlookSyncRecord`。预约、同步记录、审计必须在同一 `atomic` 事务内保存。通过相同资源／学生锁领取处理租约，网络调用发生在事务外，完成后重读版本再更新；保留取消预约的事件对应关系。
 
 内存演示通过预约 API 自动尝试同步，管理员可用 `admin/outlook/process/` 和 `admin/bookings/{id}/outlook-retry/` 处理失败。接入共享数据库后，可定时执行 `python manage.py process_outlook --limit 10`；独立进程不能读取演示服务器的内存，因此该命令拒绝内存适配器。
+
+## 定时处理到期申请
+
+审批期限到了的申请需要有人触发自动处理。网页请求会顺带处理，但没人访问时不会执行。使用 PostgreSQL 时请定时运行（例如每分钟一次，Windows 任务计划或 cron）：
+
+```powershell
+.\.venv\Scripts\python.exe manage.py process_due
+```
+
+输出 `Decided or expired N request(s).`。加 `--outlook-limit 10` 可同时处理 Outlook 同步待办。该命令同样拒绝内存适配器。

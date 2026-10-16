@@ -9,7 +9,8 @@ const users: Record<Role, User> = {
 }
 const unqualifiedStudent: User = { ...users.STUDENT, id: 'test-unqualified-student', zid: 'z1000002', display_name: 'Test Unqualified Student' }
 const accounts = [...Object.values(users), unqualifiedStudent]
-const config: AuthConfig = { mode: 'demo', demo_auth_enabled: true, demo_registration_enabled: false, sso_connected: false, token_type: 'Bearer' }
+const config: AuthConfig = { mode: 'demo', demo_auth_enabled: true, demo_registration_enabled: false, sso_connected: false, token_type: 'Bearer', staff_sign_in_enabled: true }
+const STAFF_PASSWORD = 'smartlab-staff-demo'
 const dashboard: Dashboard = {
   bookings: [], qualifications: [],
   counts: { WAITING_QUALIFICATION: 0, WAITLISTED: 0, PENDING_APPROVAL: 0, APPROVED: 0, REJECTED: 0, CANCELLED: 0, EXPIRED: 0 },
@@ -43,12 +44,25 @@ const test = base.extend<{ api: MockApi }>({
         if (api.login === 'offline') return route.abort('internetdisconnected')
         if (api.login === 'rejected') return json({ error: { code: 'DEMO_LOGIN_REJECTED', message: 'The selected demo account is unavailable.' } }, 403)
         const user = accounts.find((item) => item.zid === request.postDataJSON().zid)
+        if (user && user.role !== 'STUDENT' && !api.verifiedRole) {
+          // University sign-in is for students; staff use the staff sign-in page.
+          return json({ error: { code: 'USE_STAFF_SIGN_IN', message: 'Admins and Managers sign in on the staff sign-in page.' } }, 403)
+        }
         if (user) {
           // A stale login role must never override the identity returned by auth/me.
           const identity = api.verifiedRole ? users[api.verifiedRole] : user
           return json({ access_token: `test-token-${identity.zid}`, token_type: 'Bearer', expires_in: 3600, mode: 'demo', user })
         }
         return json({ error: { code: 'DEMO_USER_NOT_FOUND', message: 'No demo account has this zID.' } }, 404)
+      }
+      if (path === 'auth/staff-sign-in/' && request.method() === 'POST') {
+        const body = request.postDataJSON()
+        api.loginBodies.push(body)
+        const user = accounts.find((item) => item.zid === body.zid)
+        if (user?.role === 'STUDENT') return json({ error: { code: 'STUDENT_USES_SSO', message: 'Students sign in with university sign-in.' } }, 403)
+        if (!user || body.password !== STAFF_PASSWORD) return json({ error: { code: 'INVALID_CREDENTIALS', message: 'The zID or password is not correct.' } }, 401)
+        const identity = api.verifiedRole ? users[api.verifiedRole] : user
+        return json({ access_token: `test-token-${identity.zid}`, token_type: 'Bearer', expires_in: 3600, mode: 'demo', user })
       }
       const user = accounts.find((item) => request.headers().authorization === `Bearer test-token-${item.zid}`)
       if (!user) {
@@ -77,6 +91,16 @@ const test = base.extend<{ api: MockApi }>({
 })
 
 async function signIn(page: Page, role: Role = 'STUDENT') {
+  if (role !== 'STUDENT') {
+    // Admins and Managers use the staff sign-in page (zID + password); the account decides the role.
+    await page.getByRole('link', { name: 'Staff sign-in', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Staff sign-in', exact: true })).toBeVisible()
+    await page.getByLabel('Staff zID', { exact: true }).fill(users[role].zid)
+    await page.getByLabel('Password', { exact: true }).fill(STAFF_PASSWORD)
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await expect(page.getByRole('button', { name: `Account options for ${users[role].display_name}` })).toBeVisible()
+    return
+  }
   await page.getByRole('link', { name: 'University sign-in (Demo)', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible()
   await page.getByLabel('Demo zID or university email', { exact: true }).fill(users[role].zid)
@@ -161,6 +185,19 @@ test('Manager returns to user management after mock login and can reopen it from
   await expect(page).toHaveTitle('User management · UNSW SmartLab')
   expect(api.managerUserRequests.length).toBeGreaterThan(0)
   expect(api.managerUserRequests.every((request) => request === 'GET admin/users/')).toBe(true)
+})
+
+test('ADMIN is staff: booking and induction pages are not offered and not loaded', async ({ page, api }) => {
+  await page.goto('/#/login')
+  await signIn(page, 'ADMIN')
+  await expect(page).toHaveURL('http://127.0.0.1:5174/#/admin/qualifications')
+  await expect(page.getByRole('link', { name: 'Resources', exact: true })).toHaveCount(0)
+  for (const path of ['/resources', '/bookings', '/induction']) {
+    api.requests.length = 0
+    await page.goto(`/#${path}`)
+    await expect(page.getByRole('heading', { name: 'This page is not available for your role' })).toBeVisible()
+    expect(api.requests.filter((item) => item !== 'auth/me/')).toEqual([])
+  }
 })
 
 for (const role of ['STUDENT', 'ADMIN'] as const) {
@@ -282,8 +319,6 @@ test('mobile menu navigates and closes, and Escape dismisses it', async ({ page 
 for (const { label, user, home } of [
   { label: 'Student with induction', user: users.STUDENT, home: '/dashboard' },
   { label: 'Student without induction', user: unqualifiedStudent, home: '/dashboard' },
-  { label: 'Administrator', user: users.ADMIN, home: '/admin/qualifications' },
-  { label: 'Manager', user: users.MANAGER, home: '/manager/bookings' },
 ]) {
   test(`mock university sign-in authenticates ${label} through the API`, async ({ page, api }) => {
     await page.goto('/#/login')
@@ -357,15 +392,49 @@ for (const failure of ['offline', 'rejected'] as const) {
   })
 }
 
+for (const { label, user, home } of [
+  { label: 'Administrator', user: users.ADMIN, home: '/admin/qualifications' },
+  { label: 'Manager', user: users.MANAGER, home: '/manager/bookings' },
+]) {
+  test(`staff sign-in authenticates ${label} with zID and password`, async ({ page, api }) => {
+    await page.goto('/#/login')
+    await page.getByRole('link', { name: 'Staff sign-in', exact: true }).click()
+    await expect(page).toHaveURL(/#\/staff\/login$/)
+    await page.getByLabel('Staff zID', { exact: true }).fill(user.zid)
+    await page.getByLabel('Password', { exact: true }).fill('wrong-password')
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await expect(page.getByRole('alert')).toContainText('zID or password is not correct')
+    await page.getByLabel('Password', { exact: true }).fill(STAFF_PASSWORD)
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await expect(page.getByRole('button', { name: `Account options for ${user.display_name}` })).toBeVisible()
+    await expect(page).toHaveURL(`http://127.0.0.1:5174/#${home}`)
+    expect(api.loginBodies).toEqual([{ zid: user.zid, password: 'wrong-password' }, { zid: user.zid, password: STAFF_PASSWORD }])
+  })
+}
+
+test('each sign-in page refuses the other kind of account', async ({ page, api }) => {
+  await page.goto('/#/login/mock-sso')
+  await page.getByLabel('Demo zID or university email', { exact: true }).fill(users.ADMIN.zid)
+  await page.getByRole('button', { name: 'Next', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('Staff sign-in page')
+  await page.goto('/#/staff/login')
+  await page.getByLabel('Staff zID', { exact: true }).fill(users.STUDENT.zid)
+  await page.getByLabel('Password', { exact: true }).fill(STAFF_PASSWORD)
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('Students sign in with university sign-in')
+  expect(api.requests).not.toContain('auth/me/')
+})
+
 test('an administrator zID and login response cannot grant a role rejected by auth/me', async ({ page, api }) => {
   api.verifiedRole = 'STUDENT'
   await page.goto('/#/admin/qualifications')
-  await page.getByRole('link', { name: 'University sign-in (Demo)', exact: true }).click()
-  await page.getByLabel('Demo zID or university email', { exact: true }).fill(users.ADMIN.zid)
-  await page.getByRole('button', { name: 'Next', exact: true }).click()
+  await page.getByRole('link', { name: 'Staff sign-in', exact: true }).click()
+  await page.getByLabel('Staff zID', { exact: true }).fill(users.ADMIN.zid)
+  await page.getByLabel('Password', { exact: true }).fill(STAFF_PASSWORD)
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page).toHaveURL(/#\/dashboard$/)
   await expect(page.getByRole('button', { name: 'Account options for Test Student' })).toBeVisible()
-  expect(api.loginBodies).toEqual([{ zid: users.ADMIN.zid }])
+  expect(api.loginBodies).toEqual([{ zid: users.ADMIN.zid, password: STAFF_PASSWORD }])
   expect(api.requests).toContain('auth/me/')
   expect(api.requests).not.toContain('admin/qualifications/')
   await page.goto('/#/admin/qualifications')

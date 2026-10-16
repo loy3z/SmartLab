@@ -11,6 +11,7 @@ from django.test import SimpleTestCase, override_settings
 from rest_framework.test import APIClient
 
 from booking.domain import QualificationStatus
+from booking.authentication import issue_demo_token
 from booking.runtime import get_service, reset_runtime
 
 
@@ -43,6 +44,11 @@ class BookingAPIFixtureMixin:
 
     def login(self, zid):
         client = APIClient()
+        staff = next((item for item in get_service().repo.list_principals() if item.zid == zid and item.is_staff), None)
+        if staff is not None:
+            # Staff sign in with a password on the staff page (see test_staff_sign_in.py); skip the slow hash here.
+            client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_demo_token(staff)}")
+            return client
         response = client.post("/api/v1/auth/demo-login/", {"zid": zid}, format="json")
         self.assertEqual(response.status_code, 200, response.data)
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {response.data['access_token']}")

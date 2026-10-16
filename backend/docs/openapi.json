@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Sprint 1 Smart Lab and Room Booking API",
-    "version": "1.7.0",
-    "description": "Sprint 1 backend with Microsoft Graph one-way creation, rescheduling and cancellation of confirmed bookings. Confirmed events invite the student; room and equipment availability remains managed by the booking system. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Recurrence is deferred to Sprint 2. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z. Identity includes university_email. Only users whose induction for the resource is verified and current may submit requests. Every request starts as PENDING_APPROVAL and holds its slot during a review window (pending_hold_minutes, default 1440 = 24 hours, Manager-configurable per resource, capped at the booking start). An Admin or Manager approves or rejects it within the window; if nobody decides, the system approves it when it still follows the rules (AUTO_APPROVED_AFTER_REVIEW_WINDOW) and rejects it otherwise (AUTO_REJECTED_*). Requests for time that is already taken or held are WAITLISTED in submission order and, when the time frees up, become PENDING_APPROVAL with a fresh review window. Induction evidence is always reviewed manually. Bookings must start at least 7 and at most 30 days ahead (MIN_ADVANCE_DAYS / MAX_ADVANCE_DAYS). Authentication and resource-specific eligibility are separate. Verified induction expires a fixed number of days after approval (QUALIFICATION_VALIDITY_DAYS, default 120, one term); reviewers no longer supply an expiry. Admin and Manager can query the audit trail of requests, approvals, changes and cancellations. The prototype seed has 2 labs and 20 independently bookable devices. A Manager has every Admin permission and can also configure booking policies and nominate user roles or deactivate accounts. Admins are students nominated by a Manager: they can book like students but cannot approve their own requests or evidence. Managers do not book. A Manager can mark a resource MAINTENANCE or CLOSED (new requests paused, existing bookings kept) and list or export every booking. Managers are created only with Add manager (POST /admin/users/managers/); a student becomes an Admin only when every induction is verified and current."
+    "version": "1.9.0",
+    "description": "Sprint 1 backend with Microsoft Graph one-way creation, rescheduling and cancellation of confirmed bookings. Confirmed events invite the student; room and equipment availability remains managed by the booking system. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Recurrence is deferred to Sprint 2. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z. Identity includes university_email. Only students book; Admins and Managers are staff accounts that review and manage but never book. A student may submit a request only when the induction for the resource, and any prerequisite induction it lists (for example Advanced needs General), is verified and current through the booking end. Every request starts as PENDING_APPROVAL and holds its slot during a review window (pending_hold_minutes, default 1440 = 24 hours, Manager-configurable per resource, capped at the booking start). An Admin or Manager approves or rejects it within the window; if nobody decides, the system approves it when it still follows the rules (AUTO_APPROVED_AFTER_REVIEW_WINDOW) and rejects it otherwise (AUTO_REJECTED_*). Requests for time that is already taken or held are WAITLISTED in submission order and, when the time frees up, become PENDING_APPROVAL with a fresh review window. Induction evidence is always reviewed manually. Bookings must start at least 7 and at most 30 days ahead by default; these values come from a RulesProvider (booking/rules.py, environment variables by default) so they can be changed without code changes. Authentication and resource-specific eligibility are separate. Verified induction expires a fixed number of days after approval (qualification_validity_days from the RulesProvider, default 120, one term); reviewers no longer supply an expiry. Admin and Manager can query the audit trail of requests, approvals, changes and cancellations. The prototype seed has 2 labs and 20 independently bookable devices. A Manager has every Admin permission and can also configure booking policies, add staff accounts and deactivate accounts. Admins cannot use any Manager endpoint. Students, Admins and Managers are separate accounts whose role is fixed when created: students are never promoted to staff, and Admin and Manager do not switch. Creating, approving, automatically deciding, promoting from the waitlist and rescheduling all use one shared rule check (account active, resource available, valid time, booking window on create and reschedule, induction and prerequisites). A Manager can mark a resource MAINTENANCE or CLOSED (new requests paused, existing bookings kept) and list or export every booking. Staff accounts are created with Add staff (POST /admin/users/staff/). Equipment records the room it is kept in (room_id); a room's maintenance does not affect its equipment. Two sign-in entry points: students use university sign-in (demo: POST /auth/demo-login/, which refuses staff with USE_STAFF_SIGN_IN); Admins and Managers use the staff page with zID and password (POST /auth/staff-sign-in/). A Manager's Add staff issues an invite code that the staff member uses once to choose a password (POST /auth/staff-activate/); Reset access issues a new code. Password hashes never appear in responses."
   },
   "servers": [
     {
@@ -149,8 +149,8 @@
         "tags": [
           "Authentication"
         ],
-        "summary": "Log in as an existing demonstration identity",
-        "description": "Local demonstration only; no password is checked. Disable outside local development.",
+        "summary": "Student university sign-in (demonstration)",
+        "description": "Local demonstration of university sign-in for students; no password is checked. Admin and Manager accounts are refused with 403 USE_STAFF_SIGN_IN; they use POST /auth/staff-sign-in/. Disable outside local development.",
         "security": [],
         "responses": {
           "200": {
@@ -192,6 +192,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "USE_STAFF_SIGN_IN: Admins and Managers sign in on the staff page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -200,6 +210,142 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/DemoLogin"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/staff-sign-in/": {
+      "post": {
+        "operationId": "post__api_v1_auth_staff_sign_in_",
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Staff sign-in (Admin or Manager)",
+        "description": "zID and password for an activated Admin or Manager account. The account's role decides access; the page used does not. Available while demo authentication is enabled (prototype until university SSO is connected).",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffSignIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "INVALID_CREDENTIALS: unknown zID or wrong password.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ACCOUNT_NOT_ACTIVATED (use the invite code first), ACCOUNT_DEACTIVATED, or STUDENT_USES_SSO (students use university sign-in).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Demo authentication is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/staff-activate/": {
+      "post": {
+        "operationId": "post__api_v1_auth_staff_activate_",
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Activate a staff account with an invite code",
+        "description": "First staff sign-in: the invite code from the Manager plus a new password (at least 8 characters). The code works once for that zID only; success signs the user in.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffActivate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_INVITE_CODE, or VALIDATION_ERROR (password too short).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ACCOUNT_DEACTIVATED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Demo authentication is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
               }
             }
           }
@@ -612,7 +758,7 @@
           "Qualifications"
         ],
         "summary": "Upload induction evidence",
-        "description": "The latest submission determines current eligibility. Uploads are private and restricted to PDF, PNG or JPEG of at most 5 MiB. An existing PENDING or currently valid VERIFIED submission blocks duplicate submission; rejected or expired evidence can be resubmitted.",
+        "description": "Students only (staff receive 403 FORBIDDEN). The latest submission determines current eligibility. Uploads are private and restricted to PDF, PNG or JPEG of at most 5 MiB. An existing PENDING or currently valid VERIFIED submission blocks duplicate submission; rejected or expired evidence can be resubmitted. Evidence for a requirement with prerequisites is accepted only after each prerequisite is verified and current; otherwise 409 PREREQUISITE_REQUIRED (details.prerequisite_id, prerequisite_status).",
         "security": [
           {
             "BearerAuth": []
@@ -893,7 +1039,7 @@
           "Bookings"
         ],
         "summary": "Create a room or individual equipment booking request",
-        "description": "Student or Admin only (Managers do not book). Requires a VERIFIED, unexpired induction for the selected resource through the booking end; otherwise 403 QUALIFICATION_REQUIRED (details.qualification_status, requirement_id), including while evidence is still PENDING. The local start date must be from today + MIN_ADVANCE_DAYS (default 7) to today + MAX_ADVANCE_DAYS (default 30): BOOKING_TOO_SOON / BOOKING_TOO_FAR_AHEAD (400, details.earliest_date, latest_date, min_advance_days, max_advance_days). A user who already has an overlapping active request for this same resource receives DUPLICATE_BOOKING (409); terminal requests do not block rebooking and different resources remain independent. If no APPROVED booking or active pending request overlaps, the request becomes PENDING_APPROVAL (reason AWAITING_REVIEW) with review_due_at = hold_until = min(start, now + pending_hold_minutes, default 1440). An Admin/Manager decides within that window; when it ends undecided the system re-checks the rules and sets APPROVED (AUTO_APPROVED_AFTER_REVIEW_WINDOW) or REJECTED (AUTO_REJECTED_QUALIFICATION, AUTO_REJECTED_RESOURCE_UNAVAILABLE or AUTO_REJECTED_CONFLICT), reviewed_by SYSTEM. If an APPROVED booking or active pending request overlaps, the request becomes WAITLISTED (reason TIME_CONFLICT or TEMPORARY_HOLD_CONFLICT) with waitlist_position. When time frees up (cancellation, rejection, expiry, rescheduling, an automatic rejection or a resource reopening) the earliest waitlisted request that now fits becomes PENDING_APPROVAL (PROMOTED_FROM_WAITLIST) with a fresh review window, or REJECTED (QUALIFICATION_REQUIRED) if its induction is no longer valid. Only APPROVED creates an Outlook event. Undecided and waitlisted requests expire at their start time. HTTP 201 never means approved. Interval semantics are [start, end).",
+        "description": "Students only (staff receive 403 FORBIDDEN). Requires a VERIFIED, unexpired induction for the selected resource, and for each of its prerequisite inductions, through the booking end; otherwise 403 QUALIFICATION_REQUIRED (details.qualification_status, requirement_id; PREREQUISITE_REQUIRED adds prerequisite_id and prerequisite_status), including while evidence is still PENDING. The local start date must be from today + MIN_ADVANCE_DAYS (default 7) to today + MAX_ADVANCE_DAYS (default 30): BOOKING_TOO_SOON / BOOKING_TOO_FAR_AHEAD (400, details.earliest_date, latest_date, min_advance_days, max_advance_days). A user who already has an overlapping active request for this same resource receives DUPLICATE_BOOKING (409); terminal requests do not block rebooking and different resources remain independent. If no APPROVED booking or active pending request overlaps, the request becomes PENDING_APPROVAL (reason AWAITING_REVIEW) with review_due_at = hold_until = min(start, now + pending_hold_minutes, default 1440). An Admin/Manager decides within that window; when it ends undecided the system re-checks the rules and sets APPROVED (AUTO_APPROVED_AFTER_REVIEW_WINDOW) or REJECTED (AUTO_REJECTED_ACCOUNT_INACTIVE, AUTO_REJECTED_QUALIFICATION, AUTO_REJECTED_RESOURCE_UNAVAILABLE, AUTO_REJECTED_BOOKING_RULES or AUTO_REJECTED_CONFLICT), reviewed_by SYSTEM. If an APPROVED booking or active pending request overlaps, the request becomes WAITLISTED (reason TIME_CONFLICT or TEMPORARY_HOLD_CONFLICT) with waitlist_position. When time frees up (cancellation, rejection, expiry, rescheduling, an automatic rejection or a resource reopening) the earliest waitlisted request that now fits becomes PENDING_APPROVAL (PROMOTED_FROM_WAITLIST) with a fresh review window, or REJECTED with the failing rule's code (for example QUALIFICATION_REQUIRED or ACCOUNT_INACTIVE). Only APPROVED creates an Outlook event. Undecided and waitlisted requests expire at their start time. HTTP 201 never means approved. Interval semantics are [start, end).",
         "security": [
           {
             "BearerAuth": []
@@ -1433,7 +1579,7 @@
             }
           },
           "409": {
-            "description": "The submission is no longer reviewable.",
+            "description": "The submission is no longer reviewable. PREREQUISITE_REQUIRED: a prerequisite induction (details.prerequisite_id) must be verified first before this one can be VERIFIED.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1639,7 +1785,7 @@
             }
           },
           "409": {
-            "description": "Missing valid qualification, approved or pending-request conflict, REQUEST_WAITLISTED, or invalid booking state.",
+            "description": "Missing valid qualification, approved or pending-request conflict, REQUEST_WAITLISTED, or invalid booking state. Approval re-runs the shared rule check: ACCOUNT_INACTIVE (the requester's account was deactivated) or QUALIFICATION_NOT_VERIFIED (details.qualification_status, including PREREQUISITE_REQUIRED).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1938,8 +2084,8 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Nominate a role or (de)activate an account (Manager only)",
-        "description": "Active Manager only. Send role and/or active. Takes effect on the user's next request; a deactivated user receives 401. Managers cannot change their own role or status (SELF_MODIFICATION_FORBIDDEN, 403), and at least one active Manager must remain (LAST_MANAGER, 409). Every change writes a USER_UPDATED audit record with previous and new values. Existing bookings are not changed. Role can only move between STUDENT and ADMIN: MANAGER cannot be assigned here and a Manager's role cannot be changed (403 MANAGER_ROLE_NOT_ASSIGNABLE; use Add manager, or deactivate a Manager with active=false). A STUDENT becomes ADMIN only when every induction is verified and not expired; otherwise 409 INDUCTION_REQUIRED_FOR_ADMIN with a message such as \"Jane Doe (z1234567) must pass every induction before becoming an administrator.\" and details.missing_inductions. The response includes inductions and induction_status.",
+        "summary": "Deactivate or reactivate an account (Manager only)",
+        "description": "Active Manager only. Send active (and optionally role, which must equal the current role). Roles are fixed when an account is created: Students, Admins and Managers are separate accounts, so any role change returns 409 ROLE_CHANGE_NOT_ALLOWED; to replace someone, add a new staff account and deactivate the old one. Takes effect on the user's next request; a deactivated user receives 401. Managers cannot change their own status (SELF_MODIFICATION_FORBIDDEN, 403), and at least one active Manager must remain (LAST_MANAGER, 409). Deactivating a student rejects their undecided (pending and waitlisted) requests with ACCOUNT_DEACTIVATED and promotes the waitlist; approved bookings are kept. Every change writes a USER_UPDATED audit record with previous and new values.",
         "security": [
           {
             "BearerAuth": []
@@ -2018,7 +2164,85 @@
             }
           },
           "409": {
-            "description": "LAST_MANAGER, or INDUCTION_REQUIRED_FOR_ADMIN (details.zid, display_name, missing_inductions).",
+            "description": "ROLE_CHANGE_NOT_ALLOWED or LAST_MANAGER.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{id}/reset-access/": {
+      "post": {
+        "operationId": "post__api_v1_admin_users_id_reset_access_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Reset a staff member's sign-in (Manager only)",
+        "description": "Active Manager only. Clears the staff member's password and issues a new invite code (shown in invite_code); the role does not change. Not for your own account (403 SELF_MODIFICATION_FORBIDDEN) or for students (409 STUDENT_USES_SSO). Writes STAFF_ACCESS_RESET to the audit trail.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedUser"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only an active Manager; not for your own account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "STUDENT_USES_SSO: students have no staff sign-in.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2346,7 +2570,7 @@
           "Administration"
         ],
         "summary": "Read pending hold policy",
-        "description": "Admin or Manager only.",
+        "description": "Active Manager only (Admins receive 403).",
         "security": [
           {
             "BearerAuth": []
@@ -2412,7 +2636,7 @@
           "Administration"
         ],
         "summary": "Set the Admin review window",
-        "description": "Active Manager only; Admin cannot write. Send pending_hold_minutes (the review window in minutes, 1-20160, default 1440 = 24 hours). Only requests that become pending afterwards use the new value; existing deadlines and decisions stay unchanged. Writes an audit entry.",
+        "description": "Active Manager only. Send pending_hold_minutes (the review window in minutes, 1-20160, default 1440 = 24 hours). Only requests that become pending afterwards use the new value; existing deadlines and decisions stay unchanged. Writes an audit entry.",
         "security": [
           {
             "BearerAuth": []
@@ -2694,8 +2918,8 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Add manager (Manager only)",
-        "description": "Active Manager only (the Add manager button in people management). The only way to create a Manager: a new, active account is created with role MANAGER; no induction is required. The zID is stored in lower case and must not exist yet (existing people cannot be turned into Managers). Writes MANAGER_CREATED to the audit trail. Students and admins are not created here; they come from existing accounts.",
+        "summary": "Add manager (Manager only, kept for existing clients)",
+        "description": "Same as POST /admin/users/staff/ with role MANAGER. Active Manager only. Writes MANAGER_CREATED to the audit trail.",
         "security": [
           {
             "BearerAuth": []
@@ -2754,6 +2978,181 @@
           },
           "409": {
             "description": "USER_EXISTS: a user with this zID already exists (details.user_id).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/staff/": {
+      "post": {
+        "operationId": "post__api_v1_admin_users_staff_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Add staff (Manager only)",
+        "description": "Active Manager only (the Add staff button in User Management). Creates a new, active ADMIN or MANAGER account; staff do not book and need no induction. The zID is stored in lower case and must not exist yet (an existing student cannot become staff). Writes ADMIN_CREATED or MANAGER_CREATED to the audit trail. The response includes invite_code; the new staff member activates the account on the staff sign-in page with it.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created staff account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedUser"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid zID, email, name or unknown field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only an active Manager can add staff.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "USER_EXISTS: a user with this zID already exists (details.user_id).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/qualification-requirements/{id}/": {
+      "patch": {
+        "operationId": "patch__api_v1_admin_qualification_requirements_id_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Set prerequisite inductions (Manager only)",
+        "description": "Active Manager only. Replaces prerequisite_ids. A requirement cannot list itself and prerequisites cannot form a loop (409 PREREQUISITE_CYCLE). Writes REQUIREMENT_PREREQUISITES_UPDATED to the audit trail.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrerequisiteUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated requirement.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualificationRequirement"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or unknown requirement id, or unknown field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only an active Manager can change prerequisites.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Requirement not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "PREREQUISITE_CYCLE: the prerequisites would form a loop.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2925,7 +3324,8 @@
         "required": [
           "id",
           "name",
-          "description"
+          "description",
+          "prerequisite_ids"
         ],
         "properties": {
           "id": {
@@ -2937,6 +3337,14 @@
           },
           "description": {
             "type": "string"
+          },
+          "prerequisite_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Inductions that must be verified and current before evidence for this one is accepted or verified, and before resources that need it can be booked."
           }
         },
         "additionalProperties": false
@@ -2958,7 +3366,8 @@
           "timezone",
           "pending_hold_minutes",
           "status",
-          "status_reason"
+          "status_reason",
+          "room_id"
         ],
         "properties": {
           "id": {
@@ -3029,6 +3438,12 @@
             "type": "string",
             "nullable": true,
             "description": "Shown to students while MAINTENANCE or CLOSED."
+          },
+          "room_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Equipment only: the room it is kept in (null for rooms). Used for grouping; a room's status does not affect its equipment."
           }
         },
         "additionalProperties": false
@@ -3220,7 +3635,7 @@
           "reason_code": {
             "type": "string",
             "nullable": true,
-            "description": "Why the request is in its status, e.g. AWAITING_REVIEW, AUTO_APPROVED_AFTER_REVIEW_WINDOW, AUTO_REJECTED_QUALIFICATION, AUTO_REJECTED_RESOURCE_UNAVAILABLE, AUTO_REJECTED_CONFLICT, TIME_CONFLICT, TEMPORARY_HOLD_CONFLICT, PROMOTED_FROM_WAITLIST, QUALIFICATION_REQUIRED, QUALIFICATION_REJECTED, START_TIME_PASSED, CANCELLED_BY_USER, CANCELLED_BY_STAFF."
+            "description": "Why the request is in its status, e.g. AWAITING_REVIEW, AUTO_APPROVED_AFTER_REVIEW_WINDOW, AUTO_REJECTED_ACCOUNT_INACTIVE, AUTO_REJECTED_QUALIFICATION, AUTO_REJECTED_BOOKING_RULES, AUTO_REJECTED_RESOURCE_UNAVAILABLE, AUTO_REJECTED_CONFLICT, TIME_CONFLICT, TEMPORARY_HOLD_CONFLICT, PROMOTED_FROM_WAITLIST, QUALIFICATION_REQUIRED, QUALIFICATION_REJECTED, ACCOUNT_DEACTIVATED, ACCOUNT_INACTIVE, START_TIME_PASSED, CANCELLED_BY_USER, CANCELLED_BY_STAFF."
           },
           "review_due_at": {
             "type": "string",
@@ -3373,7 +3788,8 @@
           "max_advance_days",
           "resource_status",
           "status_reason",
-          "review_window_minutes"
+          "review_window_minutes",
+          "missing_prerequisite_id"
         ],
         "properties": {
           "resource_id": {
@@ -3448,7 +3864,7 @@
           },
           "can_request": {
             "type": "boolean",
-            "description": "True only for a Student/Admin whose induction for this resource is VERIFIED and current, while the resource is AVAILABLE."
+            "description": "true only for a student whose induction (and its prerequisites) is verified and current and when the resource is AVAILABLE. Always false for staff."
           },
           "qualification_status": {
             "type": "string",
@@ -3458,9 +3874,10 @@
               "PENDING",
               "VERIFIED",
               "REJECTED",
-              "EXPIRED"
+              "EXPIRED",
+              "PREREQUISITE_REQUIRED"
             ],
-            "description": "Current resource eligibility; request submission additionally checks validity through the selected end time."
+            "description": "Current resource eligibility; request submission additionally checks validity through the selected end time. PREREQUISITE_REQUIRED means a prerequisite induction (see missing_prerequisite_id) is not verified and current."
           },
           "earliest_date": {
             "type": "string",
@@ -3496,6 +3913,12 @@
             "type": "integer",
             "example": 1440,
             "description": "The resource's Admin review window (pending_hold_minutes)."
+          },
+          "missing_prerequisite_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Set when qualification_status is PREREQUISITE_REQUIRED: the requirement to complete first."
           }
         },
         "additionalProperties": false
@@ -3787,6 +4210,10 @@
             "enum": [
               "Bearer"
             ]
+          },
+          "staff_sign_in_enabled": {
+            "type": "boolean",
+            "description": "Admins and Managers can sign in on the staff page with zID and password."
           }
         },
         "additionalProperties": false
@@ -4203,11 +4630,12 @@
               "STUDENT",
               "ADMIN",
               "MANAGER"
-            ]
+            ],
+            "description": "Optional; must equal the current role. Roles are fixed when the account is created, so a different value returns 409 ROLE_CHANGE_NOT_ALLOWED."
           },
           "active": {
             "type": "boolean",
-            "description": "false locks the account out on its next request; true restores it."
+            "description": "false locks the account out on its next request and rejects a student's undecided requests (ACCOUNT_DEACTIVATED); true restores it."
           }
         }
       },
@@ -4319,7 +4747,10 @@
             "type": "object",
             "required": [
               "inductions",
-              "induction_status"
+              "induction_status",
+              "is_staff",
+              "activation_status",
+              "invite_code"
             ],
             "properties": {
               "inductions": {
@@ -4335,11 +4766,124 @@
                   "VERIFIED",
                   "INCOMPLETE"
                 ],
-                "description": "VERIFIED only when every induction is verified and not expired; required before a student can become an Admin."
+                "description": "VERIFIED only when every induction is verified and not expired. Only meaningful for students."
+              },
+              "is_staff": {
+                "type": "boolean",
+                "description": "true for ADMIN and MANAGER (staff accounts, which do not book)."
+              },
+              "activation_status": {
+                "type": "string",
+                "nullable": true,
+                "enum": [
+                  "AWAITING_ACTIVATION",
+                  "ACTIVATED",
+                  null
+                ],
+                "description": "Staff only (null for students): whether they have chosen a password with their invite code."
+              },
+              "invite_code": {
+                "type": "string",
+                "nullable": true,
+                "description": "Staff awaiting activation only: the code a Manager hands over. Null once activated and for students."
               }
             }
           }
         ]
+      },
+      "StaffCreate": {
+        "type": "object",
+        "required": [
+          "zid",
+          "display_name",
+          "university_email",
+          "role"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "zid": {
+            "type": "string",
+            "pattern": "^[zZ]\\d{7}$",
+            "example": "z5123456"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "university_email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "ADMIN",
+              "MANAGER"
+            ]
+          }
+        }
+      },
+      "PrerequisiteUpdate": {
+        "type": "object",
+        "required": [
+          "prerequisite_ids"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "prerequisite_ids": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "StaffSignIn": {
+        "type": "object",
+        "required": [
+          "zid",
+          "password"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "zid": {
+            "type": "string",
+            "pattern": "^[zZ][0-9]{7}$"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128
+          }
+        }
+      },
+      "StaffActivate": {
+        "type": "object",
+        "required": [
+          "zid",
+          "invite_code",
+          "password"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "zid": {
+            "type": "string",
+            "pattern": "^[zZ][0-9]{7}$"
+          },
+          "invite_code": {
+            "type": "string",
+            "maxLength": 20,
+            "example": "K7Q4-9MZD",
+            "description": "Case and dashes are ignored."
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128
+          }
+        }
       }
     }
   }

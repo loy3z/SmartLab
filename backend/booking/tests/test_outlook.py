@@ -17,6 +17,7 @@ from rest_framework.test import APIClient
 from booking.calendar_sync import CalendarSyncService
 from booking.domain import BookingStatus
 from booking.outlook import CalendarEvent, GraphTransport, MicrosoftGraphCalendar, OutlookError
+from booking.authentication import issue_demo_token
 from booking.runtime import reset_runtime
 from booking.tests.test_api import NOW, PNG, SYDNEY
 
@@ -84,6 +85,10 @@ class OutlookWorkflowTests(SimpleTestCase):
 
     def login(self, zid):
         client = APIClient()
+        staff = next((item for item in self.service.repo.list_principals() if item.zid == zid and item.is_staff), None)
+        if staff is not None:  # staff use the staff sign-in page; tests skip the slow password hash
+            client.credentials(HTTP_AUTHORIZATION="Bearer " + issue_demo_token(staff))
+            return client
         result = client.post("/api/v1/auth/demo-login/", {"zid": zid}, format="json")
         client.credentials(HTTP_AUTHORIZATION="Bearer " + result.data["access_token"])
         return client

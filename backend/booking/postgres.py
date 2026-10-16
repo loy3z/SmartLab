@@ -11,7 +11,7 @@ from psycopg.types.json import Jsonb
 from .domain import (
     AuditRecord, Booking, BookingStatus, OutlookSyncRecord, Principal,
     QualificationRequirement, QualificationStatus, QualificationSubmission,
-    Resource, ResourceKind, Role,
+    Resource, ResourceKind, Role, StaffCredential,
 )
 from .storage import StoredFile
 
@@ -25,6 +25,7 @@ _TABLES = {
     AuditRecord: 'audit_record',
     OutlookSyncRecord: 'outlook_sync_record',
     StoredFile: 'stored_file',
+    StaffCredential: 'staff_credential',
 }
 _ENUMS = {
     Principal: {'role': Role},
@@ -36,8 +37,9 @@ _ORDER = {
     Principal: 'id', Resource: 'id', QualificationRequirement: 'id',
     QualificationSubmission: 'storage_order', Booking: 'created_at, id',
     AuditRecord: 'at, id', OutlookSyncRecord: 'updated_at, booking_id',
-    StoredFile: 'id',
+    StoredFile: 'id', StaffCredential: 'principal_id',
 }
+_KEYS = {OutlookSyncRecord: 'booking_id', StaffCredential: 'principal_id'}
 _WRITE_LOCK = 0x534D4152544C4142
 
 
@@ -61,6 +63,8 @@ def _decode(record_type, row):
     for key, value in values.items():
         if isinstance(value, UUID):
             values[key] = str(value)
+        elif isinstance(value, list):  # uuid[] columns such as prerequisite_ids
+            values[key] = tuple(str(item) for item in value)
     for key, enum in _ENUMS.get(record_type, {}).items():
         values[key] = enum(values[key])
     if record_type is AuditRecord and isinstance(values['details'], str):
@@ -73,6 +77,8 @@ def _decode(record_type, row):
 def _encode(value):
     if isinstance(value, Enum):
         return value.value
+    if isinstance(value, tuple):
+        return [str(item) for item in value]
     if isinstance(value, dict):
         return Jsonb(value)
     return value
@@ -120,7 +126,7 @@ def _get(record_type, record_id):
     record_id = _uuid(record_id)
     if record_id is None:
         return None
-    key = 'booking_id' if record_type is OutlookSyncRecord else 'id'
+    key = _KEYS.get(record_type, 'id')
     rows = _select(record_type, f'{key} = %s', [record_id])
     return rows[0] if rows else None
 
@@ -145,7 +151,7 @@ def _insert(record, upsert=False):
     placeholders = ', '.join(['%s'] * len(names))
     query = f'INSERT INTO {_table(record_type)} ({columns}) VALUES ({placeholders})'
     if upsert:
-        key = 'booking_id' if record_type is OutlookSyncRecord else 'id'
+        key = _KEYS.get(record_type, 'id')
         assignments = ', '.join(
             f'{quote(name)} = EXCLUDED.{quote(name)}' for name in names if name != key
         )
@@ -232,6 +238,12 @@ class PostgresRepository:
 
     def save_outlook_sync(self, record):
         _insert(record, upsert=True)
+
+    def get_credential(self, principal_id):
+        return _get(StaffCredential, principal_id)
+
+    def save_credential(self, credential):
+        _insert(credential, upsert=True)
 
 
 class PostgresFileStorage:

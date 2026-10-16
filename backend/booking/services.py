@@ -1,13 +1,15 @@
 """Booking policy independent of HTTP and the eventual database adapter."""
 import re
+import secrets
 from contextvars import ContextVar
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4, uuid5
 from zoneinfo import ZoneInfo
 from .domain import (MAX_PENDING_HOLD_MINUTES, AuditRecord, Booking, BookingStatus, Principal, QualificationSubmission,
-                     QualificationStatus, ResourceStatus, Role)
+                     QualificationStatus, ResourceKind, ResourceStatus, Role, StaffCredential)
 from .errors import DomainError
+from .rules import BookingRules, StaticRulesProvider
 
 # Requests that hold first place for their slot (blocking others while hold_until is in the future).
 # Only PENDING_APPROVAL is created now; WAITING_QUALIFICATION stays for stored records of the earlier flow.
@@ -24,30 +26,60 @@ ACTIVE_REQUEST_STATUSES = UNDECIDED_STATUSES + (BookingStatus.APPROVED,)
 _promoted_ids = ContextVar("booking_promoted_ids", default=None)
 
 
-def _bounded_int(name, value, low, high):
-    if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
-        raise ValueError(f"{name} must be an integer from {low} to {high}.")
-    return value
+# Automatic decisions name the rule that failed. Codes from the shared rule check map to these.
+_AUTO_REJECT_CODES = {
+    "ACCOUNT_INACTIVE": "AUTO_REJECTED_ACCOUNT_INACTIVE",
+    "RESOURCE_UNAVAILABLE": "AUTO_REJECTED_RESOURCE_UNAVAILABLE",
+    "RESOURCE_POLICY_NOT_CONFIGURED": "AUTO_REJECTED_QUALIFICATION",
+    "QUALIFICATION_REQUIRED": "AUTO_REJECTED_QUALIFICATION",
+}
+
+
+_INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O or 1/I, so codes are easy to read out
+
+
+def new_invite_code():
+    raw = "".join(secrets.choice(_INVITE_ALPHABET) for _ in range(8))
+    return f"{raw[:4]}-{raw[4:]}"
+
+
+def normalize_invite_code(code):
+    return re.sub(r"[^A-Z0-9]", "", (code or "").upper())
 
 
 class BookingService:
-    def __init__(self, repo, storage, clock=None, calendar_sync=None, qualification_validity_days=120,
-                 min_advance_days=7, max_advance_days=30):
+    def __init__(self, repo, storage, clock=None, calendar_sync=None, rules=None,
+                 qualification_validity_days=None, min_advance_days=None, max_advance_days=None):
+        """rules: a RulesProvider (see rules.py) or a BookingRules value.
+
+        The three keyword numbers are a shortcut for tests and scripts: they build fixed rules.
+        """
         self.repo, self.storage = repo, storage
         self.clock = clock or (lambda: datetime.now(UTC))
         self.calendar_sync = calendar_sync
-        # Sprint 1 fixed policy: a verified induction lasts one term (default 120 days from approval).
-        # Configured by QUALIFICATION_VALIDITY_DAYS; reviewers cannot choose a different expiry.
-        if isinstance(qualification_validity_days, bool) or not isinstance(qualification_validity_days, int) \
-                or not 1 <= qualification_validity_days <= 3650:
-            raise ValueError("qualification_validity_days must be an integer from 1 to 3650.")
-        self.qualification_validity_days = qualification_validity_days
-        # Team proposal (not client-confirmed): a booking must start between min_advance_days and
-        # max_advance_days local calendar days from today (default: at least one week, at most 30 days ahead).
-        self.min_advance_days = _bounded_int("min_advance_days", min_advance_days, 0, 365)
-        self.max_advance_days = _bounded_int("max_advance_days", max_advance_days, 1, 365)
-        if self.min_advance_days > self.max_advance_days:
-            raise ValueError("min_advance_days must not exceed max_advance_days.")
+        if rules is None or isinstance(rules, BookingRules):
+            base = rules or BookingRules()
+            overrides = {name: value for name, value in (
+                ("qualification_validity_days", qualification_validity_days),
+                ("min_advance_days", min_advance_days), ("max_advance_days", max_advance_days)) if value is not None}
+            rules = StaticRulesProvider(replace(base, **overrides))
+        self.rules_provider = rules
+        self.rules()  # fail fast on invalid values
+
+    def rules(self) -> BookingRules:
+        """Current booking rules (read on every check, so a changed provider value applies at once)."""
+        return self.rules_provider.current()
+
+    def _override_rule(self, **values):
+        """Pin a rule to a fixed value (scripts and tests); production reads them from the rules provider."""
+        self.rules_provider = StaticRulesProvider(replace(self.rules(), **values))
+
+    min_advance_days = property(lambda self: self.rules().min_advance_days,
+                                lambda self, value: self._override_rule(min_advance_days=value))
+    max_advance_days = property(lambda self: self.rules().max_advance_days,
+                                lambda self, value: self._override_rule(max_advance_days=value))
+    qualification_validity_days = property(lambda self: self.rules().qualification_validity_days,
+                                           lambda self, value: self._override_rule(qualification_validity_days=value))
 
     def take_promoted_ids(self):
         """Return and clear booking IDs changed by waitlist promotion in this request context."""
@@ -71,12 +103,9 @@ class BookingService:
             raise DomainError("FORBIDDEN", "This action requires an active student account.", 403)
 
     def require_booking_user(self, actor):
-        if not actor.active or actor.role not in (Role.STUDENT, Role.ADMIN):
-            raise DomainError(
-                "FORBIDDEN",
-                "This action requires an active Student or Admin account.",
-                403,
-            )
+        """Only students book and upload induction evidence. Admins and Managers are staff: they review and manage."""
+        if not actor.active or actor.role != Role.STUDENT:
+            raise DomainError("FORBIDDEN", "Only students can book resources or submit induction evidence.", 403)
 
     def require_staff(self, actor):
         """Admin and Manager: reviews, queues, audit. A Manager has every Admin permission."""
@@ -97,31 +126,33 @@ class BookingService:
         return sorted(users, key=lambda item: (item.role.value, item.zid))
 
     def update_user(self, actor, user_id, role=None, active=None):
-        """Nominate a user's role or (de)activate the account. Takes effect on the user's next request."""
+        """(De)activate an account. Roles are fixed when the account is created.
+
+        Students, Admins and Managers are separate kinds of account (client, week 5): a student is never
+        given a staff role (passing inductions proves lab eligibility, not employment), and Admin and Manager
+        are different levels of staff that do not switch. Staff accounts come from Add staff (create_staff)
+        or, later, from the university identity provider; to replace someone, add the new account and
+        deactivate the old one. ``role`` is accepted only when it equals the current role.
+        Deactivating a student rejects their undecided requests at once; approved bookings are kept for
+        the Manager to review.
+        """
         self.require_manager(actor)
         if role is None and active is None:
             raise DomainError("VALIDATION_ERROR", "Provide role and/or active.")
         user_id = str(user_id)
         if user_id == actor.id:
             raise DomainError("SELF_MODIFICATION_FORBIDDEN", "Managers cannot change their own role or status.", 403)
-        if role == Role.MANAGER.value:
-            raise DomainError("MANAGER_ROLE_NOT_ASSIGNABLE",
-                              "Managers are created only with Add manager, not by changing a role.", 403)
         managers = [item.id for item in self.repo.list_principals() if item.role == Role.MANAGER]
         with self.repo.atomic(student_ids=sorted(set(managers + [user_id]))):
             current = self.repo.get_principal(user_id)
             if current is None:
                 raise DomainError("NOT_FOUND", "User not found.", 404)
-            if role is not None and current.role == Role.MANAGER and role != Role.MANAGER.value:
-                raise DomainError("MANAGER_ROLE_NOT_ASSIGNABLE",
-                                  "A Manager's role cannot be changed here; deactivate the account instead.", 403)
-            if role == Role.ADMIN.value and current.role == Role.STUDENT:
-                inductions = self.induction_summary(current.id)
-                missing = [item for item in inductions if item["status"] != "VERIFIED"]
-                if missing:
-                    raise DomainError("INDUCTION_REQUIRED_FOR_ADMIN",
-                                      f"{current.display_name} ({current.zid}) must pass every induction before becoming an administrator.",
-                                      409, {"zid": current.zid, "display_name": current.display_name, "missing_inductions": missing})
+            if role is not None and Role(role) != current.role:
+                raise DomainError("ROLE_CHANGE_NOT_ALLOWED",
+                                  "Roles are fixed when an account is created. Students, Admins and Managers are "
+                                  "separate accounts: add a new staff account with Add staff and deactivate the "
+                                  "old one if needed.", 409,
+                                  {"zid": current.zid, "role": current.role.value})
             updated = replace(current, role=Role(role) if role is not None else current.role,
                               active=current.active if active is None else active)
             if updated == current:
@@ -133,7 +164,28 @@ class BookingService:
             self._audit(actor.id, "USER_UPDATED", "principal", updated.id, zid=updated.zid,
                         previous_role=current.role.value, role=updated.role.value,
                         previous_active=current.active, active=updated.active)
-            return updated
+        if current.active and not updated.active:
+            self._reject_undecided_requests(updated.id, actor.id, "ACCOUNT_DEACTIVATED",
+                                            "The account was deactivated.")
+        return updated
+
+    def _reject_undecided_requests(self, student_id, actor_id, reason_code, note):
+        """Reject a person's undecided requests (pending and waitlisted) and pass the time on."""
+        changed = []
+        for booking in sorted(self.repo.list_bookings(student_id=student_id), key=lambda item: (item.created_at, item.id)):
+            if booking.status not in UNDECIDED_STATUSES:
+                continue
+            with self.repo.atomic(resource_ids=[booking.resource_id], student_ids=[student_id]):
+                current = self.repo.get_booking(booking.id)
+                if current.status not in UNDECIDED_STATUSES:
+                    continue
+                revised = replace(current, status=BookingStatus.REJECTED, reason_code=reason_code, reviewed_by=actor_id,
+                                  reviewed_at=self.now(), decision_reason=note, updated_at=self.now())
+                self._save_booking(revised)
+                self._audit(actor_id, "BOOKING_REJECTED", "booking", revised.id, reason=note, reason_code=reason_code)
+                changed.append(revised)
+                self._promote_waitlist(revised.resource_id)
+        return changed
 
     def set_pending_hold_minutes(self, actor, resource_id, minutes):
         return self.set_booking_policy(actor, resource_id, pending_hold_minutes=minutes)
@@ -198,10 +250,16 @@ class BookingService:
                             "valid_until": record.valid_until if record and status == "VERIFIED" else None})
         return summary
 
-    def create_manager(self, actor, zid, display_name, university_email):
-        """Manager only ("Add manager"): the only way to create a Manager. Students and admins come from
-        existing accounts; their role is changed with update_user. No induction is required for a Manager."""
+    def create_staff(self, actor, zid, display_name, university_email, role=Role.MANAGER):
+        """Manager only ("Add staff"): create an Admin or Manager account for a staff member.
+
+        Staff are not promoted from student accounts. With university SSO, the identity provider would
+        create these from its staff records instead; the role is still assigned here by a Manager.
+        """
         self.require_manager(actor)
+        role = Role(role)
+        if role not in (Role.ADMIN, Role.MANAGER):
+            raise DomainError("VALIDATION_ERROR", "Staff accounts are ADMIN or MANAGER.")
         zid = zid.strip().lower()
         if not re.fullmatch(r"z\d{7}", zid):
             raise DomainError("VALIDATION_ERROR", "zID must be 'z' followed by 7 digits.")
@@ -213,12 +271,114 @@ class BookingService:
             if existing:
                 raise DomainError("USER_EXISTS", "A user with this zID already exists.", 409, {"user_id": existing.id})
             try:
-                created = Principal(str(uuid4()), zid, display_name, Role.MANAGER, university_email)
+                created = Principal(str(uuid4()), zid, display_name, role, university_email)
             except ValueError as exc:
                 raise DomainError("VALIDATION_ERROR", str(exc)) from exc
             self.repo.save_principal(created)
-            self._audit(actor.id, "MANAGER_CREATED", "principal", created.id, zid=zid)
+            # The new staff member activates the account on the staff sign-in page with this code.
+            self.repo.save_credential(StaffCredential(created.id, invite_code=new_invite_code(), updated_at=self.now()))
+            self._audit(actor.id, f"{role.value}_CREATED", "principal", created.id, zid=zid)
             return created
+
+    # ----- Staff sign-in (students use university sign-in; staff use zID + password) -----
+
+    def staff_access(self, user):
+        """For the user list: whether a staff account is activated, and its invite code while it is not."""
+        if not user.is_staff:
+            return {"activation_status": None, "invite_code": None}
+        credential = self.repo.get_credential(user.id)
+        if credential and credential.activated:
+            return {"activation_status": "ACTIVATED", "invite_code": None}
+        return {"activation_status": "AWAITING_ACTIVATION", "invite_code": credential.invite_code if credential else None}
+
+    def reset_staff_access(self, actor, user_id):
+        """Manager only: clear a staff member's password and issue a new invite code (forgotten password,
+        or a lost code). The role and history stay the same."""
+        self.require_manager(actor)
+        user_id = str(user_id)
+        if user_id == actor.id:
+            raise DomainError("SELF_MODIFICATION_FORBIDDEN", "Ask another Manager to reset your access.", 403)
+        with self.repo.atomic(student_ids=[user_id]):
+            user = self.repo.get_principal(user_id)
+            if user is None:
+                raise DomainError("NOT_FOUND", "User not found.", 404)
+            if not user.is_staff:
+                raise DomainError("STUDENT_USES_SSO", "Students sign in with university sign-in and have no password here.", 409)
+            self.repo.save_credential(StaffCredential(user.id, invite_code=new_invite_code(), updated_at=self.now()))
+            self._audit(actor.id, "STAFF_ACCESS_RESET", "principal", user.id, zid=user.zid)
+        return user
+
+    def _staff_by_zid(self, zid):
+        zid = (zid or "").strip().lower()
+        return next((item for item in self.repo.list_principals() if item.zid == zid), None)
+
+    def activate_staff(self, zid, invite_code, password):
+        """First staff sign-in: the invite code from the Manager plus a password the staff member chooses."""
+        from django.contrib.auth.hashers import make_password
+        if len(password or "") < 8:
+            raise DomainError("VALIDATION_ERROR", "Choose a password of at least 8 characters.", 400, {"password": ["At least 8 characters."]})
+        with self.repo.atomic():
+            user = self._staff_by_zid(zid)
+            credential = self.repo.get_credential(user.id) if user and user.is_staff else None
+            if (credential is None or not credential.invite_code
+                    or normalize_invite_code(credential.invite_code) != normalize_invite_code(invite_code)):
+                raise DomainError("INVALID_INVITE_CODE", "The zID or invite code is not correct. Ask your Manager for a new code.", 400)
+            if not user.active:
+                raise DomainError("ACCOUNT_DEACTIVATED", "This account has been deactivated.", 403)
+            self.repo.save_credential(StaffCredential(user.id, password_hash=make_password(password), updated_at=self.now()))
+            self._audit(user.id, "STAFF_ACTIVATED", "principal", user.id, zid=user.zid)
+        return user
+
+    def staff_sign_in(self, zid, password):
+        """Staff sign-in page. The role comes from the account, never from the page used."""
+        from django.contrib.auth.hashers import check_password
+        user = self._staff_by_zid(zid)
+        if user is not None and not user.is_staff:
+            raise DomainError("STUDENT_USES_SSO", "Students sign in with university sign-in on the main sign-in page.", 403)
+        if user is None:
+            raise DomainError("INVALID_CREDENTIALS", "The zID or password is not correct.", 401)
+        if not user.active:
+            raise DomainError("ACCOUNT_DEACTIVATED", "This account has been deactivated.", 403)
+        credential = self.repo.get_credential(user.id)
+        if credential is None or not credential.activated:
+            raise DomainError("ACCOUNT_NOT_ACTIVATED", "Activate your account first with the invite code from your Manager.", 403)
+        if not check_password(password or "", credential.password_hash):
+            raise DomainError("INVALID_CREDENTIALS", "The zID or password is not correct.", 401)
+        return user
+
+    def create_manager(self, actor, zid, display_name, university_email):
+        return self.create_staff(actor, zid, display_name, university_email, Role.MANAGER)
+
+    def set_prerequisites(self, actor, requirement_id, prerequisite_ids):
+        """Manager only: which inductions must be verified and current before this one (e.g. Advanced needs General).
+
+        Stored with the requirement, so a policy change needs no code change. Cycles are refused.
+        """
+        self.require_manager(actor)
+        requirement = self.repo.get_requirement(str(requirement_id))
+        if requirement is None:
+            raise DomainError("NOT_FOUND", "Qualification requirement not found.", 404)
+        wanted = tuple(dict.fromkeys(str(item) for item in prerequisite_ids))
+        for item in wanted:
+            if self.repo.get_requirement(item) is None:
+                raise DomainError("VALIDATION_ERROR", f"Unknown prerequisite {item}.")
+        graph = {item.id: set(item.prerequisite_ids) for item in self.repo.list_requirements()}
+        graph[requirement.id] = set(wanted)
+
+        def reaches(start, target, seen):
+            for nxt in graph.get(start, ()):
+                if nxt == target or (nxt not in seen and (seen.add(nxt) or reaches(nxt, target, seen))):
+                    return True
+            return False
+
+        if requirement.id in wanted or reaches(requirement.id, requirement.id, set()):
+            raise DomainError("PREREQUISITE_CYCLE", "These prerequisites would form a loop.", 409)
+        updated = replace(requirement, prerequisite_ids=wanted)
+        with self.repo.atomic():
+            self.repo.save_requirement(updated)
+            self._audit(actor.id, "REQUIREMENT_PREREQUISITES_UPDATED", "requirement", requirement.id,
+                        previous=list(requirement.prerequisite_ids), prerequisites=list(wanted))
+        return updated
 
     def booking_report(self, actor, statuses=None, resource_id=None, student_id=None, since=None, until=None):
         """Admin/Manager: every booking matching the filters, ordered by start time (for lists, print and CSV)."""
@@ -245,28 +405,55 @@ class BookingService:
         # Creation time is authoritative; retain insertion order for equal timestamps.
         return max(enumerate(records), key=lambda pair: (pair[1].submitted_at, pair[0]))[1] if records else None
 
-    def qualification_state(self, student_id, resource, end=None):
-        """Single eligibility check used by create, approve, reschedule and availability.
+    def _requirement_status(self, student_id, requirement_id, end=None):
+        """NOT_SUBMITTED, PENDING, REJECTED, EXPIRED, EXPIRES_BEFORE_END or VERIFIED, from the latest submission."""
+        record = self.latest_submission(student_id, requirement_id)
+        if record is None:
+            return "NOT_SUBMITTED"
+        if record.status == QualificationStatus.VERIFIED:
+            if record.valid_until is not None and record.valid_until <= self.now():
+                return "EXPIRED"
+            if end is not None and record.valid_until is not None and record.valid_until < end:
+                return "EXPIRES_BEFORE_END"
+            return "VERIFIED"
+        return record.status.value
 
-        Eligibility comes only from the latest QualificationSubmission for the
-        resource's requirement. Sprint 1 creates VERIFIED records through manual
-        review (review_qualification). A future source such as Moodle course
-        completion should be added as an adapter that saves a VERIFIED
-        QualificationSubmission (reviewed_by identifying the source, valid_until
-        from the same validity policy). Booking rules here then need no change.
+    def _prerequisite_chain(self, requirement_id):
+        """Every prerequisite of a requirement, nearest first, following the chain (General before Advanced)."""
+        chain, seen, pending = [], {str(requirement_id)}, [str(requirement_id)]
+        while pending:
+            requirement = self.repo.get_requirement(pending.pop(0))
+            for item in (requirement.prerequisite_ids if requirement else ()):
+                if item not in seen:
+                    seen.add(item)
+                    chain.append(item)
+                    pending.append(item)
+        return chain
+
+    def missing_prerequisite(self, student_id, requirement_id, end=None):
+        """(requirement_id, status) of the first prerequisite that is not verified and current, or None."""
+        for item in self._prerequisite_chain(requirement_id):
+            status = self._requirement_status(student_id, item, end)
+            if status != "VERIFIED":
+                return item, status
+        return None
+
+    def qualification_state(self, student_id, resource, end=None):
+        """Single eligibility check used by create, approve, automatic decisions, waitlist promotion,
+        reschedule and availability.
+
+        The resource's required induction must be verified and valid until the booking ends, and so must
+        every prerequisite of it (for example General Lab Induction for Advanced Lab Training). A missing
+        prerequisite is reported as PREREQUISITE_REQUIRED. Eligibility comes only from the latest
+        QualificationSubmission of each requirement; a future source (school records, Moodle) can be an
+        adapter that saves VERIFIED submissions, and these rules need no change.
         """
         if not resource.required_qualification_id:
             return "NOT_CONFIGURED", False
-        record = self.latest_submission(student_id, resource.required_qualification_id)
-        if record is None:
-            return "NOT_SUBMITTED", False
-        if record.status == QualificationStatus.VERIFIED:
-            if record.valid_until is not None and record.valid_until <= self.now():
-                return "EXPIRED", False
-            if end is not None and record.valid_until is not None and record.valid_until < end:
-                return "EXPIRES_BEFORE_END", False
-            return "VERIFIED", True
-        return record.status.value, False
+        if self.missing_prerequisite(student_id, resource.required_qualification_id, end):
+            return "PREREQUISITE_REQUIRED", False
+        status = self._requirement_status(student_id, resource.required_qualification_id, end)
+        return status, status == "VERIFIED"
 
     def _overlaps(self, resource_id, start, end, exclude_id=None):
         return self.repo.list_blocking_bookings(resource_id, start, end, self.now(), exclude_id)
@@ -290,78 +477,133 @@ class BookingService:
                  "end": existing.end.isoformat().replace("+00:00", "Z")},
             )
 
-    def _require_bookable(self, resource):
-        if not resource.bookable:
-            status = resource.status.value if resource.active else "INACTIVE"
-            raise DomainError("RESOURCE_UNAVAILABLE", "This resource is not accepting bookings right now.", 409,
-                              {"resource_status": status, "status_reason": resource.status_reason})
+    def _resource_violation(self, resource):
+        if resource is None or not resource.bookable:
+            status = "MISSING" if resource is None else resource.status.value if resource.active else "INACTIVE"
+            return DomainError("RESOURCE_UNAVAILABLE", "This resource is not accepting bookings right now.", 409,
+                               {"resource_status": status, "status_reason": resource.status_reason if resource else None})
+        return None
 
-    def _validate_period(self, resource, start, end):
+    def _require_bookable(self, resource):
+        error = self._resource_violation(resource)
+        if error:
+            raise error
+
+    def _period_violation(self, resource, start, end):
+        """Time rules of one resource: future start, maximum length, one local day within opening hours, increments."""
         if start.tzinfo is None or start.utcoffset() is None or end.tzinfo is None or end.utcoffset() is None:
-            raise DomainError("INVALID_TIME", "Start and end require UTC offsets.")
-        self._require_bookable(resource)
+            return DomainError("INVALID_TIME", "Start and end require UTC offsets.")
         if start >= end or start <= self.now():
-            raise DomainError("INVALID_TIME", "Use a future start time and an end later than start.")
+            return DomainError("INVALID_TIME", "Use a future start time and an end later than start.")
         duration = (end - start).total_seconds() / 60
         if duration > resource.max_booking_minutes:
-            raise DomainError("DURATION_LIMIT", "The booking exceeds this resource's maximum duration.")
+            return DomainError("DURATION_LIMIT", "The booking exceeds this resource's maximum duration.")
         local_start = start.astimezone(ZoneInfo(resource.timezone))
         local_end = end.astimezone(ZoneInfo(resource.timezone))
         if (local_start.date() != local_end.date() or local_start.time().replace(tzinfo=None) < resource.opening_time
                 or local_end.time().replace(tzinfo=None) > resource.closing_time):
-            raise DomainError("OUTSIDE_OPENING_HOURS", "Book within one local day and the resource's opening hours.")
+            return DomainError("OUTSIDE_OPENING_HOURS", "Book within one local day and the resource's opening hours.")
         opening = datetime.combine(local_start.date(), resource.opening_time, ZoneInfo(resource.timezone))
         offset = (local_start - opening).total_seconds() / 60
         if start.second or start.microsecond or end.second or end.microsecond or offset % resource.slot_minutes or duration % resource.slot_minutes:
-            raise DomainError("INVALID_TIME_INCREMENT", f"Use {resource.slot_minutes}-minute time increments.")
+            return DomainError("INVALID_TIME_INCREMENT", f"Use {resource.slot_minutes}-minute time increments.")
+        return None
+
+    def _validate_period(self, resource, start, end):
+        self._require_bookable(resource)
+        error = self._period_violation(resource, start, end)
+        if error:
+            raise error
+
+    def _account_violation(self, student_id):
+        person = self.repo.get_principal(str(student_id))
+        if person is None or not person.active or person.role != Role.STUDENT:
+            return DomainError("ACCOUNT_INACTIVE", "The requester's account is no longer active for booking.", 409)
+        return None
+
+    def _qualification_violation(self, student_id, resource, end):
+        eligibility, qualified = self.qualification_state(student_id, resource, end)
+        if eligibility == "NOT_CONFIGURED":
+            return DomainError("RESOURCE_POLICY_NOT_CONFIGURED",
+                               "Configure an induction requirement for this resource before accepting requests.", 409)
+        if not qualified:
+            details = {"qualification_status": eligibility, "requirement_id": resource.required_qualification_id}
+            missing = self.missing_prerequisite(student_id, resource.required_qualification_id, end)
+            if missing:
+                details.update(prerequisite_id=missing[0], prerequisite_status=missing[1])
+            return DomainError("QUALIFICATION_REQUIRED",
+                               f"A verified induction (and its prerequisites) valid for the whole booking is required (status {eligibility}).",
+                               403, details)
+        return None
+
+    def rule_violation(self, student_id, resource, start, end, check_window=False):
+        """The one place that decides whether a booking follows the rules (conflicts are checked separately).
+
+        Used when a request is created, approved by an Admin, decided automatically, promoted from the
+        waitlist and rescheduled, so all of them apply the same rules: the requester's account is active,
+        the resource is open, the time fits the resource (future, opening hours, length, increments) and the
+        requester's induction and its prerequisites are valid until the end. The booking window (how many
+        days ahead) is checked only when a request is created or rescheduled (check_window=True): a request
+        made on time does not become invalid while it waits for review. Returns a DomainError or None.
+        """
+        return (self._account_violation(student_id) or self._resource_violation(resource)
+                or self._period_violation(resource, start, end)
+                or (self._window_violation(resource, start) if check_window else None)
+                or self._qualification_violation(student_id, resource, end))
 
     def booking_window(self, resource):
-        """First and last local dates a new or rescheduled booking may start on."""
+        """First and last local dates a new or rescheduled booking may start on (from the current rules)."""
+        rules = self.rules()
         today = self.now().astimezone(ZoneInfo(resource.timezone)).date()
-        return today + timedelta(days=self.min_advance_days), today + timedelta(days=self.max_advance_days)
+        return today + timedelta(days=rules.min_advance_days), today + timedelta(days=rules.max_advance_days)
 
     def _window_details(self, resource):
+        rules = self.rules()
         earliest, latest = self.booking_window(resource)
         return {"earliest_date": earliest.isoformat(), "latest_date": latest.isoformat(),
-                "min_advance_days": self.min_advance_days, "max_advance_days": self.max_advance_days}
+                "min_advance_days": rules.min_advance_days, "max_advance_days": rules.max_advance_days}
 
     def _window_reason(self, resource, start):
         earliest, latest = self.booking_window(resource)
         day = start.astimezone(ZoneInfo(resource.timezone)).date()
         return "BOOKING_TOO_SOON" if day < earliest else "BOOKING_TOO_FAR_AHEAD" if day > latest else None
 
-    def _validate_horizon(self, resource, start):
+    def _window_violation(self, resource, start):
         reason = self._window_reason(resource, start)
         if reason == "BOOKING_TOO_SOON":
-            raise DomainError(reason, f"Bookings must be made at least {self.min_advance_days} days in advance.", 400,
-                              self._window_details(resource))
+            return DomainError(reason, f"Bookings must be made at least {self.min_advance_days} days in advance.", 400,
+                               self._window_details(resource))
         if reason == "BOOKING_TOO_FAR_AHEAD":
-            raise DomainError(reason, f"Bookings can start at most {self.max_advance_days} days ahead.", 400,
-                              self._window_details(resource))
+            return DomainError(reason, f"Bookings can start at most {self.max_advance_days} days ahead.", 400,
+                               self._window_details(resource))
+        return None
+
+    def _validate_horizon(self, resource, start):
+        error = self._window_violation(resource, start)
+        if error:
+            raise error
 
     def _review_deadline(self, resource, start):
         """End of the Admin review window: pending_hold_minutes from now, but never after the booking starts."""
         return min(start, self.now() + timedelta(minutes=resource.pending_hold_minutes))
 
     def _require_eligible(self, actor_id, resource, end):
-        """Only someone whose induction for this resource is verified and still valid at the end may request it."""
-        eligibility, qualified = self.qualification_state(actor_id, resource, end)
-        if eligibility == "NOT_CONFIGURED":
-            raise DomainError("RESOURCE_POLICY_NOT_CONFIGURED", "Configure an induction requirement for this resource before accepting requests.", 409)
-        if not qualified:
-            raise DomainError("QUALIFICATION_REQUIRED",
-                              "A verified induction that is valid for the whole booking is required before requesting this resource.",
-                              403, {"qualification_status": eligibility, "requirement_id": resource.required_qualification_id})
+        """Only someone whose induction (and its prerequisites) is verified and valid at the end may request it."""
+        error = self._qualification_violation(actor_id, resource, end)
+        if error:
+            raise error
 
     def _auto_decision(self, booking):
-        """What the system decides when the review window ends without an Admin decision."""
+        """What the system decides when the review window ends without an Admin decision.
+
+        Approve only if every rule still holds (the same check an Admin approval uses) and no approved
+        booking overlaps; otherwise reject with the rule that failed.
+        """
         resource = self.repo.get_resource(booking.resource_id)
-        if resource is None or not resource.bookable:
-            return BookingStatus.REJECTED, "AUTO_REJECTED_RESOURCE_UNAVAILABLE", "The resource is not available for booking."
-        eligibility, qualified = self.qualification_state(booking.student_id, resource, booking.end)
-        if not qualified:
-            return (BookingStatus.REJECTED, "AUTO_REJECTED_QUALIFICATION",
-                    f"No valid induction for the whole booking (status {eligibility}).")
+        error = self.rule_violation(booking.student_id, resource, booking.start, booking.end)
+        if error:
+            return (BookingStatus.REJECTED, _AUTO_REJECT_CODES.get(error.code, "AUTO_REJECTED_BOOKING_RULES"),
+                    error.message)
         if any(item.status == BookingStatus.APPROVED for item in self._overlaps(booking.resource_id, booking.start, booking.end, booking.id)):
             return BookingStatus.REJECTED, "AUTO_REJECTED_CONFLICT", "The time is already taken by an approved booking."
         return BookingStatus.APPROVED, "AUTO_APPROVED_AFTER_REVIEW_WINDOW", None
@@ -386,17 +628,17 @@ class BookingService:
             if booking.start <= now:
                 status, reason, action = BookingStatus.EXPIRED, "START_TIME_PASSED", "BOOKING_TIME_PROCESSED"
             else:
+                # A closed resource keeps its queue until it reopens.
                 if resource is None or not resource.bookable or self._overlaps(booking.resource_id, booking.start, booking.end, booking.id):
                     continue
-                _, qualified = self.qualification_state(booking.student_id, resource, booking.end)
-                if qualified:
+                error = self.rule_violation(booking.student_id, resource, booking.start, booking.end)
+                if error is None:
                     deadline = self._review_deadline(resource, booking.start)
                     status, reason, action = BookingStatus.PENDING_APPROVAL, "PROMOTED_FROM_WAITLIST", "BOOKING_PROMOTED"
                     extra = {"hold_until": deadline, "review_due_at": deadline}
                 else:
-                    status, reason, action = BookingStatus.REJECTED, "QUALIFICATION_REQUIRED", "BOOKING_REJECTED"
-                    extra = {"reviewed_by": "SYSTEM", "reviewed_at": now,
-                             "decision_reason": "No current qualification covers this booking."}
+                    status, reason, action = BookingStatus.REJECTED, error.code, "BOOKING_REJECTED"
+                    extra = {"reviewed_by": "SYSTEM", "reviewed_at": now, "decision_reason": error.message}
             revised = replace(booking, status=status, reason_code=reason, updated_at=now, **extra)
             self._save_booking(revised)
             self._audit("SYSTEM", action, "booking", revised.id, status=status.value, reason_code=reason,
@@ -441,7 +683,9 @@ class BookingService:
             self._validate_period(resource, start, end)
             self._validate_horizon(resource, start)
             self._reject_duplicate_request(actor.id, resource_id, start, end)
-            self._require_eligible(actor.id, resource, end)
+            error = self.rule_violation(actor.id, resource, start, end, check_window=True)
+            if error:
+                raise error
             now = self.now()
             conflicts = self._overlaps(resource_id, start, end)
             if conflicts:
@@ -488,6 +732,7 @@ class BookingService:
                     raise DomainError("QUALIFICATION_ALREADY_PENDING", "Your evidence is already waiting for review.", 409)
                 if latest and latest.status == QualificationStatus.VERIFIED and (latest.valid_until is None or latest.valid_until > self.now()):
                     raise DomainError("QUALIFICATION_ALREADY_VERIFIED", "Your qualification is already current.", 409)
+                self._require_prerequisites(actor.id, requirement_id)
                 stored = self.storage.save(data, filename, content_type, actor.id)
                 record = QualificationSubmission(str(uuid4()), actor.id, requirement_id, title.strip(), notes, stored.id, self.now())
                 self.repo.save_submission(record)
@@ -497,6 +742,15 @@ class BookingService:
             if stored:
                 self.storage.delete(stored.id)
             raise
+
+    def _require_prerequisites(self, student_id, requirement_id):
+        """Evidence for a requirement is accepted and verified only after its prerequisites are verified and current."""
+        missing = self.missing_prerequisite(student_id, requirement_id)
+        if missing:
+            prerequisite = self.repo.get_requirement(missing[0])
+            raise DomainError("PREREQUISITE_REQUIRED",
+                              f"{prerequisite.name if prerequisite else 'A prerequisite induction'} must be verified and current first.",
+                              409, {"prerequisite_id": missing[0], "prerequisite_status": missing[1]})
 
     def qualification_expiry(self, verified_at):
         """Expiry for a qualification verified at ``verified_at`` (Sprint 1: fixed days).
@@ -521,6 +775,8 @@ class BookingService:
                 raise DomainError("ALREADY_REVIEWED", "This evidence has already been reviewed.", 409)
             if actor.id == source.student_id:
                 raise DomainError("SELF_REVIEW_FORBIDDEN", "You cannot review your own evidence.", 403)
+            if decision == "VERIFIED":
+                self._require_prerequisites(source.student_id, source.requirement_id)
             reviewed_at = self.now()
             updated = replace(source, status=QualificationStatus(decision), reviewed_by=actor.id, reviewed_at=reviewed_at,
                               rejection_reason=reason.strip() if decision == "REJECTED" else None,
@@ -569,10 +825,12 @@ class BookingService:
                 raise DomainError("SELF_REVIEW_FORBIDDEN", "You cannot approve your own request.", 403)
             if decision == "APPROVED":
                 resource = self.resource(source.resource_id)
-                self._validate_period(resource, source.start, source.end)
-                eligibility, qualified = self.qualification_state(source.student_id, resource, source.end)
-                if not qualified:
-                    raise DomainError("QUALIFICATION_NOT_VERIFIED", "Verify current induction evidence covering the booking before approval.", 409, {"qualification_status": eligibility})
+                error = self.rule_violation(source.student_id, resource, source.start, source.end)
+                if error and error.code == "QUALIFICATION_REQUIRED":
+                    raise DomainError("QUALIFICATION_NOT_VERIFIED", "Verify current induction evidence covering the booking before approval.",
+                                      409, error.details)
+                if error:
+                    raise error
                 blockers = self._overlaps(source.resource_id, source.start, source.end, source.id)
                 if any(item.status == BookingStatus.APPROVED for item in blockers):
                     raise DomainError("BOOKING_CONFLICT", "This period is still occupied by an approved booking.", 409)
@@ -619,14 +877,12 @@ class BookingService:
             self._validate_period(resource, start, end)
             self._validate_horizon(resource, start)
             self._reject_duplicate_request(actor.id, source.resource_id, start, end, source.id)
-            eligibility, qualified = self.qualification_state(source.student_id, resource, end)
-            if not qualified:
-                raise DomainError(
-                    "QUALIFICATION_NOT_VERIFIED",
-                    "A current qualification covering the new booking period is required.",
-                    409,
-                    {"qualification_status": eligibility},
-                )
+            error = self.rule_violation(source.student_id, resource, start, end, check_window=True)
+            if error and error.code == "QUALIFICATION_REQUIRED":
+                raise DomainError("QUALIFICATION_NOT_VERIFIED", "A current qualification covering the new booking period is required.",
+                                  409, error.details)
+            if error:
+                raise error
             blockers = self._overlaps(source.resource_id, start, end, source.id)
             if any(item.status == BookingStatus.APPROVED for item in blockers):
                 raise DomainError("BOOKING_CONFLICT", "The requested new period is occupied by another approved booking.", 409)
@@ -662,7 +918,7 @@ class BookingService:
             self._promote_waitlist(revised.resource_id)  # the old period may now be free
             return revised
 
-    AUDIT_ENTITY_TYPES = ("booking", "qualification", "resource", "principal")
+    AUDIT_ENTITY_TYPES = ("booking", "qualification", "resource", "principal", "requirement")
 
     def audit_trail(self, actor, resource_id=None, student_id=None, entity_type=None, entity_id=None,
                     action=None, actor_id=None, since=None, until=None, limit=100, offset=0):
@@ -805,6 +1061,8 @@ class BookingService:
                 "duration_minutes": duration_minutes, "slots": slots, **self._window_details(resource),
                 "resource_status": resource.status.value, "status_reason": resource.status_reason,
                 "review_window_minutes": resource.pending_hold_minutes,
-                # Students and admins (tutor-like students) may request; a verified, current induction is required.
-                "can_request": actor.role in (Role.STUDENT, Role.ADMIN) and eligibility == "VERIFIED" and resource.bookable,
-                "qualification_status": eligibility}
+                # Only students book; their induction (and its prerequisites) must be verified and current.
+                "can_request": actor.role == Role.STUDENT and eligibility == "VERIFIED" and resource.bookable,
+                "qualification_status": eligibility,
+                "missing_prerequisite_id": (self.missing_prerequisite(actor.id, resource.required_qualification_id) or (None,))[0]
+                if eligibility == "PREREQUISITE_REQUIRED" else None}

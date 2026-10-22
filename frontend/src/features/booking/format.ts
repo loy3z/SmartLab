@@ -80,6 +80,9 @@ export function bookingDetail(b: Booking): string {
       return `${why}${pos}If the time frees up, your request moves up in submission order and goes to an admin for approval.`
     }
     case 'PENDING_APPROVAL': {
+      if (b.urgent) {
+        return `Urgent request: waiting for a Manager to approve it. The time is held until it starts; it is never approved automatically.`
+      }
       const until = b.review_due_at ? ` until ${fmtDateTime(b.review_due_at)}` : ''
       const moved = b.reason_code === 'PROMOTED_FROM_WAITLIST' ? 'The time freed up and your request moved up the waitlist. ' : ''
       return `${moved}Waiting for an admin to approve it. The time is held for you${until}; if no admin decides by then, it is approved automatically as long as your induction is still valid and the time is free.`
@@ -123,14 +126,18 @@ const ERROR_TEXT: Record<string, string> = {
   TOKEN_EXPIRED: 'Session expired. Please log in again.',
   INVALID_TOKEN: 'Session expired. Please log in again.',
   REQUEST_WAITLISTED: 'This request is waitlisted and cannot be approved yet. When the time frees up it moves to Awaiting approval.',
-  SELF_REVIEW_FORBIDDEN: 'You cannot review your own request or evidence. Ask another admin or a manager.',
+  SELF_REVIEW_FORBIDDEN: 'You cannot review a request that is for you or that you created, or your own evidence. Ask another admin or a manager.',
+  URGENT_NEEDS_MANAGER: 'Only a Manager can decide an urgent request.',
+  URGENT_REASON_REQUIRED: 'Explain why the request is urgent.',
+  URGENT_NOT_NEEDED: 'This time is inside the normal booking window. Turn off "Urgent" and send a normal request.',
+  PERSON_NOT_FOUND: 'No account found for that zID.',
   RESOURCE_UNAVAILABLE: 'This resource is under maintenance or closed, so it cannot be booked right now.',
   RESOURCE_POLICY_NOT_CONFIGURED: 'This resource has no induction requirement set up yet. Contact a manager.',
   QUALIFICATION_NOT_VERIFIED: 'The student\'s induction is not verified, so this request cannot be approved.',
   REQUEST_NOT_REVIEWABLE: 'This request has already been decided or moved. The list has been refreshed.',
   ALREADY_REVIEWED: 'This has already been reviewed by someone else. The list has been refreshed.',
   NETWORK_ERROR: 'Unable to reach SmartLab. Check your connection and try again.',
-  ACCOUNT_INACTIVE: "The requester's account is no longer active, so this request cannot be approved.",
+  ACCOUNT_INACTIVE: 'That account is no longer active, so it cannot be booked for and its requests cannot be approved.',
   USE_STAFF_SIGN_IN: 'Admins and Managers sign in on the Staff sign-in page.',
   STUDENT_USES_SSO: 'Students sign in with university sign-in, not on the staff page.',
   INVALID_CREDENTIALS: 'The zID or password is not correct.',
@@ -197,6 +204,13 @@ export function submittedMessage(b: Booking): { title: string; message: string }
     }
   }
   if (b.status === 'APPROVED') return { title: 'Booking confirmed', message: when }
+  const forWhom = b.on_behalf && b.booked_for ? ` for ${b.booked_for.display_name} (${b.booked_for.zid})` : ''
+  if (b.urgent) {
+    return { title: `Urgent request submitted${forWhom}`, message: `${when}. A Manager must approve it before it starts.` }
+  }
+  if (forWhom) {
+    return { title: `Request submitted${forWhom}`, message: `${when}. Waiting for approval${b.review_due_at ? ` (decided by ${fmtDateTime(b.review_due_at)})` : ''}.` }
+  }
   return {
     title: 'Request submitted',
     message: `${when}. Waiting for admin approval${b.review_due_at ? ` (decided by ${fmtDateTime(b.review_due_at)})` : ''}.`,

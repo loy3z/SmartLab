@@ -4,7 +4,9 @@ from datetime import datetime, timedelta
 
 from django.test import SimpleTestCase, override_settings
 
-from booking.domain import BookingStatus
+from uuid import uuid4
+
+from booking.domain import BookingStatus, Principal, Role
 from booking.exceptions import DomainError
 from booking.repository import MemoryRepository
 from booking.runtime import reset_runtime
@@ -56,16 +58,19 @@ class BookingWindowServiceTests(BookingFixtureMixin, SimpleTestCase):
     def test_more_than_thirty_days_ahead_is_refused(self):
         self.assert_refused("BOOKING_TOO_FAR_AHEAD", 31, hour=8)
 
-    def test_reschedule_must_also_stay_inside_the_window(self):
+    def test_a_manager_reschedule_may_move_earlier_but_not_past_the_last_day(self):
+        manager = Principal(str(uuid4()), "z9888888", "Manager", Role.MANAGER, "z9888888@ad.unsw.edu.au")
+        self.repo.save_principal(manager)
         booking = self.book_on(10)
         booking = self.service.review_booking(self.admin, booking.id, "APPROVED")
-        for days, code in ((3, "BOOKING_TOO_SOON"), (31, "BOOKING_TOO_FAR_AHEAD")):
-            start, end = self.at(days)
-            with self.subTest(days=days), self.assertRaises(DomainError) as denied:
-                self.service.reschedule_booking(self.student, booking.id, start, end)
-            self.assertEqual(denied.exception.code, code)
+        start, end = self.at(31)
+        with self.assertRaises(DomainError) as denied:
+            self.service.reschedule_booking(manager, booking.id, start, end)
+        self.assertEqual(denied.exception.code, "BOOKING_TOO_FAR_AHEAD")
+        start, end = self.at(3)  # inside the coming week: allowed for a Manager
+        self.assertEqual(self.service.reschedule_booking(manager, booking.id, start, end).start, start)
         start, end = self.at(8)
-        self.assertEqual(self.service.reschedule_booking(self.student, booking.id, start, end).start, start)
+        self.assertEqual(self.service.reschedule_booking(manager, booking.id, start, end).start, start)
 
     def test_the_window_moves_with_the_clock(self):
         week_away, month_away = self.at(7), self.at(31, hour=8)

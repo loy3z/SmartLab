@@ -20,13 +20,12 @@ const current = (item: UserInduction, now: number) =>
 type StaffRole = 'ADMIN' | 'MANAGER'
 
 const STAFF_HELP: Record<StaffRole, string> = {
-  ADMIN: 'Admins review induction evidence and booking requests. Staff accounts do not book resources.',
+  ADMIN: 'Admins review induction evidence and booking requests, and can book (for themselves or on behalf of someone) under the same rules as students.',
   MANAGER: 'Managers can do everything an Admin can, and also manage users, resources and every booking.',
 }
 
 function InductionSummary({ user, now }: { user: ManagedUser; now: number }) {
-  // Staff do not book, so inductions only matter for students.
-  if (user.role !== 'STUDENT') return <span className="bk-muted">—</span>
+  // Everyone books under the same induction rules, staff included.
   const items = user.inductions ?? []
   const ok = items.filter((item) => current(item, now)).length
   const tone = items.length && ok === items.length ? 'is-green' : ok ? 'is-amber' : 'is-grey'
@@ -308,7 +307,7 @@ function AddStaffDialog({ onClose, onCreated }: { onClose: () => void; onCreated
     <dialog ref={ref} className="ui-dialog" aria-labelledby="add-staff-title" onCancel={(e) => { e.preventDefault(); onClose() }}>
       <form className="ui-dialog-card" onSubmit={submit}>
         <h2 id="add-staff-title">Add staff</h2>
-        <p className="ui-dialog-message">Creates a new staff account and an invite code. They activate it on the Staff sign-in page by choosing a password. The role cannot be changed later: to replace someone, add a new account and deactivate the old one. Staff do not book resources, and existing student accounts cannot be turned into staff.</p>
+        <p className="ui-dialog-message">Creates a new staff account and an invite code. They activate it on the Staff sign-in page by choosing a password. The role cannot be changed later: to replace someone, add a new account and deactivate the old one. Staff book under the same induction rules as students, and existing student accounts cannot be turned into staff.</p>
         <label className="ui-field"><span>Role</span>
           <select value={role} onChange={(e) => setRole(e.target.value as StaffRole)}>
             <option value="ADMIN">Admin</option>

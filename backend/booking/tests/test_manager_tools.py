@@ -56,7 +56,7 @@ class RescheduleAvailabilityTests(ServiceFixture, SimpleTestCase):
     def test_reschedule_may_change_the_length(self):
         self.qualification()
         booking = self.service.review_booking(self.admin, self.book_minutes(60).id, "APPROVED")
-        moved = self.service.reschedule_booking(self.student, booking.id, self.start, self.start + timedelta(minutes=180))
+        moved = self.service.reschedule_booking(self.manager, booking.id, self.start, self.start + timedelta(minutes=180))
         self.assertEqual((moved.status, moved.end - moved.start), (BookingStatus.APPROVED, timedelta(minutes=180)))
 
 

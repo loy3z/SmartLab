@@ -226,6 +226,17 @@ Content-Type: application/json
 
 {}
 
+### Test the Microsoft sign-in and calendar permission (reads the calendar once)
+POST {{baseUrl}}/admin/outlook/check/
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{}
+
+### Booking page: every matching resource's free and taken times on one day
+GET {{baseUrl}}/resources/day-overview/?date=2026-10-27&duration_minutes=60&kind=EQUIPMENT&category=Electronics%20testing&bookable_only=true
+Authorization: Bearer {{studentToken}}
+
 ### All bookings with student and resource names (Admin or Manager)
 GET {{baseUrl}}/admin/bookings/?status=ALL&resource_id={{resourceId}}
 Authorization: Bearer {{managerToken}}

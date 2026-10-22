@@ -85,3 +85,15 @@ OUTLOOK_CALENDAR_ID = os.getenv("OUTLOOK_CALENDAR_ID", "").strip()
 OUTLOOK_HTTP_TIMEOUT_SECONDS = float(os.getenv("OUTLOOK_HTTP_TIMEOUT_SECONDS", "8"))
 if not 0 < OUTLOOK_HTTP_TIMEOUT_SECONDS <= 30:
     raise ValueError("OUTLOOK_HTTP_TIMEOUT_SECONDS must be in (0, 30]")
+# Device-code sign-in (renews itself): the Application (client) ID of a public-client app registration.
+# Not a secret, but keep it in the environment like the rest. The refresh token file is ignored by Git.
+OUTLOOK_PUBLIC_CLIENT_ID = os.getenv("OUTLOOK_PUBLIC_CLIENT_ID", "").strip()
+OUTLOOK_AUTHORITY = os.getenv("OUTLOOK_AUTHORITY", "common").strip() or "common"
+OUTLOOK_REFRESH_TOKEN_FILE = os.getenv("OUTLOOK_REFRESH_TOKEN_FILE",
+                                       str(BASE_DIR / ".local" / "outlook-refresh-token") if DEBUG else "")
+# Who receives a meeting invitation: none, allowlist (only OUTLOOK_ALLOWED_ATTENDEES) or all.
+# The default sends no invitation unless the address is listed, so testing only ever reaches your own mailbox.
+OUTLOOK_INVITE_MODE = os.getenv("OUTLOOK_INVITE_MODE", "allowlist").strip().lower()
+if OUTLOOK_INVITE_MODE not in ("none", "allowlist", "all"):
+    raise ValueError("OUTLOOK_INVITE_MODE must be none, allowlist or all")
+OUTLOOK_ALLOWED_ATTENDEES = tuple(item.strip() for item in os.getenv("OUTLOOK_ALLOWED_ATTENDEES", "").split(",") if item.strip())

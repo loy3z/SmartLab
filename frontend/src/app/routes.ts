@@ -2,12 +2,13 @@ import type { Role } from '../features/booking/types.ts'
 
 const permissions: Record<string, readonly Role[]> = {
   '/dashboard': ['STUDENT'],
-  // Only students book. Admins and Managers are staff: they review and manage.
-  '/resources': ['STUDENT'],
-  '/bookings': ['STUDENT'],
-  '/induction': ['STUDENT'],
+  // Everyone books under the same rules (client, 17 Oct); staff may also book on behalf of someone.
+  '/resources': ['STUDENT', 'ADMIN', 'MANAGER'],
+  '/bookings': ['STUDENT', 'ADMIN', 'MANAGER'],
+  '/induction': ['STUDENT', 'ADMIN', 'MANAGER'],
   '/admin/qualifications': ['ADMIN', 'MANAGER'],
   '/admin/bookings': ['ADMIN', 'MANAGER'],
+  '/admin/calendar-sync': ['ADMIN', 'MANAGER'],
   '/manager/bookings': ['MANAGER'],
   '/manager/users': ['MANAGER'],
   '/account': ['STUDENT', 'ADMIN', 'MANAGER'],

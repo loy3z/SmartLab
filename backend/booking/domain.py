@@ -140,12 +140,16 @@ class Resource:
     # Equipment: the room it is kept in. Rooms: None. Display and grouping only; a room being closed
     # does not stop its equipment being borrowed.
     room_id: str | None = None
+    # Equipment type used to filter the booking page (e.g. "Microscopy", "Fabrication"). Rooms: None.
+    category: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.kind, ResourceKind):
             object.__setattr__(self, "kind", ResourceKind(self.kind))
         if self.kind == ResourceKind.ROOM and self.room_id is not None:
             raise ValueError("A room cannot belong to another room.")
+        if self.category is not None and (not isinstance(self.category, str) or not 1 <= len(self.category.strip()) <= 60):
+            raise ValueError("category must be 1-60 characters, or empty.")
         if isinstance(self.pending_hold_minutes, bool) or not isinstance(self.pending_hold_minutes, int) \
                 or not 1 <= self.pending_hold_minutes <= MAX_PENDING_HOLD_MINUTES:
             raise ValueError(f"pending_hold_minutes must be an integer from 1 to {MAX_PENDING_HOLD_MINUTES}.")
@@ -199,6 +203,13 @@ class Booking:
     updated_at: datetime | None = None
     revision: int = 1
     hold_until: datetime | None = None
+    # Who created the request. ``student_id`` is the person the booking is for (the beneficiary); an Admin
+    # or Manager may create one on behalf of someone else. None on records made before this field existed.
+    created_by: str | None = None
+    # Urgent request: starts sooner than the normal booking window allows, so only a Manager may approve it
+    # (never automatic). Induction and conflict rules still apply.
+    urgent: bool = False
+    urgent_reason: str | None = None
 
     def __post_init__(self) -> None:
         _require_aware(

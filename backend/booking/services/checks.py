@@ -1,0 +1,148 @@
+"""The one shared rule check used by create, approve, automatic decisions, waitlist promotion and reschedule (account
+-> resource status -> time -> booking window -> induction and prerequisites), plus conflict lookups.
+"""
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+from ..errors import DomainError
+from .base import ACTIVE_REQUEST_STATUSES
+
+
+class ChecksMixin:
+    def _overlaps(self, resource_id, start, end, exclude_id=None):
+        return self.repo.list_blocking_bookings(resource_id, start, end, self.now(), exclude_id)
+
+    def _student_overlap(self, student_id, resource_id, start, end, exclude_id=None):
+        """Return the student's earliest overlapping active request for this resource."""
+        matches = [item for item in self.repo.list_bookings(student_id=student_id, resource_id=resource_id)
+                   if item.id != exclude_id and item.status in ACTIVE_REQUEST_STATUSES
+                   and start < item.end and item.start < end]
+        return min(matches, key=lambda item: (item.created_at, item.id)) if matches else None
+
+    def _reject_duplicate_request(self, student_id, resource_id, start, end, exclude_id=None):
+        existing = self._student_overlap(student_id, resource_id, start, end, exclude_id)
+        if existing:
+            raise DomainError(
+                "DUPLICATE_BOOKING",
+                "You already have an active request for this resource during the selected time.",
+                409,
+                {"booking_id": existing.id, "status": existing.status.value,
+                 "start": existing.start.isoformat().replace("+00:00", "Z"),
+                 "end": existing.end.isoformat().replace("+00:00", "Z")},
+            )
+
+    def _resource_violation(self, resource):
+        if resource is None or not resource.bookable:
+            status = "MISSING" if resource is None else resource.status.value if resource.active else "INACTIVE"
+            return DomainError("RESOURCE_UNAVAILABLE", "This resource is not accepting bookings right now.", 409,
+                               {"resource_status": status, "status_reason": resource.status_reason if resource else None})
+        return None
+
+    def _require_bookable(self, resource):
+        error = self._resource_violation(resource)
+        if error:
+            raise error
+
+    def _period_violation(self, resource, start, end):
+        """Time rules of one resource: future start, maximum length, one local day within opening hours, increments."""
+        if start.tzinfo is None or start.utcoffset() is None or end.tzinfo is None or end.utcoffset() is None:
+            return DomainError("INVALID_TIME", "Start and end require UTC offsets.")
+        if start >= end or start <= self.now():
+            return DomainError("INVALID_TIME", "Use a future start time and an end later than start.")
+        duration = (end - start).total_seconds() / 60
+        if duration > resource.max_booking_minutes:
+            return DomainError("DURATION_LIMIT", "The booking exceeds this resource's maximum duration.")
+        local_start = start.astimezone(ZoneInfo(resource.timezone))
+        local_end = end.astimezone(ZoneInfo(resource.timezone))
+        if (local_start.date() != local_end.date() or local_start.time().replace(tzinfo=None) < resource.opening_time
+                or local_end.time().replace(tzinfo=None) > resource.closing_time):
+            return DomainError("OUTSIDE_OPENING_HOURS", "Book within one local day and the resource's opening hours.")
+        opening = datetime.combine(local_start.date(), resource.opening_time, ZoneInfo(resource.timezone))
+        offset = (local_start - opening).total_seconds() / 60
+        if start.second or start.microsecond or end.second or end.microsecond or offset % resource.slot_minutes or duration % resource.slot_minutes:
+            return DomainError("INVALID_TIME_INCREMENT", f"Use {resource.slot_minutes}-minute time increments.")
+        return None
+
+    def _validate_period(self, resource, start, end):
+        self._require_bookable(resource)
+        error = self._period_violation(resource, start, end)
+        if error:
+            raise error
+
+    def _account_violation(self, student_id):
+        person = self.repo.get_principal(str(student_id))
+        if person is None or not person.active:
+            return DomainError("ACCOUNT_INACTIVE", "The requester's account is no longer active for booking.", 409)
+        return None
+
+    def _qualification_violation(self, student_id, resource, end):
+        eligibility, qualified = self.qualification_state(student_id, resource, end)
+        if eligibility == "NOT_CONFIGURED":
+            return DomainError("RESOURCE_POLICY_NOT_CONFIGURED",
+                               "Configure an induction requirement for this resource before accepting requests.", 409)
+        if not qualified:
+            details = {"qualification_status": eligibility, "requirement_id": resource.required_qualification_id}
+            missing = self.missing_prerequisite(student_id, resource.required_qualification_id, end)
+            if missing:
+                details.update(prerequisite_id=missing[0], prerequisite_status=missing[1])
+            return DomainError("QUALIFICATION_REQUIRED",
+                               f"A verified induction (and its prerequisites) valid for the whole booking is required (status {eligibility}).",
+                               403, details)
+        return None
+
+    def rule_violation(self, student_id, resource, start, end, check_window=False):
+        """The one place that decides whether a booking follows the rules (conflicts are checked separately).
+
+        Used when a request is created, approved by an Admin, decided automatically, promoted from the
+        waitlist and rescheduled, so all of them apply the same rules: the requester's account is active,
+        the resource is open, the time fits the resource (future, opening hours, length, increments) and the
+        requester's induction and its prerequisites are valid until the end. The booking window (how many
+        days ahead) is checked only when a request is created or rescheduled (check_window=True): a request
+        made on time does not become invalid while it waits for review. Returns a DomainError or None.
+        """
+        return (self._account_violation(student_id) or self._resource_violation(resource)
+                or self._period_violation(resource, start, end)
+                or (self._window_violation(resource, start) if check_window else None)
+                or self._qualification_violation(student_id, resource, end))
+
+    def booking_window(self, resource):
+        """First and last local dates a new or rescheduled booking may start on (from the current rules)."""
+        rules = self.rules()
+        today = self.now().astimezone(ZoneInfo(resource.timezone)).date()
+        return today + timedelta(days=rules.min_advance_days), today + timedelta(days=rules.max_advance_days)
+
+    def _window_details(self, resource):
+        rules = self.rules()
+        earliest, latest = self.booking_window(resource)
+        return {"earliest_date": earliest.isoformat(), "latest_date": latest.isoformat(),
+                "min_advance_days": rules.min_advance_days, "max_advance_days": rules.max_advance_days}
+
+    def _window_reason(self, resource, start):
+        earliest, latest = self.booking_window(resource)
+        day = start.astimezone(ZoneInfo(resource.timezone)).date()
+        return "BOOKING_TOO_SOON" if day < earliest else "BOOKING_TOO_FAR_AHEAD" if day > latest else None
+
+    def _window_violation(self, resource, start):
+        reason = self._window_reason(resource, start)
+        if reason == "BOOKING_TOO_SOON":
+            return DomainError(reason, f"Bookings must be made at least {self.min_advance_days} days in advance.", 400,
+                               self._window_details(resource))
+        if reason == "BOOKING_TOO_FAR_AHEAD":
+            return DomainError(reason, f"Bookings can start at most {self.max_advance_days} days ahead.", 400,
+                               self._window_details(resource))
+        return None
+
+    def _validate_horizon(self, resource, start):
+        error = self._window_violation(resource, start)
+        if error:
+            raise error
+
+    def _review_deadline(self, resource, start):
+        """End of the Admin review window: pending_hold_minutes from now, but never after the booking starts."""
+        return min(start, self.now() + timedelta(minutes=resource.pending_hold_minutes))
+
+    def _require_eligible(self, actor_id, resource, end):
+        """Only someone whose induction (and its prerequisites) is verified and valid at the end may request it."""
+        error = self._qualification_violation(actor_id, resource, end)
+        if error:
+            raise error

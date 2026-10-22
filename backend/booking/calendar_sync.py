@@ -1,4 +1,10 @@
-"""Transactional outbox for create/update/cancel; network calls run after commit."""
+"""One-way Outlook synchronisation: the website is the only authority (client email, 17 Oct).
+
+Transactional outbox for create/update/cancel; network calls run after commit. The system never reads changes
+made in Outlook, so nothing done there can bypass the booking rules or become an approved booking. A person may
+delete the event from their own calendar; only a later change on the website (a Manager's reschedule) writes it
+again, with the new time.
+"""
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from threading import RLock
@@ -13,6 +19,7 @@ class CalendarSyncService:
     def __init__(self, repo, provider, enabled=False, clock=None):
         self.repo, self.provider, self.enabled = repo, provider, enabled
         self.clock = clock or (lambda: datetime.now(UTC))
+        self.last_check = None  # result of the latest connection check in this process
         self._lock = RLock()
 
     def now(self):
@@ -63,12 +70,22 @@ class CalendarSyncService:
                 "last_error": record.last_error}
 
     def reconcile(self):
-        # Also handles approved bookings that predate enabling the integration.
+        # Also handles approved bookings that predate enabling the integration. A booking that has already
+        # ended is not written: a calendar entry in the past helps nobody.
         if not self.enabled:
             return
+        now = self.now()
         for candidate in self.repo.list_bookings():
+            if candidate.status == BookingStatus.APPROVED and candidate.end <= now and not self.repo.get_outlook_sync(candidate.id):
+                continue
             with self.repo.atomic(resource_ids=[candidate.resource_id], student_ids=[candidate.student_id]):
                 self.schedule(self.repo.get_booking(candidate.id))
+
+    def _people(self, source):
+        student = self.repo.get_principal(source.student_id)
+        resource = self.repo.get_resource(source.resource_id)
+        creator = self.repo.get_principal(source.created_by) if source.created_by else None
+        return student, resource, creator
 
     def process_booking(self, booking_id):
         if not self.enabled:
@@ -96,16 +113,19 @@ class CalendarSyncService:
                     self.repo.save_outlook_sync(claimed)
                 event_id, web_link, ical_uid = claimed.event_id, claimed.web_link, claimed.ical_uid
                 try:
-                    student = resource = None
+                    student = resource = creator = None
                     if creating or claimed.action == "UPDATE":
-                        student = self.repo.get_principal(source.student_id)
-                        resource = self.repo.get_resource(source.resource_id)
+                        student, resource, creator = self._people(source)
                         if not student or not student.university_email:
                             raise OutlookError("STUDENT_EMAIL_NOT_CONFIGURED")
                         if not resource:
                             raise OutlookError("RESOURCE_NOT_FOUND")
                     if creating:
-                        event = self.provider.create_event(source, student, resource, claimed.calendar_path)
+                        # A replacement for an event the person deleted keeps the old iCal UID until it is written;
+                        # it needs a new transactionId, or Graph would treat it as a retry of the deleted event.
+                        transaction_id = booking_id if not claimed.ical_uid else f"{booking_id}.{claimed.revision}"
+                        event = self.provider.create_event(source, student, resource, claimed.calendar_path,
+                                                           creator=creator, transaction_id=transaction_id)
                         event_id, web_link, ical_uid = event.id, event.web_link, event.ical_uid
                     # Save a recovered/created ID before issuing DELETE so retry
                     # can recover from a crash, timeout or failed cancellation.
@@ -115,7 +135,8 @@ class CalendarSyncService:
                             latest = replace(latest, event_id=event_id, web_link=web_link, ical_uid=ical_uid)
                             self.repo.save_outlook_sync(latest)
                     if claimed.action == "UPDATE" and event_id and not creating:
-                        event = self.provider.update_event(source, student, resource, claimed.calendar_path, event_id)
+                        event = self.provider.update_event(source, student, resource, claimed.calendar_path, event_id,
+                                                           creator=creator)
                         event_id = event.id
                         web_link = event.web_link or web_link
                         ical_uid = event.ical_uid or ical_uid
@@ -128,6 +149,10 @@ class CalendarSyncService:
                     if claimed.action == "DELETE" and event_id:
                         self.provider.delete_event(claimed.calendar_path, event_id)
                 except OutlookError as exc:
+                    if exc.code == "GRAPH_HTTP_404" and claimed.action == "UPDATE" and not creating:
+                        # The person deleted the event; a Manager has now changed the booking, so write the new time.
+                        if self._event_gone(booking_id, claimed):
+                            return self.process_booking(booking_id)
                     with self.repo.atomic(resource_ids=[source.resource_id], student_ids=[source.student_id]):
                         latest = self.repo.get_outlook_sync(booking_id)
                         if latest.revision == claimed.revision:
@@ -143,14 +168,30 @@ class CalendarSyncService:
                 with self.repo.atomic(resource_ids=[source.resource_id], student_ids=[source.student_id]):
                     latest = self.repo.get_outlook_sync(booking_id)
                     if latest.revision == claimed.revision:
+                        now = self.now()
                         latest = replace(latest, status="SYNCED", last_error=None, next_attempt_at=None,
-                            lease_until=None, updated_at=self.now(), last_success_at=self.now())
+                            lease_until=None, updated_at=now, last_success_at=now)
                         self.repo.save_outlook_sync(latest)
                         self._audit(booking_id, "OUTLOOK_SYNC_SUCCEEDED", calendar_action=claimed.action)
                         return latest
                     # Approval changed to cancellation while Graph was running.
                     self.repo.save_outlook_sync(replace(latest, status="PENDING", lease_until=None, next_attempt_at=None))
             return self.repo.get_outlook_sync(booking_id)
+
+    def _event_gone(self, booking_id, claimed):
+        """An UPDATE found no event: switch the job to CREATE so the new time reaches the calendar again."""
+        source = self.repo.get_booking(booking_id)
+        with self.repo.atomic(resource_ids=[source.resource_id], student_ids=[source.student_id]):
+            latest = self.repo.get_outlook_sync(booking_id)
+            if latest is None or latest.revision != claimed.revision:
+                return False
+            # ical_uid is kept until the new event is written: it marks this CREATE as a replacement.
+            self.repo.save_outlook_sync(replace(
+                latest, action="CREATE", status="PENDING", event_id=None, web_link=None, create_attempted=False,
+                revision=latest.revision + 1, attempts=0, next_attempt_at=None, lease_until=None, last_error=None,
+                updated_at=self.now()))
+            self._audit(booking_id, "OUTLOOK_EVENT_RECREATED", reason="EVENT_NOT_FOUND")
+            return True
 
     def process_pending(self, limit=10):
         if not self.enabled:
@@ -176,5 +217,45 @@ class CalendarSyncService:
                 self.repo.save_outlook_sync(replace(record, status="PENDING", next_attempt_at=None))
         return self.process_booking(booking.id)
 
-    def _audit(self, booking_id, action, **details):
-        self.repo.append_audit(AuditRecord(str(uuid4()), "SYSTEM", action, "booking", booking_id, self.now(), details))
+    def check_connection(self):
+        """Read the organiser calendar once. Remembers the result for the status page."""
+        result = {"at": self.now(), "ok": False, "code": None, "mode": getattr(self.provider, "mode", "adapter"),
+                  "calendar_name": None, "owner": None}
+        try:
+            details = self.provider.check_connection()
+            result.update(ok=True, calendar_name=details.get("calendar_name"), owner=details.get("owner"))
+        except OutlookError as exc:
+            result["code"] = {"GRAPH_HTTP_401": "TOKEN_EXPIRED"}.get(exc.code, exc.code)
+        self.last_check = result
+        return result
+
+    def overview(self):
+        """Staff status page (development aid): counts plus one row per synchronised booking, failures first."""
+        items, counts = [], {"total": 0, "synced": 0, "pending": 0, "failed": 0}
+        for record in self.repo.list_outlook_sync():
+            booking = self.repo.get_booking(record.booking_id)
+            if booking is None:
+                continue
+            person, resource, creator = self._people(booking)
+            counts["total"] += 1
+            counts["synced" if record.status == "SYNCED" else "failed" if record.status == "FAILED" else "pending"] += 1
+            priority = 0 if record.status == "FAILED" else 1 if record.status != "SYNCED" else 2
+            items.append((priority, booking.start, booking.id, {
+                "booking_id": booking.id, "booking_status": booking.status, "start": booking.start, "end": booking.end,
+                "urgent": booking.urgent,
+                "resource": {"id": booking.resource_id, "name": resource.name if resource else None,
+                             "location": resource.location if resource else None},
+                "booked_for": {"zid": person.zid, "display_name": person.display_name} if person else None,
+                "booked_by": ({"zid": creator.zid, "display_name": creator.display_name}
+                              if creator and creator.id != booking.student_id else None),
+                "invited": bool(person and getattr(self.provider, "invites", lambda _: True)(person)),
+                "sync": {"status": record.status, "action": record.action, "attempts": record.attempts,
+                         "last_error": record.last_error, "next_attempt_at": record.next_attempt_at,
+                         "last_success_at": record.last_success_at,
+                         "web_link": record.web_link if record.action in ("CREATE", "UPDATE") else None},
+            }))
+        items.sort(key=lambda item: (item[0], item[1], item[2]))
+        return {"summary": counts, "items": [item[3] for item in items]}
+
+    def _audit(self, booking_id, action, actor_id="SYSTEM", **details):
+        self.repo.append_audit(AuditRecord(str(uuid4()), actor_id, action, "booking", booking_id, self.now(), details))

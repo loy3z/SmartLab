@@ -80,10 +80,16 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
           icon: <CalendarIcon />,
         },
       ]
-    : []
+    : [
+        // Staff book for themselves or on behalf of someone, under the same rules as students.
+        { path: '/resources', label: 'Book a Resource', icon: <CalendarIcon /> },
+        { path: '/bookings', label: 'My Bookings', icon: <CalendarIcon /> },
+        { path: '/induction', label: 'Induction & Training', icon: <CapIcon /> },
+      ]
   const staffItems: NavItem[] = isStaff ? [
     { path: '/admin/qualifications', label: 'Qualification Review', icon: <CapIcon /> },
     { path: '/admin/bookings', label: 'Booking Review', icon: <FileIcon /> },
+    { path: '/admin/calendar-sync', label: 'Calendar Sync', icon: <CalendarIcon /> },
     ...(user.role === 'MANAGER' ? [
       {
         path: '/manager/bookings',

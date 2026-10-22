@@ -119,7 +119,7 @@ export function StaffLoginPage({ notice = '' }: { notice?: string }) {
           </button>
         </p>
         <p className="auth-switch">Forgot your password? Ask a Manager to reset your access; they will give you a new invite code.</p>
-        <div className="auth-demo-notice"><span>Demo staff accounts</span><p>z9000001 (Admin) and z9000002 (Manager), password <code>smartlab-staff-demo</code>.</p></div>
+        <div className="auth-demo-notice"><span>Demo staff accounts</span><p>z9000001 (Admin) and z9000002 (Manager), password <code>123</code>.</p></div>
       </>}
       <p className="auth-switch"><Link to="/login" state={location.state}>Student? Use university sign-in</Link></p>
     </AuthShell>

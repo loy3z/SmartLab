@@ -103,7 +103,7 @@ class PostgresAdapterTests(TransactionTestCase):
         self.repo.save_requirement(advanced)
         self.assertEqual(self.repo.get_requirement(advanced.id).prerequisite_ids, (self.requirement.id,))
         device = Resource(str(uuid4()), "Microscope", ResourceKind.EQUIPMENT, "Laboratory", "",
-                          required_qualification_id=advanced.id, room_id=self.room.id)
+                          required_qualification_id=advanced.id, room_id=self.room.id, category="Microscopy")
         self.repo.save_resource(device)
         self.assertEqual(self.repo.get_resource(device.id), device)
         with self.assertRaises(DomainError) as denied:  # Advanced needs the General induction first
@@ -123,6 +123,37 @@ class PostgresAdapterTests(TransactionTestCase):
         self.assertEqual(self.service.staff_sign_in(staff.zid, "new-password-1").role, Role.ADMIN)
         self.service.reset_staff_access(self.manager, staff.id)
         self.assertFalse(self.repo.get_credential(staff.id).activated)
+
+    def test_on_behalf_and_urgent_bookings_are_persisted(self):
+        self.verified(self.a)
+        for_a = self.book(self.admin, on_behalf_of_zid=self.a.zid)
+        stored = self.repo.get_booking(for_a.id)
+        self.assertEqual((stored.student_id, stored.created_by, stored.urgent), (self.a.id, self.admin.id, False))
+        self.service.min_advance_days = 7
+        urgent = self.book(self.a, start=self.start + timedelta(hours=2), end=self.end + timedelta(hours=2),
+                           urgent=True, urgent_reason="Deadline")
+        self.assertEqual(self.repo.get_booking(urgent.id), urgent)
+        self.assertEqual(self.service.review_booking(self.manager, urgent.id, "APPROVED").status, BookingStatus.APPROVED)
+
+    def test_reschedule_recreates_an_outlook_event_the_person_deleted(self):
+        from booking.calendar_sync import CalendarSyncService
+        from booking.tests.test_outlook import FakeCalendar
+        provider = FakeCalendar()
+        sync = CalendarSyncService(self.repo, provider, enabled=True, clock=lambda: self.now)
+        self.service.calendar_sync = sync
+        self.verified(self.a)
+        booking = self.service.review_booking(self.admin, self.book(self.a).id, "APPROVED")
+        sync.process_booking(booking.id)
+        first = self.repo.get_outlook_sync(booking.id)
+        self.assertEqual((first.status, first.action), ("SYNCED", "CREATE"))
+        provider.outlook_delete(first.event_id)
+        moved = self.service.reschedule_booking(self.manager, booking.id, self.start + timedelta(hours=2), self.end + timedelta(hours=2))
+        record = sync.process_booking(moved.id)
+        self.assertEqual((record.status, record.action), ("SYNCED", "CREATE"))
+        self.assertNotEqual(record.event_id, first.event_id)
+        self.assertEqual(provider.events[record.event_id].start, moved.start)
+        self.assertEqual(self.repo.get_booking(booking.id), moved)
+        self.assertIn("OUTLOOK_EVENT_RECREATED", [item.action for item in self.repo.list_audit() if item.entity_id == booking.id])
 
     def test_resource_status_is_persisted(self):
         self.service.set_resource_status(self.manager, self.room.id, "MAINTENANCE", "Repairs")

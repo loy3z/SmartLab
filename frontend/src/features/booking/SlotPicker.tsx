@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { getAvailability } from './api'
-import { errorMessage, fmtDate, fmtDateTime, fmtDuration, fmtRange, fmtTime, QUAL_TEXT, todaySydney, TZ } from './format'
-import type { Availability, Resource, Slot } from './types'
+import { errorMessage, fmtDate, fmtDuration, fmtRange, fmtTime, QUAL_TEXT, todaySydney, TZ } from './format'
+import { cellTitle, kindOf } from './slot-cells'
+import type { Availability, Resource } from './types'
 
 /** A chosen period: start/end are UTC ISO strings. */
 export interface SlotRange {
@@ -23,33 +24,17 @@ interface Props {
   fixedMinutes?: number
   /** Rescheduling: show this booking's own time as free. */
   excludeBookingId?: string
-}
-
-type CellKind = 'free' | 'taken' | 'held' | 'mine' | 'closed'
-
-const OUTSIDE_WINDOW: Slot['reason_code'][] = ['START_TIME_PASSED', 'TOO_SOON', 'TOO_FAR_AHEAD', 'RESOURCE_UNAVAILABLE']
-
-function kindOf(slot: Slot): CellKind {
-  if (OUTSIDE_WINDOW.includes(slot.reason_code)) return 'closed'
-  if (slot.requested_by_me) return 'mine'
-  if (slot.available) return 'free'
-  if (slot.reason_code === 'TEMPORARILY_HELD') return 'held'
-  return 'taken'
-}
-
-function cellTitle(slot: Slot, kind: CellKind, minDays: number, maxDays: number): string {
-  const when = `${fmtTime(slot.start)} – ${fmtTime(slot.end)}`
-  switch (kind) {
-    case 'free': return `${when}: available`
-    case 'mine': return `${when}: you already have a request here`
-    case 'held': return `${when}: awaiting approval for another request${slot.hold_until ? ` (decided by ${fmtDateTime(slot.hold_until)})` : ''}. You can still join the waitlist.`
-    case 'taken': return `${when}: booked. You can still join the waitlist.`
-    default:
-      return `${when}: ${slot.reason_code === 'START_TIME_PASSED' ? 'already passed'
-        : slot.reason_code === 'TOO_SOON' ? `too soon (book at least ${minDays} day${minDays === 1 ? '' : 's'} ahead)`
-          : slot.reason_code === 'TOO_FAR_AHEAD' ? `too far ahead (at most ${maxDays} days)`
-            : slot.reason_code === 'RESOURCE_UNAVAILABLE' ? 'not open for new requests' : 'not bookable'}`
-  }
+  /** Admin/Manager booking on behalf of someone: their eligibility and requests. */
+  forZid?: string
+  /** Urgent request: only the days before the normal booking window (today up to earliest_date - 1). */
+  urgent?: boolean
+  /** Manager reschedule: from today up to the latest date (the minimum advance window does not apply). */
+  allowEarly?: boolean
+  /** Day to open on (YYYY-MM-DD, Sydney), e.g. the booking being rescheduled. */
+  initialDate?: string
+  /** Pre-select a period once the day has loaded (UTC ISO start, length in minutes), e.g. from the day grid. */
+  initialStart?: string
+  initialMinutes?: number
 }
 
 /** Shift a YYYY-MM-DD date by whole days. */
@@ -59,13 +44,23 @@ function addDays(ymd: string, days: number): string {
   return date.toISOString().slice(0, 10)
 }
 
-export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualification, onEligibility, fixedMinutes, excludeBookingId }: Props) {
-  const [date, setDate] = useState(todaySydney())
+/** First and last selectable dates: normal window, urgent (the days before it) or Manager reschedule (from today). */
+function dateRange(d: Availability | null, urgent: boolean, allowEarly: boolean): { earliest?: string; latest?: string } {
+  if (!d) return {}
+  if (urgent) return { earliest: todaySydney(), latest: d.earliest_date ? addDays(d.earliest_date, -1) : undefined }
+  if (allowEarly) return { earliest: todaySydney(), latest: d.latest_date }
+  return { earliest: d.earliest_date, latest: d.latest_date }
+}
+
+export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualification, onEligibility, fixedMinutes, excludeBookingId, forZid, urgent = false, allowEarly = false, initialDate, initialStart, initialMinutes }: Props) {
+  const [date, setDate] = useState(initialDate ?? todaySydney())
   const [data, setData] = useState<Availability | null>(null)
   const [error, setError] = useState('')
   const [range, setRange] = useState<{ from: number; to: number } | null>(null)
   const [hover, setHover] = useState<number | null>(null)
   const [problem, setProblem] = useState('')
+  // Applied once, on the first load of the initial day; later days and refreshes start empty as before.
+  const pendingInitial = useRef(initialStart && initialMinutes ? { start: initialStart, minutes: initialMinutes } : null)
   const onSelectRef = useRef(onSelect)
   const onEligibilityRef = useRef(onEligibility)
   useEffect(() => {
@@ -79,18 +74,30 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
 
   useEffect(() => {
     let cancelled = false
-    getAvailability(resource.id, date, step, excludeBookingId)
+    getAvailability(resource.id, date, step, excludeBookingId, { forZid, urgent: urgent || allowEarly })
       .then((d) => {
         if (cancelled) return
         // Keep the picker inside the booking window the backend reports (e.g. today + 7 to today + 30 days).
-        if (d.earliest_date && date < d.earliest_date) return setDate(d.earliest_date)
-        if (d.latest_date && date > d.latest_date) return setDate(d.latest_date)
+        // Urgent: only the days before that window. Manager reschedule: from today.
+        const { earliest, latest } = dateRange(d, urgent, allowEarly)
+        if (earliest && date < earliest) return setDate(earliest)
+        if (latest && date > latest && latest >= (earliest ?? latest)) return setDate(latest)
         setData(d)
         onEligibilityRef.current?.(d.can_request)
         setError('')
         setRange(null)
         setProblem('')
         onSelectRef.current(null)
+        const wanted = pendingInitial.current
+        pendingInitial.current = null
+        if (wanted) {
+          const from = d.slots.findIndex((s) => Date.parse(s.start) === Date.parse(wanted.start))
+          const to = from + Math.max(1, Math.round(wanted.minutes / step)) - 1
+          if (from >= 0 && to < d.slots.length && d.slots.slice(from, to + 1).every((s) => kindOf(s) === 'free')) {
+            setRange({ from, to })
+            onSelectRef.current({ start: d.slots[from].start, end: d.slots[to].end, overlapsTaken: false })
+          }
+        }
       })
       .catch((e) => {
         if (cancelled) return
@@ -102,7 +109,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
         onEligibilityRef.current?.(false)
       })
     return () => { cancelled = true }
-  }, [resource.id, date, step, excludeBookingId, refreshKey])
+  }, [resource.id, date, step, excludeBookingId, refreshKey, forZid, urgent, allowEarly])
 
   /** Changing the day drops the current selection and pauses submitting until the new day has loaded. */
   function changeDate(next: string) {
@@ -126,11 +133,15 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
   }
 
   function blockedBetween(from: number, to: number): string {
-    const bad = kinds.slice(from, to + 1).findIndex((k) => k === 'closed' || k === 'mine')
+    // An urgent request or a reschedule needs free time: it never joins the waitlist.
+    const strict = urgent || allowEarly
+    const bad = kinds.slice(from, to + 1).findIndex((k) => k === 'closed' || k === 'mine' || (strict && (k === 'taken' || k === 'held')))
     if (bad < 0) return ''
-    return kinds[from + bad] === 'mine'
-      ? 'That period overlaps a request you already made for this resource.'
-      : 'That period includes times that cannot be booked.'
+    const kind = kinds[from + bad]
+    return kind === 'mine'
+      ? `That period overlaps a request ${forZid ? 'this person already has' : 'you already made'} for this resource.`
+      : kind === 'closed' ? 'That period includes times that cannot be booked.'
+        : 'Choose a free time: this period is booked or awaiting approval.'
   }
 
   function clear() {
@@ -171,21 +182,26 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
   const resourceClosed = data?.resource_status && data.resource_status !== 'AVAILABLE'
   const selected = range ? { start: slots[range.from]?.start, end: slots[range.to]?.end } : null
   const overlapsTaken = range ? kinds.slice(range.from, range.to + 1).some((k) => k === 'taken' || k === 'held') : false
-  const atStart = data?.earliest_date ? date <= data.earliest_date : false
-  const atEnd = data?.latest_date ? date >= data.latest_date : false
+  const { earliest: earliestDate, latest: latestDate } = dateRange(data, urgent, allowEarly)
+  const atStart = earliestDate ? date <= earliestDate : false
+  const noUrgentDays = urgent && earliestDate && latestDate ? latestDate < earliestDate : false
+  const person = forZid && data?.booking_for ? `${data.booking_for.display_name} (${data.booking_for.zid})` : ''
+  const atEnd = latestDate ? date >= latestDate : false
 
   return (
     <div>
       {data && !hideQualification && !canRequest && (
         <div className="ui-callout is-warn" role="status">
           <div>
-            <strong>{resourceClosed ? `This resource is ${data.resource_status === 'MAINTENANCE' ? 'under maintenance' : 'closed'}` : 'You cannot request this resource yet'}</strong>
-            {resourceClosed ? (data.status_reason || 'New requests are paused for now.') : status ? QUAL_TEXT[status] : ''}
+            <strong>{resourceClosed ? `This resource is ${data.resource_status === 'MAINTENANCE' ? 'under maintenance' : 'closed'}` : person ? `${person} cannot be booked for this resource yet` : 'You cannot request this resource yet'}</strong>
+            {resourceClosed ? (data.status_reason || 'New requests are paused for now.')
+              : person ? `Their induction status is ${status?.replaceAll('_', ' ').toLowerCase()}. The same induction rules apply to everyone.`
+                : status ? QUAL_TEXT[status] : ''}
           </div>
-          {!resourceClosed && status && ['NOT_SUBMITTED', 'REJECTED', 'EXPIRED', 'EXPIRES_BEFORE_END'].includes(status) && resource.required_qualification_id && (
+          {!person && !resourceClosed && status && ['NOT_SUBMITTED', 'REJECTED', 'EXPIRED', 'EXPIRES_BEFORE_END'].includes(status) && resource.required_qualification_id && (
             <Link className="ui-btn ui-btn-primary ui-btn-sm" to={`/induction?requirement=${resource.required_qualification_id}`}>Upload induction</Link>
           )}
-          {!resourceClosed && status === 'PREREQUISITE_REQUIRED' && data.missing_prerequisite_id && (
+          {!person && !resourceClosed && status === 'PREREQUISITE_REQUIRED' && data.missing_prerequisite_id && (
             <Link className="ui-btn ui-btn-primary ui-btn-sm" to={`/induction?requirement=${data.missing_prerequisite_id}`}>Open General induction</Link>
           )}
         </div>
@@ -198,15 +214,18 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
           type="date"
           aria-label="Date"
           value={date}
-          min={data?.earliest_date ?? todaySydney()}
-          max={data?.latest_date}
+          min={earliestDate ?? todaySydney()}
+          max={latestDate}
           onChange={(e) => e.target.value && changeDate(e.target.value)}
         />
         <button type="button" className="ui-icon-btn" aria-label="Next day" disabled={atEnd} onClick={() => changeDate(addDays(date, 1))}>›</button>
       </div>
       <p className="bk-muted" style={{ marginTop: 6 }}>
         Times in {TZ}.
-        {data?.earliest_date && data.latest_date && <> Bookable from {fmtDate(data.earliest_date)} to {fmtDate(data.latest_date)} ({data.min_advance_days}–{data.max_advance_days} days ahead).</>}
+        {urgent && earliestDate && latestDate && !noUrgentDays && <> Urgent: {fmtDate(earliestDate)} to {fmtDate(latestDate)}, before the normal booking window. Only free times can be chosen.</>}
+        {noUrgentDays && <> You can already book from today, so an urgent request is not needed.</>}
+        {allowEarly && earliestDate && latestDate && <> Manager reschedule: {fmtDate(earliestDate)} to {fmtDate(latestDate)}. Only free times can be chosen.</>}
+        {!urgent && !allowEarly && data?.earliest_date && data.latest_date && <> Bookable from {fmtDate(data.earliest_date)} to {fmtDate(data.latest_date)} ({data.min_advance_days}–{data.max_advance_days} days ahead).</>}
       </p>
 
       {error && <p className="bk-error">{error}</p>}
@@ -255,7 +274,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
             <span><i className="lg-sel" />Your selection</span>
             <span><i className="lg-taken" />Booked</span>
             <span><i className="lg-held" />Awaiting approval</span>
-            <span><i className="lg-mine" />Your request</span>
+            <span><i className="lg-mine" />{forZid ? 'Their request' : 'Your request'}</span>
             <span><i className="lg-closed" />Not bookable</span>
           </div>
         </div>

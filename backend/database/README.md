@@ -4,12 +4,10 @@
 
 ## 包含的文件和数据
 
-- `database/schema.sql`：8 张表、约束、索引、序列和审计保护触发器。
+- `database/schema.sql`：9 张表、约束、索引、序列和审计保护触发器。
 - `database/seed_resources.sql`：2 条培训要求（Advanced 要求先通过 General）、2 个房间、20 台设备（记录所在房间）。
 - `database/seed_users.sql`：6 个演示账号（与内存版演示数据相同的假 zID 和 id），以及 z1000001 一条已通过的 induction。全部是编造的数据，不要把真实学生的 zID 提交进 Git。
-- `database/migrations/001_client_approval_flow.sql`：给按旧版脚本建过库的同学用的升级脚本（见第 2 节）。
-- `database/migrations/002_week5_rules.sql`：第 5 周升级脚本：前置 induction（`prerequisite_ids`）和设备所在房间（`room_id`），见第 2 节。
-- `database/migrations/003_staff_sign_in.sql`：staff 登录：新表 `staff_credential`（密码哈希和邀请码），见第 2 节。
+- `database/migrations/`：已有数据库的升级脚本 001–005，按编号顺序执行，都可以重复执行（见第 2 节）。
 - `booking/tests/test_postgres.py`：用真实 PostgreSQL 跑的适配器集成测试（见第 6 节）。
 - `booking/postgres.py`：数据库及上传文件存储适配器。
 - `requirements-postgres.txt`：后端依赖及 PostgreSQL 驱动。
@@ -46,34 +44,30 @@ if ($LASTEXITCODE -ne 0) { throw '导入失败，导入事务已回滚。请先�
 
 如果创建成功但导入失败，修复原因后仅重新执行导入命令，不要再次创建数据库。不要在已有业务数据的数据库中试用这些导入命令。
 
-### 已经按旧版脚本建过库（2026-10-12 之前）
+### 已经建过库：升级到最新结构
 
-旧版缺少房间状态两列（`status`、`status_reason`），审批期限还是 30，演示账号也不同。二选一：
-
-- **推荐：重建。** 本地库里只有测试数据，可以用 pgAdmin 或 `dropdb` 删掉自己的旧库，再按上面的步骤重新创建和导入。删库前确认里面没有需要保留的东西。
-- **保留旧数据：** 执行升级脚本（可以重复执行）。演示账号不会被替换，登录时继续用旧库里的 zID。
+不想重建的话，按编号顺序执行 `database/migrations/` 里的全部脚本。每个脚本都可以重复执行，已经做过的步骤会跳过，不删除任何数据；在已经是最新结构的库上执行也不会有变化。所以不用判断自己的库停在哪一步，全部执行一遍即可：
 
 ```powershell
-& "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\001_client_approval_flow.sql'
+Get-ChildItem .\database\migrations\*.sql | Sort-Object Name | ForEach-Object {
+    & "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file=$_.FullName
+    if ($LASTEXITCODE -ne 0) { throw "升级失败：$($_.Name)" }
+}
 ```
 
-### 已经建过库，升级到第 5 周（2026-10-14 之前建的库都需要）
+每个文件都会要一次 PostgreSQL 密码。`$pgBin`、`$dbName` 见第 1 节，新开的窗口要重新设置。
 
-第 5 周新增两列：`qualification_requirement.prerequisite_ids`（前置 induction）和 `bookable_resource.room_id`（设备所在房间）。不想重建的话执行下面的脚本（可以重复执行，不删除任何数据）；如果还没执行过 001，先执行 001：
+| 脚本 | 内容 |
+| --- | --- |
+| `001_client_approval_flow.sql` | 资源状态 `status`、`status_reason`；审批期限默认 1440 分钟 |
+| `002_week5_rules.sql` | 前置 induction `prerequisite_ids`、设备所在房间 `room_id`；演示数据设好 Advanced→General 和设备所在房间 |
+| `003_staff_sign_in.sql` | 新表 `staff_credential`（密码哈希和邀请码）；演示账号设好密码，其他已有员工拿到邀请码，在 staff 登录页激活 |
+| `004_staff_booking_urgent.sql` | `booking` 加 `created_by`、`urgent`、`urgent_reason`；已有预约的 `created_by` 填成 `student_id` |
+| `005_resource_category_demo_password.sql` | 设备类别 `bookable_resource.category`（演示设备填上编的类别，已填的不覆盖）；演示账号 z9000001、z9000002 的密码设为 `123` |
 
-```powershell
-& "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\002_week5_rules.sql'
-```
+升级后的库和用 `schema.sql` 与种子文件新建的库，`pg_dump --schema-only` 结果完全一致。每次改表结构都要按这个方法验证：新建一个库、一个按旧脚本建的库，后者执行全部升级脚本（执行两遍），再比较两边的 `pg_dump --schema-only`。
 
-执行后在 pgAdmin 里看 `qualification_requirement` 表，Advanced 那一行的 `prerequisite_ids` 应该是 General 的 id。
-
-### 升级到 staff 登录（执行过 002 之后）
-
-新增 `staff_credential` 表，存 Admin／Manager 的密码哈希和邀请码。脚本会给演示账号 z9000001、z9000002 设好演示密码 `smartlab-staff-demo`；其他已有的 Admin／Manager 会得到一个邀请码，Manager 在人员管理页能看到，对方用它在 staff 登录页激活。可以重复执行：
-
-```powershell
-& "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\003_staff_sign_in.sql'
-```
+如果本地库里只有测试数据，也可以用 pgAdmin 或 `dropdb` 删掉重建（删之前确认里面没有需要保留的东西）。
 
 ## 3. 安装后端依赖和配置连接
 
@@ -97,7 +91,7 @@ $env:FILE_STORAGE_FACTORY = 'booking.postgres.PostgresFileStorage'
 $env:OUTLOOK_ENABLED = 'false'
 ```
 
-这些环境变量只对当前终端及其启动的程序生效。新开后端终端时需要重新设置；项目不会自动加载 `.env`。两个工厂变量必须设置，否则默认使用内存存储（`REPOSITORY_FACTORY` 指向 PostgreSQL 适配器时，后端才会连接数据库；不设置时不需要安装 PostgreSQL，原来的内存演示照常可用）。`SEED_DEMO_DATA=false` 必须保留，避免运行时再次注入默认演示数据。想让登录在重启后端后仍然有效，可以再设置一个固定的本地 `$env:DJANGO_SECRET_KEY`（只用于本机，不要提交）。
+这些环境变量只对当前终端及其启动的程序生效。新开后端终端时需要重新设置；项目不会自动加载 `.env`。两个工厂变量必须设置，否则默认使用内存存储（`REPOSITORY_FACTORY` 指向 PostgreSQL 适配器时，后端才会连接数据库；不设置时不需要安装 PostgreSQL，使用内存演示数据）。`SEED_DEMO_DATA=false` 必须保留，避免运行时再次注入默认演示数据。想让登录在重启后端后仍然有效，可以再设置一个固定的本地 `$env:DJANGO_SECRET_KEY`（只用于本机，不要提交）。
 
 确认适配器能读取数据：
 
@@ -135,8 +129,8 @@ npm.cmd run dev
 | z1000002 | STUDENT | 没有 induction |
 | z1000003 | STUDENT | 没有 induction |
 | z1000004 | STUDENT | 没有 induction |
-| z9000001 | ADMIN | 审核资料和预约；staff 登录，演示密码 `smartlab-staff-demo` |
-| z9000002 | MANAGER | 房间状态、导出、人员管理；staff 登录，演示密码 `smartlab-staff-demo` |
+| z9000001 | ADMIN | 审核资料和预约；staff 登录，演示密码 `123` |
+| z9000002 | MANAGER | 房间状态、导出、人员管理；staff 登录，演示密码 `123` |
 
 建议走一遍：z1000002 上传测试材料 → z9000001 审核通过 → z1000002 预约 → z9000001 批准。然后停掉后端再启动，确认数据还在。只使用可分享的测试附件。新操作写入各自的本地数据库，不会自动进入 Git。后端重启后如果登录失效，重新登录；开发模式未固定密钥时会生成新的临时密钥。
 
@@ -164,10 +158,10 @@ python manage.py test booking.tests.test_postgres -v 2
 
 其余测试（`python manage.py test booking`）使用内存存储，跑之前先把 `REPOSITORY_FACTORY` 和 `FILE_STORAGE_FACTORY` 两个变量清掉（或新开一个终端）。
 
-## 验证范围和当前限制
+## 验证范围和限制
 
-2026-10-12 在全新的 PostgreSQL 16 数据库上验证过：三个 SQL 文件可以完整导入；升级脚本执行后的结构与新版 `schema.sql` 完全一致；2026-10-14 复验：按上一版（第 4 周）脚本建的库执行 002（连续两次）后，表结构以及培训要求、资源数据都与新版脚本完全一致；第 6 节的集成测试全部通过（加入 staff 登录后为 11 个）；002 之后再执行 003，结构同样与新版 `schema.sql` 一致；`process_due` 命令可在数据库模式运行；前后端完整流程（上传、审核、预约、批准、改房间状态）的数据都写入了数据库，重启后端后仍在。
+第 6 节的集成测试和第 2 节的升级验证在 PostgreSQL 16 上通过；`process_due` 命令可在数据库模式运行；前后端完整流程（上传、审核、预约、批准、改房间状态）的数据都会写入数据库，重启后端后仍在。
 
-这是当前本地联调适配方案。适配器使用数据库级 advisory lock 串行化所有写入：并发申请同一时段的正确性已有测试覆盖，但没有做压力测试，不能据此宣称已通过生产性能验收。
+这是本地联调用的适配方案。适配器使用数据库级 advisory lock 串行化所有写入：并发申请同一时段的正确性已有测试覆盖，但没有做压力测试，不能据此宣称已通过生产性能验收。
 
 提交 Git 时仅选择这些说明、初始化 SQL、适配器和配置改动。不要提交 `.env`、数据库密码、完整数据备份或个人测试附件。

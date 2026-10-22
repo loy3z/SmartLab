@@ -12,8 +12,8 @@ from .calendar_sync import CalendarSyncService
 _service = None
 _lock = RLock()
 
-# Demo password "smartlab-staff-demo" for the seeded Admin and Manager (fake accounts, development only).
-DEMO_STAFF_PASSWORD_HASH = "pbkdf2_sha256$1000000$smartlabdemostaff1$VEZGh4DfYxawq0X9qmaNEO0lg4UNdhtLIxnXrS21Btw="
+# Demo password "123" for the seeded Admin and Manager (fake accounts, development only).
+DEMO_STAFF_PASSWORD_HASH = "pbkdf2_sha256$1000000$smartlabdemostaff2$zptccOYVBe7KY3Xftwge1EpinjQjfTL5RQuWZcJnvLE="
 
 def fixed_id(number):
     return f"00000000-0000-0000-0000-{number:012d}"
@@ -48,6 +48,21 @@ DEMO_RESOURCES = [
 
 ROOM_IDS = {"Lab Room 1": fixed_id(101), "Lab Room 2": fixed_id(102)}
 
+# Demo equipment categories for the booking page filter (made up; replace with the client's equipment list).
+DEMO_CATEGORIES = {
+    "Microscope": "Microscopy", "Camera": "Imaging", "Thermal Camera": "Imaging",
+    "Oscilloscope": "Electronics testing", "Signal Generator": "Electronics testing",
+    "Bench Power Supply": "Electronics testing", "Digital Multimeter": "Electronics testing",
+    "Logic Analyser": "Electronics testing", "Data Logger": "Electronics testing",
+    "Soldering Station": "Soldering", "Fume Extractor": "Soldering",
+    "3D Printer": "Fabrication", "Laser Cutter": "Fabrication",
+    "Spectrometer": "Lab analysis", "Centrifuge": "Lab analysis",
+}
+
+
+def demo_category(name, kind):
+    return DEMO_CATEGORIES.get(name.rsplit(" ", 1)[0]) if kind == ResourceKind.EQUIPMENT else None
+
 def seed_demo_data(service):
     requirement = QualificationRequirement(fixed_id(1), "General laboratory induction", "Demo requirement; replace with client-approved training rules.")
     service.repo.save_requirement(requirement)
@@ -59,7 +74,8 @@ def seed_demo_data(service):
         service.repo.save_resource(Resource(fixed_id(number), name, kind, location, "Single resource; demonstration data.",
             required_qualification_id=advanced.id if needs_advanced else requirement.id,
             pending_hold_minutes=service.rules().default_review_window_minutes,
-            room_id=ROOM_IDS.get(location) if kind == ResourceKind.EQUIPMENT else None))
+            room_id=ROOM_IDS.get(location) if kind == ResourceKind.EQUIPMENT else None,
+            category=demo_category(name, kind)))
     for number, zid, name, role in [(501, "z1000001", "Qualified demo student", Role.STUDENT),
                                     (502, "z1000002", "New demo student", Role.STUDENT),
                                     (503, "z1000003", "New demo student3", Role.STUDENT),

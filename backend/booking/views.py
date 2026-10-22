@@ -16,11 +16,12 @@ from .authentication import issue_demo_token, require_demo_mode
 from .domain import Booking, BookingStatus, Principal, QualificationStatus, ResourceKind, Role
 from .exceptions import DomainError
 from .runtime import get_service
-from .serializers import (AvailabilityQuerySerializer, BookingCreateSerializer, BookingRescheduleSerializer, BookingReviewSerializer,
+from .serializers import (AvailabilityQuerySerializer, DayOverviewQuerySerializer, BookingCreateSerializer, BookingRescheduleSerializer, BookingReviewSerializer,
                           DemoLoginSerializer, DemoRegisterSerializer, StaffActivateSerializer, StaffSignInSerializer, QualificationCreateSerializer, QualificationReviewSerializer,
                           OutlookProcessSerializer, BookingPolicySerializer, AuditQuerySerializer,
                           UserListQuerySerializer, UserUpdateSerializer, ManagerCreateSerializer, ResourceStatusSerializer,
-                          AdminBookingQuerySerializer, StaffCreateSerializer, PrerequisiteSerializer)
+                          AdminBookingQuerySerializer, StaffCreateSerializer, PrerequisiteSerializer,
+                          PersonLookupSerializer)
 
 def json_value(value):
     if isinstance(value, Enum):
@@ -37,12 +38,21 @@ def json_value(value):
             result["hold_active"] = value.hold_is_active(service.now())
             result["blocks_slot"] = value.blocks_resource_at(service.now())
             result["waitlist_position"] = waitlist_position(service, value)
+            # Who the booking is for and who created it (staff may book on behalf of someone).
+            result["booked_for"] = person_brief(service, value.student_id)
+            result["created_by_user"] = person_brief(service, value.created_by) if value.created_by else None
+            result["on_behalf"] = bool(value.created_by and value.created_by != value.student_id)
         return result
     if isinstance(value, dict):
         return {key: json_value(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [json_value(item) for item in value]
     return value
+
+def person_brief(service, principal_id):
+    person = service.repo.get_principal(str(principal_id))
+    return ({"id": person.id, "zid": person.zid, "display_name": person.display_name, "role": person.role.value}
+            if person else None)
 
 def submission_json(record):
     result = json_value(record)
@@ -152,10 +162,23 @@ class ResourceListView(APIView):
             if kind not in ResourceKind._value2member_map_:
                 raise DomainError("VALIDATION_ERROR", "kind must be ROOM or EQUIPMENT.")
             records = [item for item in records if item.kind.value == kind]
+        category = request.query_params.get("category", "").strip()
+        if category:
+            records = [item for item in records if item.category == category]
         query = request.query_params.get("q", "").strip().casefold()
         if query:
-            records = [item for item in records if query in f"{item.name} {item.location}".casefold()]
+            records = [item for item in records if query in f"{item.name} {item.location} {item.category or ''}".casefold()]
         return Response(collection(records))
+
+class DayOverviewView(APIView):
+    """Booking page day grid: free and taken times of every matching resource on one day."""
+    def get(self, request):
+        data = validated(DayOverviewQuerySerializer, request.query_params)
+        result = get_service().day_overview(
+            request.user, data["date"], data["duration_minutes"], kind=data.get("kind"),
+            room_id=str(data["room_id"]) if data.get("room_id") else None, category=data.get("category") or None,
+            query=data.get("q"), bookable_only=data["bookable_only"], free_at=data.get("free_at"))
+        return Response(json_value(result))
 
 class ResourceDetailView(APIView):
     def get(self, request, resource_id):
@@ -169,7 +192,7 @@ class AvailabilityView(APIView):
     def get(self, request, resource_id):
         data = validated(AvailabilityQuerySerializer, request.query_params)
         result = get_service().availability(request.user, str(resource_id), data["date"], data["duration_minutes"],
-                                            data.get("exclude_booking_id"))
+                                            data.get("exclude_booking_id"), data.get("for_zid") or None, data["urgent"])
         return Response(json_value(result))
 
 class QualificationListView(APIView):
@@ -205,15 +228,32 @@ class BookingListView(APIView):
     def get(self, request):
         service = get_service()
         service.process_due_requests()
-        return Response(collection(service.repo.list_bookings(student_id=request.user.id)))
+        return Response(collection(my_bookings(service, request.user)))
 
     def post(self, request):
         service = get_service()
         service.require_booking_user(request.user)
         data = validated(BookingCreateSerializer, request.data)
-        booking, created = service.create_booking(request.user, str(data["resource_id"]), data["start"], data["end"], data["purpose"], request.headers.get("Idempotency-Key"))
+        booking, created = service.create_booking(request.user, str(data["resource_id"]), data["start"], data["end"], data["purpose"],
+                                                  request.headers.get("Idempotency-Key"),
+                                                  on_behalf_of_zid=data.get("on_behalf_of_zid") or None,
+                                                  urgent=data["urgent"], urgent_reason=data["urgent_reason"])
         booking, = sync_after_write(service, booking)
         return Response(json_value(booking), status=201 if created else 200)
+
+def my_bookings(service, user):
+    """Bookings for me plus those I created for other people, oldest first."""
+    mine = {item.id: item for item in service.repo.list_bookings(student_id=user.id)}
+    if user.role in (Role.ADMIN, Role.MANAGER):
+        mine.update({item.id: item for item in service.repo.list_bookings() if item.created_by == user.id})
+    return sorted(mine.values(), key=lambda item: (item.created_at, item.id))
+
+class PersonLookupView(APIView):
+    """Admin/Manager: check whom you are booking for before submitting."""
+    def get(self, request):
+        data = validated(PersonLookupSerializer, request.query_params)
+        person = get_service().find_person(request.user, data["zid"])
+        return Response({"id": person.id, "zid": person.zid, "display_name": person.display_name, "role": person.role.value})
 
 class BookingDetailView(APIView):
     def get(self, request, booking_id):
@@ -242,7 +282,7 @@ class DashboardView(APIView):
     def get(self, request):
         service = get_service()
         service.process_due_requests()
-        bookings = service.repo.list_bookings(student_id=request.user.id)
+        bookings = my_bookings(service, request.user)
         submissions = service.repo.list_submissions(student_id=request.user.id)
         counts = {item.value: sum(booking.status == item for booking in bookings) for item in BookingStatus}
         return Response({"bookings": json_value(bookings), "qualifications": [submission_json(item) for item in submissions], "counts": counts})
@@ -314,7 +354,8 @@ class AdminBookingExportView(APIView):
         buffer = io.StringIO()
         writer = csv.writer(buffer)
         writer.writerow(["Booking ID", "Status", "Reason", "Resource", "Type", "Date", "Start", "End", "Minutes",
-                         "Student zID", "Student name", "Student email", "Purpose", "Submitted", "Decided by", "Decision reason"])
+                         "Student zID", "Student name", "Student email", "Purpose", "Submitted", "Decided by", "Decision reason",
+                         "Created by", "Urgent", "Urgent reason"])
         for item in records:
             person, resource = people.get(item.student_id), resources.get(item.resource_id)
             local = ZoneInfo(resource.timezone) if resource else zone
@@ -326,7 +367,9 @@ class AdminBookingExportView(APIView):
                              person.zid if person else "", person.display_name if person else "",
                              person.university_email if person else "", _csv_safe(item.purpose),
                              item.created_at.astimezone(local).strftime("%Y-%m-%d %H:%M"),
-                             reviewer.zid if reviewer else (item.reviewed_by or ""), _csv_safe(item.decision_reason or "")])
+                             reviewer.zid if reviewer else (item.reviewed_by or ""), _csv_safe(item.decision_reason or ""),
+                             creator.zid if (creator := people.get(item.created_by)) else (item.created_by or ""),
+                             "Yes" if item.urgent else "", _csv_safe(item.urgent_reason or "")])
         response = HttpResponse("\ufeff" + buffer.getvalue(), content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = 'attachment; filename="bookings.csv"'
         return response
@@ -442,6 +485,8 @@ class ProcessDueView(APIView):
         if request.data:
             raise DomainError("VALIDATION_ERROR", "The processing action does not accept a client-supplied clock.")
         changed = service.process_due_requests()
+        sync_after_write(service)  # automatically approved bookings go to Outlook straight away
+        changed = [service.repo.get_booking(item.id) for item in changed]
         return Response({"processed_count": len(changed), "updated_bookings": json_value(changed)})
 
 
@@ -450,9 +495,22 @@ class OutlookStatusView(APIView):
         service = get_service()
         service.require_staff(request.user)
         sync = service.calendar_sync
-        return Response({"enabled": sync.enabled, "configured": sync.provider.configured,
-                         "mode": getattr(sync.provider, "mode", "adapter"), "direction": "system_to_outlook",
-                         "sync_records": collection(sync.repo.list_outlook_sync())})
+        provider = sync.provider
+        # Reading this page never calls Microsoft: use POST check/ to test the connection.
+        return Response(json_value({
+            "enabled": sync.enabled, "configured": provider.configured,
+            "mode": getattr(provider, "mode", "adapter"), "direction": "system_to_outlook",
+            "invite_mode": getattr(provider, "invite_mode", None), "last_check": sync.last_check, **sync.overview(),
+            "sync_records": collection(sync.repo.list_outlook_sync())}))
+
+
+class OutlookCheckView(APIView):
+    def post(self, request):
+        service = get_service()
+        service.require_staff(request.user)
+        if request.data:
+            raise DomainError("VALIDATION_ERROR", "The connection check does not accept fields.")
+        return Response(json_value(service.calendar_sync.check_connection()))
 
 
 class OutlookProcessView(APIView):

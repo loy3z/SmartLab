@@ -2,9 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { canAccess, homePath, isKnownPath, loginDestination, normalizePath } from '../src/app/routes.ts'
 
-// Only students book. Admins and Managers are staff accounts: they review and manage but never book.
+// Everyone books under the same rules (client, 17 Oct). Staff also review and manage; the dashboard is the student home.
 const bookingPaths = ['/resources', '/bookings', '/induction']
-const staffPaths = ['/admin/qualifications', '/admin/bookings']
+const staffPaths = ['/admin/qualifications', '/admin/bookings', '/admin/calendar-sync']
 const sharedPaths = ['/account', '/help']
 const roles = ['STUDENT', 'ADMIN', 'MANAGER']
 
@@ -17,12 +17,10 @@ test('each role lands on a page it can actually access', () => {
   }
 })
 
-test('only students can book; staff and the student dashboard stay separate', () => {
+test('every role can book; the student dashboard stays separate', () => {
   for (const path of bookingPaths) {
     assert.equal(isKnownPath(path), true, path)
-    assert.equal(canAccess(path, 'STUDENT'), true, path)
-    assert.equal(canAccess(path, 'ADMIN'), false, path)
-    assert.equal(canAccess(path, 'MANAGER'), false, path)
+    for (const role of roles) assert.equal(canAccess(path, role), true, `${role}: ${path}`)
   }
   assert.equal(canAccess('/dashboard', 'STUDENT'), true)
   assert.equal(canAccess('/dashboard', 'ADMIN'), false)
@@ -81,7 +79,7 @@ test('login rejects forbidden, unknown, external and malformed return destinatio
   for (const state of [null, undefined, {}, 'invalid', { from: '/dashboard' }]) {
     assert.equal(loginDestination(state, 'ADMIN'), '/admin/qualifications')
   }
-  assert.equal(loginDestination({ from: '/resources' }, 'ADMIN'), '/admin/qualifications')
+  assert.equal(loginDestination({ from: '/dashboard' }, 'MANAGER'), '/manager/bookings')
   assert.equal(loginDestination({ from: '/manager/users' }, 'ADMIN'), '/admin/qualifications')
-  assert.equal(loginDestination({ from: '/resources' }, 'MANAGER'), '/manager/bookings')
+  assert.equal(loginDestination({ from: '/resources' }, 'MANAGER'), '/resources')
 })

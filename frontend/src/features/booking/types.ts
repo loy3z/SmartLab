@@ -20,6 +20,45 @@ export interface Resource {
   status_reason: string | null
   /** Equipment: the room it is kept in. Rooms: null. */
   room_id: string | null
+  /** Equipment type for the booking page filter, e.g. "Microscopy". Rooms: null. */
+  category?: string | null
+}
+
+/** One resource's row in the booking page day grid (GET resources/day-overview/). */
+export interface DayOverviewRow {
+  resource: Resource
+  room_name: string | null
+  can_request: boolean
+  qualification_status: QualificationStatus
+  resource_status: ResourceStatus
+  status_reason: string | null
+  slots: Slot[]
+}
+
+export interface DayOverview {
+  date: string
+  duration_minutes: number
+  timezone: string
+  earliest_date: string
+  latest_date: string
+  min_advance_days: number
+  max_advance_days: number
+  rooms: { id: string; name: string }[]
+  categories: string[]
+  count: number
+  results: DayOverviewRow[]
+}
+
+export interface DayOverviewQuery {
+  date: string
+  duration_minutes: number
+  kind?: ResourceKind
+  room_id?: string
+  category?: string
+  q?: string
+  bookable_only?: boolean
+  /** Local "HH:MM": only resources free for the whole duration from then. */
+  free_at?: string
 }
 
 export type SlotReason =
@@ -72,6 +111,17 @@ export interface Availability {
   review_window_minutes?: number
   /** Set when qualification_status is PREREQUISITE_REQUIRED. */
   missing_prerequisite_id?: string | null
+  /** Whose eligibility and requests these results describe (the signed-in user, or for_zid for staff). */
+  booking_for?: PersonBrief
+  /** Urgent view: times inside the minimum advance window count as available. */
+  urgent?: boolean
+}
+
+export interface PersonBrief {
+  id: string
+  zid: string
+  display_name: string
+  role: Role
 }
 
 export type BookingStatus =
@@ -83,11 +133,57 @@ export type BookingStatus =
   | 'CANCELLED'
   | 'EXPIRED'
 
+export type CalendarSyncState = 'DISABLED' | 'NOT_REQUIRED' | 'PENDING' | 'IN_PROGRESS' | 'SYNCED' | 'FAILED'
+
 export interface OutlookSync {
-  status: 'DISABLED' | 'NOT_REQUIRED' | 'PENDING' | 'IN_PROGRESS' | 'SYNCED' | 'FAILED'
+  status: CalendarSyncState
   action: 'CREATE' | 'UPDATE' | 'DELETE' | null
   web_link: string | null
   last_error: string | null
+}
+
+/** One row of the staff Calendar Sync page (GET admin/outlook/). */
+export interface CalendarSyncItem {
+  booking_id: string
+  booking_status: BookingStatus
+  start: string
+  end: string
+  urgent: boolean
+  resource: { id: string; name: string | null; location: string | null }
+  booked_for: { zid: string; display_name: string } | null
+  booked_by: { zid: string; display_name: string } | null
+  /** Whether the person gets a meeting invitation (OUTLOOK_INVITE_MODE). */
+  invited: boolean
+  sync: {
+    status: Exclude<CalendarSyncState, 'DISABLED' | 'NOT_REQUIRED'>
+    action: 'CREATE' | 'UPDATE' | 'DELETE'
+    attempts: number
+    last_error: string | null
+    next_attempt_at: string | null
+    last_success_at: string | null
+    web_link: string | null
+  }
+}
+
+export interface CalendarCheck {
+  at: string
+  ok: boolean
+  /** e.g. TOKEN_EXPIRED, OUTLOOK_LOGIN_EXPIRED, OUTLOOK_NOT_CONFIGURED, GRAPH_HTTP_403. */
+  code: string | null
+  mode: string
+  calendar_name: string | null
+  owner: string | null
+}
+
+export interface CalendarSyncStatus {
+  enabled: boolean
+  configured: boolean
+  mode: string
+  direction: 'system_to_outlook'
+  invite_mode: 'none' | 'allowlist' | 'all' | null
+  last_check: CalendarCheck | null
+  summary: { total: number; synced: number; pending: number; failed: number }
+  items: CalendarSyncItem[]
 }
 
 export interface Booking {
@@ -112,9 +208,17 @@ export interface Booking {
   blocks_slot: boolean
   /** 1-based place among overlapping waitlisted requests; only meaningful when WAITLISTED. */
   waitlist_position?: number | null
-  /** Admin/Manager lists only: who made the request. */
+  /** Admin/Manager lists only: who the booking is for. */
   student?: { id: string; zid: string; display_name: string; university_email: string } | null
   resource_name?: string | null
+  /** Who created the request; differs from the person it is for when staff booked on their behalf. */
+  created_by?: string | null
+  booked_for?: PersonBrief | null
+  created_by_user?: PersonBrief | null
+  on_behalf?: boolean
+  /** Urgent request: inside the minimum advance window; only a Manager can decide it. */
+  urgent?: boolean
+  urgent_reason?: string | null
 }
 
 export interface ListResponse<T> {

@@ -42,6 +42,15 @@ class BookingCreateSerializer(StrictSerializer):
     start = AwareDateTimeField()
     end = AwareDateTimeField()
     purpose = serializers.CharField(max_length=1000)
+    # Admin/Manager only: book for someone else (the booking is theirs; created_by records the staff member).
+    on_behalf_of_zid = serializers.RegexField(r"^[zZ]\d{7}$", required=False, allow_blank=True)
+    # Sooner than the minimum advance window; a Manager must approve it.
+    urgent = serializers.BooleanField(required=False, default=False)
+    urgent_reason = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
+
+
+class PersonLookupSerializer(StrictSerializer):
+    zid = serializers.RegexField(r"^[zZ]\d{7}$")
 
 
 class BookingRescheduleSerializer(StrictSerializer):
@@ -86,10 +95,23 @@ class BookingReviewSerializer(StrictSerializer):
             raise serializers.ValidationError({"reason": "A rejection reason is required."})
         return attrs
 
+class DayOverviewQuerySerializer(StrictSerializer):
+    date = serializers.DateField()
+    duration_minutes = serializers.IntegerField(default=60, min_value=1, max_value=1440)
+    kind = serializers.ChoiceField(choices=["ROOM", "EQUIPMENT"], required=False)
+    room_id = serializers.UUIDField(required=False)
+    category = serializers.CharField(max_length=60, required=False, allow_blank=True)
+    q = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    bookable_only = serializers.BooleanField(required=False, default=False)
+    free_at = serializers.TimeField(required=False, format="%H:%M", input_formats=["%H:%M"])
+
+
 class AvailabilityQuerySerializer(StrictSerializer):
     date = serializers.DateField()
     duration_minutes = serializers.IntegerField(default=30, min_value=1, max_value=1440)
     exclude_booking_id = serializers.UUIDField(required=False)
+    for_zid = serializers.RegexField(r"^[zZ]\d{7}$", required=False, allow_blank=True)
+    urgent = serializers.BooleanField(required=False, default=False)
 
 
 class OutlookProcessSerializer(StrictSerializer):

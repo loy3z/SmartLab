@@ -3,7 +3,7 @@ import io
 import json
 import tempfile
 from dataclasses import replace
-from datetime import timedelta
+from datetime import UTC, timedelta
 from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
@@ -16,42 +16,85 @@ from rest_framework.test import APIClient
 
 from booking.calendar_sync import CalendarSyncService
 from booking.domain import BookingStatus
-from booking.outlook import CalendarEvent, GraphTransport, MicrosoftGraphCalendar, OutlookError
+from booking.outlook import CalendarEvent, EventSnapshot, GraphTransport, MicrosoftGraphCalendar, OutlookError
 from booking.authentication import issue_demo_token
 from booking.runtime import reset_runtime
 from booking.tests.test_api import NOW, PNG, SYDNEY
 
 
 class FakeCalendar:
+    """In-memory organiser calendar. ``outlook_edit``/``outlook_delete`` act like a person editing it in Outlook."""
     configured = True
     mode = "test_adapter"
+    invite_mode = "all"
 
     def __init__(self):
         self.creates, self.updates, self.deletes = [], [], []
+        self.transaction_ids, self.creators, self.reads = [], [], []
+        self.events = {}
         self.error = None
+        self.read_error = None
         self.on_create = None
+        self._counter = 0
 
     def target_path(self):
         return "/me/calendar/events"
 
-    def create_event(self, booking, student, resource, path):
+    def invites(self, person):
+        return bool(person and person.university_email)
+
+    def expected_snapshot(self, booking, student, resource):
+        return EventSnapshot(booking.start.astimezone(UTC), booking.end.astimezone(UTC),
+                             f"SmartLab booking: {resource.name}", resource.location,
+                             frozenset([student.university_email.casefold()]))
+
+    def create_event(self, booking, student, resource, path, creator=None, transaction_id=None):
         self.creates.append((booking.id, student.university_email, resource.id, path))
+        self.transaction_ids.append(transaction_id)
+        self.creators.append(creator.zid if creator else None)
         if self.on_create:
             self.on_create()
         if self.error:
             raise self.error
-        return CalendarEvent("event-" + booking.id, "https://outlook.live.com/calendar/item/demo", "ical-" + booking.id)
+        # Graph returns the same event for a repeated transactionId; a new one gets a new ID.
+        event_id = "event-" + booking.id if transaction_id in (None, booking.id) else f"event-{transaction_id}"
+        self.events[event_id] = self.expected_snapshot(booking, student, resource)
+        return CalendarEvent(event_id, "https://outlook.live.com/calendar/item/demo", "ical-" + booking.id)
 
-    def update_event(self, booking, student, resource, path, event_id):
+    def update_event(self, booking, student, resource, path, event_id, creator=None):
         self.updates.append((booking.id, student.university_email, resource.id, path, event_id))
+        self.creators.append(creator.zid if creator else None)
         if self.error:
             raise self.error
+        if event_id not in self.events:
+            raise OutlookError("GRAPH_HTTP_404")
+        self.events[event_id] = self.expected_snapshot(booking, student, resource)
         return CalendarEvent(event_id, "https://outlook.live.com/calendar/item/demo", "ical-" + booking.id)
 
     def delete_event(self, path, event_id):
         if self.error:
             raise self.error
         self.deletes.append((path, event_id))
+        self.events.pop(event_id, None)
+
+    def get_event(self, path, event_id):
+        self.reads.append(event_id)
+        if self.read_error:
+            raise self.read_error
+        if event_id not in self.events:
+            raise OutlookError("GRAPH_HTTP_404")
+        return self.events[event_id]
+
+    def check_connection(self):
+        if self.read_error:
+            raise self.read_error
+        return {"calendar_name": "Calendar", "owner": "organiser@example.test"}
+
+    def outlook_edit(self, event_id, **changes):
+        self.events[event_id] = replace(self.events[event_id], **changes)
+
+    def outlook_delete(self, event_id):
+        del self.events[event_id]
 
 
 class FakeTransport:
@@ -79,6 +122,7 @@ class OutlookWorkflowTests(SimpleTestCase):
         self.client = self.login("z1000001")
         self.student = self.login("z1000002")
         self.admin = self.login("z9000001")
+        self.manager = self.login("z9000002")
         self.room = self.service.repo.list_resources()[0]
         for item in self.service.repo.list_submissions():
             self.service.repo.save_submission(replace(item, valid_until=None))
@@ -165,13 +209,13 @@ class OutlookWorkflowTests(SimpleTestCase):
         booking = self.create_approved()
         original = self.service.repo.get_outlook_sync(booking["id"])
         new_start = (NOW.astimezone(SYDNEY) + timedelta(days=4)).replace(hour=14, minute=0)
-        result = self.client.post(f"/api/v1/bookings/{booking['id']}/reschedule/", {
+        result = self.manager.post(f"/api/v1/bookings/{booking['id']}/reschedule/", {
             "start": new_start.isoformat(),
             "end": (new_start + timedelta(hours=1)).isoformat(),
         }, format="json")
         self.assertEqual(result.status_code, 200)
         self.assertEqual(result.data["revision"], 2)
-        self.assertEqual(result.data["reason_code"], "RESCHEDULED_BY_USER")
+        self.assertEqual(result.data["reason_code"], "RESCHEDULED_BY_MANAGER")
         self.assertEqual(result.data["outlook_sync"]["action"], "UPDATE")
         self.assertEqual(result.data["outlook_sync"]["status"], "SYNCED")
         self.assertEqual(len(self.provider.creates), 1)
@@ -184,7 +228,7 @@ class OutlookWorkflowTests(SimpleTestCase):
         original = self.service.repo.get_outlook_sync(booking["id"])
         self.provider.error = OutlookError("GRAPH_NETWORK_ERROR")
         new_start = (NOW.astimezone(SYDNEY) + timedelta(days=5)).replace(hour=15, minute=0)
-        moved = self.client.post(f"/api/v1/bookings/{booking['id']}/reschedule/", {
+        moved = self.manager.post(f"/api/v1/bookings/{booking['id']}/reschedule/", {
             "start": new_start.isoformat(),
             "end": (new_start + timedelta(hours=1)).isoformat(),
         }, format="json")
@@ -329,7 +373,7 @@ class GraphAdapterTests(SimpleTestCase):
 
     def test_personal_account_posts_real_graph_payload_without_student_private_data(self):
         transport = FakeTransport([{"id": "event-id", "webLink": "https://outlook.live.com/calendar/item/event"}])
-        provider = MicrosoftGraphCalendar(access_token="example-access-token", transport=transport)
+        provider = MicrosoftGraphCalendar(access_token="example-access-token", transport=transport, invite_mode="all")
         booking, student, resource = self.fixture()
         event = provider.create_event(booking, student, resource, provider.target_path())
         method, url, headers, body, _ = transport.calls[0]
@@ -362,7 +406,7 @@ class GraphAdapterTests(SimpleTestCase):
 
     def test_reschedule_patches_the_existing_graph_event(self):
         transport = FakeTransport([{"id": "event/with+characters", "iCalUId": "ical-uid"}])
-        provider = MicrosoftGraphCalendar(access_token="example-token", transport=transport)
+        provider = MicrosoftGraphCalendar(access_token="example-token", transport=transport, invite_mode="all")
         booking, student, resource = self.fixture()
         event = provider.update_event(booking, student, resource, provider.target_path(), "event/with+characters")
         method, url, _, body, _ = transport.calls[0]

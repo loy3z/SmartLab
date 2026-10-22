@@ -1,9 +1,9 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "Sprint 1 Smart Lab and Room Booking API",
-    "version": "1.9.0",
-    "description": "Sprint 1 backend with Microsoft Graph one-way creation, rescheduling and cancellation of confirmed bookings. Confirmed events invite the student; room and equipment availability remains managed by the booking system. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Recurrence is deferred to Sprint 2. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z. Identity includes university_email. Only students book; Admins and Managers are staff accounts that review and manage but never book. A student may submit a request only when the induction for the resource, and any prerequisite induction it lists (for example Advanced needs General), is verified and current through the booking end. Every request starts as PENDING_APPROVAL and holds its slot during a review window (pending_hold_minutes, default 1440 = 24 hours, Manager-configurable per resource, capped at the booking start). An Admin or Manager approves or rejects it within the window; if nobody decides, the system approves it when it still follows the rules (AUTO_APPROVED_AFTER_REVIEW_WINDOW) and rejects it otherwise (AUTO_REJECTED_*). Requests for time that is already taken or held are WAITLISTED in submission order and, when the time frees up, become PENDING_APPROVAL with a fresh review window. Induction evidence is always reviewed manually. Bookings must start at least 7 and at most 30 days ahead by default; these values come from a RulesProvider (booking/rules.py, environment variables by default) so they can be changed without code changes. Authentication and resource-specific eligibility are separate. Verified induction expires a fixed number of days after approval (qualification_validity_days from the RulesProvider, default 120, one term); reviewers no longer supply an expiry. Admin and Manager can query the audit trail of requests, approvals, changes and cancellations. The prototype seed has 2 labs and 20 independently bookable devices. A Manager has every Admin permission and can also configure booking policies, add staff accounts and deactivate accounts. Admins cannot use any Manager endpoint. Students, Admins and Managers are separate accounts whose role is fixed when created: students are never promoted to staff, and Admin and Manager do not switch. Creating, approving, automatically deciding, promoting from the waitlist and rescheduling all use one shared rule check (account active, resource available, valid time, booking window on create and reschedule, induction and prerequisites). A Manager can mark a resource MAINTENANCE or CLOSED (new requests paused, existing bookings kept) and list or export every booking. Staff accounts are created with Add staff (POST /admin/users/staff/). Equipment records the room it is kept in (room_id); a room's maintenance does not affect its equipment. Two sign-in entry points: students use university sign-in (demo: POST /auth/demo-login/, which refuses staff with USE_STAFF_SIGN_IN); Admins and Managers use the staff page with zID and password (POST /auth/staff-sign-in/). A Manager's Add staff issues an invite code that the staff member uses once to choose a password (POST /auth/staff-activate/); Reset access issues a new code. Password hashes never appear in responses."
+    "title": "Smart Lab and Room Booking API",
+    "version": "1.11.1",
+    "description": "Booking backend with Microsoft Graph one-way creation, rescheduling and cancellation of confirmed bookings. Confirmed events can invite the person the booking is for (OUTLOOK_INVITE_MODE); room and equipment availability remains managed by the booking system. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Recurring bookings are not supported yet. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z. Identity includes university_email. Students, Admins and Managers book under the same rules; an Admin or Manager may also book on behalf of someone (student_id is the person the booking is for, created_by who created it), and only a Manager decides urgent requests and reschedules. A student may submit a request only when the induction for the resource, and any prerequisite induction it lists (for example Advanced needs General), is verified and current through the booking end. Every request starts as PENDING_APPROVAL and holds its slot during a review window (pending_hold_minutes, default 1440 = 24 hours, Manager-configurable per resource, capped at the booking start). An Admin or Manager approves or rejects it within the window; if nobody decides, the system approves it when it still follows the rules (AUTO_APPROVED_AFTER_REVIEW_WINDOW) and rejects it otherwise (AUTO_REJECTED_*). Requests for time that is already taken or held are WAITLISTED in submission order and, when the time frees up, become PENDING_APPROVAL with a fresh review window. Induction evidence is always reviewed manually. Bookings must start at least 7 and at most 30 days ahead by default; these values come from a RulesProvider (booking/rules.py, environment variables by default) so they can be changed without code changes. Authentication and resource-specific eligibility are separate. Verified induction expires a fixed number of days after approval (qualification_validity_days from the RulesProvider, default 120, one term); reviewers do not supply an expiry. Admin and Manager can query the audit trail of requests, approvals, changes and cancellations. The prototype seed has 2 labs and 20 independently bookable devices. A Manager has every Admin permission and can also configure booking policies, add staff accounts and deactivate accounts. Admins cannot use any Manager endpoint. Students, Admins and Managers are separate accounts whose role is fixed when created: students are never promoted to staff, and Admin and Manager do not switch. Creating, approving, automatically deciding, promoting from the waitlist and rescheduling all use one shared rule check (account active, resource available, valid time, booking window on create and reschedule, induction and prerequisites). A Manager can mark a resource MAINTENANCE or CLOSED (new requests paused, existing bookings kept) and list or export every booking. Staff accounts are created with Add staff (POST /admin/users/staff/). Equipment records the room it is kept in (room_id); a room's maintenance does not affect its equipment. Two sign-in entry points: students use university sign-in (demo: POST /auth/demo-login/, which refuses staff with USE_STAFF_SIGN_IN); Admins and Managers use the staff page with zID and password (POST /auth/staff-sign-in/). A Manager's Add staff issues an invite code that the staff member uses once to choose a password (POST /auth/staff-activate/); Reset access issues a new code. Password hashes never appear in responses. Outlook sync is one way. The system never reads changes made in Outlook, so nothing done there can bypass the rules or become an approved booking; if a person deleted the event, a Manager's reschedule writes it again at the new time. Invitations follow OUTLOOK_INVITE_MODE (default allowlist: only OUTLOOK_ALLOWED_ATTENDEES are invited). POST /admin/outlook/check/ tests the Microsoft sign-in. Resources have an equipment category, and GET /resources/day-overview/ returns every matching resource's free and taken times on one day for the booking page filter and grid. Demo staff accounts use the password 123."
   },
   "servers": [
     {
@@ -472,6 +472,149 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "description": "Equipment type (exact match)."
+          }
+        ]
+      }
+    },
+    "/api/v1/resources/day-overview/": {
+      "get": {
+        "operationId": "get_day_overview",
+        "tags": [
+          "Resources"
+        ],
+        "summary": "Free and taken times of every matching resource on one day (booking page grid)",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DayOverview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid date, duration, kind or free_at.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Sydney local date."
+          },
+          {
+            "name": "duration_minutes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 60,
+              "minimum": 30,
+              "maximum": 480
+            },
+            "description": "Booking length; a multiple of the 30-minute slot."
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ROOM",
+                "EQUIPMENT"
+              ]
+            },
+            "description": "Rooms or equipment only."
+          },
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The room itself and the equipment kept in it."
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "description": "Equipment type."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "Name, location or category contains this text."
+          },
+          {
+            "name": "bookable_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Only resources the user may request now (induction, resource open)."
+          },
+          {
+            "name": "free_at",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{2}:\\d{2}$"
+            },
+            "description": "Local HH:MM: only resources free for the whole duration from then."
           }
         ]
       }
@@ -703,6 +846,26 @@
               "format": "uuid"
             },
             "description": "The caller's own booking for this resource that is being rescheduled; its current time is shown as free and not as requested_by_me."
+          },
+          {
+            "name": "for_zid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[zZ]\\d{7}$"
+            },
+            "description": "Admin/Manager: eligibility (can_request, qualification_status) and requested_by_me for the person being booked for."
+          },
+          {
+            "name": "urgent",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Times inside the minimum advance window are reported as available (urgent request or Manager reschedule)."
           }
         ]
       }
@@ -1039,7 +1202,7 @@
           "Bookings"
         ],
         "summary": "Create a room or individual equipment booking request",
-        "description": "Students only (staff receive 403 FORBIDDEN). Requires a VERIFIED, unexpired induction for the selected resource, and for each of its prerequisite inductions, through the booking end; otherwise 403 QUALIFICATION_REQUIRED (details.qualification_status, requirement_id; PREREQUISITE_REQUIRED adds prerequisite_id and prerequisite_status), including while evidence is still PENDING. The local start date must be from today + MIN_ADVANCE_DAYS (default 7) to today + MAX_ADVANCE_DAYS (default 30): BOOKING_TOO_SOON / BOOKING_TOO_FAR_AHEAD (400, details.earliest_date, latest_date, min_advance_days, max_advance_days). A user who already has an overlapping active request for this same resource receives DUPLICATE_BOOKING (409); terminal requests do not block rebooking and different resources remain independent. If no APPROVED booking or active pending request overlaps, the request becomes PENDING_APPROVAL (reason AWAITING_REVIEW) with review_due_at = hold_until = min(start, now + pending_hold_minutes, default 1440). An Admin/Manager decides within that window; when it ends undecided the system re-checks the rules and sets APPROVED (AUTO_APPROVED_AFTER_REVIEW_WINDOW) or REJECTED (AUTO_REJECTED_ACCOUNT_INACTIVE, AUTO_REJECTED_QUALIFICATION, AUTO_REJECTED_RESOURCE_UNAVAILABLE, AUTO_REJECTED_BOOKING_RULES or AUTO_REJECTED_CONFLICT), reviewed_by SYSTEM. If an APPROVED booking or active pending request overlaps, the request becomes WAITLISTED (reason TIME_CONFLICT or TEMPORARY_HOLD_CONFLICT) with waitlist_position. When time frees up (cancellation, rejection, expiry, rescheduling, an automatic rejection or a resource reopening) the earliest waitlisted request that now fits becomes PENDING_APPROVAL (PROMOTED_FROM_WAITLIST) with a fresh review window, or REJECTED with the failing rule's code (for example QUALIFICATION_REQUIRED or ACCOUNT_INACTIVE). Only APPROVED creates an Outlook event. Undecided and waitlisted requests expire at their start time. HTTP 201 never means approved. Interval semantics are [start, end).",
+        "description": "Any active account: Admins and Managers book under the same rules as students and may book on behalf of someone else with on_behalf_of_zid; the booking belongs to that person (student_id, whose induction is checked) and created_by records the creator. Urgent requests (urgent=true, urgent_reason) may start inside the minimum advance window; they are PENDING_APPROVAL with reason URGENT_AWAITING_MANAGER, review_due_at null and hold_until = start, only a Manager can decide them (URGENT_NEEDS_MANAGER) and they expire at the start if undecided. Requires a VERIFIED, unexpired induction for the selected resource, and for each of its prerequisite inductions, through the booking end; otherwise 403 QUALIFICATION_REQUIRED (details.qualification_status, requirement_id; PREREQUISITE_REQUIRED adds prerequisite_id and prerequisite_status), including while evidence is still PENDING. The local start date must be from today + MIN_ADVANCE_DAYS (default 7) to today + MAX_ADVANCE_DAYS (default 30): BOOKING_TOO_SOON / BOOKING_TOO_FAR_AHEAD (400, details.earliest_date, latest_date, min_advance_days, max_advance_days). A user who already has an overlapping active request for this same resource receives DUPLICATE_BOOKING (409); terminal requests do not block rebooking and different resources remain independent. If no APPROVED booking or active pending request overlaps, the request becomes PENDING_APPROVAL (reason AWAITING_REVIEW) with review_due_at = hold_until = min(start, now + pending_hold_minutes, default 1440). An Admin/Manager decides within that window; when it ends undecided the system re-checks the rules and sets APPROVED (AUTO_APPROVED_AFTER_REVIEW_WINDOW) or REJECTED (AUTO_REJECTED_ACCOUNT_INACTIVE, AUTO_REJECTED_QUALIFICATION, AUTO_REJECTED_RESOURCE_UNAVAILABLE, AUTO_REJECTED_BOOKING_RULES or AUTO_REJECTED_CONFLICT), reviewed_by SYSTEM. If an APPROVED booking or active pending request overlaps, the request becomes WAITLISTED (reason TIME_CONFLICT or TEMPORARY_HOLD_CONFLICT) with waitlist_position. When time frees up (cancellation, rejection, expiry, rescheduling, an automatic rejection or a resource reopening) the earliest waitlisted request that now fits becomes PENDING_APPROVAL (PROMOTED_FROM_WAITLIST) with a fresh review window, or REJECTED with the failing rule's code (for example QUALIFICATION_REQUIRED or ACCOUNT_INACTIVE). Only APPROVED creates an Outlook event. Undecided and waitlisted requests expire at their start time. HTTP 201 never means approved. Interval semantics are [start, end).",
         "security": [
           {
             "BearerAuth": []
@@ -1303,8 +1466,8 @@
         "tags": [
           "Bookings"
         ],
-        "summary": "Reschedule my approved booking",
-        "description": "Moves a future approved booking after rechecking resource rules, the booking horizon, qualification validity and conflicts; the booking stays APPROVED. The old period is released and offered to the waitlist. A successful Outlook sync updates the existing event rather than creating another event. The new length may differ from the old one within the resource's max_booking_minutes.",
+        "summary": "Reschedule an approved booking (Manager only)",
+        "description": "Manager only (others receive 403 FORBIDDEN). Moves anyone's future approved booking after rechecking resource rules, the latest booking date (BOOKING_TOO_FAR_AHEAD), qualification validity and conflicts; the minimum advance window does not apply. reason_code becomes RESCHEDULED_BY_MANAGER and the booking stays APPROVED. The old period is released and offered to the waitlist. A successful Outlook sync updates the existing event rather than creating another event. The new length may differ from the old one within the resource's max_booking_minutes.",
         "security": [
           {
             "BearerAuth": []
@@ -1322,7 +1485,7 @@
             }
           },
           "400": {
-            "description": "The supplied time range is invalid or outside the booking window (BOOKING_TOO_SOON / BOOKING_TOO_FAR_AHEAD).",
+            "description": "The supplied time range is invalid or after the latest booking date (BOOKING_TOO_FAR_AHEAD).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1727,7 +1890,7 @@
           "Administration"
         ],
         "summary": "Approve or reject a booking request",
-        "description": "Admin or Manager only; an Admin cannot decide their own request (SELF_REVIEW_FORBIDDEN, 403). Decide within the request's review window (review_due_at); afterwards the system decides automatically. APPROVED is allowed only for PENDING_APPROVAL requests; it re-checks resource-specific qualification through the booking end and conflicts with APPROVED bookings and other active pending requests, excluding this request's own ID. A WAITLISTED request cannot be approved (REQUEST_WAITLISTED, 409); it moves up in order. REJECTED (reason required) may be applied to PENDING_APPROVAL or WAITLISTED requests; rejecting a pending request offers its time to the next waitlisted request. BOOKING_HOLD_CONFLICT (409) includes details.hold_until; BOOKING_CONFLICT (409) indicates an approved blocker.",
+        "description": "Admin or Manager only; an Admin cannot decide their own request (SELF_REVIEW_FORBIDDEN, 403). Decide within the request's review window (review_due_at); afterwards the system decides automatically. APPROVED is allowed only for PENDING_APPROVAL requests; it re-checks resource-specific qualification through the booking end and conflicts with APPROVED bookings and other active pending requests, excluding this request's own ID. A WAITLISTED request cannot be approved (REQUEST_WAITLISTED, 409); it moves up in order. REJECTED (reason required) may be applied to PENDING_APPROVAL or WAITLISTED requests; rejecting a pending request offers its time to the next waitlisted request. BOOKING_HOLD_CONFLICT (409) includes details.hold_until; BOOKING_CONFLICT (409) indicates an approved blocker. Nobody can decide a request that is for them or that they created (403 SELF_REVIEW_FORBIDDEN). Urgent requests can be decided only by a Manager (403 URGENT_NEEDS_MANAGER).",
         "security": [
           {
             "BearerAuth": []
@@ -2337,7 +2500,7 @@
     "/api/v1/admin/outlook/": {
       "get": {
         "operationId": "get_outlook_status",
-        "summary": "Outlook configuration and sync records",
+        "summary": "Outlook configuration, totals and per-booking sync and Outlook-check state",
         "tags": [
           "Administration"
         ],
@@ -2470,6 +2633,72 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/OutlookProcessRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/outlook/check/": {
+      "post": {
+        "operationId": "check_outlook_connection",
+        "summary": "Read the organiser calendar once to test the Microsoft sign-in and permission",
+        "tags": [
+          "Administration"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutlookCheck"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin or Manager role required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutlookRetryRequest"
               }
             }
           }
@@ -3163,6 +3392,94 @@
           }
         }
       }
+    },
+    "/api/v1/people/lookup/": {
+      "get": {
+        "operationId": "get__api_v1_people_lookup_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "Find the person to book for (Admin/Manager)",
+        "description": "Admin/Manager only. Returns the active account with this zID so the booking page can show whom a booking is for.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "zid",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[zZ]\\d{7}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonBrief"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: students cannot look people up.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "PERSON_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ACCOUNT_INACTIVE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3367,7 +3684,8 @@
           "pending_hold_minutes",
           "status",
           "status_reason",
-          "room_id"
+          "room_id",
+          "category"
         ],
         "properties": {
           "id": {
@@ -3444,6 +3762,12 @@
             "format": "uuid",
             "nullable": true,
             "description": "Equipment only: the room it is kept in (null for rooms). Used for grouping; a room's status does not affect its equipment."
+          },
+          "category": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 60,
+            "description": "Equipment type for the booking page filter (e.g. Microscopy, Fabrication). Rooms: null."
           }
         },
         "additionalProperties": false
@@ -3722,6 +4046,41 @@
             ],
             "nullable": true,
             "description": "Admin/Manager booking lists only."
+          },
+          "created_by": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Who created the request. student_id is the person it is for; an Admin or Manager may book on behalf of someone. null for records created before 1.10.0 (migration 004 fills it with student_id).",
+            "nullable": true
+          },
+          "booked_for": {
+            "description": "The person the booking is for (student_id).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonBrief"
+              }
+            ],
+            "nullable": true
+          },
+          "created_by_user": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonBrief"
+              }
+            ],
+            "nullable": true
+          },
+          "on_behalf": {
+            "type": "boolean",
+            "description": "true when created_by differs from student_id."
+          },
+          "urgent": {
+            "type": "boolean",
+            "description": "Urgent request: starts inside the minimum advance window; only a Manager can decide it; never decided automatically."
+          },
+          "urgent_reason": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -3750,6 +4109,20 @@
           "purpose": {
             "type": "string",
             "maxLength": 1000
+          },
+          "on_behalf_of_zid": {
+            "type": "string",
+            "pattern": "^[zZ]\\d{7}$",
+            "description": "Admin/Manager only: book for the active account with this zID (403 FORBIDDEN for students; 404 PERSON_NOT_FOUND; 409 ACCOUNT_INACTIVE). Eligibility is checked for that person."
+          },
+          "urgent": {
+            "type": "boolean",
+            "default": false,
+            "description": "Urgent request for a start sooner than the minimum advance window (URGENT_NOT_NEEDED if the start is inside the normal window). Requires urgent_reason; the time must be free (409 BOOKING_CONFLICT, no waitlist)."
+          },
+          "urgent_reason": {
+            "type": "string",
+            "maxLength": 500
           }
         },
         "additionalProperties": false
@@ -3919,6 +4292,12 @@
             "format": "uuid",
             "nullable": true,
             "description": "Set when qualification_status is PREREQUISITE_REQUIRED: the requirement to complete first."
+          },
+          "booking_for": {
+            "$ref": "#/components/schemas/PersonBrief"
+          },
+          "urgent": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -4203,7 +4582,7 @@
           },
           "sso_connected": {
             "type": "boolean",
-            "description": "Always false in Sprint 1; actual school SSO is not integrated."
+            "description": "Always false; university SSO is not integrated yet."
           },
           "token_type": {
             "type": "string",
@@ -4385,7 +4764,11 @@
           "configured",
           "mode",
           "direction",
-          "sync_records"
+          "sync_records",
+          "invite_mode",
+          "last_check",
+          "summary",
+          "items"
         ],
         "properties": {
           "enabled": {
@@ -4406,6 +4789,59 @@
           },
           "sync_records": {
             "$ref": "#/components/schemas/OutlookSyncCollection"
+          },
+          "invite_mode": {
+            "type": "string",
+            "enum": [
+              "none",
+              "allowlist",
+              "all"
+            ],
+            "nullable": true
+          },
+          "last_check": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OutlookCheck"
+              }
+            ],
+            "nullable": true,
+            "description": "Latest connection check in this server process; reading this page never calls Microsoft."
+          },
+          "summary": {
+            "type": "object",
+            "required": [
+              "total",
+              "synced",
+              "pending",
+              "failed"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "synced": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "pending": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "failed": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
+          "items": {
+            "type": "array",
+            "description": "One row per synchronised booking, failures first (development view).",
+            "items": {
+              "$ref": "#/components/schemas/OutlookSyncItem"
+            }
           }
         },
         "additionalProperties": false
@@ -4884,6 +5320,431 @@
             "maxLength": 128
           }
         }
+      },
+      "PersonBrief": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "zid": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "STUDENT",
+              "ADMIN",
+              "MANAGER"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "zid",
+          "display_name",
+          "role"
+        ]
+      },
+      "OutlookCheck": {
+        "type": "object",
+        "required": [
+          "at",
+          "ok",
+          "code",
+          "mode",
+          "calendar_name",
+          "owner"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "code": {
+            "type": "string",
+            "nullable": true,
+            "description": "TOKEN_EXPIRED, OUTLOOK_LOGIN_EXPIRED, OUTLOOK_NOT_CONFIGURED, GRAPH_HTTP_403, OUTLOOK_CALENDAR_READ_ONLY, GRAPH_NETWORK_ERROR, ..."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "delegated_token",
+              "delegated_refresh",
+              "application",
+              "unconfigured",
+              "adapter",
+              "test_adapter"
+            ]
+          },
+          "calendar_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "owner": {
+            "type": "string",
+            "nullable": true,
+            "description": "Organiser mailbox address."
+          }
+        },
+        "additionalProperties": false
+      },
+      "OutlookSyncItem": {
+        "type": "object",
+        "required": [
+          "booking_id",
+          "booking_status",
+          "start",
+          "end",
+          "urgent",
+          "resource",
+          "booked_for",
+          "booked_by",
+          "invited",
+          "sync"
+        ],
+        "properties": {
+          "booking_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "booking_status": {
+            "type": "string",
+            "enum": [
+              "WAITING_QUALIFICATION",
+              "PENDING_APPROVAL",
+              "WAITLISTED",
+              "APPROVED",
+              "REJECTED",
+              "CANCELLED",
+              "EXPIRED"
+            ]
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "urgent": {
+            "type": "boolean"
+          },
+          "resource": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "location"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string",
+                "nullable": true
+              },
+              "location": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "additionalProperties": false
+          },
+          "booked_for": {
+            "type": "object",
+            "nullable": true,
+            "required": [
+              "zid",
+              "display_name"
+            ],
+            "properties": {
+              "zid": {
+                "type": "string"
+              },
+              "display_name": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "booked_by": {
+            "type": "object",
+            "nullable": true,
+            "required": [
+              "zid",
+              "display_name"
+            ],
+            "properties": {
+              "zid": {
+                "type": "string"
+              },
+              "display_name": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "description": "Set only when staff booked on behalf of someone."
+          },
+          "invited": {
+            "type": "boolean",
+            "description": "Whether the person receives a meeting invitation (OUTLOOK_INVITE_MODE)."
+          },
+          "sync": {
+            "type": "object",
+            "required": [
+              "status",
+              "action",
+              "attempts",
+              "last_error",
+              "next_attempt_at",
+              "last_success_at",
+              "web_link"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "PENDING",
+                  "IN_PROGRESS",
+                  "SYNCED",
+                  "FAILED"
+                ]
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "CREATE",
+                  "UPDATE",
+                  "DELETE"
+                ]
+              },
+              "attempts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "last_error": {
+                "type": "string",
+                "nullable": true
+              },
+              "next_attempt_at": {
+                "type": "string",
+                "nullable": true,
+                "format": "date-time"
+              },
+              "last_success_at": {
+                "type": "string",
+                "nullable": true,
+                "format": "date-time"
+              },
+              "web_link": {
+                "type": "string",
+                "format": "uri",
+                "nullable": true
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "DayOverviewRow": {
+        "type": "object",
+        "required": [
+          "resource",
+          "room_name",
+          "can_request",
+          "qualification_status",
+          "resource_status",
+          "status_reason",
+          "slots"
+        ],
+        "properties": {
+          "resource": {
+            "$ref": "#/components/schemas/Resource"
+          },
+          "room_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "Equipment: the room it is kept in."
+          },
+          "can_request": {
+            "type": "boolean"
+          },
+          "qualification_status": {
+            "type": "string",
+            "enum": [
+              "NOT_CONFIGURED",
+              "NOT_SUBMITTED",
+              "PENDING",
+              "VERIFIED",
+              "REJECTED",
+              "EXPIRED",
+              "PREREQUISITE_REQUIRED"
+            ],
+            "description": "Current resource eligibility; request submission additionally checks validity through the selected end time. PREREQUISITE_REQUIRED means a prerequisite induction (see missing_prerequisite_id) is not verified and current."
+          },
+          "resource_status": {
+            "type": "string",
+            "enum": [
+              "AVAILABLE",
+              "MAINTENANCE",
+              "CLOSED"
+            ]
+          },
+          "status_reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "slots": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "start",
+                "end",
+                "available",
+                "reason_code",
+                "hold_until",
+                "held_by_me",
+                "requested_by_me"
+              ],
+              "properties": {
+                "start": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "end": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "available": {
+                  "type": "boolean"
+                },
+                "reason_code": {
+                  "type": "string",
+                  "nullable": true,
+                  "enum": [
+                    "START_TIME_PASSED",
+                    "RESOURCE_UNAVAILABLE",
+                    "TOO_SOON",
+                    "TOO_FAR_AHEAD",
+                    "BOOKED",
+                    "TEMPORARILY_HELD",
+                    null
+                  ]
+                },
+                "hold_until": {
+                  "type": "string",
+                  "format": "date-time",
+                  "nullable": true,
+                  "description": "Latest blocking hold deadline for TEMPORARILY_HELD; otherwise null."
+                },
+                "held_by_me": {
+                  "type": "boolean",
+                  "description": "True only when all blocking holds belong to the current user."
+                },
+                "requested_by_me": {
+                  "type": "boolean",
+                  "description": "True when the current user already has an overlapping active request for this resource; clients must not submit it again."
+                }
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "DayOverview": {
+        "type": "object",
+        "required": [
+          "date",
+          "duration_minutes",
+          "timezone",
+          "earliest_date",
+          "latest_date",
+          "min_advance_days",
+          "max_advance_days",
+          "rooms",
+          "categories",
+          "count",
+          "results"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "duration_minutes": {
+            "type": "integer"
+          },
+          "timezone": {
+            "type": "string",
+            "example": "Australia/Sydney"
+          },
+          "earliest_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "latest_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "min_advance_days": {
+            "type": "integer"
+          },
+          "max_advance_days": {
+            "type": "integer"
+          },
+          "rooms": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Equipment types in use, for the filter."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DayOverviewRow"
+            },
+            "description": "Rooms first, then equipment, by name."
+          }
+        },
+        "additionalProperties": false
       }
     }
   }

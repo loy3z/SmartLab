@@ -9,6 +9,7 @@ import { MyBookings } from '../features/booking/MyBookings'
 import { InductionPage } from '../features/induction/InductionPage'
 import { QualificationReviewPage } from '../features/admin/QualificationReviewPage'
 import { BookingReviewPage } from '../features/admin/BookingReviewPage'
+import { CalendarSyncPage } from '../features/admin/CalendarSyncPage'
 import { ManagerBookingsPage } from '../features/manager/ManagerBookingsPage'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { AppLayout } from './AppLayout'
@@ -19,7 +20,7 @@ import { canAccess, homePath, isKnownPath, loginDestination, normalizePath } fro
 const titles: Record<string, string> = {
   '/dashboard': 'Dashboard', '/resources': 'Book a resource', '/bookings': 'My bookings',
   '/induction': 'Induction & training', '/admin/qualifications': 'Qualification review',
-  '/admin/bookings': 'Booking review', '/manager/bookings': 'Room management',
+  '/admin/bookings': 'Booking review', '/admin/calendar-sync': 'Calendar sync', '/manager/bookings': 'Room management',
   '/account': 'Account details', '/help': 'Help & support', '/login': 'Sign in',
   '/login/mock-sso': 'Demo university sign-in', '/staff/login': 'Staff sign-in',
   '/manager/users': 'User management',
@@ -134,6 +135,7 @@ export function AppRouter() {
           <Route path="/induction" caseSensitive element={<InductionPage />} />
           <Route path="/admin/qualifications" caseSensitive element={<QualificationReviewPage />} />
           <Route path="/admin/bookings" caseSensitive element={<BookingReviewPage />} />
+          <Route path="/admin/calendar-sync" caseSensitive element={<CalendarSyncPage />} />
           <Route path="/manager/bookings" caseSensitive element={<ManagerBookingsPage />} />
           <Route path="/manager/users" caseSensitive element={<ManagerUsersPage />} />
           <Route path="/account" caseSensitive element={auth.user && <AccountPage user={auth.user} />} />

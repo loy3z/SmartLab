@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { EmptyState } from '../../ui/components'
+import { useAuth } from '../auth/auth-context'
 import { useFeedback } from '../../ui/feedback-context'
 import { cancelBooking, listBookings, listResources, rescheduleBooking } from './api'
-import { bookingDetail, errorMessage, fmtDuration, fmtRange, minutesBetween, STATUS_TEXT } from './format'
+import { bookingDetail, errorMessage, fmtDuration, fmtRange, minutesBetween, STATUS_TEXT, TZ } from './format'
 import { SlotPicker, type SlotRange } from './SlotPicker'
 import type { Booking, Resource } from './types'
 
-function RescheduleBox({ booking, resource, onDone, onClose }: {
+/** Manager only (client, 17 Oct): move an approved booking. The minimum advance window does not apply. */
+export function RescheduleBox({ booking, resource, onDone, onClose }: {
   booking: Booking
   resource: Resource
   onDone: (updated: Booking) => void
@@ -41,7 +43,9 @@ function RescheduleBox({ booking, resource, onDone, onClose }: {
 
   return (
     <div className="bk-resched">
-      <SlotPicker resource={resource} onSelect={setRange} hideQualification fixedMinutes={duration} excludeBookingId={booking.id} />
+      <SlotPicker resource={resource} onSelect={setRange} hideQualification fixedMinutes={duration} excludeBookingId={booking.id}
+        forZid={booking.booked_for?.zid ?? booking.student?.zid} allowEarly
+        initialDate={new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date(booking.start))} />
       <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
         <button className="ui-btn ui-btn-primary ui-btn-sm" disabled={!range || busy} onClick={save}>{busy ? 'Saving…' : 'Confirm new time'}</button>
         <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose}>Close</button>
@@ -54,6 +58,8 @@ const ACTIVE = ['WAITING_QUALIFICATION', 'WAITLISTED', 'PENDING_APPROVAL', 'APPR
 
 export function MyBookings({ refreshKey }: { refreshKey: number }) {
   const feedback = useFeedback()
+  const { user } = useAuth()
+  const isManager = user?.role === 'MANAGER'
   const [bookings, setBookings] = useState<Booking[]>([])
   const [resources, setResources] = useState<Record<string, Resource>>({})
   const [error, setError] = useState('')
@@ -113,7 +119,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
   return (
     <div>
       <h1>My bookings</h1>
-      <p className="bk-sub">Your requests and their current status.</p>
+      <p className="bk-sub">{user?.role === 'STUDENT' ? 'Your requests and their current status.' : 'Your own requests and those you made for other people.'}</p>
       {loading && <p role="status">Loading…</p>}
       {error && <p className="bk-error" role="alert">{error}</p>}
       {!loading && !error && bookings.length === 0 && (
@@ -128,7 +134,16 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
             <div className="bk-bhead">
               <h3>{res?.name ?? 'Resource'}</h3>
               <span className={`bk-chip st-${b.status}`}>{STATUS_TEXT[b.status]}{b.status === 'WAITLISTED' && b.waitlist_position ? ` · #${b.waitlist_position}` : ''}</span>
+              {b.urgent && <span className="bk-chip is-urgent">URGENT</span>}
             </div>
+            {b.on_behalf && (
+              <p className="bk-muted">
+                {b.booked_for?.id === user?.id
+                  ? `Booked for you by ${b.created_by_user?.display_name ?? 'staff'} (${b.created_by_user?.zid ?? ''})`
+                  : `For ${b.booked_for?.display_name ?? 'someone else'} (${b.booked_for?.zid ?? ''}), created by you`}
+              </p>
+            )}
+            {b.urgent && b.urgent_reason && <p className="bk-muted">Urgent because: {b.urgent_reason}</p>}
             <p><b>{fmtRange(b.start, b.end)}</b> <span className="bk-muted">· {fmtDuration(minutesBetween(b.start, b.end))}</span></p>
             <p className="bk-muted">{bookingDetail(b)}</p>
             {b.purpose && <p className="bk-muted">Purpose: {b.purpose}</p>}
@@ -138,9 +153,9 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
             {b.outlook_sync?.status === 'FAILED' && (
               <p className="bk-muted">Calendar sync failed; your booking is unaffected. Contact an admin.</p>
             )}
-            {(cancellable(b) || (b.status === 'APPROVED' && future(b) && res)) && rescheduling !== b.id && (
+            {(cancellable(b) || (isManager && b.status === 'APPROVED' && future(b) && res)) && rescheduling !== b.id && (
               <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-                {b.status === 'APPROVED' && future(b) && res && (
+                {isManager && b.status === 'APPROVED' && future(b) && res && (
                   <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setRescheduling(b.id)}>Reschedule</button>
                 )}
                 {cancellable(b) && (

@@ -65,8 +65,9 @@ export function BookingReviewPage() {
     const list = (tab === 'PENDING_APPROVAL' ? pending : waitlisted).filter((b) =>
       (!resourceFilter || b.resource_id === resourceFilter) &&
       (!term || [b.student?.zid, b.student?.display_name, b.student?.university_email].some((v) => v?.toLowerCase().includes(term))))
+    // Urgent requests (Manager decision, no automatic decision) come first.
     return [...list].sort((a, b) => tab === 'PENDING_APPROVAL'
-      ? Date.parse(a.review_due_at ?? a.start) - Date.parse(b.review_due_at ?? b.start)
+      ? Number(Boolean(b.urgent)) - Number(Boolean(a.urgent)) || Date.parse(a.review_due_at ?? a.start) - Date.parse(b.review_due_at ?? b.start)
       : a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
   }, [tab, pending, waitlisted, resourceFilter, search])
 
@@ -114,10 +115,12 @@ export function BookingReviewPage() {
     }
   }
 
-  const own = (b: Booking) => Boolean(user && b.student_id === user.id)
+  const own = (b: Booking) => Boolean(user && (b.student_id === user.id || b.created_by === user.id))
+  const managerOnly = (b: Booking) => Boolean(b.urgent && user?.role !== 'MANAGER')
 
   const actions = (b: Booking, size = 'ui-btn-sm') => own(b)
-    ? <span className="bk-muted">Your own request</span>
+    ? <span className="bk-muted">{user && b.student_id === user.id ? 'Your own request' : 'You created this request'}</span>
+    : managerOnly(b) ? <span className="bk-muted">Urgent: a Manager decides</span>
     : (
       <>
         {b.status === 'PENDING_APPROVAL' && (
@@ -166,7 +169,8 @@ export function BookingReviewPage() {
           <li>Every request waits here for an admin. It holds its time until you decide.</li>
           <li>If nobody decides before the deadline, the system approves it when the student's induction is still valid and the time is free, and rejects it otherwise.</li>
           <li>Requests for a time that is already taken are <b>waitlisted</b>. When the time frees up, the next one moves to Awaiting approval. Waitlisted requests can only be rejected.</li>
-          <li>Admins cannot decide their own requests.</li>
+          <li>Nobody can decide a request that is for them or that they created (staff may book on behalf of someone).</li>
+          <li><b>Urgent</b> requests start sooner than the normal booking window. Only a Manager can decide them; they are never decided automatically and expire if nobody decides before they start.</li>
         </ul>
       </InfoDisclosure>
 
@@ -202,13 +206,19 @@ export function BookingReviewPage() {
                 return (
                   <tr key={b.id} className={`is-clickable${openId === b.id ? ' is-selected' : ''}`} onClick={() => setOpenId(b.id)}>
                     <td>
-                      {tab === 'PENDING_APPROVAL'
+                      {b.urgent && <span className="ui-badge-urgent">URGENT</span>}{' '}
+                      {tab === 'PENDING_APPROVAL' && b.urgent && !b.review_due_at
+                        ? <span className="ui-deadline is-urgent" title={fmtDateTime(b.start)}>before {fmtRelative(b.start, now).replace(/^in /, '')}</span>
+                        : tab === 'PENDING_APPROVAL'
                         ? <span className={`ui-deadline${urgent ? ' is-urgent' : ''}`} title={b.review_due_at ? fmtDateTime(b.review_due_at) : ''}>{b.review_due_at ? fmtRelative(b.review_due_at, now).replace(/^in /, '') : '—'}</span>
                         : <span className="ui-pill is-amber">#{b.waitlist_position ?? '?'}</span>}
                     </td>
                     <td>
                       <span className="ui-primary-text">{who(b)}</span>
-                      <span className="ui-sub-text">{b.student?.zid}{own(b) ? ' · you' : ''}</span>
+                      <span className="ui-sub-text">{b.student?.zid}{user && b.student_id === user.id ? ' · you' : ''}</span>
+                      {b.on_behalf && b.created_by_user && (
+                        <span className="ui-sub-text">Booked by {b.created_by_user.display_name} ({b.created_by_user.zid}){b.created_by === user?.id ? ' · you' : ''}</span>
+                      )}
                     </td>
                     <td>{resourceName(b)}</td>
                     <td>
@@ -294,6 +304,10 @@ function BookingDrawer({ booking: b, resource, resourceName, waitingBehind, bloc
           { label: 'Time', value: fmtRange(b.start, b.end) },
           { label: 'Length', value: fmtDuration(minutesBetween(b.start, b.end)) },
           { label: 'Purpose', value: b.purpose || '—' },
+          ...(b.urgent ? [{ label: 'Urgent', value: `${b.urgent_reason || 'Yes'} (only a Manager can decide)` }] : []),
+          ...(b.on_behalf && b.created_by_user
+            ? [{ label: 'Created by', value: `${b.created_by_user.display_name} (${b.created_by_user.zid}, ${b.created_by_user.role.toLowerCase()})` }]
+            : []),
           { label: 'Submitted', value: fmtDateTime(b.created_at) },
           ...(b.status === 'PENDING_APPROVAL' && b.review_due_at
             ? [{ label: 'Decide by', value: `${fmtDateTime(b.review_due_at)} (${fmtRelative(b.review_due_at, now)})` }]

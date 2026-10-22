@@ -137,16 +137,31 @@ class ApprovalFlowServiceTests(BookingFixtureMixin, SimpleTestCase):
         first, waiting = self.book(self.a), self.book(self.b)
         self.service.review_booking(self.admin, first.id, "APPROVED")
         later = self.start + timedelta(hours=3)
-        self.service.reschedule_booking(self.a, first.id, later, later + timedelta(hours=1))
+        self.service.reschedule_booking(self.manager, first.id, later, later + timedelta(hours=1))
         self.assertEqual(self.state(waiting)[0], BookingStatus.PENDING_APPROVAL)
 
-    def test_staff_do_not_book(self):
-        """Admins and Managers are staff: they review and manage, they do not book."""
-        for staff in (replace(self.c, role=Role.ADMIN), self.manager, self.admin):
-            self.repo.save_principal(staff)
+    def test_staff_book_under_the_same_rules(self):
+        """Client, 17 Oct: Admins and Managers may book for themselves; induction is never bypassed."""
+        for staff in (self.manager, self.admin):
             with self.subTest(role=staff.role), self.assertRaises(DomainError) as denied:
-                self.book(staff)
-            self.assertEqual(denied.exception.code, "FORBIDDEN")
+                self.book(staff, start=self.start + timedelta(hours=4), end=self.start + timedelta(hours=5))
+            self.assertEqual(denied.exception.code, "QUALIFICATION_REQUIRED")
+        self.qualification(self.manager)
+        own = self.book(self.manager, start=self.start + timedelta(hours=4), end=self.start + timedelta(hours=5))
+        self.assertEqual((own.status, own.student_id, own.created_by), (BookingStatus.PENDING_APPROVAL, self.manager.id, self.manager.id))
+        with self.assertRaises(DomainError) as denied:
+            self.service.review_booking(self.manager, own.id, "APPROVED")
+        self.assertEqual(denied.exception.code, "SELF_REVIEW_FORBIDDEN")
+        self.assertEqual(self.service.review_booking(self.admin, own.id, "APPROVED").status, BookingStatus.APPROVED)
+        # A routine request still follows the normal review window and is approved automatically if nobody decides.
+        later = self.book(self.manager, start=self.start + timedelta(hours=6), end=self.start + timedelta(hours=7))
+        self.now = later.review_due_at
+        self.service.process_due_requests()
+        self.assertEqual(self.state(later), (BookingStatus.APPROVED, "AUTO_APPROVED_AFTER_REVIEW_WINDOW"))
+        # Conflicts: a staff request for a taken time queues like everyone else's.
+        self.book(self.a, start=self.start + timedelta(hours=8), end=self.start + timedelta(hours=9))
+        queued = self.book(self.manager, start=self.start + timedelta(hours=8), end=self.start + timedelta(hours=9))
+        self.assertEqual(queued.status, BookingStatus.WAITLISTED)
 
     def test_adjacent_periods_and_other_resources_do_not_conflict(self):
         first = self.book(self.a)

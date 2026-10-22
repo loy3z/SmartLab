@@ -1,18 +1,39 @@
 import { useRef, useState } from 'react'
+import { useAuth } from '../auth/auth-context'
 import { useFeedback } from '../../ui/feedback-context'
-import { createBooking } from './api'
+import { createBooking, lookupPerson } from './api'
 import { errorMessage, fmtDuration, newIdempotencyKey, submittedMessage } from './format'
 import { SlotPicker, type SlotRange } from './SlotPicker'
-import type { Resource } from './types'
+import type { PersonBrief, Resource } from './types'
 
-export function BookingForm({ resource, onBooked }: { resource: Resource; onBooked: () => void }) {
+type BookFor = 'self' | 'other'
+
+export function BookingForm({ resource, onBooked, initialDate, initialStart, initialMinutes }: {
+  resource: Resource
+  onBooked: () => void
+  /** From the day grid: open on this day with this period already selected. */
+  initialDate?: string
+  initialStart?: string
+  initialMinutes?: number
+}) {
   const feedback = useFeedback()
+  const { user } = useAuth()
+  const isStaff = user?.role === 'ADMIN' || user?.role === 'MANAGER'
   const [range, setRange] = useState<SlotRange | null>(null)
   const [purpose, setPurpose] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
   const [canRequest, setCanRequest] = useState(true)
+  // Admin/Manager: book for themselves or on behalf of someone (checked by zID first).
+  const [bookFor, setBookFor] = useState<BookFor>('self')
+  const [zidInput, setZidInput] = useState('')
+  const [person, setPerson] = useState<PersonBrief | null>(null)
+  const [lookupError, setLookupError] = useState('')
+  const [checking, setChecking] = useState(false)
+  // Urgent request: sooner than the normal booking window; a Manager must approve it.
+  const [urgent, setUrgent] = useState(false)
+  const [urgentReason, setUrgentReason] = useState('')
   // One key per logical request: reused on retry, regenerated when inputs change.
   const keyRef = useRef(newIdempotencyKey())
 
@@ -22,14 +43,45 @@ export function BookingForm({ resource, onBooked }: { resource: Resource; onBook
     keyRef.current = newIdempotencyKey()
   }
 
+  function chooseBookFor(next: BookFor) {
+    setBookFor(next)
+    setPerson(null)
+    setLookupError('')
+    pick(null)
+  }
+
+  async function checkPerson() {
+    const zid = zidInput.trim().toLowerCase()
+    if (!/^z\d{7}$/.test(zid)) return setLookupError('zID must be z followed by 7 digits, e.g. z5123456.')
+    setChecking(true)
+    setLookupError('')
+    try {
+      setPerson(await lookupPerson(zid))
+      pick(null)
+    } catch (err) {
+      setPerson(null)
+      setLookupError(errorMessage(err))
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const forZid = bookFor === 'other' ? person?.zid : undefined
+  const ready = bookFor === 'self' || Boolean(person)
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!range || busy || !canRequest) return
+    if (!range || busy || !canRequest || !ready) return
+    if (urgent && !urgentReason.trim()) return setError('Explain why the request is urgent.')
     setBusy(true)
     setError('')
     try {
       const b = await createBooking(
-        { resource_id: resource.id, start: range.start, end: range.end, purpose: purpose.trim() },
+        {
+          resource_id: resource.id, start: range.start, end: range.end, purpose: purpose.trim(),
+          ...(forZid ? { on_behalf_of_zid: forZid } : {}),
+          ...(urgent ? { urgent: true, urgent_reason: urgentReason.trim() } : {}),
+        },
         keyRef.current,
       )
       keyRef.current = newIdempotencyKey()
@@ -54,7 +106,48 @@ export function BookingForm({ resource, onBooked }: { resource: Resource; onBook
       <p className="bk-muted">
         {resource.location} · open {resource.opening_time.slice(0, 5)}–{resource.closing_time.slice(0, 5)} · up to {fmtDuration(resource.max_booking_minutes)}
       </p>
-      <SlotPicker resource={resource} onSelect={pick} refreshKey={refreshKey} onEligibility={setCanRequest} />
+
+      {isStaff && (
+        <fieldset className="bk-for">
+          <legend>Book for</legend>
+          <label><input type="radio" name="book-for" checked={bookFor === 'self'} onChange={() => chooseBookFor('self')} /> Myself</label>
+          <label><input type="radio" name="book-for" checked={bookFor === 'other'} onChange={() => chooseBookFor('other')} /> Someone else</label>
+          {bookFor === 'other' && (
+            <div className="bk-for-person">
+              <input aria-label="zID of the person to book for" placeholder="e.g. z5123456" maxLength={8} value={zidInput}
+                onChange={(e) => { setZidInput(e.target.value); setPerson(null); setLookupError(''); pick(null) }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void checkPerson() } }} />
+              <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={checking} onClick={() => void checkPerson()}>
+                {checking ? 'Checking…' : 'Check zID'}
+              </button>
+              {person && <span className="bk-for-found" role="status">Booking for <b>{person.display_name}</b> ({person.zid})</span>}
+              {lookupError && <span className="bk-error" role="alert">{lookupError}</span>}
+            </div>
+          )}
+          <small className="bk-muted">The booking belongs to that person and their induction is checked. You are recorded as the creator.</small>
+        </fieldset>
+      )}
+
+      <label className="bk-urgent">
+        <input type="checkbox" checked={urgent} onChange={(e) => { setUrgent(e.target.checked); pick(null) }} />
+        Urgent request (sooner than the normal booking window)
+      </label>
+      {urgent && (
+        <label className="bk-block">
+          Why is it urgent?
+          <textarea value={urgentReason} maxLength={500} rows={2} required
+            placeholder="e.g. Experiment must be rerun before the thesis deadline"
+            onChange={(e) => setUrgentReason(e.target.value)} />
+          <small className="bk-muted">Only a Manager can approve an urgent request; it is never approved automatically. Induction and conflict rules still apply.</small>
+        </label>
+      )}
+
+      {ready ? (
+        <SlotPicker resource={resource} onSelect={pick} refreshKey={refreshKey} onEligibility={setCanRequest}
+          forZid={forZid} urgent={urgent} initialDate={initialDate} initialStart={initialStart} initialMinutes={initialMinutes} />
+      ) : (
+        <div className="ui-hint">Enter the person's zID and check it to see their availability.</div>
+      )}
       <label className="bk-block">
         Purpose
         <textarea
@@ -67,10 +160,11 @@ export function BookingForm({ resource, onBooked }: { resource: Resource; onBook
         />
       </label>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-        <button className="bk-btn-yellow" type="submit" disabled={!range || busy || !purpose.trim() || !canRequest}>
-          {busy ? 'Submitting…' : range ? `Request ${fmtDuration(minutes)}` : 'Request booking'}
+        <button className="bk-btn-yellow" type="submit"
+          disabled={!range || busy || !purpose.trim() || !canRequest || !ready || (urgent && !urgentReason.trim())}>
+          {busy ? 'Submitting…' : range ? `Request ${fmtDuration(minutes)}${urgent ? ' (urgent)' : ''}` : 'Request booking'}
         </button>
-        {canRequest && (
+        {canRequest && !urgent && (
           <span className="bk-muted">An admin reviews every request. If nobody decides within the review period, the system decides automatically.</span>
         )}
       </div>

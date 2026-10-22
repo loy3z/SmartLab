@@ -10,6 +10,7 @@ urlpatterns = [
     path("auth/staff-activate/", views.StaffActivateView.as_view()),
     path("auth/me/", views.MeView.as_view()),
     path("resources/", views.ResourceListView.as_view()),
+    path("resources/day-overview/", views.DayOverviewView.as_view()),
     path("resources/<uuid:resource_id>/", views.ResourceDetailView.as_view()),
     path("resources/<uuid:resource_id>/availability/", views.AvailabilityView.as_view()),
     path("qualification-requirements/", views.RequirementListView.as_view()),
@@ -18,6 +19,7 @@ urlpatterns = [
     path("qualifications/<uuid:submission_id>/", views.QualificationDetailView.as_view()),
     path("qualifications/<uuid:submission_id>/file/", views.QualificationFileView.as_view()),
     path("bookings/", views.BookingListView.as_view()),
+    path("people/lookup/", views.PersonLookupView.as_view()),
     path("bookings/<uuid:booking_id>/", views.BookingDetailView.as_view()),
     path("bookings/<uuid:booking_id>/cancel/", views.BookingCancelView.as_view()),
     path("bookings/<uuid:booking_id>/reschedule/", views.BookingRescheduleView.as_view()),
@@ -38,5 +40,6 @@ urlpatterns = [
     path("admin/resources/<uuid:resource_id>/booking-policy/", views.ResourceBookingPolicyView.as_view()),
     path("admin/outlook/", views.OutlookStatusView.as_view()),
     path("admin/outlook/process/", views.OutlookProcessView.as_view()),
+    path("admin/outlook/check/", views.OutlookCheckView.as_view()),
     path("admin/bookings/<uuid:booking_id>/outlook-retry/", views.OutlookRetryView.as_view()),
 ]

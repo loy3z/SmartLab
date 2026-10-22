@@ -66,6 +66,24 @@ UPDATE public.bookable_resource AS item SET room_id = room.id
 
 
 --
+-- Equipment categories for the booking page filter (demo values; replace with the client's equipment list).
+--
+
+UPDATE public.bookable_resource SET category = 'Electronics testing'
+    WHERE id IN ('00000000-0000-0000-0000-000000000204', '00000000-0000-0000-0000-000000000205', '00000000-0000-0000-0000-000000000206', '00000000-0000-0000-0000-000000000207', '00000000-0000-0000-0000-000000000208', '00000000-0000-0000-0000-000000000209', '00000000-0000-0000-0000-000000000210', '00000000-0000-0000-0000-000000000213', '00000000-0000-0000-0000-000000000220');
+UPDATE public.bookable_resource SET category = 'Fabrication'
+    WHERE id IN ('00000000-0000-0000-0000-000000000214', '00000000-0000-0000-0000-000000000215');
+UPDATE public.bookable_resource SET category = 'Imaging'
+    WHERE id IN ('00000000-0000-0000-0000-000000000202', '00000000-0000-0000-0000-000000000218');
+UPDATE public.bookable_resource SET category = 'Lab analysis'
+    WHERE id IN ('00000000-0000-0000-0000-000000000216', '00000000-0000-0000-0000-000000000217');
+UPDATE public.bookable_resource SET category = 'Microscopy'
+    WHERE id IN ('00000000-0000-0000-0000-000000000201', '00000000-0000-0000-0000-000000000203');
+UPDATE public.bookable_resource SET category = 'Soldering'
+    WHERE id IN ('00000000-0000-0000-0000-000000000211', '00000000-0000-0000-0000-000000000212', '00000000-0000-0000-0000-000000000219');
+
+
+--
 -- PostgreSQL database dump complete
 --
 

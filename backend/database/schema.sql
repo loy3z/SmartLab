@@ -104,9 +104,11 @@ CREATE TABLE public.bookable_resource (
     status text DEFAULT 'AVAILABLE'::text NOT NULL,
     status_reason text,
     room_id uuid,
+    category text,
     CONSTRAINT bookable_resource_room_check CHECK (((room_id IS NULL) OR (kind = 'EQUIPMENT'::text))),
     CONSTRAINT bookable_resource_status_check CHECK (((status = ANY (ARRAY['AVAILABLE'::text, 'MAINTENANCE'::text, 'CLOSED'::text])) AND ((status_reason IS NULL) OR (char_length(status_reason) <= 500)))),
-    CONSTRAINT bookable_resource_rules_check CHECK (((kind = ANY (ARRAY['ROOM'::text, 'EQUIPMENT'::text])) AND (slot_minutes > 0) AND (max_booking_minutes > 0) AND (closing_time > opening_time) AND ((pending_hold_minutes >= 1) AND (pending_hold_minutes <= 20160))))
+    CONSTRAINT bookable_resource_rules_check CHECK (((kind = ANY (ARRAY['ROOM'::text, 'EQUIPMENT'::text])) AND (slot_minutes > 0) AND (max_booking_minutes > 0) AND (closing_time > opening_time) AND ((pending_hold_minutes >= 1) AND (pending_hold_minutes <= 20160)))),
+    CONSTRAINT bookable_resource_category_check CHECK (((category IS NULL) OR ((char_length(category) >= 1) AND (char_length(category) <= 60))))
 );
 
 
@@ -131,6 +133,9 @@ CREATE TABLE public.booking (
     updated_at timestamp with time zone,
     revision integer DEFAULT 1 NOT NULL,
     hold_until timestamp with time zone,
+    created_by uuid,
+    urgent boolean DEFAULT false NOT NULL,
+    urgent_reason text,
     CONSTRAINT booking_revision_check CHECK ((revision >= 1)),
     CONSTRAINT booking_status_check CHECK ((status = ANY (ARRAY['WAITING_QUALIFICATION'::text, 'PENDING_APPROVAL'::text, 'WAITLISTED'::text, 'APPROVED'::text, 'REJECTED'::text, 'CANCELLED'::text, 'EXPIRED'::text]))),
     CONSTRAINT booking_time_check CHECK (("end" > start))
@@ -458,6 +463,14 @@ ALTER TABLE ONLY public.booking
 
 ALTER TABLE ONLY public.booking
     ADD CONSTRAINT booking_student_fk FOREIGN KEY (student_id) REFERENCES public.app_users(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: booking booking_created_by_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking
+    ADD CONSTRAINT booking_created_by_fk FOREIGN KEY (created_by) REFERENCES public.app_users(id) ON DELETE RESTRICT;
 
 
 --

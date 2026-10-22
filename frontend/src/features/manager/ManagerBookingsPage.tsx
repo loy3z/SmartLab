@@ -10,6 +10,8 @@ import {
   updateResourceStatus,
 } from '../booking/api'
 import { errorMessage, fmtDuration, fmtRange, minutesBetween } from '../booking/format'
+import { Modal } from '../booking/Modal'
+import { RescheduleBox } from '../booking/MyBookings'
 import type { Booking, Resource, ResourceStatus } from '../booking/types'
 
 const STATUS_LABELS: Record<ResourceStatus, string> = {
@@ -45,6 +47,7 @@ export function ManagerBookingsPage() {
   const [busy, setBusy] = useState<string | null>(null)
   const [refresh, setRefresh] = useState(0)
   const [roomFilter, setRoomFilter] = useState('')
+  const [moving, setMoving] = useState<Booking | null>(null)
 
   useEffect(() => {
     let active = true
@@ -161,7 +164,7 @@ export function ManagerBookingsPage() {
     <div>
       <PageHeader
         title="Room booking management"
-        description="Open or close rooms and manage confirmed bookings."
+        description="Open or close rooms and manage confirmed bookings. Only Managers can reschedule a booking."
         actions={(
           <>
             <RefreshStamp at={loadedAt} onRefresh={reload} busy={loading && loadedAt !== null} />
@@ -238,12 +241,19 @@ export function ManagerBookingsPage() {
                           {room?.name ?? 'Room'}
                           {room && room.status !== 'AVAILABLE' && <span className="ui-sub-text" style={{ color: 'var(--red)' }}>Room {STATUS_LABELS[room.status].toLowerCase()}</span>}
                         </td>
-                        <td><span className="ui-primary-text">{who(booking)}</span><span className="ui-sub-text">{booking.student?.zid}</span></td>
+                        <td>
+                          <span className="ui-primary-text">{who(booking)}</span><span className="ui-sub-text">{booking.student?.zid}</span>
+                          {booking.on_behalf && booking.created_by_user && <span className="ui-sub-text">Booked by {booking.created_by_user.zid}</span>}
+                          {booking.urgent && <span className="ui-badge-urgent">URGENT</span>}
+                        </td>
                         <td className="ui-hide-sm">{booking.purpose}</td>
                         <td>
                           <div className="ui-actions">
                             <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy !== null} title="Download this student's bookings as CSV" onClick={() => void download(booking.student_id, booking.student?.zid)}>
                               {busy === `csv-${booking.student_id}` ? 'Preparing…' : 'Student CSV'}
+                            </button>
+                            <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy !== null || started || !room} title={started ? 'Already started' : undefined} onClick={() => setMoving(booking)}>
+                              Reschedule
                             </button>
                             <button type="button" className="ui-btn ui-btn-reject ui-btn-sm" disabled={busy !== null || started} title={started ? 'Already started' : undefined} onClick={() => void handleCancel(booking)}>
                               {busy === booking.id ? 'Cancelling…' : 'Cancel'}
@@ -258,6 +268,28 @@ export function ManagerBookingsPage() {
             </div>
           )}
         </>
+      )}
+
+      {moving && rooms.some((room) => room.id === moving.resource_id) && (
+        <Modal onClose={() => setMoving(null)}>
+          <div className="bk-form">
+            <h2>Reschedule booking</h2>
+            <p className="bk-muted">
+              {roomName(moving.resource_id)} · {who(moving)} ({moving.student?.zid}) · now {fmtRange(moving.start, moving.end)}.
+              Only Managers can reschedule. The induction, opening-hours and conflict rules still apply; the minimum advance window does not.
+            </p>
+            <RescheduleBox
+              booking={moving}
+              resource={rooms.find((room) => room.id === moving.resource_id)!}
+              onClose={() => setMoving(null)}
+              onDone={(updated) => {
+                setMoving(null)
+                feedback.success(`New time: ${fmtRange(updated.start, updated.end)}.`, 'Booking moved')
+                reload()
+              }}
+            />
+          </div>
+        </Modal>
       )}
     </div>
   )

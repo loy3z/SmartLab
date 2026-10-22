@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { BookingForm } from './BookingForm'
+import { FindTime } from './FindTime'
 import { listQualifications, listRequirements, listResources } from './api'
 import { errorMessage } from './format'
 import { AlertIcon, CheckIcon, DoorIcon, FlaskIcon, SearchIcon, UploadIcon } from './icons'
@@ -30,6 +31,8 @@ function prerequisiteName(r: Resource, quals: Qualification[], reqs: Requirement
 }
 
 type View = 'ROOM' | 'EQUIPMENT'
+type Mode = 'browse' | 'find'
+interface Picked { resource: Resource; start: string; minutes: number; date: string }
 
 /** Frontend B's resource page; authentication, routing and layout are owned by app/. */
 export function BookingApp({ onBooked }: { onBooked: () => void }) {
@@ -42,12 +45,15 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
   const [quals, setQuals] = useState<Qualification[]>([])
   const [error, setError] = useState('')
   const [open, setOpen] = useState<Resource | null>(null)
+  // "Find a free time" (day grid) or the original resource cards.
+  const [mode, setMode] = useState<Mode>('browse')
+  const [picked, setPicked] = useState<Picked | null>(null)
 
   useEffect(() => {
     Promise.all([listRequirements(), listQualifications()])
       .then(([r, qs]) => (setReqs(r.results), setQuals(qs.results)))
       .catch((e) => setError(errorMessage(e)))
-  }, [open])
+  }, [open, picked])
 
   useEffect(() => {
     listResources({ q: term })
@@ -81,7 +87,7 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
   return (
     <>
       <h1>Book a resource</h1>
-      <p className="bk-sub">Browse resources. Submit induction before requesting a booking.</p>
+      <p className="bk-sub">Browse resources, or find a free time across all of them. Submit induction before requesting a booking.</p>
 
       <div className="bk-banners">
         {banners.map(({ req, kinds, state, lockedBy }) => {
@@ -114,6 +120,17 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
         })}
       </div>
 
+      <div className="bk-pills bk-mode" role="tablist" aria-label="How to book">
+        {([['browse', 'Browse resources'], ['find', 'Find a free time']] as const).map(([key, label]) => (
+          <button key={key} role="tab" aria-selected={mode === key} className={`bk-pill ${mode === key ? 'is-on' : ''}`} onClick={() => setMode(key)}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'find' && <FindTime onPick={(resource, start, minutes, date) => setPicked({ resource, start, minutes, date })} />}
+
+      {mode === 'browse' && <>
       <form
         className="bk-search"
         onSubmit={(e) => {
@@ -161,10 +178,17 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
         ))}
       </div>
       {shown.length === 0 && !error && <p className="bk-muted">{term ? 'Nothing matches your search.' : 'Nothing to show here yet.'}</p>}
+      </>}
 
       {open && (
         <Modal onClose={() => setOpen(null)}>
           <BookingForm resource={open} onBooked={onBooked} />
+        </Modal>
+      )}
+      {picked && (
+        <Modal onClose={() => setPicked(null)}>
+          <BookingForm resource={picked.resource} onBooked={onBooked} initialDate={picked.date}
+            initialStart={picked.start} initialMinutes={picked.minutes} />
         </Modal>
       )}
     </>

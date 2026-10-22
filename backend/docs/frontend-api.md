@@ -1,4 +1,4 @@
-# Sprint 1 前端交接
+# 前端接口说明
 
 API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 [openapi.json](openapi.json)，启动后的 `GET /api/schema/` 返回相同定义。
 
@@ -12,7 +12,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | Induction 提交 | 选择资格要求，填写说明，上传文件，展示审核结果 | 检查附件、保存提交、保护下载权限 |
 | 预约申请 | 选择资源和时间，填写用途，提交后显示服务端状态 | 验证资格门槛、时间规则、自动／人工审批 |
 | 我的预约 | 显示详情、改期／取消确认、操作后刷新 | 判断归属及状态，重新校验并执行改期／取消 |
-| 管理员资格审核 | 审核列表、查看资料、通过／拒绝和原因；显示后端返回的有效期 | 修改资格、自动设定有效期；通过时重新判断等待资格的预约，拒绝时自动拒绝该学生依赖此资格的 Pending 预约 |
+| 管理员资格审核 | 审核列表、查看资料、通过／拒绝和原因；显示后端返回的有效期 | 修改资格、自动设定有效期；拒绝时自动拒绝该学生依赖此资格的未决预约（待审批和候补） |
 | 管理员预约审核 | 审核队列、详情、通过／拒绝和原因、显示冲突错误 | 批准前再次检查资格与冲突 |
 | 审计记录 | Admin／Manager 按资源、学生、操作、时间筛选并分页查看；预约详情可显示该预约的历史 | 记录并查询申请、审批、改期、取消和资格审核轨迹 |
 | 人员与角色管理（仅 Manager） | 人员列表、按角色筛选；Add staff | 只允许 Manager；角色创建后固定，不能互转；不能改自己；至少保留一个 Manager；写审计 |
@@ -29,15 +29,26 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 - **首次激活**：`POST auth/staff-activate/`，请求 `{"zid":"…","invite_code":"K7Q4-9MZD","password":"至少 8 位"}`。邀请码不区分大小写，可以不带横线；成功后直接登录并作废邀请码。错误：400 `INVALID_INVITE_CODE`、400 `VALIDATION_ERROR`（密码太短）、403 `ACCOUNT_DEACTIVATED`。
 - **邀请码从哪来**：Manager 用 Add staff 新建账号后，`admin/users/` 里该员工的 `activation_status` 为 `AWAITING_ACTIVATION`，`invite_code` 就是邀请码；激活后变成 `ACTIVATED`，`invite_code` 为 `null`。学生这两个字段都是 `null`。
 - **重置**：`POST admin/users/{id}/reset-access/`（仅 Manager，不能对自己，不能对学生：409 `STUDENT_USES_SSO`），旧密码失效并生成新邀请码，返回更新后的用户。
-- `auth/config/` 新增 `staff_sign_in_enabled`。两个入口目前都只在演示模式（`DEBUG` + `ENABLE_DEMO_AUTH`）可用；接入学校 SSO 后再替换。
-- 演示账号：z9000001（Admin）、z9000002（Manager），密码 `smartlab-staff-demo`。
+- `auth/config/` 的 `staff_sign_in_enabled` 表示 staff 入口是否可用。两个入口目前都只在演示模式（`DEBUG` + `ENABLE_DEMO_AUTH`）可用；接入学校 SSO 后再替换。
+- 演示账号：z9000001（Admin）、z9000002（Manager），密码 `123`。
 
-## 角色（第 5 周起）
+## 角色
 
-- **Student**：唯一会预约的角色，可以看到资源、预约和 induction 页面。
-- **Admin**（员工）：审核 induction 和预约申请，查看审计；**不预约**，也不能访问任何 Manager 页面或接口（403）。
-- **Manager**（员工）：拥有 Admin 的全部权限，另外管理人员、资源状态、审批期限和所有预约；**不预约**。
-- Student、Admin、Manager 是三种分开的账号，角色在创建时确定：学生不会被“升级”为 Admin，Admin 和 Manager 也不能互相切换。员工账号由 Manager 用 Add staff 创建，以后可由学校身份系统提供。员工调用 `POST bookings/`、`POST qualifications/` 返回 403 `FORBIDDEN`。
+- **Student**：预约自己的资源，上传自己的 induction。
+- **Admin**（员工）：审核 induction 和预约申请，查看审计；**也可以预约**（给自己，或代别人预约），不能访问任何 Manager 页面或接口（403）。
+- **Manager**（员工）：拥有 Admin 的全部权限，另外管理人员、资源状态、审批期限和所有预约；**只有 Manager 能改期**，也只有 Manager 能决定紧急申请。
+- 所有人用同一套规则：资格（induction，含前置）、开放时间、预约窗口和冲突规则对员工同样适用，induction 不能绕过。日常申请无论角色都可以在审批期限结束时自动批准。
+- Student、Admin、Manager 是三种分开的账号，角色在创建时确定：学生不会被“升级”为 Admin，Admin 和 Manager 也不能互相切换。员工账号由 Manager 用 Add staff 创建，以后可由学校身份系统提供。
+
+### 代他人预约与紧急申请
+
+- **代他人预约**：Admin／Manager 在 `POST bookings/` 里加 `on_behalf_of_zid`。预约属于这个人（`student_id`，检查**他的** induction），`created_by` 记录创建者，审计 `BOOKING_CREATED` 的 `details.booked_for` 是被预约人。学生传这个字段返回 403 `FORBIDDEN`；找不到 zID 404 `PERSON_NOT_FOUND`；账号停用 409 `ACCOUNT_INACTIVE`。
+- 提交前可用 `GET people/lookup/?zid=z1234567`（仅员工）确认是谁；`GET resources/{id}/availability/?for_zid=...` 按被预约人返回 `can_request`、`qualification_status`、`requested_by_me`，并带 `booking_for`。
+- 预约响应带 `created_by`、`booked_for`、`created_by_user`（`id`、`zid`、`display_name`、`role`）、`on_behalf`。`GET bookings/` 对员工返回“给我的”加“我替别人建的”；被预约人自己也能看到并取消。
+- 不能审批“给自己的”或“自己创建的”申请（403 `SELF_REVIEW_FORBIDDEN`）。
+- **紧急申请**：`urgent: true` 加 `urgent_reason`（必填，≤500 字）。只用于开始时间早于最短提前期（默认 7 天）的申请，落在正常窗口内返回 400 `URGENT_NOT_NEEDED`；最晚日期照常检查。时段必须空闲（有冲突 409 `BOOKING_CONFLICT`，不进候补）。状态 `PENDING_APPROVAL`、`reason_code=URGENT_AWAITING_MANAGER`、`review_due_at=null`、`hold_until=start`：**只能由 Manager 决定**（Admin 403 `URGENT_NEEDS_MANAGER`），不会自动批准，开始前没人决定就过期。availability 加 `urgent=true` 时，提前期内的时段显示为可选。
+- **改期仅 Manager**：`POST bookings/{id}/reschedule/` 其他角色 403 `FORBIDDEN`。Manager 可改任何人已批准的未来预约，不受最短提前期限制（最晚日期、induction、开放时间、冲突照常检查），`reason_code=RESCHEDULED_BY_MANAGER`。
+- 待客户确认：“override an existing booking”具体指什么；紧急申请是否只允许某些角色提交（目前所有人都可以提交，只有 Manager 能批）。
 - 人员列表（`admin/users/`）中的用户带 `is_staff`（Admin 或 Manager 为 `true`）；前端按 `auth/me/` 的 `role` 判断。
 
 ## 建议调用顺序
@@ -51,7 +62,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 7. 按响应 `status` 显示结果，再刷新 dashboard 和可用性。HTTP 201 表示请求创建成功，重复幂等请求返回 200；只有 `APPROVED` 表示预约已经获批。
 8. Admin 使用 `admin/qualifications/` 审核 induction；审核响应包含 `submission` 和 `updated_bookings`，刷新相关列表。随后用 `admin/bookings/` 审核预约。
 
-### 审计记录（OpenAPI 1.3.0 起）
+### 审计记录
 
 `GET admin/audit/` 仅 Admin／Manager 可用，学生返回 403。返回 `{ count, limit, offset, results }`，`count` 是筛选后的总数（分页前），`results` 按时间从新到旧。每条记录含 `action`、`entity_type`、`entity_id`、`at`、`details`，以及 `actor`（`zid`、`display_name`、`role`；系统自动处理时 `actor_id` 为 `SYSTEM`、`actor` 为 `null`）。
 
@@ -63,52 +74,51 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 
 `details` 的字段随动作不同，例如创建预约有 `status`、`reason_code`、`hold_until`，改期有 `old_start`／`new_start` 等。前端可直接显示键值，不要依赖固定字段。
 
-### 人员与角色管理（OpenAPI 1.8.0 起，仅 Manager）
+### 人员与角色管理（仅 Manager）
 
 只有 **Manager** 能查看人员名单、新建员工、修改员工角色或停用账号；Admin 和学生访问这些接口返回 403。
 
-- `GET admin/users/`：返回 `{ count, results }`，每项含 `id`、`zid`、`display_name`、`role`、`is_staff`、`active`、`university_email`，以及 `inductions`（每项 induction 的 `name`、`status`：`NOT_SUBMITTED`／`PENDING`／`VERIFIED`／`REJECTED`／`EXPIRED`、`valid_until`）和 `induction_status`（全部有效为 `VERIFIED`，否则 `INCOMPLETE`）。员工不预约，induction 只对学生有意义。可用 `role`、`active=true|false`、`q`（匹配 zID／姓名／邮箱）筛选。
-- **Add staff**：`POST admin/users/staff/`，请求 `{"zid":"z5123456","display_name":"…","university_email":"…","role":"ADMIN"}`（`role` 为 `ADMIN` 或 `MANAGER`），成功 201 返回该用户，写 `ADMIN_CREATED`／`MANAGER_CREATED` 审计。zID 已存在返回 409 `USER_EXISTS`（现有学生不能变成员工）。旧接口 `POST admin/users/managers/` 保留，等同于 `role=MANAGER`。
+- `GET admin/users/`：返回 `{ count, results }`，每项含 `id`、`zid`、`display_name`、`role`、`is_staff`、`active`、`university_email`，以及 `inductions`（每项 induction 的 `name`、`status`：`NOT_SUBMITTED`／`PENDING`／`VERIFIED`／`REJECTED`／`EXPIRED`、`valid_until`）和 `induction_status`（全部有效为 `VERIFIED`，否则 `INCOMPLETE`）。员工也可以预约，同样要有有效的 induction。可用 `role`、`active=true|false`、`q`（匹配 zID／姓名／邮箱）筛选。
+- **Add staff**：`POST admin/users/staff/`，请求 `{"zid":"z5123456","display_name":"…","university_email":"…","role":"ADMIN"}`（`role` 为 `ADMIN` 或 `MANAGER`），成功 201 返回该用户，写 `ADMIN_CREATED`／`MANAGER_CREATED` 审计。zID 已存在返回 409 `USER_EXISTS`（现有学生不能变成员工）。兼容接口 `POST admin/users/managers/` 等同于 `role=MANAGER`。
 - `PATCH admin/users/{id}/`：用来停用或恢复账号（`active`）。角色在创建时确定，不能修改：请求里的 `role` 与当前角色不同时返回 409 `ROLE_CHANGE_NOT_ALLOWED`（与当前相同则忽略）。要换人就用 Add staff 新建账号，再停用旧账号。修改在该用户的**下一次请求**生效；被停用的用户再请求会得到 401，前端应跳回登录页。
 - **停用学生**会立即拒绝该学生所有未决申请（待审批和候补，`reason_code=ACCOUNT_DEACTIVATED`）并递补下一位；已批准的预约保留，由 Manager 决定是否取消。
 - 不能修改自己（`SELF_MODIFICATION_FORBIDDEN`，403），系统至少保留一个启用的 Manager（`LAST_MANAGER`，409）。每次修改都会写一条 `USER_UPDATED` 审计记录。
 - 列表里只有已经存在于系统中的用户（演示时由数据库预先写入，或登录／注册过一次）。
 
-`dashboard` 返回 `{ bookings, qualifications, counts }`。两个列表是数组，`counts` 的键为六种大写预约状态，例如 `counts.APPROVED`；它不是资格数量或预约总数。其他列表接口使用 `{ count, results }`。
+`dashboard` 返回 `{ bookings, qualifications, counts }`。两个列表是数组，`counts` 的键为七种大写预约状态，例如 `counts.APPROVED`；它不是资格数量或预约总数。其他列表接口使用 `{ count, results }`。
 
 `qualification_status=NOT_CONFIGURED` 表示资源尚未设置 induction 要求，不能申请；需要维护资源数据后再开放。`qualification_status=PREREQUISITE_REQUIRED` 表示该资源的 induction 需要先通过另一项（如 Advanced 需要 General），此时 `missing_prerequisite_id` 给出缺少的那一项，前端可以直接链接到 `/induction?requirement=<id>`。
 
-### 前置 induction（OpenAPI 1.8.0 起）
+### 前置 induction
 
-- `GET qualification-requirements/` 每项新增 `prerequisite_ids`（数组）。演示数据中 Advanced laboratory training 的 `prerequisite_ids` 是 General laboratory induction。
+- `GET qualification-requirements/` 每项带 `prerequisite_ids`（数组）。演示数据中 Advanced laboratory training 的 `prerequisite_ids` 是 General laboratory induction。
 - 前置未通过时，提交该项资料返回 409 `PREREQUISITE_REQUIRED`（`details.prerequisite_id`），Admin 通过该项资料也返回同一错误；学生页面应显示“先完成 General”，并禁用上传。
 - 预约需要该项 induction 的资源时，**前置和本项都必须有效并覆盖整个预约**；缺前置时 `POST bookings/` 返回 403 `QUALIFICATION_REQUIRED`，`details.qualification_status=PREREQUISITE_REQUIRED`、`details.prerequisite_id`、`details.prerequisite_status`。
 - Manager 可用 `PATCH admin/qualification-requirements/{id}/` 设置 `{"prerequisite_ids":["<uuid>"]}`（最多 20 项，不能包含自己，不能形成循环：409 `PREREQUISITE_CYCLE`），写 `REQUIREMENT_PREREQUISITES_UPDATED` 审计。
 
-### 房间和设备（OpenAPI 1.8.0 起）
+### 房间和设备
 
-资源新增 `room_id`：设备所在房间的 ID，房间本身为 `null`。前端按房间分组设备（“该房间的 N 台设备”）。房间的维修／关闭**只影响房间本身**，房间里的设备仍按各自的 `status` 预约。
+资源的 `room_id`：设备所在房间的 ID，房间本身为 `null`。前端按房间分组设备（“该房间的 N 台设备”）。房间的维修／关闭**只影响房间本身**，房间里的设备仍按各自的 `status` 预约。
 
 可用性查询是当时的快照，提交前后仍可能有人占用时段。显示 `available=false` 的时段不能提示“可立即预约”；学生仍可对已被占用的时段提交申请，但会进入等待名单，界面应明确说明。每个资源的 `required_qualification_id` 可以不同，前端必须读取资源要求，不能用一个全局“已完成 induction”开关判断所有资源的资格。
 
 `slots[]` 的 `reason_code` 为 `START_TIME_PASSED`、`RESOURCE_UNAVAILABLE`（维修／关闭）、`TOO_SOON`（不足 7 天）、`TOO_FAR_AHEAD`（超过 30 天）、`BOOKED`、`TEMPORARILY_HELD` 或 `null`。响应顶层另有 `earliest_date`、`latest_date`、`min_advance_days`、`max_advance_days`，供日期选择器限制范围。临时占位时返回 `hold_until`（UTC 截止时间）和 `held_by_me`（是否为当前学生自己的占位）；`requested_by_me` 表示当前学生已经对同一资源提交了与该时段重叠的有效申请，前端应禁用再次提交。接口不返回其他学生身份。可显示占位倒计时，到期刷新查询，最终以服务端响应为准；`can_request` 只有在当前用户是学生、账号启用、对应 induction（及其前置）已通过且有效、资源开放时才为 `true`，不代表所选时段会获批；为 `false` 时应禁用提交按钮并提示先完成 induction。`review_window_minutes` 是该资源的审批期限（默认 1440 分钟）。
 
-### 审批流程（OpenAPI 1.7.0 起，按客户要求）
+### 审批流程
 
-- **只有 induction 已通过且有效的学生才能申请**（员工不预约）。资料还在审核（`PENDING`）、被拒或已过期时，`POST bookings/` 返回 403 `QUALIFICATION_REQUIRED`，`details.qualification_status` 说明原因；有效期必须覆盖整个预约，否则为 `EXPIRES_BEFORE_END`。induction 只能由 Admin／Manager 人工审核，审核通过不会自动批准任何预约。
+- **只有 induction 已通过且有效的人才能申请**（员工同样适用）。资料还在审核（`PENDING`）、被拒或已过期时，`POST bookings/` 返回 403 `QUALIFICATION_REQUIRED`，`details.qualification_status` 说明原因；有效期必须覆盖整个预约，否则为 `EXPIRES_BEFORE_END`。induction 只能由 Admin／Manager 人工审核，审核通过不会自动批准任何预约。
 - **每个申请都先进入 `PENDING_APPROVAL`**（`reason_code=AWAITING_REVIEW`）：不算确认、不写 Outlook，但在审批期限内为申请人占住时段。`review_due_at`（与 `hold_until` 相同）是审批截止时间：进入待审批时加上资源的 `pending_hold_minutes`（默认 24 小时），不晚于预约开始。
-- **Admin／Manager 在截止前批准或拒绝**（`POST admin/bookings/{id}/review/`，不能审批自己的申请）。
+- **Admin／Manager 在截止前批准或拒绝**（`POST admin/bookings/{id}/review/`，不能审批给自己的或自己创建的申请；紧急申请只有 Manager 能决定）。
 - **截止时仍无人处理**：系统自动处理，`reviewed_by="SYSTEM"`。账号启用、资格（含前置）仍覆盖整个预约、资源开放、时段无已批准冲突 → `APPROVED`（`AUTO_APPROVED_AFTER_REVIEW_WINDOW`）；否则 `REJECTED`（`AUTO_REJECTED_ACCOUNT_INACTIVE`／`AUTO_REJECTED_QUALIFICATION`／`AUTO_REJECTED_RESOURCE_UNAVAILABLE`／`AUTO_REJECTED_BOOKING_RULES`／`AUTO_REJECTED_CONFLICT`，`decision_reason` 写明原因）。由服务端在下一次访问、`admin/process-due/` 或定时命令 `manage.py process_due` 时处理，前端只需刷新。
 - **同一套规则**：创建、人工批准、自动处理、候补递补、改期都使用后端同一个规则检查，结果一致。
-- 原来的“120 分钟以内立即批准”、`auto_approve_max_minutes`、`needs_review`、`DURATION_REVIEW`、`RESCHEDULE_NEEDS_REVIEW`、资料审核中先预约（`WAITING_QUALIFICATION`、30 分钟占位、`HOLD_EXPIRED`、`PENDING_REQUEST_LIMIT`）都已移除。
-- 改期：已批准的未来预约可以改日期、时间和时长（受预约窗口和资格限制），直接生效。选时段时传 `exclude_booking_id=<正在改的预约>`，学生自己原来的时间会显示为可选。
+- 改期（仅 Manager）：已批准的未来预约可以改日期、时间和时长（受最晚日期和资格限制，不受最短提前期限制），直接生效。选时段时传 `exclude_booking_id=<正在改的预约>`、`for_zid=<预约人>`、`urgent=true`，原来的时间会显示为可选。
 - Manager 通过 `PATCH admin/resources/{id}/booking-policy/` 按资源设置审批期限 `{"pending_hold_minutes":1440}`（1–20160 分钟）。
 
 **房间／设备状态**：`PATCH admin/resources/{id}/status/`（仅 Manager），请求 `{"status":"MAINTENANCE","reason":"Fume hood repair"}`；状态为 `AVAILABLE`／`MAINTENANCE`／`CLOSED`，后两者必须填原因。
-- 资源列表和详情新增 `status`、`status_reason`，维修／关闭的资源仍然显示，前端应标出“维修中／已关闭”和原因。
+- 资源列表和详情带 `status`、`status_reason`，维修／关闭的资源仍然显示，前端应标出“维修中／已关闭”和原因。
 - 维修／关闭时：新申请返回 409 `RESOURCE_UNAVAILABLE`（`details.resource_status`、`status_reason`），时段查询所有时段为 `RESOURCE_UNAVAILABLE`、`can_request=false`；不批准、不递补。**已有预约保留**，响应的 `affected_bookings` 列出仍需处理的未来预约，Manager 可逐个用 `POST bookings/{id}/cancel/` 取消（`reason_code=CANCELLED_BY_STAFF`）。改回 `AVAILABLE` 后候补自动递补。
 
-**所有人的预订**：`GET admin/bookings/` 新增筛选 `status`（单个、逗号分隔多个或 `ALL`）、`resource_id`、`student_id`、`since`、`until`（带时区的时间，返回与该时段重叠的预约），按开始时间排序；每项新增 `student`（`id`、`zid`、`display_name`、`university_email`）、`resource_name`、`resource_kind`。不带参数时仍是人工审批队列，原有页面不受影响。`GET admin/bookings/export/`（仅 Manager）用相同筛选导出 CSV（默认 `ALL`，UTF-8 带 BOM，可直接用 Excel 打开）；“打印”可由前端对列表页调用浏览器打印。
+**所有人的预订**：`GET admin/bookings/` 支持筛选 `status`（单个、逗号分隔多个或 `ALL`）、`resource_id`、`student_id`、`since`、`until`（带时区的时间，返回与该时段重叠的预约），按开始时间排序；每项带 `student`（`id`、`zid`、`display_name`、`university_email`）、`resource_name`、`resource_kind`。不带参数时返回人工审批队列。`GET admin/bookings/export/`（仅 Manager）用相同筛选导出 CSV（默认 `ALL`，UTF-8 带 BOM，可直接用 Excel 打开）；“打印”可由前端对列表页调用浏览器打印。
 
 **Add staff**（人员管理页右上角按钮）：见上文“人员与角色管理”。删除人员请用停用（`PATCH active=false`），以保留预约和审计历史。
 
@@ -123,7 +133,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 
 最新提交决定当前资格。`status` 是资料审核状态，额外的 `effective_status` 表示当前有效性，界面应结合该字段显示过期情况。有效期需要覆盖预约结束时间；在当前时刻有效，不一定覆盖用户选择的预约。已有 PENDING 提交或仍有效的 VERIFIED 提交时，不能重复上传相同要求的资料；拒绝或过期后可重新提交。
 
-**有效期（OpenAPI 1.3.0 起）**：审核通过时后端自动设定 `valid_until = 审核时间 + QUALIFICATION_VALIDITY_DAYS`，默认 120 天（约一个学期）。审核请求不再接受 `valid_until`，带上该字段会返回 400。前端资格审核页去掉有效期输入框，改为显示响应里的 `valid_until`；学生端可显示“资格有效至 …”，并提示超过该时间的预约无法提交。资格过期前不能提前续期，过期后重新上传。
+**有效期**：审核通过时后端自动设定 `valid_until = 审核时间 + QUALIFICATION_VALIDITY_DAYS`，默认 120 天（约一个学期）。审核请求不接受 `valid_until`（带上返回 400），审核页只显示响应里的 `valid_until`；学生端可显示“资格有效至 …”，并提示超过该时间的预约无法提交。资格过期前不能提前续期，过期后重新上传。
 
 | 预约状态 | 建议显示 | 是否占时段 |
 | --- | --- | --- |
@@ -134,7 +144,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | `CANCELLED` | 预约已取消 | 否 |
 | `EXPIRED` | 申请已过期 | 否 |
 
-所有预约响应增加 `hold_until`（可空截止时间）、`hold_active`（当前占位是否有效）和 `blocks_slot`（当前是否阻挡重叠预约）。`APPROVED` 的 `blocks_slot=true`，即使 `hold_active=false`。不要只用非空 `hold_until` 判断占用：该值保留为历史，取消、拒绝或批准后临时占位不再有效。`WAITING_QUALIFICATION` 只可能出现在旧数据里，新流程不再产生。
+所有预约响应都带 `hold_until`（可空截止时间）、`hold_active`（当前占位是否有效）和 `blocks_slot`（当前是否阻挡重叠预约）。`APPROVED` 的 `blocks_slot=true`，即使 `hold_active=false`。不要只用非空 `hold_until` 判断占用：该值保留为历史，取消、拒绝或批准后临时占位不再有效。`WAITING_QUALIFICATION` 只出现在早期数据中，现在的流程不会产生。
 
 ### 先到先得与等待名单
 
@@ -147,7 +157,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 - 递补不会主动通知，学生需要刷新“我的预约”或 dashboard 才能看到状态变化，前端可轮询。
 
 **限制**：
-- **预约窗口（OpenAPI 1.5.0 起）**：预约开始日期（资源当地日期）必须在“今天 + 7 天”到“今天 + 30 天”之间（默认值，来自后端可配置规则 `RulesProvider`，见 backend/README“可配置规则”），即至少提前一周、最多提前一个月。例：周六 10/10 最早能约下周六 10/17，最晚 11/9。太近返回 400 `BOOKING_TOO_SOON`，太远返回 400 `BOOKING_TOO_FAR_AHEAD`；两者的 `details` 都有 `earliest_date`、`latest_date`、`min_advance_days`、`max_advance_days`。改期同样受这个窗口限制；已提交的申请不受影响，日期临近后照常审核和递补。
+- **预约窗口**：预约开始日期（资源当地日期）必须在“今天 + 7 天”到“今天 + 30 天”之间（默认值，来自后端可配置规则 `RulesProvider`，见 backend/README“可配置规则”），即至少提前一周、最多提前一个月。例：周六 10/10 最早能约下周六 10/17，最晚 11/9。太近返回 400 `BOOKING_TOO_SOON`，太远返回 400 `BOOKING_TOO_FAR_AHEAD`；两者的 `details` 都有 `earliest_date`、`latest_date`、`min_advance_days`、`max_advance_days`。改期同样受这个窗口限制；已提交的申请不受影响，日期临近后照常审核和递补。
   - 日期选择器：用时段查询响应里的 `earliest_date`／`latest_date` 设置 `<input type="date" min max>`，不要在前端写死天数。
   - 因为至少提前一周，默认 24 小时审批期限总会早于预约开始；只有 Manager 把审批期限设得比提前天数还长时，期限才会被截到预约开始时间。
 
@@ -172,17 +182,19 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | POST | `auth/staff-sign-in/` | Admin／Manager 登录：`zid`、`password` |
 | POST | `auth/staff-activate/` | staff 首次激活：`zid`、`invite_code`、`password` |
 | GET | `auth/me/` | 当前用户 |
-| GET | `resources/?kind=ROOM&q=lab` | 筛选资源；`kind` 也可为 `EQUIPMENT` |
+| GET | `resources/?kind=ROOM&q=lab&category=` | 筛选资源；`kind` 也可为 `EQUIPMENT`；`category` 为设备类别 |
+| GET | `resources/day-overview/?date=YYYY-MM-DD&duration_minutes=60` | 预约页"Find a free time"：所有符合筛选的资源当天的空闲情况（见下文） |
 | GET | `resources/{id}/` | 资源详情 |
-| GET | `resources/{id}/availability/?date=YYYY-MM-DD&duration_minutes=60` | 可用性及申请资格 |
+| GET | `resources/{id}/availability/?date=YYYY-MM-DD&duration_minutes=60` | 可用性及申请资格；员工可加 `for_zid`，紧急申请加 `urgent=true` |
+| GET | `people/lookup/?zid=` | 仅员工：代预约前确认对方账号 |
 | GET | `qualification-requirements/` | Induction 要求列表 |
 | GET / POST | `qualifications/` | 我的提交／上传资料 |
 | GET | `qualifications/{id}/` | 资料提交详情 |
 | GET | `qualifications/{id}/file/` | 带权限的附件下载 |
-| GET / POST | `bookings/` | 我的预约列表／创建预约 |
+| GET / POST | `bookings/` | 我的预约列表（员工还包括替别人建的）／创建预约（可带 `on_behalf_of_zid`、`urgent`、`urgent_reason`） |
 | GET | `bookings/{id}/` | 预约详情 |
 | POST | `bookings/{id}/cancel/` | 取消预约 |
-| POST | `bookings/{id}/reschedule/` | 改期已批准且尚未开始的预约：`start`、`end` |
+| POST | `bookings/{id}/reschedule/` | 仅 Manager：改期已批准且尚未开始的预约：`start`、`end` |
 | GET | `dashboard/` | 我的预约、资料与数量 |
 | GET | `admin/qualifications/?status=PENDING` | 管理员资格队列（`PENDING`／`VERIFIED`／`REJECTED`）；每条带 `student`（`id`、`zid`、`display_name`、`university_email`），审核页直接显示姓名和 zID |
 | POST | `admin/qualifications/{id}/review/` | `decision: VERIFIED\|REJECTED`，可带 `reason`；不接受 `valid_until`，有效期由后端设定 |
@@ -192,19 +204,23 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | GET | `admin/users/?role=&active=&q=` | 仅 Manager：人员列表 |
 | POST | `admin/users/staff/` | 仅 Manager：Add staff，`zid`、`display_name`、`university_email`、`role`（`ADMIN`／`MANAGER`）；响应带 `invite_code` |
 | POST | `admin/users/{id}/reset-access/` | 仅 Manager：重置员工登录，生成新邀请码 |
-| POST | `admin/users/managers/` | 仅 Manager：旧接口，等同于 Add staff 选 Manager |
+| POST | `admin/users/managers/` | 仅 Manager：兼容接口，等同于 Add staff 选 Manager |
 | PATCH | `admin/users/{id}/` | 仅 Manager：`{"active":false}` 停用／`{"active":true}` 恢复；角色不能修改 |
 | PATCH | `admin/qualification-requirements/{id}/` | 仅 Manager：`{"prerequisite_ids":[...]}` 设置前置 induction |
 | GET | `admin/audit/?resource_id=&student_id=&action=&since=&until=&limit=100&offset=0` | Admin／Manager 查看审计记录（申请、审批、改期、取消等），最新在前 |
 | POST | `admin/process-due/` | 立即处理已到审批截止时间（自动批准或拒绝）／开始时间的请求 |
 | GET / PATCH | `admin/resources/{id}/booking-policy/` | 仅 Manager：读取和修改审批期限 `pending_hold_minutes` |
 | PATCH | `admin/resources/{id}/status/` | 仅 Manager：`AVAILABLE`／`MAINTENANCE`／`CLOSED` + `reason` |
+| GET | `admin/outlook/` | Admin／Manager：Outlook 配置、统计和每个预约的同步／检查状态（不调用微软） |
+| POST | `admin/outlook/check/` | 测试微软登录和日历权限，`{}` |
+| POST | `admin/outlook/process/` | 处理等待中的日历更新，`{"limit":1}`（最多 5） |
+| POST | `admin/bookings/{id}/outlook-retry/` | 立即重试失败的日历更新，`{}` |
 
-`POST bookings/` 可带 `Idempotency-Key`，同一用户重试同一请求时复用同一 key；提交不同预约时生成新 key。key 最多 128 个字符，仅可使用字母、数字、点、下划线、冒号、连字符。禁止只依赖禁用按钮防止重复请求。字段 `start`、`end` 表示区间 `[start,end)`。取消仅允许尚未开始的有效请求；重复取消已取消记录返回原记录。改期只允许预约所有者操作未来 `APPROVED` 预约；后端重新检查时间规则、资格有效期与冲突。成功后 `revision` 增加，并更新原 Outlook 事件。
+`POST bookings/` 可带 `Idempotency-Key`，同一用户重试同一请求时复用同一 key；提交不同预约时生成新 key。key 最多 128 个字符，仅可使用字母、数字、点、下划线、冒号、连字符。禁止只依赖禁用按钮防止重复请求。字段 `start`、`end` 表示区间 `[start,end)`。取消仅允许尚未开始的有效请求；重复取消已取消记录返回原记录。改期只允许 Manager 操作未来 `APPROVED` 预约；后端重新检查时间规则、资格有效期与冲突。成功后 `revision` 增加，并更新原 Outlook 事件。
 
 时段查询默认时长为 30 分钟。前端应依据资源返回的 `slot_minutes` 和 `max_booking_minutes` 限制选择；当前种子规则是 30 分钟粒度、08:00–20:00、最长 480 分钟，同一预约不能跨当地日期。这些是演示配置，客户确认规则后可通过资源数据调整。
 
-Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{"pending_hold_minutes":1440}`（字段名沿用数据库列名，含义是 Admin 审批期限，单位分钟）；GET／PATCH 均返回 `{"resource_id":"<uuid>","pending_hold_minutes":1440}`。范围为整数 1–20160，默认 1440（24 小时）。期限到了仍无人处理时，系统按规则自动批准或拒绝（见上文“审批流程”）。修改只影响之后进入待审批的申请；已有截止时间不变。资源详情包含 `pending_hold_minutes`，时段查询响应包含同值的 `review_window_minutes`。旧字段 `auto_approve_max_minutes` 已删除，再发送会返回 400；请求必须带 `pending_hold_minutes`。
+Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{"pending_hold_minutes":1440}`（字段名沿用数据库列名，含义是 Admin 审批期限，单位分钟）；GET／PATCH 均返回 `{"resource_id":"<uuid>","pending_hold_minutes":1440}`。范围为整数 1–20160，默认 1440（24 小时）。期限到了仍无人处理时，系统按规则自动批准或拒绝（见上文“审批流程”）。修改只影响之后进入待审批的申请；已有截止时间不变。资源详情包含 `pending_hold_minutes`，时段查询响应包含同值的 `review_window_minutes`。请求必须带 `pending_hold_minutes`，带 `auto_approve_max_minutes` 返回 400。
 
 附件支持 PDF、PNG、JPEG，最大 5 MiB。后端检查大小、扩展名、MIME 和文件格式特征。资料中的 `file_url` 是受保护的 API 路径，下载仍需带 Authorization；前端可请求为 Blob 后显示／下载，不能假设 `<img src>` 或普通链接会自动附带 Bearer token。附件没有公开地址。
 
@@ -238,11 +254,15 @@ Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{
 | --- | --- | --- |
 | `QUALIFICATION_REQUIRED` | 403 | 只有 induction 已审核通过且在有效期内才能提交；`details.qualification_status` 为 `PENDING` 时提示“资料审核中，通过后才能预约”，其他状态引导去上传 |
 | `QUALIFICATION_NOT_VERIFIED` | 409 | 管理员先处理资格，不能直接批准预约；`details.qualification_status` 说明原因（含 `PREREQUISITE_REQUIRED`） |
-| `ACCOUNT_INACTIVE` | 409 | 申请人账号已停用，不能批准 |
-| `BOOKING_CONFLICT` | 409 | 人工批准失败，提示时段已有获批预约 |
+| `ACCOUNT_INACTIVE` | 409 | 申请人账号已停用，不能批准，也不能代他预约 |
+| `PERSON_NOT_FOUND` | 404 | 代预约的 zID 不存在 |
+| `URGENT_REASON_REQUIRED` | 400 | 紧急申请要写原因 |
+| `URGENT_NOT_NEEDED` | 400 | 时间在正常预约窗口内，发普通申请 |
+| `URGENT_NEEDS_MANAGER` | 403 | 紧急申请只有 Manager 能决定 |
+| `BOOKING_CONFLICT` | 409 | 人工批准或紧急申请失败：时段已有获批预约（紧急申请时也包括待审批占位） |
 | `BOOKING_HOLD_CONFLICT` | 409 | 人工批准失败，提示时段仍临时占用；`details.hold_until` 为当前占位截止时间 |
 | `REQUEST_WAITLISTED` | 409 | 候补不能直接批准，会按顺序自动递补；管理员可以拒绝 |
-| `SELF_REVIEW_FORBIDDEN` | 403 | Admin 不能审核自己的 induction 资料或预约申请，交给其他 Admin 或 Manager |
+| `SELF_REVIEW_FORBIDDEN` | 403 | 不能审核自己的 induction 资料、给自己的或自己创建的预约申请，交给其他 Admin 或 Manager |
 | `RESOURCE_POLICY_NOT_CONFIGURED` | 409 | 资源没有配置所需 induction，暂不能预约；提示联系 Manager |
 | `RESOURCE_UNAVAILABLE` | 409 | 资源维修或关闭；显示 `details.status_reason`，暂停新预约 |
 | `USER_EXISTS` | 409 | Add staff 时 zID 已存在 |
@@ -255,7 +275,7 @@ Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{
 | `ROLE_CHANGE_NOT_ALLOWED` | 409 | 角色创建后固定，Student／Admin／Manager 不能互转 |
 | `PREREQUISITE_REQUIRED` | 409 | 先通过前置 induction（如 General）再提交／通过这一项；`details.prerequisite_id` |
 | `PREREQUISITE_CYCLE` | 409 | 前置设置会形成循环 |
-| `FORBIDDEN` | 403 | 员工调用学生专用接口（预约、上传资料）或 Admin 调用 Manager 接口 |
+| `FORBIDDEN` | 403 | 学生代别人预约、非 Manager 改期，或 Admin 调用 Manager 接口 |
 | `BOOKING_TOO_SOON` | 400 | 需至少提前 7 天；`details.earliest_date` 为最早可约日期 |
 | `BOOKING_TOO_FAR_AHEAD` | 400 | 最多提前 30 天；`details.latest_date` 为最晚可约日期 |
 | `QUALIFICATION_ALREADY_PENDING`／`QUALIFICATION_ALREADY_VERIFIED` | 409 | 保留当前资料，刷新资格状态 |
@@ -272,17 +292,45 @@ Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{
 
 API 输出时间为 ISO 8601 UTC `Z`。前端用 `Australia/Sydney` 显示，支持夏令时；不能硬编码全年 `+10:00`。availability 的 `date` 是资源时区日期，`slots` 的时间仍是 UTC。前端应标明本地时区。
 
-预约相关读取／操作会由服务器推进到期状态（审批期限到期后的自动决定、过期、候补递补），浏览器不需要自己计时。需要轮询或用户刷新才能更新屏幕；人工审批后的前端实时通知不在本 Sprint 范围内。
+预约相关读取／操作会由服务器推进到期状态（审批期限到期后的自动决定、过期、候补递补），浏览器不需要自己计时。需要轮询或用户刷新才能更新屏幕；人工审批后的实时通知尚未实现。
 
 ## 与后续接入的边界
 
-前端使用 API，不读取数据库，不直接连接 Outlook。数据库同学实现 `Repository`、私有 `FileStorage` 和事务锁；SSO 同学提供服务端验证及可信用户映射。接口结构和状态应保持不变。
+前端只调用 API，不读取数据库，不直接连接 Outlook。数据库由后端的 `Repository` 适配器负责（内存或 PostgreSQL），以后接入学校 SSO 时由后端验证身份并映射用户。接入这些时，接口结构和状态保持不变。
 
-演示身份选择仅在本地开发模式开启，不代表正式 SSO。正式前端不得保留任意 zID 登录或选择管理员身份的演示入口。内存数据和 token 登录流程用于联调；数据重启丢失，无法跨多个后端进程共享。
+演示身份选择仅在本地开发模式开启，不代表正式 SSO。正式前端不得保留任意 zID 登录或选择管理员身份的演示入口。内存模式的数据在后端重启后丢失，也不能跨多个后端进程共享；需要保留数据时用 PostgreSQL 模式。
 
-## Sprint 1 Outlook 同步
+## 预约页筛选与一天空闲表
 
-所有预约响应（列表、详情、dashboard、创建、取消和审核结果）新增 `outlook_sync`，原有预约 `status` 保持不变：
+Book a Resource 页面有两个标签：**Browse resources**（资源卡片）和 **Find a free time**。后者先选条件，再在一张表里看所有资源当天的空闲情况，点空闲时间直接打开预约表单（资源和时间已选好）。
+
+- 资源的 `category`（设备类别，例如 `Microscopy`、`Electronics testing`、`Fabrication`；房间为 `null`）。演示类别是编的，以后换成客户的设备清单。`GET resources/` 也可以带 `category=` 筛选。
+- `GET resources/day-overview/` 的参数：
+  - `date`：必填，悉尼当地日期。
+  - `duration_minutes`：默认 60，必须是 30 的倍数，最长 480。
+  - `kind`：`ROOM`／`EQUIPMENT`。
+  - `room_id`：房间本身加上放在这个房间里的设备。
+  - `category`：设备类别。
+  - `q`：按名称、地点或类别搜索。
+  - `bookable_only=true`：只返回当前用户现在就能申请的资源。
+  - `free_at=HH:MM`：只返回从这个时间起、整个时长都空闲的资源。
+- 返回内容：
+  - `date`、`duration_minutes`、`timezone`
+  - 预约窗口：`earliest_date`、`latest_date`、`min_advance_days`、`max_advance_days`
+  - `rooms`（`id`、`name`）和 `categories`，用来生成筛选下拉框
+  - `count`、`results`。每行是 `resource`（完整资源对象）、`room_name`、`can_request`、`qualification_status`、`resource_status`、`status_reason`、`slots`
+  - `slots` 和 `resources/{id}/availability/` 的格式完全相同，规则也是同一套：开放时间、预约窗口、induction、冲突、维修状态。
+- 前端点击空闲格子后打开 BookingForm，并传入 `initialDate`、`initialStart`、`initialMinutes`，SlotPicker 会自动选中这段时间。只有当这段时间全部空闲时才会自动选中。
+
+## Outlook 同步
+
+网站是预约的唯一依据，Outlook 里的改动不能变成网站上的预约。
+
+- 系统只做"网站 → Outlook"的单向写入，运行时从不读取 Outlook 里的修改，所以 Outlook 里的改动不可能影响预约。
+- 前端只显示同步结果，不连接 Outlook，也不保存任何微软凭证。
+- 配置和实测步骤见 [outlook-setup.md](outlook-setup.md)。
+
+所有预约响应（列表、详情、dashboard、创建、取消、审核、改期、`admin/process-due/` 的结果）都带 `outlook_sync`，它和预约的 `status` 互相独立：
 
 ```json
 {
@@ -299,15 +347,24 @@ API 输出时间为 ISO 8601 UTC `Z`。前端用 `Australia/Sydney` 显示，支
 | outlook_sync.status | 前端显示 |
 | --- | --- |
 | `DISABLED` | 日历同步未启用；预约状态仍有效 |
-| `NOT_REQUIRED` | 当前申请无需写入日历 |
+| `NOT_REQUIRED` | 当前申请无需写入日历（待审批、候补、被拒等） |
 | `PENDING`／`IN_PROGRESS` | 日历等待同步／同步中 |
-| `SYNCED` + `CREATE` | 已创建 Outlook 事件；可显示“打开日历”链接 |
-| `SYNCED` + `UPDATE` | 改期已更新到同一个 Outlook 事件；可显示“打开日历”链接 |
+| `SYNCED` + `CREATE`／`UPDATE` | 已写入 Outlook（改期更新的是同一个事件；如果用户删过事件，就按新时间重建） |
 | `SYNCED` + `DELETE` | 取消已同步到 Outlook |
 | `FAILED` | 预约结果已保存，日历同步失败；提示联系管理员 |
 
-只依据预约 `status` 判断是否批准／取消，不把日历失败提示为“预约失败”，也不要自动重新创建预约。更新界面可轮询预约详情或 dashboard；读取接口不自动执行日历网络请求。只有创建／更新成功且未取消的事件返回 `web_link`。
+只按预约的 `status` 判断是否批准或取消，不要把日历同步失败提示成"预约失败"。读取接口不会调用微软；需要刷新时，轮询预约详情或 dashboard 即可。
 
-Admin／Manager 的接口：`GET admin/outlook/` 查询配置及记录；`POST admin/outlook/process/` 处理到期任务（`{"limit":1}`，最多 5）；`POST admin/bookings/{id}/outlook-retry/` 立即重试（`{}`）。配置存在不代表权限验证成功，以 Graph 操作结果为准。学生不能调用这些管理接口。
+**员工页面 Calendar Sync**（`/admin/calendar-sync`，Admin 和 Manager）是开发阶段的可视化页面，数据来自 `GET admin/outlook/`，返回内容如下：
+- `summary`：`total`、`synced`、`pending`、`failed`。
+- `items`：每个已同步的预约一行，失败的排在最前。字段有：
+  - `booking_id`、`booking_status`、`start`、`end`、`urgent`
+  - `resource`、`booked_for`、`booked_by`（代预约的员工）、`invited`
+  - `sync`：`status`、`action`、`attempts`、`last_error`、`next_attempt_at`、`last_success_at`、`web_link`
+- `last_check`：最近一次 `POST admin/outlook/check/` 的结果。
+- `invite_mode`、`enabled`、`configured`、`mode`、`direction`、`sync_records`。
 
-个人账号的授权在开发者本机完成，不需要学生 dashboard 出现 Microsoft 授权按钮，也不要把微软 Token 放进前端。步骤见 [outlook-setup.md](outlook-setup.md)。Sprint 1 是系统写入 Outlook 的单向同步，已覆盖创建、改期和取消；Pending 占位不会创建日历事件。等待名单、重复预约及更完整的规则管理在 Sprint 2 完善。
+其他规则：
+- 同步未启用时，`outlook-retry` 返回 409 `OUTLOOK_DISABLED`。
+- 学生调用这些接口一律返回 403。
+- 正式交付前如果删掉这个页面，后端接口可以保留。

@@ -11,6 +11,11 @@ import type {
   User,
   ManagedUser,
   ResourceStatus,
+  PersonBrief,
+  CalendarCheck,
+  CalendarSyncStatus,
+  DayOverview,
+  DayOverviewQuery,
 } from './types'
 import { request, requestBlob } from '../../lib/api-client'
 export { ApiError, getToken, setToken } from '../../lib/api-client'
@@ -40,16 +45,37 @@ export function listResources(params: { kind?: string; q?: string }) {
   return request<ListResponse<Resource>>(`resources/?${qs}`)
 }
 
-export const getAvailability = (id: string, date: string, durationMinutes: number, excludeBookingId?: string) =>
-  request<Availability>(
-    `resources/${id}/availability/?date=${date}&duration_minutes=${durationMinutes}` +
-      (excludeBookingId ? `&exclude_booking_id=${excludeBookingId}` : ''),
-  )
+export function getAvailability(
+  id: string,
+  date: string,
+  durationMinutes: number,
+  excludeBookingId?: string,
+  options: { forZid?: string; urgent?: boolean } = {},
+) {
+  const qs = new URLSearchParams({ date, duration_minutes: String(durationMinutes) })
+  if (excludeBookingId) qs.set('exclude_booking_id', excludeBookingId)
+  if (options.forZid) qs.set('for_zid', options.forZid)
+  if (options.urgent) qs.set('urgent', 'true')
+  return request<Availability>(`resources/${id}/availability/?${qs}`)
+}
 
-export const createBooking = (
-  data: { resource_id: string; start: string; end: string; purpose: string },
-  idempotencyKey: string,
-) => post<Booking>('bookings/', data, { 'Idempotency-Key': idempotencyKey })
+export interface BookingRequest {
+  resource_id: string
+  start: string
+  end: string
+  purpose: string
+  /** Admin/Manager only: the zID of the person the booking is for. */
+  on_behalf_of_zid?: string
+  urgent?: boolean
+  urgent_reason?: string
+}
+
+export const createBooking = (data: BookingRequest, idempotencyKey: string) =>
+  post<Booking>('bookings/', data, { 'Idempotency-Key': idempotencyKey })
+
+/** Admin/Manager: check whom you are booking for. */
+export const lookupPerson = (zid: string) =>
+  request<PersonBrief>(`people/lookup/?${new URLSearchParams({ zid })}`)
 
 export const listBookings = () => request<ListResponse<Booking>>('bookings/')
 
@@ -178,4 +204,22 @@ export function updateResourceStatus(
     method: 'PATCH',
     body: JSON.stringify({ status, reason }),
   })
+}
+
+// Calendar Sync (Admin and Manager). Reading the status never calls Microsoft; the actions do.
+export const getCalendarSync = () => request<CalendarSyncStatus>('admin/outlook/')
+export const checkCalendarConnection = () => post<CalendarCheck>('admin/outlook/check/', {})
+export const processCalendarSync = () => post<{ processed_count: number }>('admin/outlook/process/', { limit: 5 })
+export const retryCalendarSync = (bookingId: string) => post<Booking>(`admin/bookings/${bookingId}/outlook-retry/`, {})
+
+/** Booking page day grid: every matching resource's free and taken times on one day. */
+export function getDayOverview(query: DayOverviewQuery) {
+  const qs = new URLSearchParams({ date: query.date, duration_minutes: String(query.duration_minutes) })
+  if (query.kind) qs.set('kind', query.kind)
+  if (query.room_id) qs.set('room_id', query.room_id)
+  if (query.category) qs.set('category', query.category)
+  if (query.q) qs.set('q', query.q)
+  if (query.bookable_only) qs.set('bookable_only', 'true')
+  if (query.free_at) qs.set('free_at', query.free_at)
+  return request<DayOverview>(`resources/day-overview/?${qs}`)
 }

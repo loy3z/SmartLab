@@ -10,7 +10,7 @@ from booking.tests.test_api import BookingAPIFixtureMixin
 SIGN_IN = "/api/v1/auth/staff-sign-in/"
 ACTIVATE = "/api/v1/auth/staff-activate/"
 USERS = "/api/v1/admin/users/"
-DEMO_PASSWORD = "smartlab-staff-demo"
+DEMO_PASSWORD = "123"
 FAST_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher", "django.contrib.auth.hashers.PBKDF2PasswordHasher"]
 
 

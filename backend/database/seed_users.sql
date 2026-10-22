@@ -12,10 +12,10 @@ INSERT INTO public.app_users (id, zid, display_name, role, university_email, act
     ('00000000-0000-0000-0000-000000000901', 'z9000001', 'Demo administrator', 'ADMIN', 'z9000001@ad.unsw.edu.au', true),
     ('00000000-0000-0000-0000-000000000902', 'z9000002', 'Demo manager', 'MANAGER', 'z9000002@ad.unsw.edu.au', true);
 
--- Demo staff sign in on the staff page with the demo password "smartlab-staff-demo" (fake accounts only).
+-- Demo staff sign in on the staff page with the demo password "123" (fake accounts only).
 INSERT INTO public.staff_credential (principal_id, password_hash, invite_code, updated_at) VALUES
-    ('00000000-0000-0000-0000-000000000901', 'pbkdf2_sha256$1000000$smartlabdemostaff1$VEZGh4DfYxawq0X9qmaNEO0lg4UNdhtLIxnXrS21Btw=', NULL, now()),
-    ('00000000-0000-0000-0000-000000000902', 'pbkdf2_sha256$1000000$smartlabdemostaff1$VEZGh4DfYxawq0X9qmaNEO0lg4UNdhtLIxnXrS21Btw=', NULL, now());
+    ('00000000-0000-0000-0000-000000000901', 'pbkdf2_sha256$1000000$smartlabdemostaff2$zptccOYVBe7KY3Xftwge1EpinjQjfTL5RQuWZcJnvLE=', NULL, now()),
+    ('00000000-0000-0000-0000-000000000902', 'pbkdf2_sha256$1000000$smartlabdemostaff2$zptccOYVBe7KY3Xftwge1EpinjQjfTL5RQuWZcJnvLE=', NULL, now());
 
 -- z1000001 already has a verified general induction (valid for 120 days from import), so the booking
 -- flow can be tried straight away. The others start with no induction.

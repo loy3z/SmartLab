@@ -159,6 +159,7 @@ class BookingPolicySerializer(StrictSerializer):
 
 
 class ResourceStatusSerializer(StrictSerializer):
+    expected_back = serializers.DateTimeField(required=False, allow_null=True, default=None)  # Sprint 3 (1.19.0)
     status = serializers.ChoiceField(choices=["AVAILABLE", "MAINTENANCE", "CLOSED"])
     reason = serializers.CharField(required=False, allow_blank=True, default="", max_length=500)
 
@@ -242,8 +243,9 @@ class NotificationQuerySerializer(StrictSerializer):
 
 
 class NotificationPreferencesSerializer(StrictSerializer):
-    """Sprint 3 (2026-10-25): {"preferences": {"bookings": true, "reminders": false, ...}}; the service checks names."""
-    preferences = serializers.DictField(child=serializers.BooleanField(), allow_empty=False)
+    """Sprint 3 (1.19.0): {"preferences": {"bookings": {"in_app": true, "email": false}}}."""
+    # Sprint 3 (1.19.0): independent channel choices, with partial updates.
+    preferences = serializers.DictField(child=serializers.DictField(child=serializers.BooleanField(), allow_empty=False), allow_empty=False)
 
 
 class UnfreezeRequestSerializer(StrictSerializer):

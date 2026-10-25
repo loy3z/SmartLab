@@ -371,6 +371,9 @@ class Notification:
     link: str | None = None          # page in the web app, e.g. "/bookings?booking=<id>"
     booking_id: str | None = None
     read_at: datetime | None = None
+    # Sprint 3 (1.19.0): channel choices are captured when the notification is created.
+    in_app: bool = True
+    email: bool = True
 
     def __post_init__(self) -> None:
         _require_aware(created_at=self.created_at, read_at=self.read_at)
@@ -386,6 +389,7 @@ class NotificationPreference:
     principal_id: str
     category: str      # bookings | reminders | induction | account | resources
     enabled: bool
+    email_enabled: bool = True  # Sprint 3 (1.19.0): independent email preference.
 
 
 @dataclass(frozen=True)
@@ -420,3 +424,25 @@ class UnfreezeRequest:
         if not isinstance(self.status, UnfreezeStatus):
             object.__setattr__(self, "status", UnfreezeStatus(self.status))
         _require_aware(created_at=self.created_at, decided_at=self.decided_at)
+
+
+# Sprint 3 (1.19.0): explicit author role preserves the signature of signed test sessions too.
+@dataclass(frozen=True)
+class Announcement:
+    id: str
+    title: str
+    body: str
+    kind: str
+    resource_id: str | None
+    created_by: str
+    created_at: datetime
+    expires_at: datetime | None = None
+    removed_at: datetime | None = None
+    removed_by: str | None = None
+    updated_at: datetime | None = None
+    author_role: str = "ADMIN"
+    expected_back: datetime | None = None
+
+    def __post_init__(self):
+        _require_aware(created_at=self.created_at, expires_at=self.expires_at, removed_at=self.removed_at,
+                       updated_at=self.updated_at, expected_back=self.expected_back)

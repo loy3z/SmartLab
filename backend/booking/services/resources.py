@@ -233,7 +233,7 @@ class ResourcesMixin:
                         previous_minutes=current.pending_hold_minutes, pending_hold_minutes=pending_hold_minutes)
             return updated
 
-    def set_resource_status(self, actor, resource_id, status, reason=None):
+    def set_resource_status(self, actor, resource_id, status, reason=None, expected_back=None):
         """Manager only: open a resource or take it out of service (MAINTENANCE / CLOSED).
 
         Only new requests, approvals and waitlist promotions are stopped; existing bookings are kept so the
@@ -260,6 +260,8 @@ class ResourcesMixin:
                             previous_status=current.status.value, status=updated.status.value, reason=updated.status_reason)
                 if updated.bookable:
                     self._promote_waitlist(updated.id)
+            # Sprint 3 (1.19.0): status and its public announcement commit or roll back together.
+            self._status_announcement(actor, updated, expected_back)
             affected = sorted((item for item in self.repo.list_bookings(resource_id=updated.id)
                                if item.status in ACTIVE_REQUEST_STATUSES and item.end > self.now()),
                               key=lambda item: (item.start, item.id))

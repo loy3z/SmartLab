@@ -83,6 +83,8 @@ React Router's `HashRouter` keeps the existing `#/...` URLs. These work with sta
 | `#/manager/resources` | Manager | Sprint 3: add, edit, archive and restore rooms and equipment; shows future bookings that no longer fit an edit |
 | `#/manager/setup` | Manager | Sprint 3 (1.16.0): **Lab setup**: add and edit inductions (name, description, prerequisites and four guidance texts) and the lab's contact details |
 | `#/manager/usage` | Admin, Manager | Sprint 3: old address; redirects to `#/admin/records?tab=usage` |
+| `#/settings/notifications` | All authenticated roles | Sprint 3 (1.19.0): five categories, independent in-app/email settings |
+| `#/admin/announcements` | Admin, Manager | Sprint 3 (1.19.0): manual announcements and ended history; status notices are read-only |
 | `#/account`, `#/help` | All authenticated roles | A: account details and portal guidance; Sprint 3: staff change their own password here |
 
 Everyone books under the same rules: Admins and Managers see **Book a resource**, **My bookings** and **Induction & training** too, and can book for themselves or, under **Book for → Someone else**, for another person by zID (that person's induction is checked; the staff member is recorded as the creator). **Urgent request** lets anyone ask for a free time sooner than the normal booking window with a reason; only a Manager can approve it. Only Managers reschedule directly (My bookings and Room management); since 1.16.0 the person a booking is for can ask to change its time, which goes through review like a new request. The student dashboard stays student-only, and an Admin cannot open any `#/manager/...` page. Students are never promoted to staff, and Admin and Manager do not switch: each role is fixed when the account is created. Managers create staff accounts with **Add staff**.
@@ -175,3 +177,11 @@ For a manual walkthrough, sign in as each role, refresh a protected URL, use Bac
 Enable the local backend's test-console flag as described in [backend startup](../backend/README.md#local-test-console-1170), then visit `#/test/login` (or choose **Test console** on the sign-in page). Enter **1**; there is no password. After signing in, the top bar switches between Student, Admin and Manager, and toggles booking-rule bypass. A role change retains the same account and its records. The ordinary staff and university sign-in flows stay separate.
 
 Urgent bookings use one required **Purpose and urgency** explanation. Training uploads mark evidence **Required** and use the English **Choose file** control. The submit button explains missing input. Functional scope and code locations are in [SPRINT3.md](../SPRINT3.md#17-functional-controls-1170).
+
+## 通知和公告使用说明（Sprint 3，1.19.0）
+
+- 所有人从侧栏 **Notifications** 打开设置。五类更新各有 **In the bell** / **By email** 两列；勾选即时保存，失败显示错误并保留之前已保存的选择。网站未开邮件时邮件列禁用；这不代表实际邮箱已连接。
+- Dashboard 和 Today 顶部显示生效公告、署名和日期；无公告时不显示公告区。公告不进铃铛、不发邮件。
+- Admin / Manager 从 **Daily work → Announcements** 发布手动公告，填写 Title、Message，可选 Remove at（悉尼时间）。自己的公告可以编辑、下架；Manager 还可下架他人的，不能编辑他人的。历史列表保留已过期和已下架记录。
+- Manager 从 **Room management** 设维修／关闭，填写原因和可选 **Expected back**。原因出现在首页状态公告中，恢复估计不自动重新开放。重新开放房间时自动下架公告；状态公告在 Announcements 页标 **From room status**，不能在该页改或删。设备后端同样支持状态公告，设备状态页面入口仍是后续任务。
+- 日期输入采用 Australia/Sydney（包括夏令时）；错误显示在当前表单／弹窗内。390px 宽度和新文字至少 12px 由 `tests/routing.spec.ts` 的 1.19 用例检查。

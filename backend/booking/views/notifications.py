@@ -1,5 +1,7 @@
 """HTTP views: notifications (split from booking/views.py on 2026-10-25)."""
 
+from django.conf import settings  # Sprint 3 (1.19.0): site email capability.
+from ..serializers import NotificationPreferencesSerializer  # Sprint 3 (1.19.0)
 from ._common import *  # noqa: F401,F403 - shared imports, helpers and PublicView.
 
 __all__ = ["NotificationListView", "NotificationReadView", "NotificationReadAllView", "NotificationPreferencesView"]
@@ -13,14 +15,14 @@ class NotificationListView(APIView):
         return Response({"count": len(items), "unread_count": unread, "results": json_value(items)})
 
 class NotificationPreferencesView(APIView):
-    """Sprint 3 (2026-10-25): the Account page's notification switches for the signed-in person."""
+    """Sprint 3 (1.19.0): independent bell/email settings for the signed-in person."""
 
     def get(self, request):
-        return Response({"results": get_service().notification_preferences(request.user)})
+        return Response({"results": get_service().notification_preferences(request.user), "email_available": bool(settings.EMAIL_ENABLED)})
 
     def put(self, request):
         data = validated(NotificationPreferencesSerializer, request.data)
-        return Response({"results": get_service().save_notification_preferences(request.user, data["preferences"])})
+        return Response({"results": get_service().save_notification_preferences(request.user, data["preferences"]), "email_available": bool(settings.EMAIL_ENABLED)})
 
 class NotificationReadView(APIView):
     def post(self, request, notification_id):

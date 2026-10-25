@@ -103,7 +103,8 @@ class AdminResourceStatusView(APIView):
         service = get_service()
         service.require_manager(request.user)
         data = validated(ResourceStatusSerializer, request.data)
-        resource, affected = service.set_resource_status(request.user, str(resource_id), data["status"], data["reason"])
+        # Sprint 3 (1.19.0): optional recovery estimate belongs to the status announcement.
+        resource, affected = service.set_resource_status(request.user, str(resource_id), data["status"], data["reason"], expected_back=data["expected_back"])
         sync_after_write(service)
         people = {item.id: item for item in service.repo.list_principals()}
         resources = {resource.id: resource}

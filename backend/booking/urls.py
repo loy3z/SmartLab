@@ -2,6 +2,10 @@ from django.urls import path, re_path
 from . import views
 
 urlpatterns = [
+    # Sprint 3 (1.19.0): manual staff announcements and authenticated reads.
+    path("announcements/", views.AnnouncementListView.as_view()),
+    path("announcements/<uuid:announcement_id>/", views.AnnouncementDetailView.as_view()),
+    path("announcements/<uuid:announcement_id>/remove/", views.AnnouncementRemoveView.as_view()),
     path("health/", views.HealthView.as_view()),
     path("auth/config/", views.AuthConfigView.as_view()),
     path("auth/test-login/", views.TestLoginView.as_view()),

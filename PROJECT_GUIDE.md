@@ -49,6 +49,14 @@ Submit a booking → wait for approval or a place → receive approval → check
 
 The [current business rules](backend/README.md) explain deadlines, limits and exceptions. Use that document for exact policy values; this guide explains where to go.
 
+## 通知和公告（Sprint 3，1.19.0）
+
+从侧栏 **Notifications** 设置个人更新：五类分别选择 **In the bell** 和 **By email**，自动保存。只开邮件时铃铛不显示该条，邮件未在网站启用时该列不可操作。Account 页的 **Notification settings** 也可进入。
+
+所有人的首页顶部显示生效公告和发布人署名。员工从 **Daily work → Announcements** 发布公告：Title、Message 必填，Remove at 可选，按悉尼时间填写。作者能修改和下架自己的，Manager 还能下架别人的。已结束公告仍可在管理页查到。
+
+Manager 在 **Room management** 维修或关闭房间时，原因自动成为状态公告，可填预计恢复时间 **Expected back**。到时间不会自行重开；由 Manager 选择 Reopen，公告才自动下架。状态公告标有 **From room status**，不能当作手动公告编辑。设备的相同规则已在接口实现，设备状态的界面入口仍待后续任务。
+
 ## Where does the code live?
 
 You do not need to read every folder to understand one feature.

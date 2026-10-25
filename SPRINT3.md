@@ -376,3 +376,18 @@ No API, schema or booking-rule change. Review: project docs `claude/reports/2026
 | RV-D2 | `services/notifications.py` `save_notification_preferences` (check all names, then save in `repo.atomic()`) | `test_notification_preferences.py` `test_a_refused_save_changes_nothing` |
 | SU-1 | `features/auth/MockSsoPage.tsx` `create` (Create one → Create account form, `demoRegister`); `features/auth/mock-sso.css` `.mock-sso-create`, `.mock-sso-back` | routing tests `a new demo student creates an account on the mock sign-in page`, `the mock sign-in page offers no sign-up when demo registration is off` |
 | DK-1 | `docker-compose.yml`, `.env.docker.example`, `backend/Dockerfile`, `backend/entrypoint.sh` (new database: schema + optional `seed_*.sql` in one transaction; `migrate` subcommand), `backend/.dockerignore`, `frontend/Dockerfile`, `frontend/nginx.conf`, `frontend/.dockerignore`; steps in `DEPLOY.md` | `entrypoint.sh` run against a temporary local PostgreSQL (new database, restart keeps a changed password, `migrate`); containers not yet run (no Docker on the dev machine) |
+## 24. 通知独立渠道与公告栏（1.19.0，Sprint 3）
+
+范围：任务清单 N1、N2、A1–A4、D1；不做 D2，不改 Docker / 部署文件，不重新部署 EC2。
+
+| 项 | 文件和主要函数 | 自动验证 |
+| --- | --- | --- |
+| N1 设置页和侧栏 | `frontend/src/features/notifications/NotificationPreferences.tsx`；`app/routes.ts`、`AppRouter.tsx`、`AppLayout.tsx`、`UtilityPages.tsx`；`features/booking/api.ts`、`types.ts`；`ui/workspace.css` | `routing.spec.ts` 三种角色的 `1.19 notifications`：五类十开关、失败不丢选择、刷新保留、邮件禁用、Account 链接、390px 等宽、新文字 ≥12px |
+| N2 通知渠道 | `backend/booking/domain.py` `Notification/NotificationPreference`；`services/notifications.py` `_category_channels/_notify`、偏好和读通知函数；`notification_channels.py`；`serializers.py`；`views/notifications.py` | `test_119.py` `Acceptance119` 的 channels / partial_preferences；`test_notification_preferences.py` 同步新契约；HTTP `API119Tests` |
+| A1 / A3 / A4 公告及权限 | 新 `services/announcements.py`；新 `views/announcements.py`；`services/__init__.py`、`views/__init__.py`、`urls.py`；`domain.py` `Announcement`；`repository.py`、`postgres.py` | `Acceptance119` 的 expiry_order_history、ownership_matrix；HTTP 学生写 403、禁止伪造 kind、跨作者 Admin / Manager 权限 |
+| A2 状态公告 | `services/resources.py` `set_resource_status`；`AnnouncementsMixin._status_announcement`；`serializers.py` `ResourceStatusSerializer`；`views/admin.py` | Memory / PG 共用 status_upsert（同状态改原因、维修→关闭、重开、房间及设备、恢复估计不过期）；status_and_announcement_roll_back_together |
+| 数据库 | `backend/database/schema.sql`；新 `migrations/009_announcements_notification_channels.sql`；`repository.py` Memory 事务快照；`postgres.py` 公告读写 | `test_postgres.py` 新 `Postgres119Tests` 共用六项服务验收，加旧偏好升级／009 连跑两遍；`check-local.sh schema` 比较新旧库 |
+| 前端公告 | 新 `features/announcements/AnnouncementBoard.tsx`、`AnnouncementsPage.tsx`、`dates.ts`；`dashboard/DashboardPage.tsx`、`admin/TodayPage.tsx`；新 `manager/ResourceStatusDialog.tsx`；`manager/ManagerBookingsPage.tsx`；API / types / routes / workspace 样式同上 | `routing.spec.ts` 公告发布、修改、下架失败弹窗、首页署名、学生权限、空公告无区域、390px；状态弹窗错误和输入保留；新 `announcement-dates.test.mjs` 夏令时及无效日期 |
+| D1 文档 | `openapi.json` 1.19.0（72 路由）；`frontend-api.md`；`database/README.md`；CHANGELOG；本节；ARCHITECTURE 第 10 节；`frontend/README.md`、`PROJECT_GUIDE.md` 使用说明 | OpenAPI 校验及路由覆盖；任务卡记录完整检查的实际结果行 |
+
+实现前的失败日志和完整检查结果放在项目外 `9900/output/1.19.0-checks/`；最终验收和截图索引见 `claude/tasks-1.19.0.md` 及本轮交付报告。通知邮件的实际外部送达、线上 EC2 页面未在本轮验证。

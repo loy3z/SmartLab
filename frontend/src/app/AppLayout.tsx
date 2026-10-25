@@ -94,6 +94,8 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
         { path: '/bookings', label: 'My bookings', icon: <CalendarIcon /> },
         { path: '/induction', label: 'Induction & training', icon: <CapIcon /> },
       ]
+  // Sprint 3 (1.19.0): settings visible in both navigation variants.
+  mainItems.push({ path: '/settings/notifications', label: 'Notifications', icon: <SlidersIcon /> })
   // Sprint 3 (internal-tool UI, AI-6): every page has one sentence-case name, the same here, in its H1 and in
   // AppRouter's PAGE_TITLES (browser tab).
   const staffSections: NavSection[] = isStaff ? [
@@ -101,6 +103,7 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
       label: 'Daily work',
       items: [
         { path: '/admin/today', label: 'Today', icon: <DashboardIcon /> },
+        { path: '/admin/announcements', label: 'Announcements', icon: <FileIcon /> }, // Sprint 3 (1.19.0)
         { path: '/admin/qualifications', label: 'Induction review', icon: <CapIcon /> },
         { path: '/admin/bookings', label: 'Booking review', icon: <FileIcon /> },
         { path: '/admin/freezes', label: 'Booking freezes', icon: <UserIcon /> },

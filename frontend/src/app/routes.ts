@@ -17,6 +17,9 @@ const permissions: Record<string, readonly Role[]> = {
   '/manager/setup': ['MANAGER'], // Sprint 3 (1.16.0): inductions and the lab's contact details
   '/admin/records': ['ADMIN', 'MANAGER'], // Sprint 3: Booking Records (records and usage statistics)
   '/manager/usage': ['ADMIN', 'MANAGER'], // Sprint 3: old Usage Report address, redirects to Booking Records
+  // Sprint 3 (1.19.0)
+  '/settings/notifications': ['STUDENT', 'ADMIN', 'MANAGER'],
+  '/admin/announcements': ['ADMIN', 'MANAGER'],
   '/account': ['STUDENT', 'ADMIN', 'MANAGER'],
   '/help': ['STUDENT', 'ADMIN', 'MANAGER'],
 }

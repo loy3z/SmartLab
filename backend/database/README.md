@@ -4,10 +4,10 @@
 
 ## 包含的文件和数据
 
-- `database/schema.sql`：14 张表（1.16.0 起多了 `site_contact`）、约束、索引、序列和审计保护触发器。
+- `database/schema.sql`：16 张表（含 `site_contact`、`notification_preference`、1.19.0 的 `announcement`）、约束、索引、序列和审计保护触发器。
 - `database/seed_resources.sql`：2 条培训要求（Advanced 要求先通过 General）、2 个房间、20 台设备（记录所在房间）。
 - `database/seed_users.sql`：6 个演示账号（与内存版演示数据相同的假 zID 和 id），以及 z1000001 一条已通过的 induction。全部是编造的数据，不要把真实学生的 zID 提交进 Git。
-- `database/migrations/`：已有数据库的升级脚本 001–007，按编号顺序执行，都可以重复执行（见第 2 节）。
+- `database/migrations/`：已有数据库的升级脚本 001–009，按编号顺序执行，都可以重复执行（见第 2 节）。
 - `booking/tests/test_postgres.py`：用真实 PostgreSQL 跑的适配器集成测试（见第 6 节）。
 - `booking/postgres.py`：数据库及上传文件存储适配器。
 - `requirements-postgres.txt`：后端依赖及 PostgreSQL 驱动。
@@ -66,6 +66,19 @@ Get-ChildItem .\database\migrations\*.sql | Sort-Object Name | ForEach-Object {
 | `005_resource_category_demo_password.sql` | 设备类别 `bookable_resource.category`（演示设备填上编的类别，已填的不覆盖）；演示账号 z9000001、z9000002 的密码设为 `123` |
 | `006_calendar_notifications_attendance_series.sql` | 新表 `notification`、`calendar_feed`、`unfreeze_request`、`booking_series`；`app_users` 加 `no_show_count`、`frozen_until`；`booking` 加 `series_id`、`attendance`、`checked_in_at`。第一次执行时把已经开始的已批准预约标为 `NOT_TRACKED`，不会算成缺席 |
 | `007_change_requests_guidance_details_contact.sql` | 1.16.0：`booking` 加 `replaces_id`（申请改期，外键指向原预约，加部分唯一索引：一个预约同时只有一个未决定的改期）；`qualification_requirement` 加 `how_to_complete`、`accepted_evidence`、`reviewer`、`contact`（默认空）；`bookable_resource` 加 `capacity`（只有房间，1–1000）和 `details`（`jsonb` 数组，默认 `[]`）；新表 `site_contact`（实验室联系方式，只有一行）。不改已有数据 |
+| `008_notification_preferences.sql` | 每人每类别的通知站内开关 `notification_preference.enabled` |
+| `009_announcements_notification_channels.sql` | Sprint 3（1.19.0）：偏好加 `email_enabled DEFAULT true NOT NULL`，保留旧 `enabled`；通知记录加 `in_app`、`email` 渠道快照（默认 true）；新表 `announcement`、每资源一条未下架状态公告的部分唯一索引及时间索引 |
+
+### 1.19.0 已有数据库升级（Sprint 3）
+
+数据库已经到 008 时，只执行 009；它不会改旧的站内选择，邮件默认开启。公告 `author_role` 保存发布角色，`expected_back` 是恢复估计，状态公告的 `expires_at` 必须为 null。手动公告没有资源和恢复估计。`removed_by` / `created_by` 保留外键，记录软下架历史。
+
+```powershell
+& "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\009_announcements_notification_channels.sql'
+if ($LASTEXITCODE -ne 0) { throw '009 升级失败，事务已回滚。' }
+```
+
+009 可以重复执行；用 `bash claude-tools/check-local.sh schema` 验证新建库和从 HEAD 升级、迁移连跑两遍后的结构一致。该本地检查使用临时库，不是线上升级。本轮未重新部署 EC2。旧迁移 005 会重设演示员工密码，已有库升级到 009 不需要重跑 005。
 
 升级后的库和用 `schema.sql` 与种子文件新建的库，`pg_dump --schema-only` 结果完全一致。每次改表结构都要按这个方法验证：新建一个库、一个按旧脚本建的库，后者执行全部升级脚本（执行两遍），再比较两边的 `pg_dump --schema-only`。
 
@@ -167,6 +180,8 @@ python manage.py test booking.tests.test_postgres -v 2
 ```
 
 这组测试覆盖：各类记录读写和类型、房间状态、前置 induction 和设备所在房间、staff 邀请码激活和密码登录、上传附件、完整审批流程（待审批 → 批准 → 取消 → 候补递补 → 24 小时到期自动批准）、事务回滚、审计记录不可修改、两个人同时申请同一时段时只有一人进入待审批，以及通知、订阅链接、解冻申请、重复预约、到场确认和冻结的读写。
+
+Sprint 3（1.19.0）的 `Postgres119Tests` 与 `Memory119Tests` 复用同一组验收：四种通知渠道、部分保存与个人隔离、公告权限矩阵、过期和下架、房间及设备状态公告更新／重开、同事务回滚；另有旧偏好升级与 009 连跑两遍测试。
 
 其余测试（`python manage.py test booking`）使用内存存储，跑之前先把 `REPOSITORY_FACTORY` 和 `FILE_STORAGE_FACTORY` 两个变量清掉（或新开一个终端）。
 

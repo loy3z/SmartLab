@@ -3,11 +3,11 @@ import type { User } from '../features/booking/types'
 import { homePath } from './routes'
 import { ChangePassword } from '../features/auth/ChangePassword' // Sprint 3
 import { LabContactCard } from '../features/contact/LabContact' // Sprint 3 (1.16.0)
-import { NotificationPreferences } from '../features/notifications/NotificationPreferences' // Sprint 3 (2026-10-25)
+// Sprint 3 (1.19.0): settings now have a dedicated navigation entry.
 
 export function AccountPage({ user }: { user: User }) {
   // Sprint 3 (internal-tool UI, AI-2): no eyebrow or introduction line above the details.
-  return <section className="app-utility-page"><h1>Account details</h1><div className="app-card"><dl className="app-account-fields"><div><dt>Full name</dt><dd>{user.display_name}</dd></div><div><dt>University zID</dt><dd>{user.zid}</dd></div><div><dt>University email</dt><dd>{user.university_email || 'Not provided'}</dd></div><div><dt>Role</dt><dd>{user.role === 'STUDENT' ? 'Student' : user.role === 'ADMIN' ? 'Administrator' : 'Manager'}</dd></div><div><dt>Account status</dt><dd>{user.active ? 'Active' : 'Inactive'}</dd></div></dl><p className="app-page-description">To update your account details or access, contact your laboratory administrator.</p></div>{user.role !== 'STUDENT' && !user.test_account && <ChangePassword />}<NotificationPreferences /></section>
+  return <section className="app-utility-page"><h1>Account details</h1><div className="app-card"><dl className="app-account-fields"><div><dt>Full name</dt><dd>{user.display_name}</dd></div><div><dt>University zID</dt><dd>{user.zid}</dd></div><div><dt>University email</dt><dd>{user.university_email || 'Not provided'}</dd></div><div><dt>Role</dt><dd>{user.role === 'STUDENT' ? 'Student' : user.role === 'ADMIN' ? 'Administrator' : 'Manager'}</dd></div><div><dt>Account status</dt><dd>{user.active ? 'Active' : 'Inactive'}</dd></div></dl><p className="app-page-description">To update your account details or access, contact your laboratory administrator.</p></div>{user.role !== 'STUDENT' && !user.test_account && <ChangePassword />}<div className="app-card"><Link to="/settings/notifications">Notification settings</Link></div></section>
 }
 
 export function HelpPage({ user }: { user: User }) {

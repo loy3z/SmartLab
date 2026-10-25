@@ -16,6 +16,8 @@ const dashboard: Dashboard = {
   counts: { WAITING_QUALIFICATION: 0, WAITLISTED: 0, PENDING_APPROVAL: 0, APPROVED: 0, REJECTED: 0, CANCELLED: 0, EXPIRED: 0 },
 }
 const emptyList = { count: 0, results: [] }
+
+// Sprint 3 (1.19.0): new notification/announcement acceptance cases use the same isolated API fixture.
 interface MockApi {
   me: 'ok' | 'offline' | 'expired'
   config: AuthConfig
@@ -76,6 +78,7 @@ const test = base.extend<{ api: MockApi }>({
       }
       if (path === 'dashboard/') return json(dashboard)
       if (path === 'notifications/' && request.method() === 'GET') return json({ count: 0, unread_count: 0, results: [] })
+      if (path === 'announcements/' && request.method() === 'GET') return json(emptyList)
       // Sprint 3 (2026-10-25): the Account page's notification switches (all on by default).
       if (path === 'notifications/preferences/' && request.method() === 'GET') {
         return json({ results: ['bookings', 'reminders', 'induction', 'account', 'resources'].map((category) => ({ category, enabled: true })) })
@@ -1434,4 +1437,147 @@ test('a Manager saves the lab\'s contact details on Lab setup', async ({ page })
   await page.getByRole('button', { name: 'Save contact details' }).click()
   await expect(page.getByText('Contact details saved')).toBeVisible()
   expect(saved).toEqual([{ email: 'lab@example.edu', phone: '', hours: '', note: '' }])
+})
+
+// Sprint 3 (1.19.0): acceptance tests, first run against 81ef6a5 before implementing the new pages.
+for (const role of ['STUDENT', 'ADMIN', 'MANAGER'] as Role[]) {
+  test(`1.19 notifications: ${role} can save two independent channels and reload at 390px`, async ({ page }, testInfo) => {
+    const categories = ['bookings', 'reminders', 'induction', 'account', 'resources']
+    const preferences = categories.map(category => ({ category, in_app: true, email: true }))
+    let available = true
+    let failSave = true
+    const writes: unknown[] = []
+    await page.route('**/api/v1/notifications/preferences/', async route => {
+      if (route.request().method() === 'PUT') {
+        const body = route.request().postDataJSON()
+        if (failSave) {
+          failSave = false
+          return route.fulfill({ status: 503, json: { error: { code: 'TEMPORARY_FAILURE', message: 'Settings could not be saved.' } } })
+        }
+        writes.push(body)
+        for (const [category, value] of Object.entries(body.preferences)) Object.assign(preferences.find(item => item.category === category)!, value)
+      }
+      await route.fulfill({ json: { results: preferences, email_available: available } })
+    })
+    await page.goto('/#/login')
+    await signIn(page, role)
+    await expect(page.getByRole('region', { name: 'Announcements', exact: true })).toHaveCount(0)
+    await page.getByRole('link', { name: 'Notifications', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Notifications', exact: true })).toBeVisible()
+    await expect(page.getByRole('checkbox')).toHaveCount(10)
+    await page.getByRole('checkbox', { name: 'Booking updates: In the bell', exact: true }).click()
+    await expect(page.getByRole('alert')).toContainText('Settings could not be saved.')
+    await expect(page.getByRole('checkbox', { name: 'Booking updates: In the bell', exact: true })).toBeChecked()
+    await page.getByRole('checkbox', { name: 'Booking updates: In the bell', exact: true }).click()
+    await expect(page.getByRole('checkbox', { name: 'Booking updates: In the bell', exact: true })).not.toBeChecked()
+    await expect(page.getByRole('checkbox', { name: 'Booking updates: By email', exact: true })).toBeChecked()
+    expect(writes).toEqual([{ preferences: { bookings: { in_app: false } } }])
+    await page.reload()
+    await expect(page.getByRole('checkbox', { name: 'Booking updates: In the bell', exact: true })).not.toBeChecked()
+    available = false
+    await page.reload()
+    await expect(page.getByText('Email is not switched on for this site.', { exact: true })).toBeVisible()
+    await expect(page.getByRole('checkbox', { name: 'Booking updates: By email', exact: true })).toBeDisabled()
+    await page.setViewportSize({ width: 390, height: 844 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth === document.documentElement.clientWidth)).toBe(true)
+    expect(await page.locator('.notification-settings').evaluate(root => Array.from(root.querySelectorAll('h1,h2,p,label,span,input,button')).every(element => Number.parseFloat(getComputedStyle(element).fontSize) >= 12))).toBe(true)
+    if (role === 'STUDENT') {
+      await page.emulateMedia({ reducedMotion: 'reduce' })
+      await page.evaluate(() => { (document.activeElement as HTMLElement)?.blur(); window.scrollTo(0, 0) })
+      await page.screenshot({ path: testInfo.outputPath('notifications-390.png'), fullPage: true })
+    }
+    await page.goto('/#/account')
+    await page.getByRole('link', { name: 'Notification settings', exact: true }).click()
+    await expect(page).toHaveURL(/#\/settings\/notifications$/)
+  })
+}
+
+test('1.19 announcements: staff manage own notices; public boards show signatures; no 390px overflow', async ({ page }, testInfo) => {
+  const base = { id: 'own', title: 'Safety update', body: 'Read the updated lab guidance.', kind: 'MANUAL', resource_id: null,
+    created_by: users.ADMIN.id, author_role: 'ADMIN', author: { id: users.ADMIN.id, display_name: 'Test Admin', role: 'ADMIN' },
+    created_at: '2026-10-26T00:00:00Z', updated_at: '2026-10-26T00:00:00Z', expires_at: null, expected_back: null, removed_at: null, active: true }
+  const notices = [{ ...base, id: 'status', kind: 'RESOURCE_STATUS', title: 'Lab Room 1 is closed', created_by: users.MANAGER.id,
+    author_role: 'MANAGER', author: { id: users.MANAGER.id, display_name: 'Test Manager', role: 'MANAGER' } }]
+  let fail = true
+  let failRemove = true
+  await page.route('**/api/v1/announcements/**', async route => {
+    const method = route.request().method()
+    if (method === 'GET') return route.fulfill({ json: { count: notices.length, results: notices } })
+    if (fail) { fail = false; return route.fulfill({ status: 400, json: { error: { code: 'VALIDATION_ERROR', message: 'Please check the announcement.' } } }) }
+    if (method === 'POST' && route.request().url().endsWith('/announcements/')) {
+      notices.push({ ...base, ...route.request().postDataJSON() })
+      return route.fulfill({ status: 201, json: notices[1] })
+    }
+    if (method === 'PATCH') { Object.assign(notices[1], route.request().postDataJSON()); return route.fulfill({ json: notices[1] }) }
+    if (failRemove) { failRemove = false; return route.fulfill({ status: 409, json: { error: { code: 'TEMPORARY_FAILURE', message: 'Please retry removing this announcement.' } } }) }
+    notices.splice(1, 1)
+    return route.fulfill({ json: { ...base, active: false, removed_at: '2026-10-26T01:00:00Z' } })
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'ADMIN')
+  await expect(page.getByRole('region', { name: 'Announcements', exact: true })).toContainText('Posted by Test Manager (Manager)')
+  await page.getByRole('link', { name: 'Announcements', exact: true }).click()
+  await page.getByLabel('Title', { exact: true }).fill('Safety update')
+  await page.getByLabel('Message', { exact: true }).fill('Read the updated lab guidance.')
+  await page.getByRole('button', { name: 'Publish announcement', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('Please check the announcement.')
+  await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Safety update')
+  await page.getByRole('button', { name: 'Publish announcement', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Edit Safety update', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Edit Lab Room 1 is closed' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Edit Safety update', exact: true }).click()
+  await page.getByLabel('Title', { exact: true }).fill('Updated safety')
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Remove Updated safety', exact: true })).toBeVisible()
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth === document.documentElement.clientWidth)).toBe(true)
+  expect(await page.locator('.announcements-page').evaluate(root => Array.from(root.querySelectorAll('h1,h2,h3,p,label,span,input,textarea,button')).every(element => Number.parseFloat(getComputedStyle(element).fontSize) >= 12))).toBe(true)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  // Capture the freshly loaded mobile layout, rather than a mid-scroll desktop-to-phone resize.
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Remove Updated safety', exact: true })).toBeVisible()
+  await page.evaluate(() => { (document.activeElement as HTMLElement)?.blur(); window.scrollTo(0, 0) })
+  await page.screenshot({ path: testInfo.outputPath('announcements-390.png'), fullPage: true })
+  await page.getByRole('button', { name: 'Remove Updated safety', exact: true }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Remove announcement', exact: true }).click()
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Please retry removing this announcement.')
+  await page.getByRole('dialog').getByRole('button', { name: 'Remove announcement', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Edit Updated safety', exact: true })).toHaveCount(0)
+  await signOut(page)
+  await signIn(page, 'STUDENT')
+  await expect(page.getByRole('region', { name: 'Announcements', exact: true })).toContainText('Lab Room 1 is closed')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth === document.documentElement.clientWidth)).toBe(true)
+  await expect(page.getByRole('link', { name: 'Announcements', exact: true })).toHaveCount(0)
+  await page.goto('/#/admin/announcements')
+  await expect(page.getByRole('heading', { name: 'Announcements', exact: true })).toHaveCount(0)
+})
+
+test('1.19 resource status keeps errors inside the form and sends the optional Sydney recovery estimate', async ({ page }) => {
+  const writes: unknown[] = []
+  await page.route('**/api/v1/**', async route => {
+    const path = new URL(route.request().url()).pathname.replace('/api/v1/', '')
+    if (path === 'resources/' && route.request().method() === 'GET') return route.fulfill({ json: { count: 1, results: [reviewRoom] } })
+    if (path === 'admin/resources/room-1/status/') {
+      writes.push(route.request().postDataJSON())
+      if (writes.length === 1) return route.fulfill({ status: 409, json: { error: { code: 'CONFLICT', message: 'Please retry this status change.' } } })
+      return route.fulfill({ json: { resource: { ...reviewRoom, status: 'MAINTENANCE' }, affected_bookings: [] } })
+    }
+    return route.fallback()
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'MANAGER')
+  await page.goto('/#/manager/bookings')
+  await page.getByRole('button', { name: 'Maintenance', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Put Lab Room 1 under maintenance?', exact: true })
+  await dialog.getByLabel('Reason (shown to students)', { exact: true }).fill('Repairing the air conditioning')
+  await dialog.getByLabel('Expected back (optional)', { exact: true }).fill('2030-01-10T12:00')
+  await dialog.getByRole('button', { name: 'Start maintenance', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Please retry this status change.')
+  await expect(dialog.getByLabel('Reason (shown to students)', { exact: true })).toHaveValue('Repairing the air conditioning')
+  await expect(dialog.getByLabel('Expected back (optional)', { exact: true })).toHaveValue('2030-01-10T12:00')
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth === document.documentElement.clientWidth)).toBe(true)
+  await dialog.getByRole('button', { name: 'Start maintenance', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  expect(writes[1]).toEqual({ status: 'MAINTENANCE', reason: 'Repairing the air conditioning', expected_back: '2030-01-10T01:00:00.000Z' })
 })

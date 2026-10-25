@@ -1,61 +1,61 @@
-// Sprint 3 (2026-10-25): per-person notification switches on the Account page.
+// Sprint 3 (1.19.0): dedicated settings with separate website/email channels.
 import { useEffect, useState } from 'react'
 import { useFeedback } from '../../ui/feedback-context'
 import { getNotificationPreferences, saveNotificationPreferences } from '../booking/api'
 import { errorMessage } from '../booking/format'
 import type { NotificationPreference } from '../booking/types'
 
-const LABELS: Record<string, string> = {
-  bookings: 'Booking updates',
-  reminders: 'Reminders',
-  induction: 'Induction and training',
-  account: 'Account and booking freeze',
-  resources: 'Room and equipment status',
+const CATEGORIES: Record<string, { label: string; description: string }> = {
+  bookings: { label: 'Booking updates', description: 'Requests received, approved, rejected, moved, cancelled, waitlisted and expired; weekly series.' },
+  reminders: { label: 'Reminders', description: 'Upcoming bookings and induction expiry reminders.' },
+  induction: { label: 'Induction and training', description: 'Evidence received, verified or rejected.' },
+  account: { label: 'Account and booking freeze', description: 'Missed check-ins, booking freezes, unfreeze decisions and restored access.' },
+  resources: { label: 'Room and equipment status', description: 'Maintenance, closures and reopening affecting your bookings.' },
 }
-
-/** Checkboxes for the categories a person can switch off; the urgent-request notice is not listed. */
 export function NotificationPreferences() {
   const feedback = useFeedback()
   const [items, setItems] = useState<NotificationPreference[]>([])
+  const [emailAvailable, setEmailAvailable] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-
+  const [attempt, setAttempt] = useState(0)
   useEffect(() => {
-    getNotificationPreferences()
-      .then((data) => setItems(data.results))
-      .catch((err) => setError(errorMessage(err)))
-  }, [])
-
-  async function toggle(category: string, enabled: boolean) {
-    setBusy(true)
-    setError('')
+    let active = true
+    getNotificationPreferences().then(data => {
+      if (active) { setItems(data.results); setEmailAvailable(data.email_available); setError('') }
+    }).catch(reason => { if (active) setError(errorMessage(reason)) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [attempt])
+  async function toggle(category: string, channel: 'in_app' | 'email', enabled: boolean) {
+    setBusy(true); setError('')
     try {
-      const data = await saveNotificationPreferences({ [category]: enabled })
-      setItems(data.results)
-      feedback.success(enabled ? 'Turned on' : 'Turned off', LABELS[category] ?? category)
-    } catch (err) {
-      setError(errorMessage(err))
-    } finally {
-      setBusy(false)
-    }
+      const data = await saveNotificationPreferences({ [category]: { [channel]: enabled } })
+      setItems(data.results); setEmailAvailable(data.email_available)
+      feedback.success('Notification settings saved')
+    } catch (reason) { setError(errorMessage(reason)) }
+    finally { setBusy(false) }
   }
-
-  return (
-    <section className="app-card">
-      <h2>Notifications</h2>
-      <p>Choose what appears in the bell. Turning a category off stops its website notifications; booking rules do not change.</p>
-      {error && <p className="bk-error" role="alert">{error}</p>}
-      <ul className="app-pref-list">
-        {items.map((item) => (
-          <li key={item.category}>
-            <label>
-              <input type="checkbox" checked={item.enabled} disabled={busy}
-                onChange={(event) => void toggle(item.category, event.target.checked)} />
-              {LABELS[item.category] ?? item.category}
-            </label>
-          </li>
-        ))}
-      </ul>
-    </section>
-  )
+  return <section className="notification-settings">
+    <h1>Notifications</h1>
+    <div className="app-card">
+      <p>Choose how you receive each type of update. Changes are saved immediately.</p>
+      {!loading && !emailAvailable && <p className="notification-email-note">Email is not switched on for this site.</p>}
+      {loading && <p role="status">Loading notification settings…</p>}
+      {error && <p className="bk-error" role="alert">{error} <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setAttempt(value => value + 1)}>Retry settings</button></p>}
+      {items.length > 0 && <div className="notification-matrix">
+        <div className="notification-matrix-head" aria-hidden="true"><span>Category</span><span>In the bell</span><span>By email</span></div>
+        {items.map(item => <div key={item.category} className="notification-matrix-row">
+          <div><h2>{CATEGORIES[item.category]?.label ?? item.category}</h2><p>{CATEGORIES[item.category]?.description}</p></div>
+          {(['in_app', 'email'] as const).map(channel => <label key={channel}>
+            <span>{channel === 'in_app' ? 'In the bell' : 'By email'}</span>
+            <input type="checkbox" checked={item[channel]} disabled={busy || (channel === 'email' && !emailAvailable)}
+              aria-label={`${CATEGORIES[item.category]?.label ?? item.category}: ${channel === 'in_app' ? 'In the bell' : 'By email'}`}
+              onChange={event => void toggle(item.category, channel, event.target.checked)} />
+          </label>)}
+        </div>)}
+      </div>}
+    </div>
+  </section>
 }

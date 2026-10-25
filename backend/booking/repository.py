@@ -15,6 +15,7 @@ from typing import ContextManager, Iterator, Protocol, Sequence
 
 from .domain import (
     SiteContact,  # Sprint 3 (1.16.0)
+    Announcement,  # Sprint 3 (1.19.0)
     NotificationPreference,  # Sprint 3 (2026-10-25)
     AuditRecord,
     Booking,
@@ -77,6 +78,10 @@ class Repository(Protocol):
     def get_notification(self, notification_id: str) -> Notification | None: ...
     def list_notifications(self, recipient_id: str) -> list[Notification]: ...
     # Sprint 3 (2026-10-25): per-person notification category choices (a missing row means enabled).
+    # Sprint 3 (1.19.0): announcement storage port.
+    def save_announcement(self, announcement: Announcement) -> None: ...
+    def get_announcement(self, announcement_id: str) -> Announcement | None: ...
+    def list_announcements(self) -> list[Announcement]: ...
     def save_notification_preference(self, preference: NotificationPreference) -> None: ...
     def list_notification_preferences(self, principal_id: str) -> list[NotificationPreference]: ...
     # Calendar subscription addresses (one per person).
@@ -115,6 +120,7 @@ class MemoryRepository:
         self._credentials: dict[str, StaffCredential] = {}
         self._notifications: dict[str, Notification] = {}
         self._notification_preferences: dict[str, NotificationPreference] = {}
+        self._announcements: dict[str, Announcement] = {}  # Sprint 3 (1.19.0)
         self._calendar_feeds: dict[str, CalendarFeed] = {}
         self._unfreeze_requests: dict[str, UnfreezeRequest] = {}
         self._series: dict[str, BookingSeries] = {}
@@ -141,6 +147,7 @@ class MemoryRepository:
                 self._unfreeze_requests.copy(),
                 self._series.copy(),
                 self._site_contact,  # Sprint 3 (1.16.0)
+                self._notification_preferences.copy(), self._announcements.copy(),  # Sprint 3 (1.19.0)
             )
             try:
                 yield
@@ -159,6 +166,7 @@ class MemoryRepository:
                     self._unfreeze_requests,
                     self._series,
                     self._site_contact,
+                    self._notification_preferences, self._announcements,  # Sprint 3 (1.19.0)
                 ) = snapshot
                 raise
 
@@ -360,3 +368,16 @@ class MemoryRepository:
     def save_site_contact(self, contact: SiteContact) -> None:
         with self._lock:
             self._site_contact = contact
+
+    # Sprint 3 (1.19.0): records participate in the same rollback snapshot as resource status.
+    def save_announcement(self, announcement: Announcement) -> None:
+        with self._lock:
+            self._announcements[announcement.id] = announcement
+
+    def get_announcement(self, announcement_id: str) -> Announcement | None:
+        with self._lock:
+            return self._announcements.get(announcement_id)
+
+    def list_announcements(self) -> list[Announcement]:
+        with self._lock:
+            return sorted(self._announcements.values(), key=lambda item: (item.created_at, item.id), reverse=True)

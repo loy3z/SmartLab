@@ -1,3 +1,4 @@
+import { AnnouncementBoard } from '../announcements/AnnouncementBoard' // Sprint 3 (1.19.0)
 // Sprint 3 (1.16.0): "Today" — the Admin and Manager home page: what needs doing first, each card linking to its page.
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router'
@@ -43,6 +44,8 @@ export function TodayPage() {
     <section className="today">
       <PageHeader title="Today" description={today}
         actions={<RefreshStamp at={loadedAt} onRefresh={() => void load()} busy={loading && loadedAt !== null} />} />
+      {/* Sprint 3 (1.19.0): public notices are independent of personal notifications. */}
+      <AnnouncementBoard />
       {error && <p className="bk-error" role="alert">{error}</p>}
       {!data && loading && <p role="status">Loading…</p>}
       {data && (

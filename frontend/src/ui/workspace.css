@@ -154,7 +154,6 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .app-shell .ui-drawer { box-shadow: var(--shadow-pop); border-left: 1px solid var(--line); }
 .app-shell .ui-dialog { border-radius: 12px; }
 .app-shell .nt-panel { border-color: var(--line); border-radius: 12px; box-shadow: var(--shadow-pop); }
-.app-shell .nt-ring { animation: none; }
 .app-shell .ind-row { border-radius: 0; box-shadow: none; font-size: 12px; }
 .app-shell .ind-row.is-link:hover { background: #f7f9f2; }
 .app-shell .ind-row h3 { font-size: 14px; letter-spacing: -.2px; }
@@ -219,9 +218,12 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .app-shell .bk-native-dialog .bk-modal { width: 100%; max-height: calc(100dvh - 36px); margin: 0; box-shadow: none; }
 .bk-native-dialog .bk-modal:focus { outline: none; }
 .bk-native-dialog:focus { outline: none; }
-.bk-native-dialog[open] { animation: workspace-enter 180ms ease-out; }
+/* 2026-10-25: dialog entrance is .bk-modal in booking.css; the duplicate fade-in here was removed. */
 .app-shell .bk-timeline-toggle { padding: 8px 0; min-height: 34px; font-size: 12px; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 .app-shell .bk-earlier { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 10px; padding: 10px 12px; font-size: 12px; }
+/* Sprint 3 (2026-10-25): the urgent route is the one action in this hint, so it looks like a button, not a link. */
+.app-shell .bk-earlier .bk-linkbtn { background: var(--yellow); color: var(--ink); border: 1px solid #d9c400; border-radius: 8px; padding: 5px 12px; font-weight: 700; }
+.app-shell .bk-earlier .bk-linkbtn:hover { background: #ffe14d; }
 .app-shell .ui-tl-inputs select { min-height: 40px; border-color: var(--line); font-size: 12px; }
 @media (min-width: 1600px) { .app-content { padding-inline: 54px; } }
 @media (max-width: 1150px) and (min-width: 901px) { .app-sidebar { width: 215px; flex-basis: 215px; } .app-content { padding-inline: 26px; } .app-topbar { padding-inline: 26px; } .bk-find-primary-fields { grid-template-columns: 1fr 1fr 1fr; } .bk-find-primary-fields > button { grid-column: span 2; } }
@@ -269,4 +271,9 @@ input::placeholder, textarea::placeholder { color: #78837d; }
   .bk-find-result > button { grid-column: 1/-1; width: 100%; }
   .bk-find-results-head { align-items: flex-start; flex-direction: column; }
 }
-@media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+@media (prefers-reduced-motion: reduce) { *,*::before,*::after,::backdrop { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+
+/* Sprint 3 (2026-10-25): notification switches on the Account page. */
+.app-pref-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.app-pref-list li label { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.app-pref-list input { width: 18px; height: 18px; }

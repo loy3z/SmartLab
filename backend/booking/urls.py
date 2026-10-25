@@ -40,6 +40,7 @@ urlpatterns = [
     path("calendar/link/reset/", views.CalendarLinkResetView.as_view()),  # Sprint 3
     re_path(r"^calendar/(?P<token>[A-Za-z0-9_-]{16,64})\.ics$", views.CalendarFeedView.as_view()),  # Sprint 3
     path("notifications/", views.NotificationListView.as_view()),  # Sprint 3
+    path("notifications/preferences/", views.NotificationPreferencesView.as_view()),  # Sprint 3 (2026-10-25)
     path("notifications/read-all/", views.NotificationReadAllView.as_view()),  # Sprint 3
     path("notifications/<uuid:notification_id>/read/", views.NotificationReadView.as_view()),  # Sprint 3
     path("account/unfreeze-requests/", views.MyUnfreezeRequestsView.as_view()),  # Sprint 3

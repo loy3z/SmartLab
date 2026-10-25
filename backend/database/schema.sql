@@ -659,6 +659,20 @@ ALTER TABLE ONLY public.booking
 CREATE UNIQUE INDEX booking_one_open_change_idx ON public.booking USING btree (replaces_id)
     WHERE ((replaces_id IS NOT NULL) AND (status = ANY (ARRAY['WAITING_QUALIFICATION'::text, 'PENDING_APPROVAL'::text, 'WAITLISTED'::text])));
 
+-- Sprint 3 (2026-10-25): per-person notification category choices (see migrations/008_notification_preferences.sql).
+CREATE TABLE public.notification_preference (
+    id uuid NOT NULL,
+    principal_id uuid NOT NULL,
+    category text NOT NULL,
+    enabled boolean DEFAULT true NOT NULL
+);
+ALTER TABLE public.notification_preference ADD CONSTRAINT notification_preference_category_check
+    CHECK (category = ANY (ARRAY['bookings'::text, 'reminders'::text, 'induction'::text, 'account'::text, 'resources'::text]));
+ALTER TABLE ONLY public.notification_preference ADD CONSTRAINT notification_preference_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.notification_preference
+    ADD CONSTRAINT notification_preference_principal_fk FOREIGN KEY (principal_id) REFERENCES public.app_users(id) ON DELETE CASCADE;
+CREATE UNIQUE INDEX notification_preference_person_category_idx ON public.notification_preference USING btree (principal_id, category);
+
 
 --
 -- PostgreSQL database dump complete

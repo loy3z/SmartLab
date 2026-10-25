@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { getAvailability } from './api'
 import { errorMessage, fmtDate, fmtDuration, fmtRange, fmtTime, QUAL_TEXT, todaySydney, TZ } from './format'
+import { addDays, dateRange } from './slot-picker' // Sprint 3 (2026-10-25 cleanup): moved out of this file
 import { cellTitle, kindOf } from './slot-cells'
 import { NowLegend, NowLine } from './NowLine' // Sprint 3 (1.15.0)
 import type { Availability, Resource } from './types'
@@ -42,21 +43,7 @@ interface Props {
   takenNote?: string
 }
 
-/** Shift a YYYY-MM-DD date by whole days. */
-function addDays(ymd: string, days: number): string {
-  const date = new Date(`${ymd}T00:00:00Z`)
-  date.setUTCDate(date.getUTCDate() + days)
-  return date.toISOString().slice(0, 10)
-}
 
-/** First and last selectable dates: normal window, urgent (the days before it) or Manager reschedule (from today). */
-function dateRange(d: Availability | null, urgent: boolean, allowEarly: boolean): { earliest?: string; latest?: string } {
-  if (!d) return {}
-  if (d.test_bypass) return { earliest: d.earliest_date }
-  if (urgent) return { earliest: todaySydney(), latest: d.earliest_date ? addDays(d.earliest_date, -1) : undefined }
-  if (allowEarly) return { earliest: todaySydney(), latest: d.latest_date ?? undefined }
-  return { earliest: d.earliest_date, latest: d.latest_date ?? undefined }
-}
 
 export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualification, onEligibility, fixedMinutes, excludeBookingId, forZid, urgent = false, allowEarly = false, initialDate, initialStart, initialMinutes, onAskEarlier, takenNote }: Props) {
   const [date, setDate] = useState(initialDate ?? todaySydney())
@@ -70,6 +57,8 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
   const [showTimeline, setShowTimeline] = useState(!initialStart)
   // Sprint 3 (1.16.0): length used by the "Start / Length" selects (cells of `step` minutes); 1 hour by default.
   const [wantedCells, setWantedCells] = useState<number | null>(null)
+  // Sprint 3 (2026-10-25): the day timeline scrolls sideways; a desktop mouse wheel scrolls it too.
+  const timelineRef = useRef<HTMLDivElement>(null)
   // Applied once, on the first load of the initial day; later days and refreshes start empty as before.
   const pendingInitial = useRef(initialStart && initialMinutes ? { start: initialStart, minutes: initialMinutes } : null)
   const onSelectRef = useRef(onSelect)
@@ -78,6 +67,21 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
     onSelectRef.current = onSelect
     onEligibilityRef.current = onEligibility
   })
+
+  // Sprint 3 (2026-10-25): a mouse wheel over the day timeline scrolls it sideways (Windows wheels have no
+  // horizontal axis). Passive: false so the page itself does not scroll while the timeline moves.
+  useEffect(() => {
+    const el = timelineRef.current
+    if (!el) return
+    const onWheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return
+      if (el.scrollWidth <= el.clientWidth) return
+      event.preventDefault()
+      el.scrollLeft += event.deltaY
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [showTimeline])
 
   const step = resource.slot_minutes
   const maximumMinutes = data?.max_booking_minutes ?? resource.max_booking_minutes
@@ -270,7 +274,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
       {data && slots.length > 0 && <button type="button" className="bk-linkbtn bk-timeline-toggle" aria-expanded={showTimeline} onClick={() => setShowTimeline(value => !value)}>{showTimeline ? 'Hide day availability' : 'View day availability'}</button>}
       {data && slots.length > 0 && showTimeline && (
         <div className="ui-tl">
-          <div className="ui-tl-scroll">
+          <div className="ui-tl-scroll" ref={timelineRef}>
             <div style={{ minWidth: slots.length * 26 }}>
               <div className="ui-tl-hours" aria-hidden="true">
                 {slots.map((s) => {

@@ -2,6 +2,26 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.18.0（2026-10-25）
+
+依据 Loy 试用后的反馈。新增通知偏好，补上 induction 提交的通知，把 urgent 入口做成按钮，删掉登录页里没有意义的直接 demo 登录。
+
+- **通知偏好**（`GET/PUT notifications/preferences/`）：Account 页新增 Notifications 卡片，学生和员工可以按类别关掉站内通知（Booking updates、Reminders、Induction and training、Account and booking freeze、Room and equipment status）。没有保存过的类别默认开启；Manager 的 urgent-request 通知不受影响。偏好按人保存（表 `notification_preference`，迁移 008）。
+- **induction 提交通知**：学生提交 induction 证明后，铃铛收到 "Induction evidence received"（`INDUCTION_SUBMITTED`），属于 induction 类别，可以关掉。以前提交是静默的。
+- **Urgent 入口**：时间轴上方 "Need a date before …? Make an urgent request" 从蓝色文字链接改成黄色按钮，一眼能看出来是紧急通道。
+- **登录页**：删掉 "Other demo sign-in options"（直接输 zID 登录 + Create student account）。演示登录走 "University sign-in (Demo)"，员工走 Staff sign-in，本地测试走 Test console。`auth/demo-login/` 和 `auth/demo-register/` 接口保留，供模拟 SSO 页和测试使用。
+- 接口 1.18.0（新增 `GET/PUT notifications/preferences/`）；迁移 008；OpenAPI 69 路由；无预约规则改动。
+
+## 代码结构清理（2026-10-25，接口仍为 1.17.1）
+
+按结构审查（项目文档 `claude/reports/2026-10-25-code-structure-review.md`）清理死代码并拆分过大的文件。没有接口、数据库或预约规则的改动。
+
+- **后端**：`backend/booking/views.py`（840 行、69 个类）拆成 `views/` 包，按领域分 10 个模块，公共导入和辅助函数在 `views/_common.py`；`from booking.views import X` 的写法不变。
+- **前端**：删掉没有引用的 `src/App.css`；`MyBookings.tsx` 里的 `RescheduleBox` 和 `SeriesCard` 拆成同名文件；`SlotPicker.tsx` 的日期辅助函数移到 `slot-picker.ts`；`ACTIVE` 状态组移到 `my-bookings.ts` 共用。
+- **动效死代码**：删掉重复的页面淡入（`.app-page` 只保留 `workspace.css` 一条）、重复的 dialog 进场（只保留 `booking.css` 的 `.bk-modal`）、被覆盖的 reduced-motion 规则（只保留 `workspace.css` 一条，并补上 `::backdrop`）、被覆盖的按钮按压缩放，以及覆盖铃铛摆动的 `animation: none`。铃铛摆动现在会真正播放。
+- **样式分层**：`frontend/README.md` 新增「Style layers」，规定新样式只写进 `workspace.css`，`ui.css` 冻结、逐组件搬移。
+- 验证：后端 355 通过（18 个 PostgreSQL 跳过），前端单元 68、lint、build 通过；Playwright 与全套脚本结果见交付记录。
+
 ## 内部工具风格：去掉 AI 味第一步（2026-10-25，接口仍为 1.17.1）
 
 Loy 定的方向：界面按“学校的内部工具”做，不再参考获奖网站。这一轮做文案、字号、字体、命名四件事（任务清单在项目文档 `claude/tasks-ui-internal-tool.md`，D1–D8 都按建议定）。没有接口、数据库、预约规则的改动。

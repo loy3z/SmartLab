@@ -123,6 +123,17 @@ Dashboard data comes from `dashboard/`, `resources/` and `qualification-requirem
 
 `features/booking/Layout.tsx` is not mounted anywhere (kept for the team's reference). Shared UI styles are in `src/app/shell.css`, authentication styles in `features/auth/auth.css`, and dashboard styles in `features/dashboard/dashboard.css`. Booking and admin styles are in `features/booking/booking.css`.
 
+### Style layers
+
+The stylesheets come from two rounds of UI work; edit them in this order, not independently:
+
+- `src/index.css` holds the design tokens (`--motion-fast`, `--motion-base`, `--ease-out`, `--ease-spring`) and the base page styles.
+- `src/app/shell.css` is the 1.15.0 application shell.
+- `src/ui/workspace.css` loads last and is the only place new styles go. It also owns the single `prefers-reduced-motion` rule (including `::backdrop`).
+- `src/ui/ui.css` is the older component set and is frozen. When a component is next touched, move its rules into `workspace.css` and delete the old ones. Do not add rules to `ui.css`, and do not add more `.app-shell` overrides.
+
+Each dialog has one entrance animation only (`.bk-modal` in `booking.css`), and the bell rings through `nt-ring` in `notifications.css`; no stylesheet may override it with `animation: none`.
+
 ## Checks
 
 ```powershell

@@ -8,14 +8,37 @@ plugged in through booking/notification_channels.py.
 """
 from contextvars import ContextVar
 from dataclasses import replace
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 from zoneinfo import ZoneInfo
 
-from ..domain import BookingStatus, Notification, Role
+from ..domain import BookingStatus, Notification, NotificationPreference, Role
 from ..errors import DomainError
 
 # Notifications created during the current request, so extra channels can send them after commit.
 _new_notification_ids = ContextVar("booking_new_notification_ids", default=None)
+
+# Sprint 3 (2026-10-25): categories a person can switch off on the Account page. The Managers' urgent-request
+# notice is deliberately not in this list: it is part of their job, not a personal update.
+NOTIFICATION_CATEGORIES = ("bookings", "reminders", "induction", "account", "resources")
+
+_CATEGORY_BY_KIND = {
+    "BOOKING_APPROVED": "bookings", "BOOKING_REJECTED": "bookings", "BOOKING_PROMOTED": "bookings",
+    "BOOKING_EXPIRED": "bookings", "BOOKING_CANCELLED": "bookings", "BOOKING_RESCHEDULED": "bookings",
+    "BOOKING_SUBMITTED": "bookings", "BOOKING_CREATED_FOR_YOU": "bookings",
+    "SERIES_CREATED": "bookings", "SERIES_CREATED_FOR_YOU": "bookings",
+    "CHANGE_APPROVED": "bookings", "CHANGE_REJECTED": "bookings", "CHANGE_REQUESTED": "bookings",
+    "BOOKING_REMINDER": "reminders", "INDUCTION_EXPIRING": "reminders",
+    "QUALIFICATION_VERIFIED": "induction", "QUALIFICATION_REJECTED": "induction",
+    "INDUCTION_SUBMITTED": "induction",
+    "NO_SHOW_RECORDED": "account", "ACCOUNT_FROZEN": "account", "ACCOUNT_UNFROZEN": "account",
+    "UNFREEZE_APPROVED": "account", "UNFREEZE_REJECTED": "account",
+    "RESOURCE_OUT_OF_SERVICE": "resources", "RESOURCE_REOPENED": "resources",
+}
+
+
+def notification_category(kind: str) -> str | None:
+    """The preference category a notification kind belongs to (None: always sent, e.g. URGENT_REQUEST)."""
+    return _CATEGORY_BY_KIND.get(kind)
 
 
 def _local(value, zone):
@@ -45,6 +68,10 @@ class NotificationsMixin:
     def _notify(self, recipient_id, kind, title, body, booking=None, link=None):
         if not recipient_id:
             return None
+        # Sprint 3 (2026-10-25): a person can switch a category off; unknown kinds and missing rows are sent.
+        category = notification_category(kind)
+        if category is not None and not self._category_enabled(recipient_id, category):
+            return None
         notification = Notification(str(uuid4()), str(recipient_id), kind, title, body, self.now(),
                                     link=link or ("/bookings" if booking else None),
                                     booking_id=booking.id if booking else None)
@@ -55,6 +82,27 @@ class NotificationsMixin:
             _new_notification_ids.set(ids)
         ids.append(notification.id)
         return notification
+
+    def _category_enabled(self, principal_id, category):
+        for item in self.repo.list_notification_preferences(str(principal_id)):
+            if item.category == category:
+                return item.enabled
+        return True
+
+    def notification_preferences(self, actor):
+        """Every choice the Account page shows; a category without a row is on."""
+        saved = {item.category: item.enabled for item in self.repo.list_notification_preferences(actor.id)}
+        return [{"category": category, "enabled": saved.get(category, True)} for category in NOTIFICATION_CATEGORIES]
+
+    def save_notification_preferences(self, actor, choices):
+        """choices: {category: bool}. One stable row per category, so saving again updates instead of duplicating."""
+        for category, enabled in choices.items():
+            if category not in NOTIFICATION_CATEGORIES:
+                raise DomainError("VALIDATION_ERROR", f"Unknown notification category: {category}.")
+            record_id = uuid5(NAMESPACE_URL, f"notification-preference:{actor.id}:{category}")
+            self.repo.save_notification_preference(
+                NotificationPreference(str(record_id), actor.id, category, bool(enabled)))
+        return self.notification_preferences(actor)
 
     def take_new_notification_ids(self):
         ids = _new_notification_ids.get() or []

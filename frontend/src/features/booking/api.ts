@@ -18,6 +18,7 @@ import type {
   DayOverviewQuery,
   NotificationList,
   AppNotification,
+  NotificationPreference,
   CalendarLink,
   UnfreezeRequest,
   FrozenUser,
@@ -257,6 +258,14 @@ export function listNotifications(options: { unread?: boolean; limit?: number } 
 }
 export const markNotificationRead = (id: string) => post<AppNotification>(`notifications/${id}/read/`, {})
 export const markAllNotificationsRead = () => post<{ updated: number }>('notifications/read-all/', {})
+
+// Sprint 3 (2026-10-25): notification category choices.
+export const getNotificationPreferences = () =>
+  request<{ results: NotificationPreference[] }>('notifications/preferences/')
+export const saveNotificationPreferences = (preferences: Record<string, boolean>) =>
+  request<{ results: NotificationPreference[] }>('notifications/preferences/', {
+    method: 'PUT', body: JSON.stringify({ preferences }),
+  })
 
 // Sprint 3: check-in and booking freeze ---------------------------------------------------------------------------------
 export const checkIn = (bookingId: string) => post<Booking>(`bookings/${bookingId}/check-in/`, {})

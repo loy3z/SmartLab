@@ -9,7 +9,8 @@ from django.db import connection, transaction
 from psycopg.types.json import Jsonb
 
 from .domain import (
-    AuditRecord, Booking, BookingSeries, BookingStatus, CalendarFeed, Notification, OutlookSyncRecord, Principal,
+    AuditRecord, Booking, BookingSeries, BookingStatus, CalendarFeed, Notification, NotificationPreference,
+    OutlookSyncRecord, Principal,
     QualificationRequirement, QualificationStatus, QualificationSubmission,
     Resource, ResourceKind, Role, StaffCredential, UnfreezeRequest, UnfreezeStatus,
     SITE_CONTACT_ID, SiteContact,  # Sprint 3 (1.16.0)
@@ -32,6 +33,7 @@ _TABLES = {
     UnfreezeRequest: 'unfreeze_request',
     BookingSeries: 'booking_series',
     SiteContact: 'site_contact',  # Sprint 3 (1.16.0)
+    NotificationPreference: 'notification_preference',  # Sprint 3 (2026-10-25)
 }
 # Sprint 3 (1.16.0): fields kept as JSON (jsonb) lists of objects rather than uuid[] arrays.
 _JSON_LISTS = {(Resource, 'details')}
@@ -50,6 +52,7 @@ _ORDER = {
     Notification: 'created_at DESC, id DESC', CalendarFeed: 'principal_id',
     UnfreezeRequest: 'created_at, id', BookingSeries: 'created_at, id',
     SiteContact: 'id',
+    NotificationPreference: 'category',
 }
 _KEYS = {OutlookSyncRecord: 'booking_id', StaffCredential: 'principal_id', CalendarFeed: 'principal_id'}
 _WRITE_LOCK = 0x534D4152544C4142
@@ -272,6 +275,13 @@ class PostgresRepository:
 
     def list_notifications(self, recipient_id):
         return _filtered(Notification, recipient_id=recipient_id)
+
+    # Sprint 3 (2026-10-25): notification category choices.
+    def save_notification_preference(self, preference):
+        _insert(preference, upsert=True)
+
+    def list_notification_preferences(self, principal_id):
+        return _filtered(NotificationPreference, principal_id=principal_id)
 
     def get_calendar_feed(self, principal_id):
         return _get(CalendarFeed, principal_id)

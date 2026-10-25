@@ -377,6 +377,18 @@ class Notification:
 
 
 @dataclass(frozen=True)
+class NotificationPreference:
+    """Sprint 3 (2026-10-25): one person's choice for one notification category.
+
+    A missing row means the category is on, so new accounts keep every notification by default.
+    """
+    id: str            # stable UUID built from (principal_id, category)
+    principal_id: str
+    category: str      # bookings | reminders | induction | account | resources
+    enabled: bool
+
+
+@dataclass(frozen=True)
 class CalendarFeed:
     """Secret calendar subscription address of one person (the token is the only key to the feed)."""
     principal_id: str

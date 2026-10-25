@@ -9,7 +9,7 @@ import {
 } from '../booking/api'
 import { errorMessage, fmtDuration, fmtRange, minutesBetween } from '../booking/format'
 import { Modal } from '../booking/Modal'
-import { RescheduleBox } from '../booking/MyBookings'
+import { RescheduleBox } from '../booking/RescheduleBox'
 import type { Booking, Resource, ResourceStatus } from '../booking/types'
 
 const STATUS_LABELS: Record<ResourceStatus, string> = {
@@ -219,9 +219,6 @@ export function ManagerBookingsPage() {
                         <td className="ui-hide-sm">{booking.purpose}</td>
                         <td>
                           <div className="ui-actions">
-                            <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy !== null || started || !room} title={started ? 'Already started' : undefined} onClick={() => setMoving(booking)}>
-                              Reschedule
-                            </button>
                             <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy !== null || started || !room} title={started ? 'Already started' : undefined} onClick={() => setMoving(booking)}>
                               Reschedule
                             </button>

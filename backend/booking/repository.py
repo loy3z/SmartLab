@@ -15,6 +15,7 @@ from typing import ContextManager, Iterator, Protocol, Sequence
 
 from .domain import (
     SiteContact,  # Sprint 3 (1.16.0)
+    NotificationPreference,  # Sprint 3 (2026-10-25)
     AuditRecord,
     Booking,
     BookingSeries,
@@ -75,6 +76,9 @@ class Repository(Protocol):
     def save_notification(self, notification: Notification) -> None: ...
     def get_notification(self, notification_id: str) -> Notification | None: ...
     def list_notifications(self, recipient_id: str) -> list[Notification]: ...
+    # Sprint 3 (2026-10-25): per-person notification category choices (a missing row means enabled).
+    def save_notification_preference(self, preference: NotificationPreference) -> None: ...
+    def list_notification_preferences(self, principal_id: str) -> list[NotificationPreference]: ...
     # Calendar subscription addresses (one per person).
     def get_calendar_feed(self, principal_id: str) -> CalendarFeed | None: ...
     def get_calendar_feed_by_token(self, token: str) -> CalendarFeed | None: ...
@@ -110,6 +114,7 @@ class MemoryRepository:
         self._outlook_sync: dict[str, OutlookSyncRecord] = {}
         self._credentials: dict[str, StaffCredential] = {}
         self._notifications: dict[str, Notification] = {}
+        self._notification_preferences: dict[str, NotificationPreference] = {}
         self._calendar_feeds: dict[str, CalendarFeed] = {}
         self._unfreeze_requests: dict[str, UnfreezeRequest] = {}
         self._series: dict[str, BookingSeries] = {}
@@ -302,6 +307,16 @@ class MemoryRepository:
         with self._lock:
             return sorted((item for item in self._notifications.values() if item.recipient_id == recipient_id),
                           key=lambda item: (item.created_at, item.id), reverse=True)
+
+    # Sprint 3 (2026-10-25): notification category choices.
+    def save_notification_preference(self, preference: NotificationPreference) -> None:
+        with self._lock:
+            self._notification_preferences[preference.id] = preference
+
+    def list_notification_preferences(self, principal_id: str) -> list[NotificationPreference]:
+        with self._lock:
+            return sorted((item for item in self._notification_preferences.values()
+                           if item.principal_id == principal_id), key=lambda item: item.category)
 
     def get_calendar_feed(self, principal_id: str) -> CalendarFeed | None:
         with self._lock:

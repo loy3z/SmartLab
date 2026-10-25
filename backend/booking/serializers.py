@@ -241,6 +241,11 @@ class NotificationQuerySerializer(StrictSerializer):
     limit = serializers.IntegerField(required=False, default=50, min_value=1, max_value=200)
 
 
+class NotificationPreferencesSerializer(StrictSerializer):
+    """Sprint 3 (2026-10-25): {"preferences": {"bookings": true, "reminders": false, ...}}; the service checks names."""
+    preferences = serializers.DictField(child=serializers.BooleanField(), allow_empty=False)
+
+
 class UnfreezeRequestSerializer(StrictSerializer):
     reason = serializers.CharField(max_length=1000)
 

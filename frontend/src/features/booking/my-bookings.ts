@@ -1,6 +1,9 @@
 // Sprint 3: My Bookings shows a weekly series as one card instead of one card per date.
 import type { Booking } from './types.ts'
 
+/** Approval states that still count as live on My Bookings cards (shared by the page and SeriesCard). */
+export const ACTIVE = ['WAITING_QUALIFICATION', 'WAITLISTED', 'PENDING_APPROVAL', 'APPROVED']
+
 const SYDNEY = 'Australia/Sydney'
 const WEEKDAY_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const weekdayOf = new Intl.DateTimeFormat('en-AU', { weekday: 'short', timeZone: SYDNEY })

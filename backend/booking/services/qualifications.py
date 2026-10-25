@@ -195,6 +195,11 @@ class QualificationsMixin:
                 record = QualificationSubmission(str(uuid4()), actor.id, requirement_id, title.strip(), notes, stored.id, self.now())
                 self.repo.save_submission(record)
                 self._audit(actor.id, "QUALIFICATION_SUBMITTED", "qualification", record.id)
+                # Sprint 3 (2026-10-25): tell the student their evidence arrived; submitting used to be silent.
+                requirement = self.repo.get_requirement(requirement_id)
+                self._notify(actor.id, "INDUCTION_SUBMITTED", "Induction evidence received",
+                             f"Your evidence for {requirement.name} was received and is waiting for review.",
+                             link="/induction")
                 return record
         except Exception:
             if stored:

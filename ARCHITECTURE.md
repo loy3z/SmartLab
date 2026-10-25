@@ -35,7 +35,9 @@ team-repo/
 ├── backend/                     Django 5.2 + DRF
 │   ├── config/                  settings.py（全部配置都读环境变量）、urls.py
 │   ├── booking/
-│   │   ├── views.py             HTTP 接口：解析请求 → 调用 service → 转 JSON
+│   │   ├── views/               HTTP 接口：解析请求 → 调用 service → 转 JSON
+│   │   │                        （2026-10-25 拆分：auth、resources、bookings、admin、outlook、notifications、
+│   │   │                         calendar、series、unfreeze、misc；公共导入和辅助函数在 _common.py）
 │   │   ├── serializers.py       请求参数校验
 │   │   ├── urls.py              /api/v1/ 下的路径
 │   │   ├── services/            业务规则（见第 3 节）
@@ -70,7 +72,7 @@ team-repo/
 
 | 层 | 位置 | 只做什么 |
 | --- | --- | --- |
-| HTTP | `views.py`、`serializers.py`、`urls.py` | 校验参数格式、找到当前用户、调用 service、把结果转成 JSON、事务结束后触发 Outlook 同步 |
+| HTTP | `views/`、`serializers.py`、`urls.py` | 校验参数格式、找到当前用户、调用 service、把结果转成 JSON、事务结束后触发 Outlook 同步 |
 | 业务规则 | `booking/services/` | 权限、资格、时间、冲突、审批、候补、审计。不知道 HTTP，也不知道用的是哪种数据库 |
 | 实体 | `domain.py` | 数据结构和简单的字段校验 |
 | 存储 | `repository.py`、`postgres.py`、`storage.py` | 读写和事务锁，不做业务判断 |
@@ -174,7 +176,7 @@ sequenceDiagram
 1. **实体**：`domain.py` 加字段。
 2. **数据库**：`schema.sql` + `postgres.py` + 新迁移脚本 + 种子数据（如需要）。
 3. **规则**：在 `booking/services/` 对应主题的文件里加方法；新主题就新建一个 mixin 文件，加进 `services/__init__.py` 的继承列表。会影响能不能预约的规则，加进 `checks.py` 的 `rule_violation`，保证所有路径都检查到。
-4. **接口**：`serializers.py` → `views.py` → `urls.py`。
+4. **接口**：`serializers.py` → `views/` → `urls.py`。
 5. **接口文档**：`docs/openapi.json`（改版本号）+ `docs/frontend-api.md`。
 6. **前端**：`types.ts` → `api.ts` → 页面；新页面还要改 `routes.ts`、`AppRouter.tsx`、`AppLayout.tsx`。
 7. **测试**：后端单元测试、PostgreSQL 集成测试（`test_postgres.py`）、前端单元测试、Playwright。
@@ -221,8 +223,8 @@ sequenceDiagram
 | 测试账号只在开发开关打开、并且用内存存储时可用，角色不写回数据库（1.17.0） | `booking/test_console.py` `test_console_enabled`、`test_identity`；`authentication.py` `issue_demo_token`、`DemoIdentityProvider.resolve_bearer` |
 | 本人测试预约跳过业务规则，但保留时间、重复和冲突检查（1.17.0） | `test_console.py` `booking_rules_bypassed`、`test_period_violation`、`create_test_booking`；`services/bookings.py` `create_booking`、`reschedule_booking` |
 | 本人测试预约的可用性与周重复采用相同例外（1.17.0） | `test_console.py` `test_availability`、`test_window`；`services/series.py` `_series_check`、`_series_plan` |
-| 账号 1 自动获得全部永久 induction，新增要求也补齐，无 evidence 附件（1.17.1） | `test_console.py` `get_test_account`、`_grant_test_inductions`；`authentication.py` `DemoIdentityProvider.resolve_bearer`；`views.py` `submission_json`；前端 `induction/InductionPage.tsx` |
-| 测试数据不发送外部消息、日历同步（1.17.0） | `services/base.py` `_save_booking`；`views.py` `sync_after_write`；`notification_channels.py` `deliver_new_notifications` |
+| 账号 1 自动获得全部永久 induction，新增要求也补齐，无 evidence 附件（1.17.1） | `test_console.py` `get_test_account`、`_grant_test_inductions`；`authentication.py` `DemoIdentityProvider.resolve_bearer`；`views/_common.py` `submission_json`；前端 `induction/InductionPage.tsx` |
+| 测试数据不发送外部消息、日历同步（1.17.0） | `services/base.py` `_save_booking`；`views/_common.py` `sync_after_write`；`notification_channels.py` `deliver_new_notifications` |
 | Urgent 只有一份说明，evidence 必填提示（1.17.0） | 前端 `BookingForm.tsx` `bookingPurpose`；`induction/evidence.ts` `evidenceProblem` |
 | 员工登录后进哪个页面（1.16.0） | 前端 `app/routes.ts` `homePath` |
 | 所有数字的默认值 | `rules.py` `BookingRules`（环境变量见 `.env.example`） |

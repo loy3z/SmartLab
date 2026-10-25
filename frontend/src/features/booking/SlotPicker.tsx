@@ -65,6 +65,9 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
   const [range, setRange] = useState<{ from: number; to: number } | null>(null)
   const [hover, setHover] = useState<number | null>(null)
   const [problem, setProblem] = useState('')
+  // Sprint 3 (workspace UI): coming from Find a free time (a start is given), the day grid starts folded; the
+  // Start / Length selects below stay visible either way.
+  const [showTimeline, setShowTimeline] = useState(!initialStart)
   // Sprint 3 (1.16.0): length used by the "Start / Length" selects (cells of `step` minutes); 1 hour by default.
   const [wantedCells, setWantedCells] = useState<number | null>(null)
   // Applied once, on the first load of the initial day; later days and refreshes start empty as before.
@@ -256,7 +259,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
       {/* Sprint 3 (1.16.0): someone who wants an earlier day used to see only a disabled "previous day" button. */}
       {onAskEarlier && !urgent && !allowEarly && atStart && data?.earliest_date && data.earliest_date > todaySydney() && (
         <div className="ui-hint bk-earlier">
-          Need a day before {fmtDate(data.earliest_date)}? Normal requests open {data.min_advance_days} days ahead; sooner needs an urgent request, which a Manager decides.
+          Need a date before {fmtDate(data.earliest_date)}?
           <button type="button" className="bk-linkbtn" onClick={onAskEarlier}>Make an urgent request</button>
         </div>
       )}
@@ -264,7 +267,8 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
       {error && <p className="bk-error">{error}</p>}
 
       {data && slots.length === 0 && <div className="ui-hint">This resource is not open on this day.</div>}
-      {data && slots.length > 0 && (
+      {data && slots.length > 0 && <button type="button" className="bk-linkbtn bk-timeline-toggle" aria-expanded={showTimeline} onClick={() => setShowTimeline(value => !value)}>{showTimeline ? 'Hide day availability' : 'View day availability'}</button>}
+      {data && slots.length > 0 && showTimeline && (
         <div className="ui-tl">
           <div className="ui-tl-scroll">
             <div style={{ minWidth: slots.length * 26 }}>
@@ -346,7 +350,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
             <strong>{fmtRange(selected.start, selected.end)}</strong>
             <span className="ui-sub-text">
               {fmtDuration((Date.parse(selected.end) - Date.parse(selected.start)) / 60000)}
-              {!fixedCells && range && range.from === range.to && ' · click a later time to extend'}
+              {!fixedCells && showTimeline && range && range.from === range.to && ' · click a later time to extend'}
             </span>
           </div>
           <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={clear}>Clear</button>

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { useAuth } from '../auth/auth-context'
 import { useFeedback } from '../../ui/feedback-context'
 import { createBooking, lookupPerson } from './api'
-import { errorMessage, fmtDuration, fmtRange, newIdempotencyKey, SEPARATE_BOOKING_TEXT, submitBlocker, submittedMessage } from './format'
+import { errorMessage, fmtDuration, fmtHours, fmtRange, newIdempotencyKey, SEPARATE_BOOKING_TEXT, submitBlocker, submittedMessage } from './format'
 import { ResourceFacts } from './ResourceCard' // Sprint 3 (1.16.0)
 import { SlotPicker, type SlotRange } from './SlotPicker'
 import type { PersonBrief, Resource } from './types'
@@ -110,12 +110,15 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
     <form onSubmit={submit} className="bk-form">
       <h2>{resource.name}</h2>
       <p className="bk-muted">
-        {resource.location} · {testBypass ? 'test booking: any future time, up to 24 h' : `open ${resource.opening_time.slice(0, 5)}–${resource.closing_time.slice(0, 5)} · up to ${fmtDuration(resource.max_booking_minutes)}`}
+        {resource.location} · {testBypass ? 'test booking: any future time, up to 24 h' : `open ${fmtHours(resource.opening_time, resource.closing_time)} · up to ${fmtDuration(resource.max_booking_minutes)}`}
       </p>
-      {/* Sprint 3 (1.16.0): everything the Manager wrote about it, and what the booking does not include. */}
-      {resource.description && <p className="bk-muted">{resource.description}</p>}
-      <ResourceFacts resource={resource} />
-      <p className="bk-muted bk-separate">{SEPARATE_BOOKING_TEXT[resource.kind]}</p>
+      {/* Sprint 3 (1.16.0): everything the Manager wrote about it, and what the booking does not include.
+          Sprint 3 (workspace UI): folded under "Resource details". */}
+      <details className="bk-resource-details"><summary>Resource details</summary>
+        {resource.description && <p className="bk-muted">{resource.description}</p>}
+        <ResourceFacts resource={resource} />
+        <p className="bk-muted bk-separate">{SEPARATE_BOOKING_TEXT[resource.kind]}</p>
+      </details>
 
       {isStaff && (
         <fieldset className="bk-for">

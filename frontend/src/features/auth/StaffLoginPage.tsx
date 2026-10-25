@@ -75,7 +75,7 @@ export function StaffLoginPage({ notice = '' }: { notice?: string }) {
   const activating = mode === 'activate'
   return (
     <AuthShell crumb="Staff sign-in">
-      <p className="auth-form-eyebrow">SMARTLAB STAFF</p>
+      {/* Sprint 3 (internal-tool UI, AI-2): no eyebrow above the form title. */}
       <h2 id="auth-title" tabIndex={-1}>{activating ? 'Activate your staff account' : 'Staff sign-in'}</h2>
       <p className="auth-description">
         {activating

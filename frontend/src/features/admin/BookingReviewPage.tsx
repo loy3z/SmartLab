@@ -140,8 +140,8 @@ export function BookingReviewPage() {
   return (
     <>
       <PageHeader
-        title="Booking Review"
-        description="Approve or reject booking requests. Requests nearest their review deadline are listed first."
+        title="Booking review"
+        description="Requests nearest their review deadline are listed first."
         actions={<RefreshStamp at={loadedAt} onRefresh={reload} busy={loading && loadedAt !== null} />}
       />
 

@@ -38,8 +38,9 @@ class DemoIdentityProvider:
         except signing.BadSignature:
             raise AuthenticationFailed("Invalid token.", code="INVALID_TOKEN")
         from .runtime import get_service
-        from .test_console import TEST_ACCOUNT_ID, test_console_enabled, test_identity
-        principal = get_service().repo.get_principal(payload.get("sub", ""))
+        from .test_console import TEST_ACCOUNT_ID, get_test_account, test_console_enabled, test_identity
+        service = get_service()
+        principal = service.repo.get_principal(payload.get("sub", ""))
         if not principal or not principal.active:
             raise AuthenticationFailed("The user is inactive or unknown.", code="INVALID_TOKEN")
         if principal.id == TEST_ACCOUNT_ID or payload.get("test_console"):
@@ -47,9 +48,12 @@ class DemoIdentityProvider:
                     and test_console_enabled() and isinstance(payload.get("test_bypass"), bool)):
                 raise AuthenticationFailed("Test console is unavailable.", code="INVALID_TOKEN")
             try:
-                return test_identity(principal, payload["test_role"], payload["test_bypass"])
+                identity = test_identity(principal, payload["test_role"], payload["test_bypass"])
             except (KeyError, ValueError):
                 raise AuthenticationFailed("Invalid test session.", code="INVALID_TOKEN")
+            # Sprint 3: active test sessions also receive any inductions added after sign-in.
+            get_test_account(service)
+            return identity
         return principal
 
 class DisabledIdentityProvider:

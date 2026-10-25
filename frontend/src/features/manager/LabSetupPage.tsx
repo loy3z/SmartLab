@@ -17,7 +17,7 @@ export function LabSetupPage() {
   const [tab, setTab] = useState<Tab>('inductions')
   return (
     <section>
-      <PageHeader title="Lab setup" description="Inductions people need, what to tell someone who does not have one yet, and how to reach the lab. Changes show on the website straight away." />
+      <PageHeader title="Lab setup" />
       <Tabs value={tab} onChange={setTab} label="Lab setup" items={[{ key: 'inductions', label: 'Inductions' }, { key: 'contact', label: 'Contact details' }]} />
       {tab === 'inductions' ? <InductionsTab /> : <ContactTab />}
     </section>
@@ -114,7 +114,7 @@ function InductionDialog({ requirement, all, onClose, onSaved }: {
           <textarea maxLength={1000} rows={2} value={form.description} onChange={(e) => set('description', e.target.value)} />
         </label>
         <fieldset className="mr-details">
-          <legend>For people who do not have it yet (shown on Induction &amp; Training)</legend>
+          <legend>For people who do not have it yet (shown on Induction &amp; training)</legend>
           {(Object.keys(GUIDE_LABELS) as (keyof typeof GUIDE_LABELS)[]).map((key) => (
             <label key={key} className="ui-field"><span>{GUIDE_LABELS[key]}</span>
               <textarea maxLength={2000} rows={2} value={form[key]} placeholder={GUIDE_PLACEHOLDERS[key]} onChange={(e) => set(key, e.target.value)} />
@@ -165,7 +165,7 @@ function ContactTab() {
     try {
       setForm(await updateSiteContact({ email: form.email, phone: form.phone, hours: form.hours, note: form.note }))
       refreshSiteContact()
-      feedback.success('Shown on Help, My Bookings and Induction & Training.', 'Contact details saved')
+      feedback.success('Shown on Help & support, My bookings and Induction & training.', 'Contact details saved')
     } catch (e) {
       setError(errorMessage(e))
     } finally {

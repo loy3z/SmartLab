@@ -135,8 +135,7 @@ export function QualificationReviewPage() {
   return (
     <>
       <PageHeader
-        title="Induction qualification review"
-        description="Check each student's training evidence. Open a row to see the file."
+        title="Induction review"
         actions={<RefreshStamp at={loadedAt} onRefresh={reload} busy={loading && loadedAt !== null} />}
       />
 

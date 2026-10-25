@@ -89,7 +89,7 @@ export function CalendarSubscribe() {
       <ol className="bk-calsub-steps">{CALENDAR_APPS[app].steps.map((step) => <li key={step}>{step}</li>)}</ol>
       <p className="bk-muted bk-calsub-delay">
         Calendar apps check the link every few hours (Google can take up to a day), so a change or cancellation can take a
-        while to show there. The status on My Bookings is always the one that counts. The link has to be reachable from the
+        while to show there. The status on My bookings is always the one that counts. The link has to be reachable from the
         internet, so it does not work while the site only runs on your own computer.
       </p>
       <div className="bk-calsub-link">

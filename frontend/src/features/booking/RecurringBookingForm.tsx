@@ -83,7 +83,7 @@ export function RecurringBookingForm({ resource, onBooked }: { resource: Resourc
         { label: 'Time', value: `${startTime}, ${fmtDuration(minutes)}` },
         ...(skip.length ? [{ label: 'Skipped', value: `${skip.length} date(s) with a problem` }] : []),
       ],
-      message: 'Every date is approved at once and appears in My Bookings.',
+      message: 'Every date is approved at once and appears in My bookings.',
       confirmLabel: 'Book series',
     })
     if (!ok.confirmed) return

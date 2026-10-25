@@ -89,7 +89,7 @@ export function FreezesPage() {
     <>
       <PageHeader
         title="Booking freezes"
-        description="After too many missed check-ins a person cannot book for a while and their later bookings are cancelled. Review their requests or unfreeze them here."
+        description="People who missed too many check-ins cannot book until their freeze ends or you lift it."
         actions={<RefreshStamp at={loadedAt} onRefresh={() => void load()} busy={loading && loadedAt !== null} />}
       />
       {error && <p className="bk-error" role="alert">{error}</p>}

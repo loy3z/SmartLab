@@ -8,11 +8,12 @@ never take a real time slot; restarting the backend throws them away.
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
+from uuid import NAMESPACE_URL, uuid5
 
 from django.conf import settings
 from django.http import Http404
 
-from .domain import Booking, BookingStatus, Principal, Role
+from .domain import Booking, BookingStatus, Principal, QualificationStatus, QualificationSubmission, Role
 from .errors import DomainError
 
 TEST_ACCOUNT_ID = "00000000-0000-0000-0000-000000000999"
@@ -62,7 +63,38 @@ def get_test_account(service):
             service._audit(principal.id, "TEST_ACCOUNT_CREATED", "principal", principal.id)
         if principal.zid != "1" or not principal.active:
             raise DomainError("TEST_ACCOUNT_UNAVAILABLE", "The test account is inactive or unavailable.", 403)
+        _grant_test_inductions(service)
         return principal
+
+
+def _grant_test_inductions(service):
+    """Sprint 3: account 1 owns every induction permanently, including newly added requirements.
+
+    Called only after the local-memory test-console gate and identity checks, under its account lock.
+    Batch-read this account's records once. Grants have no evidence file: they are explicit test access,
+    not uploaded certificates. Repeated reads do not create more submissions or audit records.
+    """
+    latest = {}
+    for record in service.repo.list_submissions(student_id=TEST_ACCOUNT_ID):
+        previous = latest.get(record.requirement_id)
+        if previous is None or record.submitted_at >= previous.submitted_at:
+            latest[record.requirement_id] = record
+    for requirement in service.repo.list_requirements():
+        previous = latest.get(requirement.id)
+        if previous and previous.status == QualificationStatus.VERIFIED and previous.valid_until is None:
+            continue
+        now = service.now()
+        record = QualificationSubmission(
+            str(uuid5(NAMESPACE_URL, f"smartlab:test-induction:{requirement.id}")),
+            TEST_ACCOUNT_ID, requirement.id, "Automatic test-account access",
+            "Granted automatically to local test account 1. No training evidence is required.",
+            "", max(now, previous.submitted_at) if previous else now,
+            status=QualificationStatus.VERIFIED, reviewed_by=TEST_ACCOUNT_ID, reviewed_at=now,
+            valid_until=None,
+        )
+        service.repo.save_submission(record)
+        service._audit(TEST_ACCOUNT_ID, "TEST_INDUCTION_GRANTED", "qualification", record.id,
+                       requirement_id=requirement.id)
 
 
 def test_period_violation(service, resource, start, end):

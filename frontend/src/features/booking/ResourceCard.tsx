@@ -1,3 +1,4 @@
+import { fmtHours } from './format' // Sprint 3 (internal-tool UI, AI-6)
 import { AlertIcon, CheckIcon, ClockIcon, PinIcon } from './icons'
 import type { Resource } from './types'
 
@@ -50,7 +51,8 @@ export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEq
   return (
     <article className={`bk-rcard${unavailable ? ' is-unavailable' : ''}`}>
       <header className="resource-card-head">
-        <span className="resource-kind-label">{resource.kind === 'ROOM' ? 'Shared space' : resource.category ?? 'Lab equipment'}</span>
+        {/* Sprint 3 (internal-tool UI, AI-2): no eyebrow label on rooms (the tab already says Rooms); equipment shows its category. */}
+        <span className="resource-category">{resource.kind === 'EQUIPMENT' ? resource.category ?? '' : ''}</span>
         <span className={`bk-chip ${unavailable ? 'is-warn' : 'is-ok'}`}>{unavailable ? STATUS_TEXT[resource.status as keyof typeof STATUS_TEXT] : 'In service'}</span>
       </header>
       <div className="bk-rbody">
@@ -78,7 +80,7 @@ export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEq
             </button>
           )}
         </div>
-        <div className="resource-hours"><ClockIcon size={13} /><span>{resource.opening_time.slice(0, 5)}–{resource.closing_time.slice(0, 5)}</span><span>Up to {resource.max_booking_minutes / 60} h</span></div>
+        <div className="resource-hours"><ClockIcon size={13} /><span>{fmtHours(resource.opening_time, resource.closing_time)}</span><span>Up to {resource.max_booking_minutes / 60} h</span></div>
         <div className="bk-rcard-actions">
           <button type="button" className="bk-btn-outline bk-rcard-primary" disabled={blocked} onClick={onOpen}>View availability</button>
           {onRepeat && (

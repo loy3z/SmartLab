@@ -94,17 +94,23 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
         .filter((b) => b.used),
     [reqs, resources, quals],
   )
+  const verifiedCount = banners.filter((item) => item.state === 'VERIFIED' && !item.lockedBy).length
 
   return (
     <>
-      <h1>Book a resource</h1>
-      <p className="bk-sub">Choose a resource, or search for one that fits your time.</p>
+      <h1>Book a resource</h1>{/* Sprint 3 (internal-tool UI, AI-2): no introduction line */}
       <FreezeNotice />
 
-      {/* Sprint 3 (compact page top): one line for all inductions instead of a large banner each. */}
+      {/* Sprint 3 (compact page top): one line for all inductions instead of a large banner each.
+          Sprint 3 (workspace UI): folded under "Training requirements"; review R2: open while any is not verified,
+          so what blocks a booking is never hidden. */}
       {banners.length > 0 && (
-        <div className={`bk-induction-strip ${banners.every((item) => item.state === 'VERIFIED' && !item.lockedBy) ? 'is-ok' : 'is-warn'}`}
-          role="group" aria-label="Your inductions">
+        <details className="bk-access-summary" open={verifiedCount < banners.length}>
+          <summary>
+            Training requirements <span className={verifiedCount < banners.length ? 'is-warn' : 'is-ok'}>{verifiedCount}/{banners.length} verified</span>
+          </summary>
+          <div className={`bk-induction-strip ${verifiedCount === banners.length ? 'is-ok' : 'is-warn'}`}
+            role="group" aria-label="Your inductions">
           <span className="bk-muted">Inductions:</span>
           {banners.map(({ req, state, lockedBy }) => {
             const ok = state === 'VERIFIED' && !lockedBy
@@ -122,7 +128,8 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
               </span>
             )
           })}
-        </div>
+          </div>
+        </details>
       )}
 
       <div className="bk-pills bk-mode" role="tablist" aria-label="How to book">
@@ -136,6 +143,8 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
       {mode === 'find' && <FindTime resources={resources} onPick={(resource, start, minutes, date) => setPicked({ resource, start, minutes, date })} />}
 
       {mode === 'browse' && <>
+      {/* Sprint 3 (workspace UI): search and the type/room filters share one toolbar row. */}
+      <div className="bk-browse-toolbar">
       <form
         className="bk-search"
         onSubmit={(e) => {
@@ -168,6 +177,7 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
           </select>
         )}
       </div>
+      </div>
 
       <h2 className="bk-h2">
         {view === 'ROOM' ? 'Rooms' : roomFilter ? `Equipment in ${roomName(roomFilter)}` : 'Equipment'}
@@ -196,17 +206,17 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
       </>}
 
       {open && (
-        <Modal onClose={() => setOpen(null)}>
+        <Modal label={`Book ${open.name}`} onClose={() => setOpen(null)}>
           <BookingForm resource={open} onBooked={onBooked} />
         </Modal>
       )}
       {repeat && (
-        <Modal onClose={() => setRepeat(null)}>
+        <Modal label={`Repeat weekly: ${repeat.name}`} onClose={() => setRepeat(null)}>
           <RecurringBookingForm resource={repeat} onBooked={() => { setRepeat(null); onBooked() }} />
         </Modal>
       )}
       {picked && (
-        <Modal onClose={() => setPicked(null)}>
+        <Modal label={`Book ${picked.resource.name}`} onClose={() => setPicked(null)}>
           <BookingForm resource={picked.resource} onBooked={onBooked} initialDate={picked.date}
             initialStart={picked.start} initialMinutes={picked.minutes} />
         </Modal>

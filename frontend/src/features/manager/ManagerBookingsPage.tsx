@@ -141,8 +141,7 @@ export function ManagerBookingsPage() {
   return (
     <div>
       <PageHeader
-        title="Room booking management"
-        description="Open or close rooms and manage confirmed bookings. Only Managers can reschedule a booking. To look up or export past bookings, use Booking Records."
+        title="Room management"
         actions={<RefreshStamp at={loadedAt} onRefresh={reload} busy={loading && loadedAt !== null} />}
       />
 
@@ -239,7 +238,7 @@ export function ManagerBookingsPage() {
       )}
 
       {moving && rooms.some((room) => room.id === moving.resource_id) && (
-        <Modal onClose={() => setMoving(null)}>
+        <Modal label="Reschedule booking" onClose={() => setMoving(null)}>
           <div className="bk-form">
             <h2>Reschedule booking</h2>
             <p className="bk-muted">

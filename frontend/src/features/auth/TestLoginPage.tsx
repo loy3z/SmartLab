@@ -33,7 +33,7 @@ export function TestLoginPage() {
     }
   }
   return <AuthShell crumb="Test console">
-    <p className="auth-form-eyebrow">LOCAL DEVELOPMENT</p>
+    {/* Sprint 3 (internal-tool UI, AI-2): no eyebrow above the form title. */}
     <h2 id="auth-title" tabIndex={-1}>Test console</h2>
     <p className="auth-description">Use account 1 without a password. Switch roles and booking rules after signing in.</p>
     {enabled === null && !error && <p role="status">Checking test access…</p>}

@@ -56,16 +56,47 @@ class TestConsoleAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertFalse(self.tester.get('/api/v1/auth/me/').data['booking_frozen'])
         self.assertIn('TEST_BOOKING_CREATED', [item.action for item in self.service.repo.list_audit()])
 
-    def test_bypass_off_restores_real_eligibility_and_time_windows(self):
+    def test_bypass_off_keeps_inductions_but_restores_windows_and_approval(self):
         normal = self.switch(bypass=False)
         availability = normal.get(f"/api/v1/resources/{self.room['id']}/availability/", {'date': '2026-10-06'})
-        self.assertFalse(availability.data['can_request'])
+        self.assertTrue(availability.data['can_request'])
+        self.assertEqual(availability.data['qualification_status'], 'VERIFIED')
         self.assertFalse(availability.data.get('test_bypass', False))
         result = normal.post('/api/v1/bookings/', self.payload(day_offset=1), format='json')
         self.assertEqual(result.status_code, 400, result.data)
         result = normal.post('/api/v1/bookings/', self.payload(day_offset=8), format='json')
-        self.assertEqual(result.status_code, 403, result.data)
-        self.assertEqual(result.data['error']['code'], 'QUALIFICATION_REQUIRED')
+        self.assertEqual(result.status_code, 201, result.data)
+        self.assertEqual(result.data['status'], 'PENDING_APPROVAL')
+
+    def test_all_inductions_are_permanent_fileless_and_survive_role_switches(self):
+        required = {item.id for item in self.service.repo.list_requirements()}
+        for role in ['STUDENT', 'ADMIN', 'MANAGER']:
+            client = self.switch(role, bypass=False)
+            records = client.get('/api/v1/qualifications/').data['results']
+            self.assertEqual({item['requirement_id'] for item in records}, required)
+            self.assertTrue(all(item['effective_status'] == 'VERIFIED' and item['valid_until'] is None
+                                and item['file_url'] == '' for item in records))
+            dashboard = client.get('/api/v1/dashboard/')
+            self.assertEqual(len(dashboard.data['qualifications']), len(required))
+            self.assertTrue(all(item['effective_status'] == 'VERIFIED' for item in dashboard.data['qualifications']))
+        for resource in self.service.repo.list_resources():
+            self.assertEqual(self.service.qualification_state(TEST_ACCOUNT_ID, resource,
+                             NOW + timedelta(days=3650)), ('VERIFIED', True))
+        self.assertFalse(self.student.get('/api/v1/qualifications/').data['results'])
+
+    def test_existing_session_receives_new_requirements_without_duplicate_grants(self):
+        manager = self.service.repo.get_principal('00000000-0000-0000-0000-000000000902')
+        requirement = self.service.create_requirement(manager, {'name': 'New specialist induction'})
+        response = self.tester.get('/api/v1/qualifications/')
+        record = next(item for item in response.data['results'] if item['requirement_id'] == requirement.id)
+        self.assertEqual(record['effective_status'], 'VERIFIED')
+        self.assertIsNone(record['valid_until'])
+        count = len(self.service.repo.list_submissions(student_id=TEST_ACCOUNT_ID))
+        audit_count = len(self.service.repo.list_audit())
+        for _ in range(3):
+            self.assertEqual(self.tester.get('/api/v1/dashboard/').status_code, 200)
+        self.assertEqual(len(self.service.repo.list_submissions(student_id=TEST_ACCOUNT_ID)), count)
+        self.assertEqual(len(self.service.repo.list_audit()), audit_count)
 
     def test_conflicts_and_duplicates_are_not_overridden_and_retries_are_idempotent(self):
         data = self.payload(day_offset=8)

@@ -76,7 +76,8 @@ def person_brief(service, principal_id):
 def submission_json(record):
     result = json_value(record)
     result["effective_status"] = "EXPIRED" if record.status == QualificationStatus.VERIFIED and record.valid_until and record.valid_until <= get_service().now() else record.status.value
-    result["file_url"] = f"/api/v1/qualifications/{record.id}/file/"
+    # Sprint 3 (1.17.1): automatic test-account grants have no evidence attachment.
+    result["file_url"] = f"/api/v1/qualifications/{record.id}/file/" if record.file_id else ""
     return result
 
 def collection(records, converter=json_value):

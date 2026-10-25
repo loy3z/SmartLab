@@ -132,8 +132,7 @@ export function BookingRecordsPage() {
   return (
     <div>
       <PageHeader
-        title="Booking Records"
-        description="Every booking with who it was for, who made it and whether they turned up; usage statistics per room and piece of equipment."
+        title="Booking records"
       />
       <div className="ui-toolbar">
         <Tabs<Tab> label="Booking records view" value={tab} onChange={(key) => setParams(key === 'usage' ? { tab: 'usage' } : {})}

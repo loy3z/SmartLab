@@ -24,9 +24,10 @@ import { TodayPage } from '../features/admin/TodayPage' // Sprint 3 (1.16.0)
 import { LabSetupPage } from '../features/manager/LabSetupPage' // Sprint 3 (1.16.0)
 import { canAccess, homePath, isKnownPath, loginDestination, normalizePath } from './routes'
 
+// Browser-tab titles. Sprint 3 (internal-tool UI, AI-6): the same sentence-case names as the navigation and the H1.
 const titles: Record<string, string> = {
   '/dashboard': 'Dashboard', '/resources': 'Book a resource', '/bookings': 'My bookings',
-  '/induction': 'Induction & training', '/admin/qualifications': 'Qualification review',
+  '/induction': 'Induction & training', '/admin/qualifications': 'Induction review',
   '/admin/bookings': 'Booking review', '/admin/freezes': 'Booking freezes', '/admin/calendar-sync': 'Calendar sync', '/manager/bookings': 'Room management',
   '/account': 'Account details', '/help': 'Help & support', '/login': 'Sign in',
   '/login/mock-sso': 'Demo university sign-in', '/staff/login': 'Staff sign-in', '/test/login': 'Test console',
@@ -87,12 +88,12 @@ function RouteMessage({ restricted = false }: { restricted?: boolean }) {
   const { user } = useAuth()
   return (
     <section className="app-card app-message-page">
-      <p className="app-eyebrow">{restricted ? 'ACCESS RESTRICTED' : 'PAGE NOT FOUND'}</p>
-      <h1>{restricted ? 'This page is not available for your role' : 'We couldn’t find that page'}</h1>
+      {/* Sprint 3 (internal-tool UI, AI-2): no eyebrow; plain wording instead of "portal". */}
+      <h1>{restricted ? 'This page is not available for your role' : 'Page not found'}</h1>
       <p className="app-page-description">
-        {restricted ? 'Use the navigation to open the pages available to your account.' : 'The link may be incorrect. Return to your portal to continue.'}
+        {restricted ? 'Use the navigation to open the pages available to your account.' : 'The link may be wrong or out of date.'}
       </p>
-      <Link className="app-button" to={user ? homePath(user.role) : '/login'}>Return to my portal</Link>
+      <Link className="app-button" to={user ? homePath(user.role) : '/login'}>{user ? `Go to ${user.role === 'STUDENT' ? 'Dashboard' : 'Today'}` : 'Sign in'}</Link>
     </section>
   )
 }

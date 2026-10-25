@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { EmptyState, PageHeader, RefreshStamp, Tabs } from '../../ui/components'
 import { useFeedback } from '../../ui/feedback-context'
 import { archiveResource, createResource, listAllResources, listRequirements, restoreResource, updateResource } from '../booking/api'
-import { errorMessage, fmtDuration, fmtRange } from '../booking/format'
+import { errorMessage, fmtDuration, fmtHours, fmtRange } from '../booking/format'
 import type { BookingOutsideRules, Requirement, Resource, ResourceDetail, ResourceInput, ResourceKind } from '../booking/types' // Sprint 3 (1.16.0): ResourceDetail
 import { changedFields, checkResource, describeHours, emptyResource, hoursFromMinutes, MAX_DETAILS, minutesFromHours, PROBLEM_TEXT, resourceToInput, SLOT_CHOICES } from './resource-form' // Sprint 3 (1.16.0): hours helpers, MAX_DETAILS
 
@@ -93,7 +93,7 @@ export function ManagerResourcesPage() {
     <section>
       <PageHeader
         title="Resources"
-        description="Add and edit rooms and equipment. Changes apply to new requests, approvals and automatic decisions; existing bookings are kept, and you are told about future ones that no longer fit. Archive a resource instead of deleting it, so its history stays."
+        description="Changes apply to new requests only; archive a resource instead of deleting it so its history stays."
         actions={(
           <>
             <RefreshStamp at={loadedAt} onRefresh={reload} busy={loading && loadedAt !== null} />
@@ -147,7 +147,7 @@ export function ManagerResourcesPage() {
                   <td className="ui-hide-sm">{item.kind === 'EQUIPMENT' ? (byId.get(item.room_id ?? '')?.name ?? item.location) : item.location}</td>
                   <td className="ui-hide-sm">{requirementName(item.required_qualification_id)}</td>
                   <td>
-                    {item.opening_time.slice(0, 5)}–{item.closing_time.slice(0, 5)}
+                    {fmtHours(item.opening_time, item.closing_time)}{/* Sprint 3 (internal-tool UI, AI-6) */}
                     <span className="ui-sub-text">{item.slot_minutes}-min steps · up to {fmtDuration(item.max_booking_minutes)}</span>
                   </td>
                   <td>
@@ -179,7 +179,7 @@ export function ManagerResourcesPage() {
         <div className="ui-callout is-warn" role="status" aria-label="Bookings outside the new rules">
           <div>
             <strong>{outside.bookings.length} future booking(s) of {outside.resource.name} no longer fit the new rules</strong>
-            <span>They are kept. Cancel or move them in Room Management or Booking Review if needed.</span>
+            <span>They are kept. Cancel or move them in Room management or Booking review if needed.</span>
             <ul>
               {outside.bookings.map((booking) => (
                 <li key={booking.id}>

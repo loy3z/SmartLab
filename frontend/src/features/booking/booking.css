@@ -1,8 +1,8 @@
 /* Shell */
 .bk-shell { display: flex; min-height: 100vh; }
 .bk-side { width: 270px; flex: none; background: #fafafa; border-right: 1px solid var(--line); padding: 24px 16px; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }
-.bk-brand { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; padding: 4px 12px 28px; }
-.bk-brand span { font-weight: 400; margin-left: 6px; color: var(--muted); font-size: 15px; }
+.bk-brand { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; padding: 4px 12px 28px; }
+.bk-brand span { font-weight: 400; margin-left: 6px; color: var(--muted); font-size: 14px; }
 .bk-side nav { display: flex; flex-direction: column; gap: 6px; flex: 1; }
 .bk-nav { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border: 0; border-left: 4px solid transparent; border-radius: 8px; background: none; text-align: left; font-size: 16px; cursor: pointer; width: 100%; }
 .bk-nav:hover:not(:disabled) { background: #f0f0f2; }
@@ -21,10 +21,9 @@
 .bk-menu button:hover:not(:disabled) { background: var(--bg); }
 .bk-menu button:disabled { color: var(--muted); cursor: default; }
 .bk-content { padding: 32px; max-width: 1200px; }
-.bk-content h1 { font-size: 40px; font-weight: 800; letter-spacing: -1px; line-height: 1.1; }
-.bk-sub { color: var(--muted); font-size: 18px; margin: 6px 0 24px; }
+.bk-sub { color: var(--muted); font-size: 16px; margin: 6px 0 24px; }
 .bk-h2 { font-size: 24px; font-weight: 700; margin: 24px 0 14px; }
-.bk-h2 small { font-size: 15px; font-weight: 400; color: var(--muted); margin-left: 12px; }
+.bk-h2 small { font-size: 14px; font-weight: 400; color: var(--muted); margin-left: 12px; }
 
 /* Buttons / chips */
 .bk-btn-yellow { background: var(--yellow); border: 0; border-radius: 8px; padding: 12px 22px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
@@ -39,7 +38,7 @@
 .bk-chip.is-warn, .bk-chip.st-WAITLISTED, .bk-chip.st-WAITING_QUALIFICATION, .bk-chip.st-PENDING_APPROVAL { background: var(--amber-bg); color: var(--amber); }
 .bk-chip.st-REJECTED { background: var(--red-bg); color: var(--red); }
 .bk-chip.st-CANCELLED, .bk-chip.st-EXPIRED { background: var(--grey-bg); color: var(--muted); }
-.bk-muted { color: var(--muted); font-size: 13px; }
+.bk-muted { color: var(--muted); font-size: 14px; }
 .bk-error { color: var(--red); margin: 8px 0; }
 .bk-ok { color: var(--green); }
 
@@ -47,7 +46,7 @@
 
 /* Search & filters */
 .bk-search { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 6px 6px 6px 18px; margin-bottom: 16px; }
-.bk-search input { flex: 1; min-width: 0; border: 0; outline: 0; font-size: 17px; background: none; padding: 10px 0; }
+.bk-search input { flex: 1; min-width: 0; border: 0; outline: 0; font-size: 16px; background: none; padding: 10px 0; }
 .bk-pills { display: flex; gap: 12px; flex-wrap: wrap; }
 .bk-pill { padding: 10px 22px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); cursor: pointer; font-size: 16px; }
 .bk-pill.is-on { background: var(--ink); color: #fff; border-color: var(--ink); }
@@ -61,7 +60,7 @@
 .bk-rcard:hover .bk-cover-icon { transform: scale(1.06); }
 /* Sprint 3 (1.15.0): cover = tint of the group colour + faint dot grid + icon tile (covers.ts picks the group). */
 .bk-cover { --cover-ink: #4b5563; --cover-bg: #eef0f3; position: relative; height: 112px; display: grid; place-items: center; color: var(--cover-ink); background: radial-gradient(circle, color-mix(in srgb, var(--cover-ink) 14%, transparent) 1px, transparent 1.5px) 0 0 / 14px 14px, var(--cover-bg); border-bottom: 1px solid var(--line); }
-.bk-cover-icon { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 16px; background: #fff; box-shadow: 0 4px 14px color-mix(in srgb, var(--cover-ink) 18%, transparent); transition: transform var(--motion-base) var(--ease-spring); }
+.bk-cover-icon { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 12px; background: #fff; box-shadow: 0 4px 14px color-mix(in srgb, var(--cover-ink) 18%, transparent); transition: transform var(--motion-base) var(--ease-spring); }
 .bk-cover-label { position: absolute; left: 12px; bottom: 10px; padding: 2px 8px; border-radius: 999px; background: rgba(255, 255, 255, .85); color: var(--cover-ink); font-size: 12px; font-weight: 600; }
 .bk-cover.is-room { --cover-ink: #1f4fa8; --cover-bg: #e8eefc; }
 .bk-cover.is-microscopy { --cover-ink: #5b3fb0; --cover-bg: #efeafc; }
@@ -72,22 +71,19 @@
 .bk-cover.is-analysis { --cover-ink: #a12d66; --cover-bg: #fce8f1; }
 .bk-rbody { min-width: 0; padding: 20px; display: flex; flex-direction: column; gap: 20px; flex: 1; }
 .bk-rcard-info { min-width: 0; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; flex: 1; overflow-wrap: anywhere; }
-.bk-kind { background: var(--grey-bg); border-radius: 6px; padding: 3px 12px; font-size: 13px; font-weight: 500; }
+.bk-kind { background: var(--grey-bg); border-radius: 8px; padding: 3px 12px; font-size: 14px; font-weight: 500; }
 .bk-rbody h3 { font-size: 20px; font-weight: 700; }
 .bk-loc { display: flex; align-items: center; gap: 6px; color: var(--muted); }
 .bk-loc svg, .bk-chip svg { flex: none; }
 .bk-note { color: var(--muted); font-size: 14px; }
 
-/* Modal & booking form */
-.bk-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: grid; place-items: center; z-index: 20; padding: 16px; }
-.bk-modal { background: var(--card); border-radius: 16px; width: min(760px, 100%); max-height: 92vh; overflow: auto; padding: 28px; position: relative; }
-/* Sprint 3 (1.15.0): the backdrop fades in and the dialog rises slightly into place. */
-.bk-overlay { animation: bk-fade-in var(--motion-base) var(--ease-out); }
+/* Modal & booking form. Sprint 3 (workspace UI): the backdrop is the native dialog's (::backdrop in ui/workspace.css). */
+.bk-modal { background: var(--card); border-radius: 12px; width: min(760px, 100%); max-height: 92vh; overflow: auto; padding: 28px; position: relative; }
+/* Sprint 3 (1.15.0): the dialog rises slightly into place. */
 .bk-modal { animation: bk-modal-in var(--motion-base) var(--ease-out); }
-@keyframes bk-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes bk-modal-in { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
-.bk-close { position: absolute; right: 14px; top: 8px; border: 0; background: none; font-size: 30px; cursor: pointer; color: var(--muted); }
-.bk-form h2 { font-size: 26px; font-weight: 800; }
+.bk-close { position: absolute; right: 14px; top: 8px; border: 0; background: none; font-size: 28px; cursor: pointer; color: var(--muted); }
+.bk-form h2 { font-size: 16px; font-weight: 700; }
 .bk-form > p.bk-muted { margin: 4px 0 16px; }
 .bk-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
 .bk-row label { display: flex; gap: 8px; align-items: center; font-weight: 500; }
@@ -103,7 +99,7 @@
 .bk-block textarea { display: block; width: 100%; margin-top: 6px; resize: vertical; }
 
 /* Staff: book for someone else; urgent requests */
-.bk-for { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px 12px; margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+.bk-for { border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px 12px; margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
 .bk-for legend { font-weight: 700; padding: 0 6px; }
 .bk-for > label { display: flex; gap: 6px; align-items: center; font-weight: 500; }
 .bk-for > small { flex-basis: 100%; }
@@ -116,12 +112,12 @@
 /* My bookings */
 .bk-bcard { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .bk-bhead { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
-.bk-bhead h3 { font-size: 19px; }
+.bk-bhead h3 { font-size: 20px; }
 .bk-resched { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-top: 8px; width: 100%; background: var(--bg); }
 
 /* Login */
 .bk-login { min-height: 100vh; display: grid; place-items: center; }
-.bk-panel { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 32px; display: flex; flex-direction: column; gap: 12px; width: 340px; }
+.bk-panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 32px; display: flex; flex-direction: column; gap: 12px; width: 340px; }
 
 .bk-mobile-nav { display: none; }
 
@@ -133,9 +129,9 @@
   .bk-grid { grid-template-columns: 1fr; }
 }
 
-.bk-notice { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; background: var(--green-bg); color: var(--green); border: 1px solid #b9dfc2; border-radius: 10px; padding: 12px 16px; margin-bottom: 14px; font-weight: 500; }
+.bk-notice { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; background: var(--green-bg); color: var(--green); border: 1px solid #b9dfc2; border-radius: 8px; padding: 12px 16px; margin-bottom: 14px; font-weight: 500; }
 .bk-notice button { background: none; border: 0; font-size: 20px; line-height: 1; cursor: pointer; color: inherit; }
-.bk-pill-count { display: inline-block; min-width: 22px; margin-left: 6px; padding: 0 7px; border-radius: 999px; background: var(--grey-bg); color: var(--ink); font-size: 13px; font-weight: 700; text-align: center; }
+.bk-pill-count { display: inline-block; min-width: 22px; margin-left: 6px; padding: 0 7px; border-radius: 999px; background: var(--grey-bg); color: var(--ink); font-size: 14px; font-weight: 700; text-align: center; }
 .bk-pill.is-on .bk-pill-count { background: var(--yellow); }
 .bk-room-filter { margin-left: auto; min-height: 42px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); }
 .bk-linkbtn { border: 0; background: none; padding: 0; color: #234a9c; font-weight: 600; cursor: pointer; }
@@ -154,20 +150,20 @@
 .bk-find-table { display: grid; gap: 6px; margin-top: 10px; }
 .bk-find-row { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 10px; align-items: center; }
 .bk-find-name { display: grid; line-height: 1.3; }
-.bk-find-name small { color: var(--muted); font-size: 12.5px; }
+.bk-find-name small { color: var(--muted); font-size: 12px; }
 .bk-find-name .bk-find-note { color: #9a6700; }
 .ui-tl-cell.bk-find-cell { height: 34px; }
 
 /* Sprint 3: calendar subscription, check-in, freeze */
-.bk-calsub { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; margin: 0 0 18px; border: 1px solid var(--app-border, #dfe3ea); border-radius: 10px; background: #fafbfd; }
+.bk-calsub { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; margin: 0 0 18px; border: 1px solid var(--app-border, #dfe3ea); border-radius: 8px; background: #fafbfd; }
 .bk-calsub > div:first-child { flex: 1 1 320px; }
 .bk-calsub p { margin: 4px 0 0; }
 .bk-calsub-link { display: flex; flex-wrap: wrap; gap: 8px; flex: 1 1 360px; }
-.bk-calsub-link input { flex: 1 1 220px; min-width: 0; padding: 7px 9px; border: 1px solid var(--app-border, #dfe3ea); border-radius: 6px; font-size: 12px; }
+.bk-calsub-link input { flex: 1 1 220px; min-width: 0; padding: 7px 9px; border: 1px solid var(--app-border, #dfe3ea); border-radius: 8px; font-size: 12px; }
 .bk-freeze { margin: 0 0 18px; }
 .bk-freeze > div { display: flex; flex-direction: column; gap: 6px; }
-.bk-freeze-form { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
-.bk-freeze-form textarea { width: 100%; max-width: 520px; padding: 6px 8px; border: 1px solid var(--app-border, #dfe3ea); border-radius: 6px; font: inherit; }
+.bk-freeze-form { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.bk-freeze-form textarea { width: 100%; max-width: 520px; padding: 6px 8px; border: 1px solid var(--app-border, #dfe3ea); border-radius: 8px; font: inherit; }
 .bk-chip.is-series { background: #eef2ff; color: #3949ab; }
 .bk-chip.att-CHECKED_IN { background: #e8f5e9; color: #2e7d32; }
 .bk-chip.att-NO_SHOW { background: #fdecea; color: #b71c1c; }
@@ -177,15 +173,15 @@
 /* Sprint 3: weekly series (staff) */
 .bk-series h2 { margin: 0 0 6px; font-size: 20px; }
 .bk-series fieldset { border: 0; padding: 0; margin: 0; }
-.bk-series legend { font-size: 13px; font-weight: 650; margin-bottom: 4px; }
-.bk-series-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 12px 0; font-size: 13px; }
+.bk-series legend { font-size: 14px; font-weight: 650; margin-bottom: 4px; }
+.bk-series-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 12px 0; font-size: 14px; }
 .bk-series-row label { display: flex; flex-direction: column; gap: 4px; }
 .bk-series-row fieldset label, fieldset.bk-series-row label { flex-direction: row; align-items: center; gap: 5px; }
 .bk-series-person { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.bk-series-person input { width: 120px; padding: 5px 8px; border: 1px solid var(--app-border, #dfe3ea); border-radius: 6px; }
+.bk-series-person input { width: 120px; padding: 5px 8px; border: 1px solid var(--app-border, #dfe3ea); border-radius: 8px; }
 .bk-series-day { min-width: 54px; }
-.bk-series-purpose { display: flex; flex-direction: column; gap: 4px; font-size: 13px; margin: 8px 0; }
-.bk-series-purpose textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--app-border, #dfe3ea); border-radius: 6px; font: inherit; }
+.bk-series-purpose { display: flex; flex-direction: column; gap: 4px; font-size: 14px; margin: 8px 0; }
+.bk-series-purpose textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--app-border, #dfe3ea); border-radius: 8px; font: inherit; }
 .bk-series-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0; }
 .bk-series-table tr.is-skipped td { color: #9a3412; background: #fff7ed; }
 /* Keep each card's actions on one baseline, independent of its description length. */
@@ -217,35 +213,35 @@
 
 /* Sprint 3 (1.16.0): fixes from the user review (CHANGELOG 1.16.0). */
 .bk-cover { height: 84px; }                          /* smaller covers: room for capacity and details */
-.bk-cover-icon { width: 52px; height: 52px; border-radius: 14px; }
-.bk-facts { display: grid; gap: 2px; margin: 2px 0 0; font-size: 13.5px; }
+.bk-cover-icon { width: 52px; height: 52px; border-radius: 12px; }
+.bk-facts { display: grid; gap: 2px; margin: 2px 0 0; font-size: 14px; }
 .bk-facts > div { display: flex; gap: 6px; }
 .bk-facts dt { color: var(--muted); }
 .bk-facts dt::after { content: ':'; }
 .bk-facts dd { margin: 0; font-weight: 500; }
 .bk-facts-more dd { color: var(--muted); font-weight: 400; }
-.bk-separate { font-size: 13px; margin: 2px 0 12px; }
+.bk-separate { font-size: 14px; margin: 2px 0 12px; }
 .bk-people-filter { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
 .bk-people-filter input { width: 72px; min-height: 38px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
-.bk-required { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--amber-bg); color: var(--amber); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+.bk-required { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--amber-bg); color: var(--amber); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
 .ind-file-control { position: relative; display: flex; align-items: center; gap: 12px; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
 .ind-file-control .ind-file-input { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
 .ind-file-control:focus-within { outline: 2px solid #4264ab; outline-offset: 2px; }
 .ind-file-name { min-width: 0; overflow-wrap: anywhere; color: var(--muted); font-weight: 400; }
-.bk-missing { color: var(--amber); font-size: 13.5px; font-weight: 600; }
+.bk-missing { color: var(--amber); font-size: 14px; font-weight: 600; }
 .bk-earlier { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 8px; }
 .bk-submit-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .bk-submit-time { font-weight: 700; }
-.bk-change-note { margin: 2px 0; padding: 6px 10px; border-left: 3px solid #3b6fd8; border-radius: 0 6px 6px 0; background: #eef3fd; font-size: 13.5px; }
+.bk-change-note { margin: 2px 0; padding: 6px 10px; border-left: 3px solid #3b6fd8; border-radius: 0 8px 8px 0; background: #eef3fd; font-size: 14px; }
 .bk-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 4px; }
 .bk-resched-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
-.bk-find-hidden { margin: 6px 0 0; font-size: 13px; }
+.bk-find-hidden { margin: 6px 0 0; font-size: 14px; }
 .bk-calsub-apps { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
 .bk-calsub-apps .bk-pill { padding: 6px 14px; font-size: 14px; }
 .bk-calsub-steps { margin: 4px 0; padding-left: 20px; font-size: 14px; line-height: 1.6; }
-.bk-calsub-delay { font-size: 13px; }
+.bk-calsub-delay { font-size: 14px; }
 /* Resource setup: capacity, details editor; Lab setup page. */
-.mr-details { display: grid; gap: 8px; margin: 0; padding: 10px 12px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.mr-details { display: grid; gap: 8px; margin: 0; padding: 10px 12px 12px; border: 1px solid var(--line); border-radius: 8px; }
 .mr-details legend { padding: 0 6px; font-weight: 600; font-size: 14px; }
 .mr-detail-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: 8px; }
 .mr-detail-row input { min-height: 36px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; }
@@ -260,9 +256,9 @@
   .bk-induction-strip > .bk-muted { flex-basis: 100%; font-weight: 600; }
   .bk-induction-item { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 2px 6px; align-items: start; flex: 1 0 100%; min-width: 0; }
   .bk-induction-item > svg { grid-column: 1; grid-row: 1; margin-top: 3px; }
-  .bk-induction-item > b { grid-column: 2; grid-row: 1; font-size: 13px; }
-  .bk-induction-item > span { grid-column: 2; grid-row: 2; font-size: 13px; }
-  .bk-induction-item > a { grid-column: 3; grid-row: 1 / 3; align-self: center; margin-left: 2px; font-size: 13px; white-space: nowrap; }
+  .bk-induction-item > b { grid-column: 2; grid-row: 1; font-size: 14px; }
+  .bk-induction-item > span { grid-column: 2; grid-row: 2; font-size: 14px; }
+  .bk-induction-item > a { grid-column: 3; grid-row: 1 / 3; align-self: center; margin-left: 2px; font-size: 14px; white-space: nowrap; }
   /* Phones: the submit button and the chosen time stay at the bottom of the booking dialog. */
   .bk-modal .bk-submit-row { position: sticky; bottom: -28px; z-index: 3; margin: 0 -28px -28px; padding: 12px 28px 16px; background: var(--card); box-shadow: 0 -6px 16px rgba(17, 24, 39, .08); }
   .bk-modal { padding: 22px 18px 28px; }

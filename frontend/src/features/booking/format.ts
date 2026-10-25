@@ -11,6 +11,14 @@ export const fmtDateTime = (iso: string) =>
     new Date(iso),
   )
 
+// Sprint 3 (internal-tool UI, AI-6): a wall-clock time ("08:00" or "08:00:00", as resources and searches store it) in the
+// same "8:00 am" style as fmtTime. Formatted in UTC on a fixed day, so the time zone cannot shift it.
+const clockFormat = new Intl.DateTimeFormat('en-AU', { timeStyle: 'short', timeZone: 'UTC' })
+export const fmtClock = (hhmm: string) => clockFormat.format(new Date(`1970-01-01T${hhmm.slice(0, 5)}:00Z`))
+
+/** Sprint 3 (internal-tool UI, AI-6): opening hours, "8:00 am – 8:00 pm". */
+export const fmtHours = (opening: string, closing: string) => `${fmtClock(opening)} – ${fmtClock(closing)}`
+
 const dayLabel = new Intl.DateTimeFormat('en-AU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: TZ })
 const dayKey = new Intl.DateTimeFormat('en-CA', { timeZone: TZ })
 

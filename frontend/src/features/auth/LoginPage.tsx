@@ -51,7 +51,7 @@ export function LoginPage({ notice = '' }: { notice?: string }) {
 
   return (
     <AuthShell crumb={register ? 'Create account' : 'Sign in'}>
-          <p className="auth-form-eyebrow">SMARTLAB ACCESS</p>
+          {/* Sprint 3 (internal-tool UI, AI-2): no eyebrow above the form title. */}
           <h2 id="auth-title" tabIndex={-1}>{register ? 'Create an account' : 'Sign in'}</h2>
           <p className="auth-description">{register ? 'Create a student account to get started.' : 'Access your bookings and training records.'}</p>
           {notice && <p className="auth-notice" role="status">{notice}</p>}

@@ -126,8 +126,8 @@ async function signOut(page: Page) {
 }
 
 for (const { entry, destination, heading, menu } of [
-  { entry: '/bookings/?view=upcoming', destination: '/bookings?view=upcoming', heading: 'My bookings', menu: 'My Bookings' },
-  { entry: '/resources/?kind=ROOM', destination: '/resources?kind=ROOM', heading: 'Book a resource', menu: 'Book a Resource' },
+  { entry: '/bookings/?view=upcoming', destination: '/bookings?view=upcoming', heading: 'My bookings', menu: 'My bookings' },
+  { entry: '/resources/?kind=ROOM', destination: '/resources?kind=ROOM', heading: 'Book a resource', menu: 'Book a resource' },
 ]) {
   test(`anonymous deep link returns to ${destination} after login`, async ({ page }) => {
     await page.goto(`/#${entry}`)
@@ -140,7 +140,7 @@ for (const { entry, destination, heading, menu } of [
 }
 
 const portals: { role: Role; home: string; heading: string; forbidden: string }[] = [
-  { role: 'STUDENT', home: '/dashboard', heading: 'Welcome back, Test.', forbidden: '/admin/qualifications' },
+  { role: 'STUDENT', home: '/dashboard', heading: 'Dashboard', forbidden: '/admin/qualifications' },
   // Sprint 3 (1.16.0): staff start on Today.
   { role: 'ADMIN', home: '/admin/today', heading: 'Today', forbidden: '/manager/bookings' },
   { role: 'MANAGER', home: '/admin/today', heading: 'Today', forbidden: '/dashboard' },
@@ -159,7 +159,7 @@ for (const { role, home, heading, forbidden } of portals) {
     await page.goto(`/#${forbidden}`)
     await expect(page.getByRole('heading', { name: 'This page is not available for your role' })).toBeVisible()
     expect(api.requests.filter((path) => path !== 'auth/me/')).toEqual([])
-    await page.getByRole('link', { name: 'Return to my portal' }).click()
+    await page.getByRole('link', { name: `Go to ${heading}`, exact: true }).click()
     await expect(page).toHaveURL(`http://127.0.0.1:5174/#${home}`)
   })
 
@@ -176,7 +176,7 @@ test('Manager returns to user management after mock login and can reopen it from
   await signIn(page, 'MANAGER')
   await expect(page).toHaveURL(/#\/manager\/users$/)
   await expect(page).toHaveTitle('User management · UNSW SmartLab')
-  await expect(page.getByRole('heading', { name: 'User Management', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'User management', exact: true })).toBeVisible()
   const table = page.getByRole('table')
   await expect(table.getByRole('row')).toHaveCount(accounts.length + 1)
   await expect(table.getByRole('cell', { name: users.STUDENT.zid, exact: true })).toBeVisible()
@@ -184,13 +184,13 @@ test('Manager returns to user management after mock login and can reopen it from
   expect(api.managerUserRequests.length).toBeGreaterThan(0)
   expect(api.managerUserRequests.every((request) => request === 'GET admin/users/')).toBe(true)
   const navigation = page.getByRole('navigation', { name: 'Main navigation', exact: true })
-  const userManagement = navigation.getByRole('link', { name: 'User Management', exact: true })
+  const userManagement = navigation.getByRole('link', { name: 'User management', exact: true })
   await expect(userManagement).toHaveAttribute('aria-current', 'page')
-  await navigation.getByRole('link', { name: 'Room Management', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Room booking management', exact: true })).toBeVisible()
+  await navigation.getByRole('link', { name: 'Room management', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Room management', exact: true })).toBeVisible()
   api.managerUserRequests.length = 0
   await userManagement.click()
-  await expect(page.getByRole('heading', { name: 'User Management', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'User management', exact: true })).toBeVisible()
   await expect(table.getByRole('row')).toHaveCount(accounts.length + 1)
   await expect(userManagement).toHaveAttribute('aria-current', 'page')
   await expect(page).toHaveTitle('User management · UNSW SmartLab')
@@ -204,14 +204,14 @@ test('staff can book too: booking, my bookings and induction pages are in the me
   await expect(page).toHaveURL('http://127.0.0.1:5174/#/admin/today') // Sprint 3 (1.16.0): staff home is Today
   const navigation = page.getByRole('navigation', { name: 'Main navigation', exact: true })
   for (const [menu, path, heading] of [
-    ['Book a Resource', '/resources', 'Book a resource'],
-    ['My Bookings', '/bookings', 'My bookings'],
+    ['Book a resource', '/resources', 'Book a resource'],
+    ['My bookings', '/bookings', 'My bookings'],
   ] as const) {
     await navigation.getByRole('link', { name: menu, exact: true }).click()
     await expect(page).toHaveURL(`http://127.0.0.1:5174/#${path}`)
     await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible()
   }
-  await expect(navigation.getByRole('link', { name: 'Induction & Training', exact: true })).toBeVisible()
+  await expect(navigation.getByRole('link', { name: 'Induction & training', exact: true })).toBeVisible()
   await page.goto('/#/dashboard')
   await expect(page.getByRole('heading', { name: 'This page is not available for your role' })).toBeVisible()
 })
@@ -221,7 +221,7 @@ for (const role of ['STUDENT', 'ADMIN'] as const) {
     await page.goto('/#/manager/users')
     await signIn(page, role)
     await expect(page).toHaveURL(role === 'STUDENT' ? /#\/dashboard$/ : /#\/admin\/today$/) // Sprint 3 (1.16.0)
-    await expect(page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'User Management', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'User management', exact: true })).toHaveCount(0)
     expect(api.managerUserRequests).toEqual([])
     await page.goto('/#/manager/users')
     await expect(page.getByRole('heading', { name: 'This page is not available for your role' })).toBeVisible()
@@ -289,9 +289,9 @@ test('unknown and differently cased paths show a recoverable not-found page', as
   await signIn(page)
   for (const path of ['/missing-page', '/Resources', '/__proto__']) {
     await page.goto(`/#${path}`)
-    await expect(page.getByText('PAGE NOT FOUND', { exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Page not found', exact: true })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Book a resource', exact: true })).toHaveCount(0)
-    await page.getByRole('link', { name: 'Return to my portal' }).click()
+    await page.getByRole('link', { name: 'Go to Dashboard', exact: true }).click()
     await expect(page).toHaveURL(/#\/dashboard$/)
   }
 })
@@ -300,8 +300,8 @@ test('menu navigation and browser history keep the active link in sync', async (
   await page.goto('/#/login')
   await signIn(page)
   const navigation = page.getByRole('navigation', { name: 'Main navigation', exact: true })
-  const resources = navigation.getByRole('link', { name: 'Book a Resource', exact: true })
-  const bookings = navigation.getByRole('link', { name: 'My Bookings', exact: true })
+  const resources = navigation.getByRole('link', { name: 'Book a resource', exact: true })
+  const bookings = navigation.getByRole('link', { name: 'My bookings', exact: true })
   await resources.click()
   await expect(resources).toHaveAttribute('aria-current', 'page')
   await bookings.click()
@@ -322,7 +322,7 @@ test('mobile menu navigates and closes, and Escape dismisses it', async ({ page 
   const dialog = page.getByRole('dialog', { name: 'Navigation', exact: true })
   await toggle.click()
   await expect(dialog).toBeVisible()
-  await dialog.getByRole('link', { name: 'My Bookings', exact: true }).click()
+  await dialog.getByRole('link', { name: 'My bookings', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'My bookings', exact: true })).toBeVisible()
   await expect(dialog).not.toBeVisible()
   await expect(toggle).toHaveAttribute('aria-expanded', 'false')
@@ -560,7 +560,7 @@ test('staff see the Outlook connection and failed calendar updates first, and ca
 
   await page.goto('/#/login')
   await signIn(page, 'ADMIN')
-  await page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'Calendar Sync', exact: true }).click()
+  await page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'Calendar sync', exact: true }).click()
   await expect(page).toHaveURL(/#\/admin\/calendar-sync$/)
   await expect(page.getByRole('status', { name: 'Outlook connection' })).toContainText('Connected to Outlook')
   await expect(page.getByRole('button', { name: 'Check Outlook for changes' })).toHaveCount(0)
@@ -583,14 +583,14 @@ test('staff see the Outlook connection and failed calendar updates first, and ca
 test('students cannot open Calendar Sync', async ({ page, api }) => {
   await page.goto('/#/login')
   await signIn(page, 'STUDENT')
-  await expect(page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'Calendar Sync', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'Calendar sync', exact: true })).toHaveCount(0)
   await page.goto('/#/admin/calendar-sync')
   await expect(page.getByRole('heading', { name: 'This page is not available for your role' })).toBeVisible()
   expect(api.requests.filter((path) => path.startsWith('admin/outlook'))).toEqual([])
 })
 
 // Book a Resource -> Find a free time: filters, one row per resource, click a free time to book it.
-test('find a free time shows every resource for the day and opens the booking form on the chosen time', async ({ page }) => {
+test('find a free time searches only on submit and preserves the chosen interval in booking review', async ({ page }) => {
   const room = { id: 'room-1', name: 'Lab Room 1', kind: 'ROOM', location: 'Demo laboratory', description: '', active: true,
     required_qualification_id: 'req-1', slot_minutes: 30, max_booking_minutes: 480, opening_time: '08:00:00', closing_time: '20:00:00',
     timezone: 'Australia/Sydney', pending_hold_minutes: 1440, status: 'AVAILABLE', status_reason: null, room_id: null, category: null }
@@ -628,17 +628,51 @@ test('find a free time shows every resource for the day and opens the booking fo
   await signIn(page, 'STUDENT')
   await page.goto('/#/resources')
   await page.getByRole('tab', { name: 'Find a free time', exact: true }).click()
-  await expect(page.getByRole('group', { name: 'Times for Lab Room 1' })).toBeVisible()
-  await expect(page.getByText('Not submitted').or(page.getByText(/induction/i)).first()).toBeVisible()
+  expect(queries).toHaveLength(0)
+  await page.getByLabel('Date', { exact: true }).fill('2030-01-10')
+  await page.getByLabel('Start time', { exact: true }).fill('08:00')
+  expect(queries).toHaveLength(0)
+  await page.getByRole('button', { name: 'Find available resources', exact: true }).click()
+  await expect(page.getByRole('article', { name: 'Lab Room 1', exact: true })).toBeVisible()
   expect(queries.some((q) => q.includes('bookable_only=true'))).toBe(true)
-  await expect(page.getByRole('group', { name: 'Times for 3D Printer 001' }).getByRole('button').first()).toBeDisabled()
+  expect(queries.some(q => q.includes('free_at=08%3A00'))).toBe(true)
+  await expect(page.getByRole('article', { name: '3D Printer 001', exact: true }).getByRole('button', { name: 'Review booking' })).toBeDisabled()
 
+  await page.getByText('More filters', { exact: true }).click()
+  const queryCount = queries.length
   await page.getByLabel('Equipment type').selectOption('Fabrication')
+  expect(queries).toHaveLength(queryCount)
+  await expect(page.getByRole('article', { name: 'Lab Room 1', exact: true }).getByRole('button', { name: 'Review booking' })).toBeDisabled()
+  await page.getByRole('button', { name: 'Find available resources', exact: true }).click()
   await expect.poll(() => queries.some((q) => q.includes('category=Fabrication'))).toBe(true)
 
-  await page.getByRole('group', { name: 'Times for Lab Room 1' }).getByRole('button').first().click()
+  await page.getByRole('article', { name: 'Lab Room 1', exact: true }).getByRole('button', { name: 'Review booking' }).click()
   await expect(page.locator('.ui-selection')).toContainText('8:00')
   await expect(page.locator('.ui-selection')).toContainText('9:00')
+  await expect(page.getByRole('button', { name: 'View day availability', exact: true })).toBeVisible()
+  await expect(page.locator('.bk-timeline')).toHaveCount(0)
+
+  // Sprint 3 (review R4, R5): the dialog is named after the resource; selecting text and releasing over the backdrop keeps it open.
+  const dialog = page.getByRole('dialog', { name: 'Book Lab Room 1', exact: true })
+  const purpose = dialog.getByPlaceholder(/What will you use it for/)
+  await purpose.fill('Thesis experiment')
+  const box = (await purpose.boundingBox())!
+  await page.mouse.move(box.x + 10, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(4, 4)
+  await page.mouse.up()
+  await expect(dialog).toBeVisible()
+  await expect(purpose).toHaveValue('Thesis experiment')
+
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('article', { name: 'Lab Room 1', exact: true }).getByRole('button', { name: 'Review booking' })).toBeFocused()
+
+  // A plain click on the backdrop still closes it.
+  await page.getByRole('article', { name: 'Lab Room 1', exact: true }).getByRole('button', { name: 'Review booking' }).click()
+  await expect(dialog).toBeVisible()
+  await page.mouse.click(4, 4)
+  await expect(dialog).toHaveCount(0)
 })
 
 // Sprint 3: notifications, check-in, calendar link, booking freeze, weekly series.
@@ -649,6 +683,31 @@ const approvedBooking = (overrides: Record<string, unknown> = {}) => ({
   booked_for: { id: 'test-student', zid: 'z1000001', display_name: 'Test Student', role: 'STUDENT' }, created_by_user: null, on_behalf: false,
   attendance: null, checked_in_at: null, check_in_open: true, check_in_opens_at: '2030-01-09T23:45:00Z', check_in_closes_at: '2030-01-10T00:30:00Z',
   series_id: null, ...overrides,
+})
+
+test('test account 1 has verified inductions without an evidence upload form', async ({ page }) => {
+  const requirements = [
+    { id: 'general', name: 'General induction', description: '', prerequisite_ids: [] },
+    { id: 'advanced', name: 'Advanced induction', description: '', prerequisite_ids: ['general'] },
+  ]
+  const qualifications = requirements.map(requirement => ({ id: `grant-${requirement.id}`, student_id: 'test-student',
+    requirement_id: requirement.id, title: 'Automatic test-account access', notes: '', file_id: '', file_url: '',
+    submitted_at: '2026-01-01T00:00:00Z', status: 'VERIFIED', effective_status: 'VERIFIED', valid_until: null }))
+  await page.route('**/api/v1/**', async route => {
+    const path = new URL(route.request().url()).pathname.replace('/api/v1/', '')
+    if (path === 'auth/me/') return route.fulfill({ json: { ...users.STUDENT, zid: '1', test_account: true, bypass_booking_rules: false } })
+    if (path === 'qualification-requirements/') return route.fulfill({ json: { count: 2, results: requirements } })
+    if (path === 'qualifications/') return route.fulfill({ json: { count: 2, results: qualifications } })
+    return route.fallback()
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'STUDENT')
+  await page.goto('/#/induction')
+  await expect(page.locator('.ind-list .ui-pill')).toHaveText(['Verified', 'Verified'])
+  await expect(page.getByText('All inductions are automatically verified for test account 1. No evidence upload is required.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Submit induction evidence', exact: true })).toHaveCount(0)
+  await expect(page.locator('input[type=file]')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /^(Upload|Re-upload)$/ })).toHaveCount(0)
 })
 
 test('the bell shows unread notifications and opens the linked page', async ({ page }) => {
@@ -699,7 +758,7 @@ test('the bell badge stays small, and the panel groups notifications with an ico
   const bell = page.getByRole('button', { name: 'Notifications, 4 unread' })
   const badge = bell.locator('.nt-badge')
   await expect(badge).toHaveText('4')
-  await expect(badge).toHaveCSS('font-size', '10.5px')
+  await expect(badge).toHaveCSS('font-size', '12px') // Sprint 3 (internal-tool UI, AI-3): nothing below 12px
   // Measure after the pop animation, which briefly scales the badge to 115%.
   await badge.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
   const box = await badge.boundingBox()
@@ -737,6 +796,35 @@ test('my bookings: check in, and get the calendar subscription link', async ({ p
   expect(checkedIn).toBe(true)
   await page.getByRole('button', { name: 'Subscribe in calendar', exact: true }).click()
   await expect(page.getByLabel('Calendar subscription link')).toHaveValue(/\/api\/v1\/calendar\/secret-token-1234567890\.ics$/)
+})
+
+test('booking status tabs filter locally and retain the selected view after reload', async ({ page }) => {
+  let bookingReads = 0
+  const future = { start: '2099-01-10T00:00:00Z', end: '2099-01-10T01:00:00Z', check_in_open: false }
+  await page.route('**/api/v1/bookings/', async route => {
+    bookingReads++
+    return route.fulfill({ json: { count: 4, results: [
+      approvedBooking({ ...future, id: 'future', purpose: 'Future session' }),
+      approvedBooking({ ...future, id: 'pending', purpose: 'Pending session', status: 'PENDING_APPROVAL' }),
+      approvedBooking({ ...future, id: 'cancelled', purpose: 'Cancelled session', status: 'CANCELLED' }),
+      approvedBooking({ id: 'past', purpose: 'Past session', start: '2020-01-10T00:00:00Z', end: '2020-01-10T01:00:00Z', check_in_open: false }),
+    ] } })
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'STUDENT')
+  await page.goto('/#/bookings')
+  await expect(page.locator('.bk-bcard')).toHaveCount(4)
+  const reads = bookingReads
+  for (const [tab, purpose] of [['Upcoming', 'Future session'], ['Pending', 'Pending session'], ['Past', 'Past session'], ['Cancelled', 'Cancelled session']]) {
+    await page.getByRole('tab', { name: `${tab} 1`, exact: true }).click()
+    await expect(page.locator('.bk-bcard')).toHaveCount(1)
+    await expect(page.locator('.bk-bcard')).toContainText(purpose)
+  }
+  expect(bookingReads).toBe(reads)
+  await expect(page).toHaveURL(/view=cancelled$/)
+  await page.reload()
+  await expect(page.getByRole('tab', { name: 'Cancelled 1', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('.bk-bcard')).toContainText('Cancelled session')
 })
 
 test('a frozen person sees the freeze and can ask to be unfrozen', async ({ page }) => {
@@ -787,7 +875,7 @@ test('staff review unfreeze requests on Booking freezes', async ({ page }) => {
   })
   await page.goto('/#/login')
   await signIn(page, 'ADMIN')
-  await page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'Booking Freezes', exact: true }).click()
+  await page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'Booking freezes', exact: true }).click()
   const requests = page.getByRole('table', { name: 'Unfreeze requests' })
   await expect(requests).toContainText('Missed while sick')
   await requests.getByRole('button', { name: 'Unfreeze', exact: true }).click()
@@ -839,7 +927,7 @@ test('staff book a weekly series and skip the dates with a problem', async ({ pa
 test('students do not see Repeat weekly or Booking freezes', async ({ page }) => {
   await page.goto('/#/login')
   await signIn(page, 'STUDENT')
-  await expect(page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'Booking Freezes', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'Booking freezes', exact: true })).toHaveCount(0)
   await page.goto('/#/admin/freezes')
   await expect(page.getByRole('heading', { name: 'This page is not available for your role' })).toBeVisible()
 })
@@ -919,7 +1007,7 @@ test('an Admin reads the usage statistics on Booking Records', async ({ page }) 
   })
   await page.goto('/#/login')
   await signIn(page, 'ADMIN')
-  await page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'Booking Records', exact: true }).click()
+  await page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'Booking records', exact: true }).click()
   await page.getByRole('tab', { name: 'Usage statistics', exact: true }).click()
   await expect(page).toHaveURL(/#\/admin\/records\?tab=usage$/)
   const table = page.getByRole('table', { name: 'Usage by resource' })
@@ -960,7 +1048,7 @@ test('staff search booking records and export the same list as CSV', async ({ pa
   await page.goto('/#/login')
   await signIn(page, 'MANAGER')
   await page.goto('/#/admin/records')
-  await expect(page.getByRole('heading', { name: 'Booking Records', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Booking records', exact: true })).toBeVisible()
   const table = page.getByRole('table', { name: 'Bookings' })
   await expect(table).toContainText('Test Student')
   await expect(table).toContainText('Test Admin (z9000001)')
@@ -985,7 +1073,7 @@ test('staff search booking records and export the same list as CSV', async ({ pa
 test('students do not see Booking Records', async ({ page }) => {
   await page.goto('/#/login')
   await signIn(page, 'STUDENT')
-  await expect(page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'Booking Records', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'Booking records', exact: true })).toHaveCount(0)
   await page.goto('/#/admin/records')
   await expect(page.getByRole('heading', { name: 'This page is not available for your role' })).toBeVisible()
 })
@@ -1032,11 +1120,14 @@ test('my bookings shows a weekly series as one card', async ({ page }) => {
 })
 
 // Sprint 3: the inductions are one line at the top of Book a resource.
-test('book a resource shows all inductions on one line with an upload link', async ({ page }) => {
+test('book a resource keeps missing inductions open with an upload link', async ({ page }) => {
   const room = { id: 'room-1', name: 'Lab Room 1', kind: 'ROOM', location: 'Demo laboratory', description: '', active: true,
     required_qualification_id: 'req-2', slot_minutes: 30, max_booking_minutes: 240, opening_time: '08:00:00', closing_time: '20:00:00',
     timezone: 'Australia/Sydney', pending_hold_minutes: 1440, status: 'AVAILABLE', status_reason: null, room_id: null, category: null }
   const general = { ...room, id: 'room-2', name: 'Lab Room 2', required_qualification_id: 'req-1' }
+  const verified = (id: string, requirement: string, title: string) => ({ id, requirement_id: requirement, effective_status: 'VERIFIED',
+    status: 'VERIFIED', submitted_at: '2030-01-01T00:00:00Z', title, valid_until: '2099-01-01T00:00:00Z' })
+  const quals = [verified('q1', 'req-1', 'General')]
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
     const path = new URL(request.url()).pathname.replace('/api/v1/', '')
@@ -1047,21 +1138,32 @@ test('book a resource shows all inductions on one line with an upload link', asy
         { id: 'req-2', name: 'Advanced', description: 'Equipment training', prerequisite_ids: [] },
       ] } })
     }
-    if (path === 'qualifications/') {
-      return route.fulfill({ json: { count: 1, results: [{ id: 'q1', requirement_id: 'req-1', effective_status: 'VERIFIED', status: 'VERIFIED',
-        submitted_at: '2030-01-01T00:00:00Z', title: 'General', valid_until: '2099-01-01T00:00:00Z' }] } })
-    }
+    if (path === 'qualifications/') return route.fulfill({ json: { count: quals.length, results: quals } })
     return route.fallback()
   })
   await page.goto('/#/login')
   await signIn(page, 'STUDENT')
   await page.goto('/#/resources')
+  // Sprint 3 (review R2): one induction is missing, so the details are open and the count is not shown as done.
   const strip = page.getByRole('group', { name: 'Your inductions' })
+  await expect(strip).toBeVisible()
+  await expect(page.locator('.bk-access-summary > summary > span')).toHaveText('1/2 verified')
+  await expect(page.locator('.bk-access-summary > summary > span')).toHaveClass('is-warn')
   await expect(strip).toContainText('General verified')
   await expect(strip).toContainText('Advanced not submitted')
   await expect(strip).toHaveClass(/is-warn/)
   await strip.getByRole('link', { name: 'Upload', exact: true }).click()
   await expect(page).toHaveURL(/#\/induction\?requirement=req-2$/)
+  // Wait until the induction page has rendered: going back before then can collapse both navigations into one.
+  await expect(page.getByRole('heading', { name: 'Induction & training', exact: true })).toBeVisible()
+
+  // With every induction verified the details fold away behind the summary.
+  quals.push(verified('q2', 'req-2', 'Advanced'))
+  await page.goto('/#/resources')
+  await expect(page.locator('.bk-access-summary > summary > span')).toHaveText('2/2 verified')
+  await expect(strip).toBeHidden()
+  await page.getByText('Training requirements', { exact: false }).click()
+  await expect(strip).toHaveClass(/is-ok/)
 })
 
 // Sprint 3: staff change their own password on the Account page.
@@ -1139,6 +1241,74 @@ test('a student asks to move a booking; a taken time can only join the waitlist'
   expect(sent).toEqual([{ start: '2030-01-09T21:30:00Z', end: '2030-01-09T22:00:00Z' }])
 })
 
+// Sprint 3 (review R1): a toast is hidden under a modal dialog's backdrop, so a failed move is also shown inside the dialog.
+test('Room Management shows a failed reschedule inside the dialog', async ({ page }) => {
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname.replace('/api/v1/', '')
+    if (path === 'admin/bookings/' && request.method() === 'GET') {
+      return route.fulfill({ json: { count: 1, results: [approvedBooking({ student: { id: 'test-student', zid: 'z1000001', display_name: 'Test Student' } })] } })
+    }
+    if (path === 'resources/' && request.method() === 'GET') return route.fulfill({ json: { count: 1, results: [reviewRoom] } })
+    if (path === 'resources/room-1/availability/') {
+      return route.fulfill({ json: {
+        resource_id: 'room-1', date: '2030-01-10', timezone: 'Australia/Sydney', duration_minutes: 30, can_request: true, qualification_status: 'VERIFIED',
+        earliest_date: '2030-01-03', latest_date: '2030-02-02', min_advance_days: 7, max_advance_days: 30, resource_status: 'AVAILABLE', status_reason: null,
+        slots: [reviewSlot('2030-01-09T21:00:00Z', '2030-01-09T21:30:00Z'), reviewSlot('2030-01-09T21:30:00Z', '2030-01-09T22:00:00Z')],
+      } })
+    }
+    if (path === 'bookings/bk-1/reschedule/' && request.method() === 'POST') {
+      return route.fulfill({ status: 409, json: { error: { code: 'BOOKING_CONFLICT', message: 'That time was just booked by someone else.' } } })
+    }
+    return route.fallback()
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'MANAGER')
+  await page.goto('/#/manager/bookings')
+  await page.getByRole('button', { name: 'Reschedule', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Reschedule booking', exact: true })
+  await dialog.getByLabel('Start time').selectOption({ label: '8:00 am' })
+  await dialog.getByRole('button', { name: 'Confirm new time', exact: true }).click()
+  await page.getByRole('button', { name: 'Move booking', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Booking not moved: That time is already booked.')
+})
+
+// Sprint 3 (UI review #1): on a 390 px phone, wide tables and tab rows scroll inside themselves; the page never gets wider than the screen.
+test('phone width: tables and tab rows never make a page wider than the screen', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname.replace('/api/v1/', '')
+    if (request.method() !== 'GET') return route.fallback()
+    if (path === 'resources/' || path === 'admin/resources/') return route.fulfill({ json: { count: 1, results: [reviewRoom] } })
+    if (path === 'admin/bookings/') {
+      return route.fulfill({ json: { count: 1, results: [approvedBooking({ student: { id: 'test-student', zid: 'z1000001', display_name: 'Test Student' } })] } })
+    }
+    if (path === 'qualification-requirements/') {
+      return route.fulfill({ json: { count: 1, results: [{ id: 'req-1', name: 'General laboratory induction', description: 'Safety basics', prerequisite_ids: [] }] } })
+    }
+    return route.fallback()
+  })
+  const widerThanScreen = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+
+  await page.goto('/#/login')
+  await signIn(page, 'STUDENT')
+  await page.goto('/#/bookings')
+  const cancelled = page.getByRole('tab', { name: /^Cancelled/ })
+  await expect(cancelled).toBeAttached()
+  expect(await widerThanScreen(), '/bookings').toBe(0)
+  await cancelled.click()
+  await expect(cancelled).toHaveAttribute('aria-selected', 'true')
+  await signOut(page)
+
+  await signIn(page, 'MANAGER')
+  for (const path of ['/manager/bookings', '/manager/resources', '/manager/users', '/manager/setup']) {
+    await page.goto(`/#${path}`)
+    await expect(page.locator('.ui-table-wrap th').first()).toBeVisible()
+    expect(await widerThanScreen(), path).toBe(0)
+  }
+})
+
 test('staff start on Today, whose cards open the pages that handle them', async ({ page }) => {
   await page.route('**/api/v1/admin/overview/', (route) => route.fulfill({ json: {
     role: 'ADMIN', pending_inductions: 2, pending_bookings: 3, urgent_requests: 1, waitlisted: 0, changes_waiting: 1,
@@ -1183,8 +1353,10 @@ test('Find a free time says why nothing can be booked', async ({ page }) => {
   await signIn(page, 'STUDENT')
   await page.goto('/#/resources')
   await page.getByRole('tab', { name: 'Find a free time', exact: true }).click()
+  await page.getByLabel('Date', { exact: true }).fill('2030-01-10')
+  await page.getByRole('button', { name: 'Find available resources', exact: true }).click()
   await expect(page.getByText('3 hidden: 3 induction not submitted')).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Go to Induction & Training' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Go to Induction & training' })).toBeVisible()
 })
 
 test('a Manager saves the lab\'s contact details on Lab setup', async ({ page }) => {
@@ -1198,7 +1370,7 @@ test('a Manager saves the lab\'s contact details on Lab setup', async ({ page })
   })
   await page.goto('/#/login')
   await signIn(page, 'MANAGER')
-  await page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'Lab Setup', exact: true }).click()
+  await page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'Lab setup', exact: true }).click()
   await page.getByRole('tab', { name: 'Contact details' }).click()
   await page.getByLabel('Email').fill('lab@example.edu')
   await page.getByRole('button', { name: 'Save contact details' }).click()

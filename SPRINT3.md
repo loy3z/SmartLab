@@ -245,7 +245,7 @@
     - `features/notifications/notifications.ts`、`notifications.css`
     - `features/booking/covers.ts`（1.15.0）
     - 1.16.0：`features/booking/change-requests.ts`、`find-time.ts`、`features/admin/today.ts`、`features/manager/lab-setup.ts`、`features/contact/contact.ts`、`site-contact-store.ts`、`features/induction/guide.ts`
-  - 测试：`tests/sprint3.test.mjs`、`tests/resource-form.test.mjs`、`tests/usage.test.mjs`、`tests/sprint3-records.test.mjs`、`tests/sprint3-visual.test.mjs`（1.15.0）、`tests/sprint3-review.test.mjs`（1.16.0）
+  - 测试：`tests/sprint3.test.mjs`、`tests/resource-form.test.mjs`、`tests/usage.test.mjs`、`tests/sprint3-records.test.mjs`、`tests/sprint3-visual.test.mjs`（1.15.0）、`tests/sprint3-review.test.mjs`（1.16.0）、`tests/ui-internal-tool.test.mjs`（第 20 节）
 - **文档**：`SPRINT3.md`（本文件）、`backend/docs/email-setup.md`
 
 ## 改动过的旧文件（新增部分都标了 Sprint 3）
@@ -281,3 +281,45 @@
 | FC-03 | `features/induction/InductionPage.tsx`, `evidence.ts`, booking `booking.css`: required evidence and English picker | `frontend/tests/evidence.test.mjs`; backend existing multipart file validation |
 
 Paths in the UI row are relative to `frontend/src/`. API types/client additions are in `features/booking/types.ts` and `api.ts`. No migration is needed: the stored principal is an ordinary STUDENT record; override fields exist only in the signed session.
+
+## 18. Workspace UI iteration (API remains 1.17.0)
+
+| ID | Code locations under frontend | Verification |
+| --- | --- | --- |
+| UI-01 | `src/ui/workspace.css`, `src/App.tsx`, `src/app/AppLayout.tsx`, `src/ui/components.tsx`; `public/fonts/` and included OFL licenses | Lint, build; desktop and phone visual review |
+| UI-02 | `src/features/dashboard/DashboardPage.tsx`, `dashboard.css`; booking `ResourceCard.tsx`, `BookingApp.tsx`; admin `TodayPage.tsx` | Live memory-backend walkthrough: student request, Manager approval, populated dashboard; existing Today routing check |
+| UI-03 | `src/features/booking/FindTime.tsx`, `SlotPicker.tsx`, `BookingForm.tsx` | Routing check: no query before submit, stale results disabled, selected interval retained, timeline collapsed, Escape and focus return; empty-result reasons retained |
+| UI-04 | `src/features/booking/MyBookings.tsx` | Routing check: tabs filter locally without another booking read; selected URL view survives reload |
+| UI-05 | `src/features/booking/Modal.tsx`, `src/ui/workspace.css` | Native dialog and keyboard test; 390 px visual walkthrough, desktop approval and records pages |
+
+No API/schema/authentication policy changes. The time-search response still includes server-calculated slots; request timing and presentation changed on the client. Visual review is a design judgement, not a certification against award winners.
+
+Review fixes (Claude). R1–R7 use the IDs of the code review in project docs `claude/reports/2026-10-25-workspace-ui-review.md`; “UI review #1” is item 1 of `claude/reports/2026-10-25-ui-review.md`:
+
+| ID | Code locations under frontend | Verification |
+| --- | --- | --- |
+| R1 | `src/features/booking/MyBookings.tsx` `RescheduleBox` (inline error); `Modal.tsx` docstring | Routing test “Room Management shows a failed reschedule inside the dialog” |
+| R2 | `src/features/booking/BookingApp.tsx` (training summary `open`, `verifiedCount`); `src/ui/workspace.css` `.bk-access-summary` | Routing test “book a resource keeps missing inductions open with an upload link” |
+| R4 | `src/features/booking/Modal.tsx` (`pressedOnBackdrop`, `onBackdrop`) | Routing test “find a free time searches only on submit…”: drag from Purpose to the backdrop keeps the dialog; a backdrop click closes it |
+| R5 | `Modal.tsx` `label` prop; callers `BookingApp.tsx`, `manager/ManagerBookingsPage.tsx` | Same routing tests find the dialog by its name |
+| R7 | `Sprint 3` notes in `FindTime.tsx`, `SlotPicker.tsx`, `BookingForm.tsx`, `DashboardPage.tsx`, `BookingApp.tsx`; `.bk-overlay` removed from `booking.css`, `workspace.css` | Lint, build |
+| UI review #1 | `src/ui/ui.css` `.ui-table-wrap` (`position: relative`); `src/ui/workspace.css` phone breakpoint: `.ui-tabs`, `.bk-pills`, `.bk-mode-tabs` scroll sideways | Routing test “phone width: tables and tab rows never make a page wider than the screen” (fails without either change: `/bookings` +176 px, `/manager/bookings` +81 px) |
+
+## 19. Account 1 induction access (1.17.1)
+
+FC-04: `backend/booking/test_console.py::_grant_test_inductions` grants all requirements as permanent VERIFIED records without files. `get_test_account` and `authentication.py::DemoIdentityProvider.resolve_bearer` cover login and existing sessions; new requirements are picked up automatically. `views.py::submission_json` returns an empty file URL for fileless grants. `frontend/src/features/induction/InductionPage.tsx` hides the evidence form for the test account. No schema change.
+
+Verification: `TestConsoleAPITests.test_all_inductions_are_permanent_fileless_and_survive_role_switches`, `test_existing_session_receives_new_requirements_without_duplicate_grants`, `test_bypass_off_keeps_inductions_but_restores_windows_and_approval`; routing test `test account 1 has verified inductions without an evidence upload form`. Existing tests retain ordinary-account restrictions, disabled-console rejection, conflict checks and self-only bypass.
+
+## 20. Internal-tool UI, first pass (API remains 1.17.1)
+
+Direction (Loy): a school's internal tool, not award-site styling. Task list: project docs `claude/tasks-ui-internal-tool.md` (AI-2, AI-3, AI-5, AI-6). Paths are under `frontend/`.
+
+| ID | Code locations | Verification |
+| --- | --- | --- |
+| AI-2 copy | `src/features/dashboard/DashboardPage.tsx` (H1 “Dashboard”), `booking/FindTime.tsx`, `admin/TodayPage.tsx`, `booking/ResourceCard.tsx`, `booking/BookingApp.tsx`, `booking/MyBookings.tsx`, `induction/InductionPage.tsx`, `app/UtilityPages.tsx`, `app/AppRouter.tsx` (not-found page), `app/AppLayout.tsx` (no “Portal” title), `auth/AuthShell.tsx`, `auth/LoginPage.tsx`, `StaffLoginPage.tsx`, `TestLoginPage.tsx`; the 10 staff `PageHeader`s | `tests/ui-internal-tool.test.mjs`: removed phrases, no heading ending in a full stop; routing tests use the new copy |
+| AI-3 type scale | `src/ui/workspace.css` (one shared H1 rule, scale comment), `ui/ui.css`, `app/shell.css`, `features/booking/booking.css`, `dashboard/dashboard.css`, `notifications/notifications.css`, `auth/auth.css`, `auth/mock-sso.css` | Unit tests: every `font-size` on 12/14/16/20/24/28 px; H1 size set once (+ phone). Screenshot metrics: no text below 12px |
+| AI-5 one font, two radii | `src/ui/workspace.css` (Instrument Serif removed), `public/fonts/instrument-serif*` deleted, `auth/auth.css` uses Manrope; radii in the same stylesheets | Unit tests: font families, `border-radius` values. Exception: `auth/mock-sso.css` stands in for the university's Microsoft sign-in |
+| AI-6 naming | `src/app/AppLayout.tsx` (menu), `app/AppRouter.tsx` (`titles`), page H1s; `features/booking/format.ts` `fmtClock`, `fmtHours` used by `ResourceCard.tsx`, `BookingForm.tsx`, `manager/ManagerResourcesPage.tsx`, `FindTime.tsx` | Unit tests: menu label = tab title, sentence case; `fmtClock`/`fmtHours`; routing tests find pages by the new names |
+
+Also: `tests/routing.spec.ts` “book a resource keeps missing inductions open…” now waits for the Induction page before going back (it could collapse both navigations into one).

@@ -47,7 +47,11 @@ export function TodayPage() {
       {!data && loading && <p role="status">Loading…</p>}
       {data && (
         <>
-          <div className="today-brief"><div><h2>{todoCards(data).some(card => card.count > 0) ? 'A few things need your attention.' : 'Everything is in good order.'}</h2><p>{todoCards(data).some(card => card.count > 0) ? 'Review the requests below, then get back to your day.' : 'No requests are waiting for your review.'}</p></div><span className="today-brief-mark"><CheckIcon size={23} /></span></div>
+          {/* Sprint 3 (internal-tool UI, AI-2): a plain status line instead of a slogan. */}
+          <div className="today-brief">
+            <div><h2>{todoCards(data).some(card => card.count > 0) ? 'Waiting for review' : 'Nothing waiting for review'}</h2></div>
+            <span className="today-brief-mark"><CheckIcon size={23} /></span>
+          </div>
           <div className="today-cards">
             {todoCards(data).filter(card => card.count > 0).map((card) => (
               <Link key={card.key} to={card.to} className={`today-card is-${card.tone}`}>
@@ -108,7 +112,7 @@ export function TodayPage() {
                   ))}
                 </ol>
               )}
-              {data.today_count > data.today.length && <Link to="/admin/records">All {data.today_count} in Booking Records →</Link>}
+              {data.today_count > data.today.length && <Link to="/admin/records">All {data.today_count} in Booking records →</Link>}
             </article>
           </div>
         </>

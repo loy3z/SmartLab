@@ -26,10 +26,13 @@ export function RescheduleBox({ booking, resource, onDone, onClose }: {
   const { user } = useAuth()
   const [range, setRange] = useState<SlotRange | null>(null)
   const [busy, setBusy] = useState(false)
+  // Sprint 3 (review R1): Room Management shows this box in a Modal, where a toast is hidden under the backdrop.
+  const [error, setError] = useState('')
   const duration = minutesBetween(booking.start, booking.end)
 
   async function save() {
     if (!range) return
+    setError('')
     const ok = await feedback.confirm({
       title: 'Move this booking?',
       details: [
@@ -43,7 +46,9 @@ export function RescheduleBox({ booking, resource, onDone, onClose }: {
     try {
       onDone(await rescheduleBooking(booking.id, range.start, range.end))
     } catch (e) {
-      feedback.error(errorMessage(e), 'Booking not moved')
+      const text = errorMessage(e)
+      setError(text)
+      feedback.error(text, 'Booking not moved')
     } finally {
       setBusy(false)
     }
@@ -51,9 +56,10 @@ export function RescheduleBox({ booking, resource, onDone, onClose }: {
 
   return (
     <div className="bk-resched">
-      <SlotPicker resource={resource} onSelect={setRange} hideQualification fixedMinutes={duration} excludeBookingId={booking.id}
+      <SlotPicker resource={resource} onSelect={(picked) => { setRange(picked); setError('') }} hideQualification fixedMinutes={duration} excludeBookingId={booking.id}
         forZid={booking.student_id === user?.id ? undefined : booking.booked_for?.zid ?? booking.student?.zid} allowEarly
         initialDate={new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date(booking.start))} />
+      {error && <p className="bk-error" role="alert">Booking not moved: {error}</p>}
       <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
         <button className="ui-btn ui-btn-primary ui-btn-sm" disabled={!range || busy} onClick={save}>{busy ? 'Saving…' : 'Confirm new time'}</button>
         <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose}>Close</button>
@@ -256,8 +262,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
 
   return (
     <div className="bookings-list">
-      <h1>My bookings</h1>
-      <p className="bk-sub">{user?.role === 'STUDENT' ? 'Your requests and their current status.' : 'Your own requests and those you made for other people.'}</p>
+      <h1>My bookings</h1>{/* Sprint 3 (internal-tool UI, AI-2): no introduction line */}
       {/* Sprint 3 */}
       <FreezeNotice />
       <CalendarSubscribe />

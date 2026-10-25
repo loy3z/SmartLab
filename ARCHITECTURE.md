@@ -221,6 +221,7 @@ sequenceDiagram
 | 测试账号只在开发开关打开、并且用内存存储时可用，角色不写回数据库（1.17.0） | `booking/test_console.py` `test_console_enabled`、`test_identity`；`authentication.py` `issue_demo_token`、`DemoIdentityProvider.resolve_bearer` |
 | 本人测试预约跳过业务规则，但保留时间、重复和冲突检查（1.17.0） | `test_console.py` `booking_rules_bypassed`、`test_period_violation`、`create_test_booking`；`services/bookings.py` `create_booking`、`reschedule_booking` |
 | 本人测试预约的可用性与周重复采用相同例外（1.17.0） | `test_console.py` `test_availability`、`test_window`；`services/series.py` `_series_check`、`_series_plan` |
+| 账号 1 自动获得全部永久 induction，新增要求也补齐，无 evidence 附件（1.17.1） | `test_console.py` `get_test_account`、`_grant_test_inductions`；`authentication.py` `DemoIdentityProvider.resolve_bearer`；`views.py` `submission_json`；前端 `induction/InductionPage.tsx` |
 | 测试数据不发送外部消息、日历同步（1.17.0） | `services/base.py` `_save_booking`；`views.py` `sync_after_write`；`notification_channels.py` `deliver_new_notifications` |
 | Urgent 只有一份说明，evidence 必填提示（1.17.0） | 前端 `BookingForm.tsx` `bookingPurpose`；`induction/evidence.ts` `evidenceProblem` |
 | 员工登录后进哪个页面（1.16.0） | 前端 `app/routes.ts` `homePath` |

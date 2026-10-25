@@ -19,7 +19,7 @@ Django 5.2 + Django REST Framework 3.16。提供学生时段查询、房间／�
 - 同一学生不能为同一资源重复提交时间重叠的有效申请；已有 `PENDING_APPROVAL`、`WAITLISTED` 或 `APPROVED` 记录时返回 `DUPLICATE_BOOKING`。取消、拒绝或过期后可重新申请；不同资源在同一时间仍可分别预约。
 - 学生查看自己的 dashboard、资格和预约，取消尚未开始的有效预约。员工的“我的预约”还包括自己替别人建的申请。Admin／Manager 查看审批队列并作出决定，也可以取消任何人的预约（`CANCELLED_BY_STAFF`）；Manager 可以改期（可以改时长）。
 - Manager 可以把房间或设备设为维修中／关闭（`PATCH /api/v1/admin/resources/{id}/status/`，需填原因）：暂停新申请、批准和递补，已有预约保留并列出供 Manager 决定是否取消；改回可用后候补自动递补。1.16.0 起状态变化时自动通知（站内和邮件）这个资源上有未来预约或申请的人（`RESOURCE_OUT_OF_SERVICE`／`RESOURCE_REOPENED`）。
-- **预约记录**（Admin／Manager，Booking Records 页面）：`GET /api/v1/admin/bookings/?status=ALL` 按资源、学生、日期、姓名或 zID（`q`）查看所有人的预约（带学生 zID 和姓名）；`GET /api/v1/admin/bookings/export/` 用同样的筛选导出 CSV（含创建人、是否重复预约和到场情况）。
+- **预约记录**（Admin／Manager，Booking records 页面）：`GET /api/v1/admin/bookings/?status=ALL` 按资源、学生、日期、姓名或 zID（`q`）查看所有人的预约（带学生 zID 和姓名）；`GET /api/v1/admin/bookings/export/` 用同样的筛选导出 CSV（含创建人、是否重复预约和到场情况）。
 - **Manager 拥有 Admin 的全部权限**，另外独有审批期限配置、资源状态、人员管理和 Lab setup（1.16.0）；**Admin 不能访问任何 Manager 页面和接口**（包括读取审批期限）。人员管理：`GET /api/v1/admin/users/` 查看人员名单（带 `is_staff` 和学生的 induction 状态）；Add staff（`POST /api/v1/admin/users/staff/`，`role` 为 `ADMIN` 或 `MANAGER`）新建员工账号；`PATCH /api/v1/admin/users/{id}/` 停用或恢复账号。**Student、Admin、Manager 是三种分开的账号，角色在创建时确定，之后不能互换**（学生不能升为员工，Admin 和 Manager 也不能互相切换，`ROLE_CHANGE_NOT_ALLOWED` 409）；要换人就新建账号、停用旧账号。不能修改自己，至少保留一个启用的 Manager，修改写审计。`POST /api/v1/admin/users/managers/` 等同于 Add staff 选 Manager（兼容接口）。
 - Admin／Manager 可通过 `GET /api/v1/admin/audit/` 按资源、学生、操作类型和时间查看审计记录（申请、审批、改期、取消、资格审核等），满足客户对操作轨迹的要求。
 - **日历订阅链接**：每人一条私密地址（`GET /api/v1/calendar/link/`，地址里是系统生成的随机码，和微软 Token 无关）。用户在 Outlook 里“从 Internet 订阅”粘贴即可，Outlook 自己定期读取 `GET /api/v1/calendar/{token}.ics`，里面是本人作为预约人的已批准预约；改期是更新同一条，取消后消失。可以重新生成（`POST calendar/link/reset/`），旧链接立即失效。更新频率由 Outlook 决定，可能要几个小时。
@@ -35,7 +35,7 @@ Django 5.2 + Django REST Framework 3.16。提供学生时段查询、房间／�
   - 不真删除：下架（`POST …/archive/`）后从预约页消失，历史和审计都保留，可以恢复（`POST …/restore/`）。还有未来预约（`RESOURCE_HAS_BOOKINGS`），或房间里还有设备（`ROOM_HAS_EQUIPMENT`）时不能下架。
   - 每次新增、修改、下架、恢复都写审计（`RESOURCE_CREATED`／`RESOURCE_UPDATED`（记录改了哪些字段）／`RESOURCE_ARCHIVED`／`RESOURCE_RESTORED`）。
 - **提醒**（通知铃铛）：已批准的预约开始前 24 小时提醒“记得点 I'm here”；已通过的 induction 在 14 天内到期时提醒重新上传；候补或待审批的申请到开始时间还没轮到或没人决定时，通知“申请已过期”。每条提醒只发一次。
-- **使用情况报表**（Admin／Manager，Booking Records 页面的 Usage statistics 标签，`GET /api/v1/admin/reports/usage/?first_date=&last_date=`）：每个资源在日期范围内的已批准预约数、预约小时数、占开放时间的比例、到场率（已到场 ÷（已到场 + 缺席））、缺席、取消和被拒数。只读。
+- **使用情况报表**（Admin／Manager，Booking records 页面的 Usage statistics 标签，`GET /api/v1/admin/reports/usage/?first_date=&last_date=`）：每个资源在日期范围内的已批准预约数、预约小时数、占开放时间的比例、到场率（已到场 ÷（已到场 + 缺席））、缺席、取消和被拒数。只读。
 - **员工修改自己的密码**（Account 页面，`POST /api/v1/auth/change-password/`）：要填当前密码，新密码至少 8 位且不能和当前相同；学生没有密码（用大学登录）。
 - **Lab setup**（1.16.0，Manager，`/manager/setup`）：新建 induction、编辑名称和四段说明（怎么完成、接受什么证明、谁审核、找谁问，显示在 Induction & Training 页面），以及实验室联系方式（`GET/PATCH site/contact/`，显示在 Help、已批准预约和 induction 说明下）。
 - **员工首页 Today**（1.16.0，`GET admin/overview/`）：Admin 和 Manager 登录后先看到待处理的事项（待审 induction、预约、紧急申请、候补、改期、快到期限的申请、解冻申请、维修中的资源）和今天的预约。
@@ -68,7 +68,7 @@ Manager 可通过 `GET /api/v1/admin/resources/{id}/booking-policy/` 查看审�
 - 以后：如果客户要在 Manager 页面上修改，新建一个读取数据库表的类，实现 `current()` 返回 `BookingRules`，再把环境变量 `RULES_PROVIDER` 指向它（例如 `RULES_PROVIDER=my_app.rules.DatabaseRulesProvider`）。预约、审批和资格代码都不需要改。
 - 属于单个资源的规则（开放时间、时段长度、最长时长、审批期限、所需 induction、状态）仍保存在资源记录上。审批期限不晚于预约开始时间，刷新页面、重复提交同一幂等请求都不会延长期限。
 
-已提供 Microsoft Graph 的真实 Outlook 日历适配器：预约批准后创建事件，Manager 改期时更新同一个事件，取消时删除事件；同步状态独立于预约状态，失败可重试。系统从不读取 Outlook 里的修改，**预约永远以网站为准**；用户在自己日历里删掉事件，只有 Manager 改期时才会按新时间重建。默认只邀请 `OUTLOOK_ALLOWED_ATTENDEES` 里列出的邮箱。Admin／Manager 可以在 Calendar Sync 页面（开发用）查看连接和同步状态。默认关闭；配置、个人账号登录（可自动续期）和实测命令 `manage.py outlook_live_check` 见 [outlook-setup.md](docs/outlook-setup.md)。自动化测试使用模拟响应，真实连通需要在本机完成微软授权。
+已提供 Microsoft Graph 的真实 Outlook 日历适配器：预约批准后创建事件，Manager 改期时更新同一个事件，取消时删除事件；同步状态独立于预约状态，失败可重试。系统从不读取 Outlook 里的修改，**预约永远以网站为准**；用户在自己日历里删掉事件，只有 Manager 改期时才会按新时间重建。默认只邀请 `OUTLOOK_ALLOWED_ATTENDEES` 里列出的邮箱。Admin／Manager 可以在 Calendar sync 页面（开发用）查看连接和同步状态。默认关闭；配置、个人账号登录（可自动续期）和实测命令 `manage.py outlook_live_check` 见 [outlook-setup.md](docs/outlook-setup.md)。自动化测试使用模拟响应，真实连通需要在本机完成微软授权。
 
 预约页有两种方式：浏览资源卡片，或 **Find a free time**（按日期、时长、类型、房间、设备类别筛选，一张表看所有资源当天的空闲时间，点空闲时间直接预约；接口 `GET resources/day-overview/`，见 [frontend-api.md](docs/frontend-api.md)）。设备有 `category` 字段（演示类别是编的）。
 
@@ -197,7 +197,7 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
 
 数据库适配器需要实现 `get_outlook_sync(booking_id)`、`list_outlook_sync()`、`save_outlook_sync(record)`，实体为 `OutlookSyncRecord`。预约、同步记录、审计必须在同一 `atomic` 事务内保存。通过相同资源／学生锁领取处理租约，网络调用发生在事务外，完成后重读版本再更新；保留取消预约的事件对应关系。
 
-内存演示通过预约 API 自动尝试同步，管理员可用 Calendar Sync 页面（或 `admin/outlook/process/`、`admin/bookings/{id}/outlook-retry/`）处理失败。接入共享数据库后，可定时执行 `python manage.py process_outlook --limit 10`；独立进程不能读取演示服务器的内存，因此该命令拒绝内存适配器。
+内存演示通过预约 API 自动尝试同步，管理员可用 Calendar sync 页面（或 `admin/outlook/process/`、`admin/bookings/{id}/outlook-retry/`）处理失败。接入共享数据库后，可定时执行 `python manage.py process_outlook --limit 10`；独立进程不能读取演示服务器的内存，因此该命令拒绝内存适配器。
 
 ## 定时处理到期申请
 
@@ -223,5 +223,7 @@ $env:REPOSITORY_FACTORY="booking.repository.MemoryRepository"
 ```
 
 The existing machine-local `start-backend.ps1` also accepts `-TestConsole`, which always starts in memory mode (as if `-Memory` were given). Stop the previous backend in its own terminal before starting it again. Without `-TestConsole`, the script disables this feature.
+
+Account 1 automatically owns every induction permanently, including later additions; it never needs evidence uploads. Turning off booking-rule bypass retains these inductions. See the [1.17.1 contract](docs/frontend-api.md#1171-account-1-owns-every-induction).
 
 Open the frontend sign-in page, choose **Test console**, enter **1**, then use **Test role** and **Bypass booking rules** in the top bar. Bypass starts on. It applies to this account's own bookings; choose a staff role to test staff pages or weekly series. Turn it off to test normal restrictions. See the [API contract](docs/frontend-api.md#1170-functional-controls) for the exact scope. This is the only development exception to the ordinary-account rules above. No database migration is required. Do not enable it on deployed services.

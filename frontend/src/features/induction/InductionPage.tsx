@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
 import { Drawer, Facts } from '../../ui/components'
 import { useFeedback } from '../../ui/feedback-context'
+import { useAuth } from '../auth/auth-context'
 import { listQualifications, listRequirements, listResources, submitQualification } from '../booking/api'
 import { errorMessage, fmtDateTime } from '../booking/format'
 import type { Qualification, Requirement, Resource } from '../booking/types'
@@ -12,6 +13,8 @@ import { evidenceProblem } from './evidence'
 
 export function InductionPage() {
   const feedback = useFeedback()
+  const { user } = useAuth()
+  const testAccount = Boolean(user?.test_account) // Sprint 3 (1.17.1): automatic grants need no evidence form.
   const [params, setParams] = useSearchParams()
   const [requirements, setRequirements] = useState<Requirement[]>([])
   const [qualifications, setQualifications] = useState<Qualification[]>([])
@@ -118,8 +121,9 @@ export function InductionPage() {
 
   return (
     <div>
-      <h1>Induction &amp; Training</h1>
-      <p className="bk-sub">Upload your training evidence. An admin checks it before you can book.</p>
+      {/* Sprint 3 (internal-tool UI, AI-2 / AI-6): sentence-case name; the introduction line only for test account 1. */}
+      <h1>Induction &amp; training</h1>
+      {testAccount && <p className="bk-sub">All inductions are automatically verified for test account 1. No evidence upload is required.</p>}
 
       <section className="bk-bcard" style={{ alignItems: 'stretch' }}>
         <h2>My qualifications</h2>
@@ -145,7 +149,7 @@ export function InductionPage() {
         )}
       </section>
 
-      <section className="bk-bcard" style={{ alignItems: 'stretch' }}>
+      {!testAccount && <section className="bk-bcard" style={{ alignItems: 'stretch' }}>
         <h2>Submit induction evidence</h2>
         <p className="bk-muted">Upload a PDF, PNG or JPEG file, up to 5 MiB.</p>
         {uploadError && <p className="bk-error" role="alert">{uploadError}</p>}
@@ -194,7 +198,7 @@ export function InductionPage() {
             {missing && <p className="bk-missing" role="status">{missing}</p>}
           </fieldset>
         </form>
-      </section>
+      </section>}
 
       {viewing && (
         <Drawer

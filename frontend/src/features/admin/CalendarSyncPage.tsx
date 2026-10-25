@@ -73,8 +73,7 @@ export function CalendarSyncPage() {
   return (
     <>
       <PageHeader
-        title="Calendar Sync"
-        description="Approved bookings are written to Outlook (one way). Development view of the connection and of each booking's calendar update."
+        title="Calendar sync"
         actions={<RefreshStamp at={loadedAt} onRefresh={reload} busy={loading && loadedAt !== null} />}
       />
 

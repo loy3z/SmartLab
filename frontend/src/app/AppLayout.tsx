@@ -74,50 +74,52 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
         },
         {
           path: '/resources',
-          label: 'Book a Resource',
+          label: 'Book a resource',
           icon: <CalendarIcon />,
         },
         {
           path: '/induction',
-          label: 'Induction & Training',
+          label: 'Induction & training',
           icon: <CapIcon />,
         },
         {
           path: '/bookings',
-          label: 'My Bookings',
+          label: 'My bookings',
           icon: <CalendarIcon />,
         },
       ]
     : [
         // Staff book for themselves or on behalf of someone, under the same rules as students.
-        { path: '/resources', label: 'Book a Resource', icon: <CalendarIcon /> },
-        { path: '/bookings', label: 'My Bookings', icon: <CalendarIcon /> },
-        { path: '/induction', label: 'Induction & Training', icon: <CapIcon /> },
+        { path: '/resources', label: 'Book a resource', icon: <CalendarIcon /> },
+        { path: '/bookings', label: 'My bookings', icon: <CalendarIcon /> },
+        { path: '/induction', label: 'Induction & training', icon: <CapIcon /> },
       ]
+  // Sprint 3 (internal-tool UI, AI-6): every page has one sentence-case name, the same here, in its H1 and in
+  // AppRouter's PAGE_TITLES (browser tab).
   const staffSections: NavSection[] = isStaff ? [
     {
       label: 'Daily work',
       items: [
         { path: '/admin/today', label: 'Today', icon: <DashboardIcon /> },
-        { path: '/admin/qualifications', label: 'Qualification Review', icon: <CapIcon /> },
-        { path: '/admin/bookings', label: 'Booking Review', icon: <FileIcon /> },
-        { path: '/admin/freezes', label: 'Booking Freezes', icon: <UserIcon /> },
+        { path: '/admin/qualifications', label: 'Induction review', icon: <CapIcon /> },
+        { path: '/admin/bookings', label: 'Booking review', icon: <FileIcon /> },
+        { path: '/admin/freezes', label: 'Booking freezes', icon: <UserIcon /> },
       ],
     },
     ...(user.role === 'MANAGER' ? [{
       label: 'Lab management',
       items: [
-        { path: '/manager/bookings', label: 'Room Management', icon: <CalendarIcon /> },
+        { path: '/manager/bookings', label: 'Room management', icon: <CalendarIcon /> },
         { path: '/manager/resources', label: 'Resources', icon: <FileIcon /> },
-        { path: '/manager/users', label: 'User Management', icon: <UserIcon /> },
-        { path: '/manager/setup', label: 'Lab Setup', icon: <SlidersIcon /> },
+        { path: '/manager/users', label: 'User management', icon: <UserIcon /> },
+        { path: '/manager/setup', label: 'Lab setup', icon: <SlidersIcon /> },
       ],
     }] : []),
     {
       label: 'Records & calendar',
       items: [
-        { path: '/admin/records', label: 'Booking Records', icon: <FileIcon /> },
-        { path: '/admin/calendar-sync', label: 'Calendar Sync', icon: <CalendarIcon /> },
+        { path: '/admin/records', label: 'Booking records', icon: <FileIcon /> },
+        { path: '/admin/calendar-sync', label: 'Calendar sync', icon: <CalendarIcon /> },
       ],
     },
   ] : []
@@ -181,7 +183,7 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
         <Link to={homePath(user.role)} aria-label="UNSW SmartLab portal home" onClick={mobile ? closeMobile : undefined}><AppBrand /></Link>
         {mobile && <button className="app-icon-button" aria-label="Close navigation" onClick={closeMobile}><span aria-hidden="true">×</span></button>}
       </div>
-      <div className="app-product-label">SmartLab<span>LAB &amp; RESOURCE BOOKING</span></div>
+      <div className="app-product-label">SmartLab<span>Lab &amp; resource booking</span></div>{/* Sprint 3 (internal-tool UI, AI-2): no capitals */}
       <nav aria-label={mobile ? 'Mobile navigation' : 'Main navigation'} className={`app-navigation${isStaff ? ' is-staff' : ''}`}>
         {isStaff && <p className="app-nav-label">Personal bookings</p>}
         {mainItems.map((item) => navLink(item, mobile))}
@@ -193,7 +195,7 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
         ))}
       </nav>
       <div className="app-sidebar-footer">
-        {navLink({ path: '/help', label: 'Help & Support', icon: <HelpIcon /> }, mobile)}
+        {navLink({ path: '/help', label: 'Help & support', icon: <HelpIcon /> }, mobile)}
         <p>UNSW Sydney · Australia</p>
       </div>
     </>
@@ -237,7 +239,7 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
-            <span className="app-portal-title">{roleLabel} Portal</span>
+            {/* Sprint 3 (internal-tool UI, AI-2 / D7): no "<role> Portal" title; the role shows in the account button. */}
           </div>
           <NotificationBell />{/* Sprint 3 */}
           <div className="app-account" ref={accountRef} onBlur={(event) => {
@@ -270,7 +272,7 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
               Query changes (e.g. switching tabs) keep the same key and do not fade. */}
           <div key={pathname} className="app-page"><Outlet /></div>
         </main>
-        <footer className="app-workspace-footer"><span>SmartLab · UNSW Sydney</span><Link to="/help">Help & Support <span aria-hidden="true">↗</span></Link></footer>
+        <footer className="app-workspace-footer"><span>SmartLab · UNSW Sydney</span><Link to="/help">Help & support <span aria-hidden="true">↗</span></Link></footer>
       </div>
     </div>
   )

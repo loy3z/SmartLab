@@ -4,7 +4,7 @@ import { Link } from 'react-router'
 import { useAuth } from '../auth/auth-context'
 import { getDayOverview } from './api'
 import { FIND_DURATIONS, hiddenSummary } from './find-time'
-import { errorMessage, fmtDate, fmtDuration, fmtRange, todaySydney, TZ } from './format'
+import { errorMessage, fmtClock, fmtDate, fmtDuration, fmtRange, todaySydney, TZ } from './format'
 import { CalendarIcon, CheckIcon, SearchIcon } from './icons'
 import type { DayOverview, DayOverviewQuery, DayOverviewRow, Resource, ResourceKind } from './types'
 
@@ -37,7 +37,9 @@ export function FindTime({ onPick, resources = [] }: {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const rooms = resources.filter(resource => resource.kind === 'ROOM')
-  const categories = useMemo(() => [...new Set(resources.map(resource => resource.category).filter((value): value is string => Boolean(value)))].sort(), [resources])
+  // Sprint 3 (workspace UI): without a resource list from the page, the filters use the last search's rooms and types.
+  const roomChoices = rooms.length ? rooms : data?.rooms ?? []
+  const categories = useMemo(() => [...new Set([...resources.map(resource => resource.category).filter((value): value is string => Boolean(value)), ...(data?.categories ?? [])])].sort(), [resources, data?.categories])
   const draft: DayOverviewQuery = { date, duration_minutes: duration, kind: kind || undefined, room_id: roomId || undefined,
     category: kind === 'ROOM' ? undefined : category || undefined, bookable_only: bookableOnly, free_at: startTime }
   const filtersChanged = Boolean(query && JSON.stringify(query) !== JSON.stringify(draft))
@@ -62,8 +64,8 @@ export function FindTime({ onPick, resources = [] }: {
   const hidden = hiddenSummary(data?.not_bookable)
 
   return <section aria-label="Find a free time">
+    {/* Sprint 3 (internal-tool UI, AI-2): the tab already says "Find a free time"; no slogan or step marker above the fields. */}
     <form className="bk-find-query" onSubmit={search}>
-      <div className="bk-find-query-head"><div><h2>A time that works for you.</h2><p>Set your time. Find a resource. Review your booking.</p></div><span className="bk-search-steps" aria-hidden="true"><b>1</b>Find<span>—</span><b>2</b>Review</span></div>
       <div className="bk-find-primary-fields">
         <label>Date<input type="date" aria-label="Date" required min={todaySydney()} max={data?.latest_date ?? undefined} value={date} onChange={event => setDate(event.target.value)} /></label>
         <label>Start time<input type="time" aria-label="Start time" required step={1800} value={startTime} onChange={event => setStartTime(event.target.value)} /></label>
@@ -72,19 +74,19 @@ export function FindTime({ onPick, resources = [] }: {
         <button type="submit" className="ui-btn ui-btn-primary" disabled={loading}><SearchIcon size={15} />{loading ? 'Searching…' : 'Find available resources'}</button>
       </div>
       <details><summary>More filters</summary><div className="bk-find-secondary-fields">
-        <label>Room<select aria-label="Room" value={roomId} onChange={event => setRoomId(event.target.value)}><option value="">All rooms</option>{rooms.map(room => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label>
+        <label>Room<select aria-label="Room" value={roomId} onChange={event => setRoomId(event.target.value)}><option value="">All rooms</option>{roomChoices.map(room => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label>
         <label>Equipment type<select aria-label="Equipment type" disabled={kind === 'ROOM'} value={category} onChange={event => setCategory(event.target.value)}><option value="">All types</option>{categories.map(item => <option key={item}>{item}</option>)}</select></label>
       </div></details>
       <label className="bk-find-check"><input type="checkbox" checked={bookableOnly} onChange={event => setBookableOnly(event.target.checked)} />Only show resources I am qualified to book</label>
     </form>
     {error && <p className="bk-error" role="alert">{error}</p>}
     {loading && <div className="bk-find-explainer" role="status"><span className="app-loading-dot" /><p>Checking your chosen time…</p></div>}
-    {!query && <div className="bk-find-explainer"><CalendarIcon size={35} /><h3>Your time, then your space.</h3><p>Search when you are ready. We will show resources that are free for your whole session.</p></div>}
+    {!query && <div className="bk-find-explainer"><p>Choose a date, start time and length, then search.</p></div>}
     {data && query && <>
-      <div className="bk-find-results-head"><h3>{data.count} {data.count === 1 ? 'matching resource' : 'matching resources'}</h3><span>{fmtDate(query.date)} · {query.free_at} · {fmtDuration(query.duration_minutes)} · Sydney time</span></div>
+      <div className="bk-find-results-head"><h3>{data.count} {data.count === 1 ? 'matching resource' : 'matching resources'}</h3><span>{fmtDate(query.date)}{query.free_at ? ` · ${fmtClock(query.free_at)}` : ''} · {fmtDuration(query.duration_minutes)} · Sydney time</span></div>
       {filtersChanged && <p className="ui-hint" role="status">Your filters have changed. Search again to update these results.</p>}
       {!data.test_bypass && data.latest_date && <p className="bk-muted">Normal booking window: {fmtDate(data.earliest_date)}–{fmtDate(data.latest_date)}.{query.date < data.earliest_date && <> <button type="button" className="bk-linkbtn" onClick={() => setDate(data.earliest_date)}>Use the first bookable day</button> For an earlier date, browse a resource and make an urgent request.</>}</p>}
-      {data.count === 0 && <div className="ui-empty"><span className="ui-empty-icon" aria-hidden="true"><SearchIcon size={23} /></span><h3>No matching resources</h3><p>{hidden.text || 'Try a different time, length or resource type.'}</p>{hidden.needsInduction && <Link className="ui-btn ui-btn-ghost" to="/induction">Go to Induction &amp; Training</Link>}</div>}
+      {data.count === 0 && <div className="ui-empty"><span className="ui-empty-icon" aria-hidden="true"><SearchIcon size={23} /></span><h3>No matching resources</h3><p>{hidden.text || 'Try a different time, length or resource type.'}</p>{hidden.needsInduction && <Link className="ui-btn ui-btn-ghost" to="/induction">Go to Induction &amp; training</Link>}</div>}
       {data.results.map(row => {
         const slot = matchingSlot(row, query)
         const available = row.can_request && Boolean(slot)

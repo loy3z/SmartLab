@@ -96,12 +96,15 @@ class NotificationsMixin:
 
     def save_notification_preferences(self, actor, choices):
         """choices: {category: bool}. One stable row per category, so saving again updates instead of duplicating."""
-        for category, enabled in choices.items():
-            if category not in NOTIFICATION_CATEGORIES:
-                raise DomainError("VALIDATION_ERROR", f"Unknown notification category: {category}.")
-            record_id = uuid5(NAMESPACE_URL, f"notification-preference:{actor.id}:{category}")
-            self.repo.save_notification_preference(
-                NotificationPreference(str(record_id), actor.id, category, bool(enabled)))
+        # Check every name before saving any, so a refused request changes nothing (review D2, 2026-10-25).
+        unknown = [category for category in choices if category not in NOTIFICATION_CATEGORIES]
+        if unknown:
+            raise DomainError("VALIDATION_ERROR", f"Unknown notification category: {', '.join(unknown)}.")
+        with self.repo.atomic():
+            for category, enabled in choices.items():
+                record_id = uuid5(NAMESPACE_URL, f"notification-preference:{actor.id}:{category}")
+                self.repo.save_notification_preference(
+                    NotificationPreference(str(record_id), actor.id, category, bool(enabled)))
         return self.notification_preferences(actor)
 
     def take_new_notification_ids(self):

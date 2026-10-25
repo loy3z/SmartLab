@@ -29,6 +29,3 @@ class NotificationReadView(APIView):
 class NotificationReadAllView(APIView):
     def post(self, request):
         return Response({"updated": get_service().mark_all_notifications_read(request.user)})
-
-
-# Sprint 3: check-in and booking freeze ----------------------------------------------------------------------

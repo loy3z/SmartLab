@@ -2,6 +2,18 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.18.0 审查修复、学生注册入口、Docker 部署（2026-10-25，接口仍为 1.18.0）
+
+依据 Claude Code 对上一轮（`05f7752`）的审查（项目文档 `claude/reports/2026-10-25-review-1.18.0.md`，编号同报告）和 Loy 的决定。没有接口、数据库或预约规则的改动。
+
+- **D1 时间轴滚轮**：滚轮监听器挂在第一次渲染时还不存在的元素上，换日期后也会丢，正常使用时基本不生效。改为数据变化时重新挂；滚到两头时把滚轮还给页面，鼠标停在时间轴上也能继续滚动页面。
+- **D2 通知偏好**：一次保存里有未知类别时，以前会先保存前面的类别再报错；改为先全部检查，再在一个事务里保存。
+- **学生注册入口**（Loy 定）：1.18.0 删掉登录页直登时，Create student account 也一起没了，网页上无法新建学生。模拟 SSO 页加 **No demo account? Create one**（zID、姓名、大学邮箱，调用原有 `auth/demo-register/`；后端关闭演示注册时不显示）。
+- **Docker 部署**（新增 `DEPLOY.md`）：
+  - D4：PostgreSQL 下不再在运行时注入演示数据（`SEED_DEMO_DATA` 固定为 false，否则每个 worker 启动都会覆盖网页上改过的房间、设备和员工密码）；改为新建数据库时由 `entrypoint.sh` 导入 `seed_*.sql` 一次（`LOAD_DEMO_DATA`）。
+  - 迁移不再每次启动都重跑（迁移 005 会把演示员工密码改回演示密码）；新迁移用 `./entrypoint.sh migrate <文件>` 手动执行一次。
+  - D5：`ALLOWED_HOSTS` 总是包含 `127.0.0.1`，改成公网 IP 后健康检查不再失败。D6：`.dockerignore` 排除 `.venv`。D7：镜像按 `requirements-postgres.txt` 安装锁定版本，`gunicorn` 锁版本。D8：传入 `SITE_URL`。
+
 ## 1.18.0（2026-10-25）
 
 依据 Loy 试用后的反馈。新增通知偏好，补上 induction 提交的通知，把 urgent 入口做成按钮，删掉登录页里没有意义的直接 demo 登录。

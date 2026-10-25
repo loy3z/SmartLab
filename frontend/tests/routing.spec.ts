@@ -462,6 +462,34 @@ test('an administrator zID and login response cannot grant a role rejected by au
 })
 
 
+// Sprint 3 (2026-10-25, Loy): new demo students sign up on the mock SSO page ("Create one").
+test('a new demo student creates an account on the mock sign-in page', async ({ page, api }) => {
+  api.config = { ...config, demo_registration_enabled: true }
+  const bodies: unknown[] = []
+  await page.route('**/api/v1/auth/demo-register/', async (route) => {
+    bodies.push(route.request().postDataJSON())
+    return route.fulfill({ status: 201, json: { access_token: `test-token-${users.STUDENT.zid}`, token_type: 'Bearer', expires_in: 3600, mode: 'demo', user: users.STUDENT } })
+  })
+  await page.goto('/#/login/mock-sso')
+  await page.getByRole('button', { name: 'Create one', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Create account', exact: true })).toBeVisible()
+  await page.getByLabel('zID', { exact: true }).fill(' Z5555555 ')
+  await page.getByRole('button', { name: 'Create', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('Enter your full name and university email.')
+  expect(bodies).toHaveLength(0)
+  await page.getByLabel('Full name', { exact: true }).fill('New Student')
+  await page.getByLabel('University email', { exact: true }).fill('z5555555@ad.unsw.edu.au')
+  await page.getByRole('button', { name: 'Create', exact: true }).click()
+  await expect(page).toHaveURL(/#\/dashboard$/)
+  expect(bodies).toEqual([{ zid: 'z5555555', display_name: 'New Student', university_email: 'z5555555@ad.unsw.edu.au' }])
+})
+
+test('the mock sign-in page offers no sign-up when demo registration is off', async ({ page }) => {
+  await page.goto('/#/login/mock-sso')
+  await expect(page.getByLabel('Demo zID or university email')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Create one', exact: true })).toHaveCount(0)
+})
+
 for (const identifier of ['z1000001@ad.unsw.edu.au', '  Z1000001@AD.UNSW.EDU.AU  ', '  Z1000001  ']) {
   test(`mock sign-in normalizes ${JSON.stringify(identifier)} and submits with Enter`, async ({ page, api }) => {
     await page.goto('/#/login/mock-sso')
@@ -1267,6 +1295,40 @@ test('Room Management shows a failed reschedule inside the dialog', async ({ pag
   await dialog.getByRole('button', { name: 'Confirm new time', exact: true }).click()
   await page.getByRole('button', { name: 'Move booking', exact: true }).click()
   await expect(dialog.getByRole('alert')).toContainText('Booking not moved: That time is already booked.')
+})
+
+// Review D1 (2026-10-25): the day timeline appears only after the day has loaded; a vertical mouse wheel still scrolls it sideways.
+test('a mouse wheel scrolls the day timeline sideways once the day has loaded', async ({ page }) => {
+  const halfHours = Array.from({ length: 40 }, (_, index) => {
+    const start = Date.parse('2030-01-09T21:00:00Z') + index * 30 * 60_000
+    return reviewSlot(new Date(start).toISOString().replace('.000Z', 'Z'), new Date(start + 30 * 60_000).toISOString().replace('.000Z', 'Z'))
+  })
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname.replace('/api/v1/', '')
+    if (path === 'admin/bookings/' && request.method() === 'GET') {
+      return route.fulfill({ json: { count: 1, results: [approvedBooking({ student: { id: 'test-student', zid: 'z1000001', display_name: 'Test Student' } })] } })
+    }
+    if (path === 'resources/' && request.method() === 'GET') return route.fulfill({ json: { count: 1, results: [reviewRoom] } })
+    if (path === 'resources/room-1/availability/') {
+      return route.fulfill({ json: {
+        resource_id: 'room-1', date: '2030-01-10', timezone: 'Australia/Sydney', duration_minutes: 30, can_request: true, qualification_status: 'VERIFIED',
+        earliest_date: '2030-01-03', latest_date: '2030-02-02', min_advance_days: 7, max_advance_days: 30, resource_status: 'AVAILABLE', status_reason: null,
+        slots: halfHours,
+      } })
+    }
+    return route.fallback()
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'MANAGER')
+  await page.goto('/#/manager/bookings')
+  await page.getByRole('button', { name: 'Reschedule', exact: true }).click()
+  const timeline = page.getByRole('dialog', { name: 'Reschedule booking', exact: true }).locator('.ui-tl-scroll')
+  await expect(timeline).toBeVisible()
+  expect(await timeline.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true)
+  await timeline.hover()
+  await page.mouse.wheel(0, 300)
+  await expect.poll(() => timeline.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0)
 })
 
 // Sprint 3 (UI review #1): on a 390 px phone, wide tables and tab rows scroll inside themselves; the page never gets wider than the screen.

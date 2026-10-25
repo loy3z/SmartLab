@@ -70,18 +70,22 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
 
   // Sprint 3 (2026-10-25): a mouse wheel over the day timeline scrolls it sideways (Windows wheels have no
   // horizontal axis). Passive: false so the page itself does not scroll while the timeline moves.
+  // Review D1 (2026-10-25): the timeline only exists once a day has loaded and is rebuilt for every day, so the
+  // listener is attached again whenever `data` changes; at either end the wheel scrolls the page as usual.
   useEffect(() => {
     const el = timelineRef.current
     if (!el) return
     const onWheel = (event: WheelEvent) => {
       if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return
-      if (el.scrollWidth <= el.clientWidth) return
+      const room = el.scrollWidth - el.clientWidth
+      if (room <= 0) return
+      if ((event.deltaY < 0 && el.scrollLeft <= 0) || (event.deltaY > 0 && el.scrollLeft >= room - 1)) return
       event.preventDefault()
       el.scrollLeft += event.deltaY
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [showTimeline])
+  }, [showTimeline, data])
 
   const step = resource.slot_minutes
   const maximumMinutes = data?.max_booking_minutes ?? resource.max_booking_minutes

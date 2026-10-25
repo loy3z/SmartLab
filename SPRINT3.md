@@ -358,10 +358,21 @@ No booking-rule change. Migration 008 adds `notification_preference`.
 
 | ID | Code locations | Verification |
 | --- | --- | --- |
-| NP-1 | `backend/booking/domain.py` `NotificationPreference`; `repository.py`, `postgres.py` (save/list); `services/notifications.py` `NOTIFICATION_CATEGORIES`, `notification_category`, `_notify` filter, `notification_preferences`, `save_notification_preferences`; `views/notifications.py` `NotificationPreferencesView`; `urls.py` `notifications/preferences/`; `serializers.py` `NotificationPreferencesSerializer` | `booking/tests/test_notification_preferences.py` (6 cases: defaults, switch off/on, per person, unknown category) |
+| NP-1 | `backend/booking/domain.py` `NotificationPreference`; `repository.py`, `postgres.py` (save/list); `services/notifications.py` `NOTIFICATION_CATEGORIES`, `notification_category`, `_notify` filter, `notification_preferences`, `save_notification_preferences`; `views/notifications.py` `NotificationPreferencesView`; `urls.py` `notifications/preferences/`; `serializers.py` `NotificationPreferencesSerializer` | `booking/tests/test_notification_preferences.py` (7 cases: defaults, switch off/on, per person, unknown category, refused save changes nothing) |
 | NP-2 | `services/qualifications.py` `submit_qualification` sends `INDUCTION_SUBMITTED` (respects the induction switch) | same test file |
 | NP-3 | Frontend: `features/notifications/NotificationPreferences.tsx`, `app/UtilityPages.tsx` Account card; `features/booking/api.ts` `getNotificationPreferences`/`saveNotificationPreferences`; `types.ts` `NotificationPreference`; `ui/workspace.css` `.app-pref-list` | unit, lint, build, routing tests (mock `notifications/preferences/`) |
 | NP-4 | `ui/workspace.css`: `.bk-earlier .bk-linkbtn` is a yellow button (urgent route) | visual |
 | NP-5 | `features/auth/LoginPage.tsx`: "Other demo sign-in options" removed; its routing test deleted | routing tests |
 | DB | `database/migrations/008_notification_preferences.sql`, `schema.sql` `notification_preference` | `check-local.sh schema` |
 | Docs | `backend/docs/openapi.json` 1.18.0 (69 routes), `backend/docs/frontend-api.md`, CHANGELOG 1.18.0 | openapi check |
+
+## 23. Review fixes, demo sign-up and Docker deployment (API remains 1.18.0)
+
+No API, schema or booking-rule change. Review: project docs `claude/reports/2026-10-25-review-1.18.0.md`.
+
+| ID | Code locations | Verification |
+| --- | --- | --- |
+| RV-D1 | `features/booking/SlotPicker.tsx` wheel effect (depends on `data`; hands the wheel back to the page at either end) | routing test `a mouse wheel scrolls the day timeline sideways once the day has loaded` (fails on the old effect) |
+| RV-D2 | `services/notifications.py` `save_notification_preferences` (check all names, then save in `repo.atomic()`) | `test_notification_preferences.py` `test_a_refused_save_changes_nothing` |
+| SU-1 | `features/auth/MockSsoPage.tsx` `create` (Create one → Create account form, `demoRegister`); `features/auth/mock-sso.css` `.mock-sso-create`, `.mock-sso-back` | routing tests `a new demo student creates an account on the mock sign-in page`, `the mock sign-in page offers no sign-up when demo registration is off` |
+| DK-1 | `docker-compose.yml`, `.env.docker.example`, `backend/Dockerfile`, `backend/entrypoint.sh` (new database: schema + optional `seed_*.sql` in one transaction; `migrate` subcommand), `backend/.dockerignore`, `frontend/Dockerfile`, `frontend/nginx.conf`, `frontend/.dockerignore`; steps in `DEPLOY.md` | `entrypoint.sh` run against a temporary local PostgreSQL (new database, restart keeps a changed password, `migrate`); containers not yet run (no Docker on the dev machine) |

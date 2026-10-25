@@ -1,4 +1,4 @@
-# Sprint 3 (2026-10-25): docker-compose deployment (PostgreSQL + API + nginx).
+# Sprint 3 (2026-10-25): docker-compose deployment (PostgreSQL + API + nginx). Steps: DEPLOY.md.
 # Run with: docker compose --env-file .env.docker up -d --build
 #
 # PostgreSQL data lives in the pgdata volume. Uploaded induction evidence is stored inside
@@ -28,10 +28,15 @@ services:
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY in .env.docker}
       DEBUG: ${DEBUG:-false}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      # 127.0.0.1 is always allowed so the health check below keeps working whatever host names are set.
+      ALLOWED_HOSTS: 127.0.0.1,${ALLOWED_HOSTS:-localhost}
       ENABLE_DEMO_AUTH: ${ENABLE_DEMO_AUTH:-true}
       ENABLE_TEST_CONSOLE: "false"
-      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      # Never inject the in-code demo data into PostgreSQL (database/README.md): it would run in every worker on
+      # every start and overwrite the rooms, equipment and staff passwords. The demo data is loaded once instead,
+      # when the database is created (LOAD_DEMO_DATA, see entrypoint.sh).
+      SEED_DEMO_DATA: "false"
+      LOAD_DEMO_DATA: ${LOAD_DEMO_DATA:-false}
       REPOSITORY_FACTORY: booking.postgres.PostgresRepository
       FILE_STORAGE_FACTORY: booking.postgres.PostgresFileStorage
       DB_NAME: ${DB_NAME:-smartlab}
@@ -39,6 +44,8 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DB_HOST: db
       DB_PORT: "5432"
+      # Address people open in the browser; used for links in emails.
+      SITE_URL: ${SITE_URL:-http://localhost}
       OUTLOOK_ENABLED: "false"
       EMAIL_ENABLED: ${EMAIL_ENABLED:-false}
       GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}

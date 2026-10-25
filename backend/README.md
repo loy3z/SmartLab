@@ -74,7 +74,7 @@ Manager 可通过 `GET /api/v1/admin/resources/{id}/booking-policy/` 查看审�
 
 **尚未实现**：真实学校 SSO、Outlook 邮件通知（已有 Gmail SMTP 邮件）、设备领取／归还、学生自己的重复预约、更完整的 Manager 规则配置（全局规则目前在环境变量里）。
 
-**两种存储**：默认是内存演示适配器，演示数据、附件和日历事件对应关系在进程重启后丢失，只能单进程运行；PostgreSQL 适配器会持久保存，见 [database/README.md](database/README.md)。
+**两种存储**：默认是内存演示适配器，演示数据、附件和日历事件对应关系在进程重启后丢失，只能单进程运行；PostgreSQL 适配器会持久保存，见 [database/README.md](database/README.md)。服务器部署（Docker Compose，PostgreSQL + gunicorn + nginx）见 [DEPLOY.md](../DEPLOY.md)。
 
 ## 本地启动（PowerShell）
 

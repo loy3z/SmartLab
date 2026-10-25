@@ -33,6 +33,13 @@
 .mock-sso-actions { display: flex; justify-content: flex-end; margin-top: 19px; }
 .mock-sso-next { min-width: 108px; min-height: 34px; padding: 6px 20px; border: 1px solid #0067b8; border-radius: 0; background: #0067b8; color: #fff; font: inherit; cursor: pointer; }
 .mock-sso-next:hover:not(:disabled) { background: #005da6; border-color: #005da6; }
+/* Sprint 3 (2026-10-25): demo sign-up form (Create one → Create account). */
+.mock-sso-create { margin-top: 15px; font-size: 14px; }
+.mock-sso-create-intro { margin: 0 0 6px; }
+.mock-sso-main form input:not(:first-of-type) { margin-top: 16px; }
+.mock-sso-actions { gap: 8px; }
+.mock-sso-back { min-width: 108px; min-height: 34px; padding: 6px 20px; border: 1px solid #e6e6e6; border-radius: 0; background: #e6e6e6; color: #1b1b1b; font: inherit; cursor: pointer; }
+.mock-sso-back:hover:not(:disabled) { background: #d4d4d4; border-color: #d4d4d4; }
 .mock-sso-main fieldset:disabled { opacity: .6; }
 .mock-sso-main fieldset:disabled button { cursor: progress; }
 .mock-sso-help { padding: 24px 44px 28px; background: #f2f2f2; font-size: 14px; }

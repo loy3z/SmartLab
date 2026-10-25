@@ -31,6 +31,12 @@ class NotificationPreferenceTests(Sprint3Fixture, SimpleTestCase):
         self.refused("VALIDATION_ERROR", self.service.save_notification_preferences,
                      self.student, {"everything": False})
 
+    def test_a_refused_save_changes_nothing(self):
+        # Review D2 (2026-10-25): a valid name next to an unknown one must not be saved on its own.
+        self.refused("VALIDATION_ERROR", self.service.save_notification_preferences,
+                     self.student, {"bookings": False, "everything": False})
+        self.assertTrue(all(item["enabled"] for item in self.service.notification_preferences(self.student)))
+
     def test_submitting_induction_evidence_sends_a_notice(self):
         newcomer = Principal(str(uuid4()), "z9555555", "Newcomer", Role.STUDENT, "z9555555@ad.unsw.edu.au")
         self.repo.save_principal(newcomer)

@@ -9,8 +9,14 @@ from .base import ACTIVE_REQUEST_STATUSES
 
 
 class ChecksMixin:
-    def _overlaps(self, resource_id, start, end, exclude_id=None):
-        return self.repo.list_blocking_bookings(resource_id, start, end, self.now(), exclude_id)
+    def _overlaps(self, resource_id, start, end, exclude_id=None, also_exclude=None):
+        """Bookings and active holds that block this period.
+
+        also_exclude (Sprint 3, 1.16.0): one more booking to ignore. A change request passes the booking it replaces,
+        so moving a booking by an hour is not blocked by its own old time.
+        """
+        found = self.repo.list_blocking_bookings(resource_id, start, end, self.now(), exclude_id)
+        return [item for item in found if also_exclude is None or item.id != also_exclude]
 
     def _student_overlap(self, student_id, resource_id, start, end, exclude_id=None):
         """Return the student's earliest overlapping active request for this resource."""
@@ -136,6 +142,24 @@ class ChecksMixin:
         error = self._window_violation(resource, start)
         if error:
             raise error
+
+    def _weekly_limit_violation(self, student_id, resource, start, exclude_id=None):
+        """Sprint 3: at most max_bookings_per_week pending, waitlisted or approved bookings per person per local week
+        (Monday to Sunday). Weekly series made by staff do not count. Checked when a request is created and when a
+        Manager moves a booking; promotion and automatic decisions do not change the count."""
+        limit = self.rules().max_bookings_per_week
+        zone = ZoneInfo(resource.timezone)
+        day = start.astimezone(zone).date()
+        week_start = day - timedelta(days=day.weekday())
+        week_end = week_start + timedelta(days=7)
+        count = sum(1 for item in self.repo.list_bookings(student_id=str(student_id))
+                    if item.id != exclude_id and item.series_id is None and item.status in ACTIVE_REQUEST_STATUSES
+                    and week_start <= item.start.astimezone(zone).date() < week_end)
+        if count >= limit:
+            return DomainError("WEEKLY_LIMIT_REACHED",
+                               f"At most {limit} bookings per person in one week (Monday to Sunday).", 409,
+                               {"limit": limit, "count": count, "week_start": week_start.isoformat()})
+        return None
 
     def _review_deadline(self, resource, start):
         """End of the Admin review window: pending_hold_minutes from now, but never after the booking starts."""

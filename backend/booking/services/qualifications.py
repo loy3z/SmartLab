@@ -5,7 +5,7 @@ from dataclasses import replace
 from datetime import timedelta
 from uuid import uuid4
 
-from ..domain import BookingStatus, QualificationSubmission, QualificationStatus, Role
+from ..domain import BookingStatus, QualificationRequirement, QualificationSubmission, QualificationStatus, Role
 from ..errors import DomainError
 from .base import UNDECIDED_STATUSES
 
@@ -25,6 +25,61 @@ class QualificationsMixin:
             summary.append({"requirement_id": requirement.id, "name": requirement.name, "status": status,
                             "valid_until": record.valid_until if record and status == "VERIFIED" else None})
         return summary
+
+    # Sprint 3 (1.16.0): Managers add induction types and write their guidance on the website ------------------
+
+    REQUIREMENT_TEXT_FIELDS = ("name", "description", "how_to_complete", "accepted_evidence", "reviewer", "contact")
+
+    def create_requirement(self, actor, fields):
+        """Manager: add an induction type. Name required and unique (ignoring case); the guidance texts are optional."""
+        self.require_manager(actor)
+        with self.repo.atomic():
+            values = self._check_requirement_fields(fields, requirement_id=None)
+            created = QualificationRequirement(id=str(uuid4()), **values)
+            self.repo.save_requirement(created)
+            self._audit(actor.id, "REQUIREMENT_CREATED", "requirement", created.id, **values)
+            return created
+
+    def update_requirement(self, actor, requirement_id, changes):
+        """Manager: change an induction's name, description or guidance. Only the fields sent are changed; who already
+        holds the induction is not affected (verified evidence stays verified)."""
+        self.require_manager(actor)
+        with self.repo.atomic():
+            current = self.repo.get_requirement(str(requirement_id))
+            if current is None:
+                raise DomainError("NOT_FOUND", "Qualification requirement not found.", 404)
+            values = {field: getattr(current, field) for field in self.REQUIREMENT_TEXT_FIELDS}
+            values.update(changes)
+            updated = replace(current, **self._check_requirement_fields(values, requirement_id=current.id))
+            changed = {field: [getattr(current, field), getattr(updated, field)]
+                       for field in self.REQUIREMENT_TEXT_FIELDS if getattr(current, field) != getattr(updated, field)}
+            if changed:
+                self.repo.save_requirement(updated)
+                self._audit(actor.id, "REQUIREMENT_UPDATED", "requirement", current.id, changes=changed)
+            return updated
+
+    def _check_requirement_fields(self, values, requirement_id):
+        """Rules for induction texts: name 1-120 characters and not used by another induction; description up to
+        1000; each guidance text up to 2000. Returns the trimmed values."""
+        unknown = set(values) - set(self.REQUIREMENT_TEXT_FIELDS)
+        if unknown:
+            raise DomainError("VALIDATION_ERROR", f"Unknown fields: {', '.join(sorted(unknown))}.")
+        cleaned = {field: (values.get(field) or "").strip() for field in self.REQUIREMENT_TEXT_FIELDS}
+
+        def invalid(field, message):
+            raise DomainError("VALIDATION_ERROR", message, 400, {field: [message]})
+
+        if not 1 <= len(cleaned["name"]) <= 120:
+            invalid("name", "Give a name of up to 120 characters.")
+        if len(cleaned["description"]) > 1000:
+            invalid("description", "The description can be up to 1000 characters.")
+        for field in ("how_to_complete", "accepted_evidence", "reviewer", "contact"):
+            if len(cleaned[field]) > 2000:
+                invalid(field, "Each guidance text can be up to 2000 characters.")
+        if any(item.id != requirement_id and item.name.casefold() == cleaned["name"].casefold()
+               for item in self.repo.list_requirements()):
+            raise DomainError("REQUIREMENT_NAME_TAKEN", "Another induction already has this name.", 409, {"name": cleaned["name"]})
+        return cleaned
 
     def set_prerequisites(self, actor, requirement_id, prerequisite_ids):
         """Manager only: which inductions must be verified and current before this one (e.g. Advanced needs General).
@@ -187,6 +242,15 @@ class QualificationsMixin:
             self.repo.save_submission(updated)
             self._audit(actor.id, f"QUALIFICATION_{decision}", "qualification", updated.id, reason=reason.strip(),
                         valid_until=updated.valid_until.isoformat() if updated.valid_until else None)
+            # Sprint 3: tell the person the review result.
+            requirement = self.repo.get_requirement(updated.requirement_id)
+            name = requirement.name if requirement else "induction"
+            if decision == "VERIFIED":
+                self._notify(updated.student_id, "QUALIFICATION_VERIFIED", "Induction approved",
+                             f"Your {name} evidence was approved.", link="/induction")
+            else:
+                self._notify(updated.student_id, "QUALIFICATION_REJECTED", "Induction evidence rejected",
+                             f"Your {name} evidence was rejected. Reason: {reason.strip()}", link="/induction")
             changed = []
             if decision == "REJECTED":
                 # The latest evidence for this requirement is now rejected, so none of the person's undecided

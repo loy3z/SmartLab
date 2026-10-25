@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { getDashboard, listRequirements, listResources } from '../booking/api'
-import { errorMessage, fmtDateTime, fmtTime, STATUS_TEXT, TZ } from '../booking/format'
-import { AlertIcon, CalendarIcon, CapIcon, CheckIcon, ClockIcon, DoorIcon } from '../booking/icons'
+import { errorMessage, fmtDateTime, fmtRange, fmtTime, STATUS_TEXT, TZ } from '../booking/format'
+import { AlertIcon, CalendarIcon, CapIcon, CheckIcon, ClockIcon } from '../booking/icons'
 import type { Dashboard, Qualification, Requirement, Resource, User } from '../booking/types'
 import { InductionRow } from '../induction/InductionRow'
 import { blockingPrerequisite } from '../induction/status'
@@ -85,9 +85,9 @@ function DashboardSession({ user }: { user: User }) {
     <div className="dash-page">
       <header className="dash-header">
         <div>
-          <p className="dash-eyebrow">YOUR STUDENT DASHBOARD</p>
+          <p className="dash-dateline">{new Intl.DateTimeFormat('en-AU', { weekday: 'long', day: 'numeric', month: 'long', timeZone: TZ }).format(new Date())}</p>
           <h1>Welcome back, {firstName}.</h1>
-          <p className="dash-intro">Your spaces, bookings and induction progress, all in one place.</p>
+          <p className="dash-intro">Your bookings, training and next steps.</p>
         </div>
         <Link className="dash-primary" to="/resources"><CalendarIcon /> Book a resource</Link>
       </header>
@@ -128,8 +128,10 @@ function DashboardContent({ state }: { state: Extract<DashboardState, { status: 
     .sort((first, second) => Date.parse(first.start) - Date.parse(second.start))
   const pendingCount = data.counts.WAITING_QUALIFICATION + data.counts.PENDING_APPROVAL + data.counts.WAITLISTED
   const displayedBookings = upcoming.length
-    ? upcoming.slice(0, 4)
+    ? upcoming.slice(1, 4)
     : [...data.bookings].sort((first, second) => Date.parse(second.created_at) - Date.parse(first.created_at)).slice(0, 4)
+  const nextBooking = upcoming[0]
+  const nextResource = nextBooking ? resourceById.get(nextBooking.resource_id) : null
 
   const requirementById = new Map(requirements.map((requirement) => [requirement.id, requirement]))
   // Preserve known submissions even if their requirement is no longer returned by the catalogue.
@@ -170,42 +172,24 @@ function DashboardContent({ state }: { state: Extract<DashboardState, { status: 
       </section>
 
       <div className="dash-columns">
-        <section className="dash-panel" aria-labelledby="dash-bookings-title">
-          <header className="dash-panel-header">
-            <div><h2 id="dash-bookings-title">{upcoming.length ? 'Coming up next' : 'Recent requests'}</h2><p>All booking times are shown in Sydney time.</p></div>
-            <Link className="dash-link" to="/bookings">View all bookings <span aria-hidden="true">↗</span></Link>
-          </header>
-          {displayedBookings.length === 0 ? (
-            <div className="dash-empty">
-              <span className="dash-empty-icon"><CalendarIcon size={32} /></span>
-              <h3>Your next booking starts here</h3>
-              <p>Find a room or equipment for your next session.</p>
-              <Link className="dash-secondary" to="/resources">Browse resources</Link>
-            </div>
-          ) : (
-            <ul className="dash-booking-list">
-              {displayedBookings.map((booking) => {
-                const resource = resourceById.get(booking.resource_id)
-                const start = new Date(booking.start)
-                return (
-                  <li className="dash-booking" key={booking.id}>
-                    <div className="dash-date" aria-hidden="true"><span>{monthFormat.format(start)}</span><strong>{dayFormat.format(start)}</strong></div>
-                    <div className="dash-booking-info">
-                      <h3>{resource?.name ?? `Resource ${booking.resource_id.slice(-6)}`}</h3>
-                      <p><time dateTime={booking.start}>{fmtDateTime(booking.start)}</time> – <time dateTime={booking.end}>{fmtDateTime(booking.end)}</time></p>
-                      {resource?.location && <span className="dash-location">{resource.location}</span>}
-                      <span className={`dash-badge dash-booking-status-${booking.status}`}>{STATUS_TEXT[booking.status]}</span>
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
+        <section className="dash-session" aria-labelledby="dash-bookings-title">
+          <div className="dash-session-top"><span>Next session</span><span className="dash-session-dot">{nextBooking ? 'Confirmed' : 'Ready when you are'}</span></div>
+          <svg className="dash-session-drawing" viewBox="0 0 230 180" fill="none" aria-hidden="true"><path d="M10 20h190v140H10zM10 100h80V20M90 100h110M145 100v60M40 20v30h50M10 125h45v35" stroke="currentColor" strokeWidth="1"/><path d="M90 20h110v80H90z" fill="currentColor" fillOpacity=".08"/><path d="M90 70a30 30 0 0 1 30 30M145 130a30 30 0 0 1 30-30" stroke="currentColor" strokeDasharray="3 4"/><path d="M90 70v30h30M145 130v-30h30" stroke="currentColor"/><path d="M115 42h60v32h-60zM128 38v-6m14 6v-6m14 6v-6m14 6v-6M128 80v6m14-6v6m14-6v6m14-6v6" stroke="currentColor"/><circle cx="210" cy="20" r="4" fill="currentColor"/><path d="M210 38v104M200 170H10" stroke="currentColor" strokeDasharray="2 5"/></svg>
+          {nextBooking ? <>
+            <h2 id="dash-bookings-title">{nextResource?.name ?? 'Your next booking'}</h2>
+            <p className="dash-session-time"><CalendarIcon size={17} />{fmtRange(nextBooking.start, nextBooking.end)}</p>
+            {nextResource?.location && <p className="dash-session-location">{nextResource.location}</p>}
+            <footer className="dash-session-footer"><span>Times in Sydney</span><Link className="dash-session-link" to="/bookings">Manage booking <span aria-hidden="true">↗</span></Link></footer>
+          </> : <>
+            <h2 id="dash-bookings-title">Your next session<br /><em>starts here.</em></h2>
+            <p className="dash-session-location">Find the right room or equipment, then choose your time.</p>
+            <footer className="dash-session-footer"><span>Rooms &amp; equipment</span><Link className="dash-session-link" to="/resources">Browse resources <span aria-hidden="true">↗</span></Link></footer>
+          </>}
         </section>
 
         <section className="dash-panel" aria-labelledby="dash-induction-title">
           <header className="dash-panel-header">
-            <div><h2 id="dash-induction-title">Induction & training</h2><p>Check your eligibility before booking.</p></div>
+            <div><h2 id="dash-induction-title">Induction & training</h2><p>Your access to the lab.</p></div>
             <CapIcon size={25} />
           </header>
           {requirementById.size === 0 ? (
@@ -232,11 +216,17 @@ function DashboardContent({ state }: { state: Extract<DashboardState, { status: 
         </section>
       </div>
 
-      <aside className="dash-tip">
-        <span className="dash-tip-icon"><DoorIcon size={28} /></span>
-        <div><h2>A space for your next idea</h2><p>Explore shared labs, rooms and equipment. Check availability and submit your next request.</p></div>
-        <Link className="dash-link" to="/resources">Explore resources <span aria-hidden="true">→</span></Link>
-      </aside>
+      {displayedBookings.length > 0 && <section className="dash-recent" aria-labelledby="dash-recent-title">
+        <header className="dash-panel-header"><h2 id="dash-recent-title">{upcoming.length ? 'More upcoming' : 'Recent requests'}</h2><Link className="dash-link" to="/bookings">View all bookings <span aria-hidden="true">↗</span></Link></header>
+        <ul className="dash-booking-list">{displayedBookings.map(booking => {
+          const start = new Date(booking.start)
+          return <li className="dash-booking" key={booking.id}>
+            <div className="dash-date" aria-hidden="true"><span>{monthFormat.format(start)}</span><strong>{dayFormat.format(start)}</strong></div>
+            <div className="dash-booking-info"><h3>{resourceById.get(booking.resource_id)?.name ?? 'Resource'}</h3><p>{fmtDateTime(booking.start)} – {fmtTime(booking.end)}</p></div>
+            <span className={`dash-badge dash-booking-status-${booking.status}`}>{STATUS_TEXT[booking.status]}</span>
+          </li>
+        })}</ul>
+      </section>}
     </>
   )
 }

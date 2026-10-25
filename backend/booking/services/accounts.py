@@ -100,6 +100,18 @@ class AccountsMixin:
         create these from its staff records instead; the role is still assigned here by a Manager.
         """
         self.require_manager(actor)
+        return self._create_staff_account(actor.id, zid, display_name, university_email, role)
+
+    def bootstrap_manager(self, zid, display_name, university_email):
+        """Sprint 3: create a Manager from the server command line (manage.py create_manager), e.g. the first one.
+
+        Same rules as Add staff; the audit records SYSTEM as the actor. Returns (manager, invite code).
+        """
+        created = self._create_staff_account("SYSTEM", zid, display_name, university_email, Role.MANAGER)
+        return created, self.repo.get_credential(created.id).invite_code
+
+    def _create_staff_account(self, actor_id, zid, display_name, university_email, role):
+        """Shared by Add staff and bootstrap_manager: check the details, save the account and its invite code."""
         role = Role(role)
         if role not in (Role.ADMIN, Role.MANAGER):
             raise DomainError("VALIDATION_ERROR", "Staff accounts are ADMIN or MANAGER.")
@@ -120,7 +132,7 @@ class AccountsMixin:
             self.repo.save_principal(created)
             # The new staff member activates the account on the staff sign-in page with this code.
             self.repo.save_credential(StaffCredential(created.id, invite_code=new_invite_code(), updated_at=self.now()))
-            self._audit(actor.id, f"{role.value}_CREATED", "principal", created.id, zid=zid)
+            self._audit(actor_id, f"{role.value}_CREATED", "principal", created.id, zid=zid)
             return created
 
     def staff_access(self, user):
@@ -186,6 +198,28 @@ class AccountsMixin:
         if not check_password(password or "", credential.password_hash):
             raise DomainError("INVALID_CREDENTIALS", "The zID or password is not correct.", 401)
         return user
+
+    def change_password(self, actor, current_password, new_password):
+        """Sprint 3: a signed-in Admin or Manager changes their own password (the current one is required).
+
+        Students have no password here: they use university sign-in.
+        """
+        from django.contrib.auth.hashers import check_password, make_password
+        if not actor.is_staff:
+            raise DomainError("STUDENT_USES_SSO", "Students sign in with university sign-in and have no SmartLab password.", 403)
+        if len(new_password or "") < 8:
+            raise DomainError("VALIDATION_ERROR", "Choose a password of at least 8 characters.", 400,
+                              {"new_password": ["At least 8 characters."]})
+        with self.repo.atomic(student_ids=[actor.id]):
+            credential = self.repo.get_credential(actor.id)
+            if credential is None or not credential.activated or not check_password(current_password or "", credential.password_hash):
+                raise DomainError("INVALID_CREDENTIALS", "The current password is not correct.", 400,
+                                  {"current_password": ["Not correct."]})
+            if check_password(new_password, credential.password_hash):
+                raise DomainError("VALIDATION_ERROR", "Choose a password different from the current one.", 400,
+                                  {"new_password": ["Same as the current password."]})
+            self.repo.save_credential(replace(credential, password_hash=make_password(new_password), updated_at=self.now()))
+            self._audit(actor.id, "STAFF_PASSWORD_CHANGED", "principal", actor.id)
 
     def create_manager(self, actor, zid, display_name, university_email):
         return self.create_staff(actor, zid, display_name, university_email, Role.MANAGER)

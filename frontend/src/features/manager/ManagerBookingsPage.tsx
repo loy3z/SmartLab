@@ -3,8 +3,6 @@ import { EmptyState, PageHeader, RefreshStamp } from '../../ui/components'
 import { useFeedback } from '../../ui/feedback-context'
 import {
   cancelBooking,
-  downloadAllBookings,
-  downloadUserBookings,
   listApprovedBookings,
   listResources,
   updateResourceStatus,
@@ -21,19 +19,8 @@ const STATUS_LABELS: Record<ResourceStatus, string> = {
 }
 const STATUS_TONE: Record<ResourceStatus, string> = { AVAILABLE: 'is-green', MAINTENANCE: 'is-amber', CLOSED: 'is-red' }
 
-function saveCsv(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  document.body.appendChild(link)
-  try {
-    link.click()
-  } finally {
-    link.remove()
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-  }
-}
+/** Checked when the button is pressed (outside render, so the time is current). */
+const hasStarted = (b: Booking) => Date.parse(b.start) <= Date.now()
 
 const who = (b: Booking) => b.student?.display_name || b.student?.zid || b.student_id
 
@@ -81,16 +68,22 @@ export function ManagerBookingsPage() {
 
   async function changeStatus(room: Resource, status: ResourceStatus) {
     if (busy) return
-    const upcoming = bookings.filter((b) => b.resource_id === room.id && Date.parse(b.end) > now).length
+    const affectedList = bookings.filter((b) => b.resource_id === room.id && Date.parse(b.end) > now)
+    const upcoming = affectedList.length
+    // Sprint 3 (1.16.0): say who is affected and that they are told automatically (site notice and email).
+    const affectedDetails = affectedList.slice(0, 5).map((b) => ({ label: 'Booking', value: `${fmtRange(b.start, b.end)} · ${who(b)}${b.student?.zid ? ` (${b.student.zid})` : ''}` }))
     const answer = await feedback.confirm(status === 'AVAILABLE'
       ? {
         title: `Reopen ${room.name}?`,
-        message: 'Students can request it again. Waitlisted requests that now fit move to Awaiting approval.',
+        message: `Students can request it again. Waitlisted requests that now fit move to Awaiting approval.${upcoming ? ' People with bookings here are told it is open again.' : ''}`,
         confirmLabel: 'Reopen room',
       }
       : {
         title: `${status === 'MAINTENANCE' ? 'Put' : 'Close'} ${room.name}${status === 'MAINTENANCE' ? ' under maintenance' : ''}?`,
-        message: `New requests and approvals stop. ${upcoming ? `${upcoming} confirmed booking${upcoming === 1 ? ' is' : 's are'} kept; cancel them separately if needed.` : 'There are no upcoming confirmed bookings.'}`,
+        message: `New requests and approvals stop. ${upcoming
+          ? `${upcoming} confirmed booking${upcoming === 1 ? ' is' : 's are'} kept, and everyone with a booking or request here is told on the site and by email (with your reason). Afterwards, move or cancel the ones that cannot go ahead: they are marked in the list below.${upcoming > 5 ? ` First 5 of ${upcoming} shown.` : ''}`
+          : 'There are no upcoming confirmed bookings.'}`,
+        details: affectedDetails,
         reason: { label: 'Reason (shown to students)', placeholder: 'e.g. Fume hood repairs until Friday', maxLength: 500 },
         confirmLabel: status === 'MAINTENANCE' ? 'Start maintenance' : 'Close room',
         danger: true,
@@ -103,7 +96,7 @@ export function ManagerBookingsPage() {
       feedback.success(
         result.resource.status === 'AVAILABLE'
           ? `${room.name} is open for requests again.`
-          : `${room.name} is now ${STATUS_LABELS[result.resource.status].toLowerCase()}. ${affected} existing request${affected === 1 ? '' : 's'} may be affected.`,
+          : `${room.name} is now ${STATUS_LABELS[result.resource.status].toLowerCase()}. ${affected ? `${affected} booking${affected === 1 ? '' : 's'} or request${affected === 1 ? '' : 's'} affected; the people were notified. Decide on each below.` : 'No bookings are affected.'}`,
         'Room status updated',
       )
     } catch (err: unknown) {
@@ -116,7 +109,7 @@ export function ManagerBookingsPage() {
 
   async function handleCancel(booking: Booking) {
     if (busy) return
-    if (Date.parse(booking.start) <= Date.now()) {
+    if (hasStarted(booking)) {
       feedback.error('This booking has already started and cannot be cancelled.', 'Cannot cancel')
       return
     }
@@ -145,34 +138,12 @@ export function ManagerBookingsPage() {
     }
   }
 
-  async function download(studentId?: string, label?: string) {
-    const key = studentId ?? 'all'
-    if (busy) return
-    setBusy(`csv-${key}`)
-    try {
-      const blob = studentId ? await downloadUserBookings(studentId) : await downloadAllBookings()
-      saveCsv(blob, studentId ? `smartlab-${label ?? studentId}-bookings.csv` : 'smartlab-all-bookings.csv')
-      feedback.success(studentId ? `Bookings for ${label ?? 'this student'} downloaded.` : 'All bookings downloaded as CSV.', 'Download ready')
-    } catch (err: unknown) {
-      feedback.error(errorMessage(err), 'Download failed')
-    } finally {
-      setBusy(null)
-    }
-  }
-
   return (
     <div>
       <PageHeader
         title="Room booking management"
-        description="Open or close rooms and manage confirmed bookings. Only Managers can reschedule a booking."
-        actions={(
-          <>
-            <RefreshStamp at={loadedAt} onRefresh={reload} busy={loading && loadedAt !== null} />
-            <button type="button" className="ui-btn ui-btn-primary" disabled={busy !== null} onClick={() => void download()}>
-              {busy === 'csv-all' ? 'Preparing…' : 'Download all bookings (CSV)'}
-            </button>
-          </>
-        )}
+        description="Open or close rooms and manage confirmed bookings. Only Managers can reschedule a booking. To look up or export past bookings, use Booking Records."
+        actions={<RefreshStamp at={loadedAt} onRefresh={reload} busy={loading && loadedAt !== null} />}
       />
 
       {error && <p role="alert" className="bk-error">{error}</p>}
@@ -235,11 +206,11 @@ export function ManagerBookingsPage() {
                     const room = rooms.find((item) => item.id === booking.resource_id)
                     const started = Date.parse(booking.start) <= now
                     return (
-                      <tr key={booking.id}>
+                      <tr key={booking.id} className={room && room.status !== 'AVAILABLE' ? 'is-attention' : undefined}>{/* Sprint 3 (1.16.0) */}
                         <td>{fmtRange(booking.start, booking.end)}<span className="ui-sub-text">{fmtDuration(minutesBetween(booking.start, booking.end))}</span></td>
                         <td>
                           {room?.name ?? 'Room'}
-                          {room && room.status !== 'AVAILABLE' && <span className="ui-sub-text" style={{ color: 'var(--red)' }}>Room {STATUS_LABELS[room.status].toLowerCase()}</span>}
+                          {room && room.status !== 'AVAILABLE' && <span className="ui-sub-text" style={{ color: 'var(--red)' }}>Room {STATUS_LABELS[room.status].toLowerCase()}: keep, move or cancel</span>}
                         </td>
                         <td>
                           <span className="ui-primary-text">{who(booking)}</span><span className="ui-sub-text">{booking.student?.zid}</span>
@@ -249,9 +220,6 @@ export function ManagerBookingsPage() {
                         <td className="ui-hide-sm">{booking.purpose}</td>
                         <td>
                           <div className="ui-actions">
-                            <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy !== null} title="Download this student's bookings as CSV" onClick={() => void download(booking.student_id, booking.student?.zid)}>
-                              {busy === `csv-${booking.student_id}` ? 'Preparing…' : 'Student CSV'}
-                            </button>
                             <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy !== null || started || !room} title={started ? 'Already started' : undefined} onClick={() => setMoving(booking)}>
                               Reschedule
                             </button>

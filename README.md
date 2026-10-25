@@ -1,5 +1,7 @@
 # SmartLab：实验室与房间预约
 
+Start here: [Project guide — workflows, pages and local startup](PROJECT_GUIDE.md).
+
 UNSW COMP9900 小组项目（9900-F15E-BREAD）。学生、Admin、Manager 在网站上预约实验室房间和单台设备。系统会检查 induction 资格、开放时间、预约窗口和时间冲突，按审批流程处理申请，已批准的预约单向同步到 Outlook 日历。
 
 - 后端：Django 5.2 + Django REST Framework，目录 [backend/](backend/)
@@ -57,6 +59,7 @@ PostgreSQL 集成测试的运行方法见 [backend/database/README.md](backend/d
 | --- | --- |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 整体结构、一次请求怎么走、加功能改哪里 |
 | [CHANGELOG.md](CHANGELOG.md) | 历次改动和原因 |
+| [SPRINT3.md](SPRINT3.md) | Sprint 3 新增的功能和代码清单 |
 | [backend/README.md](backend/README.md) | 功能与规则、配置、登录方式、交接说明 |
 | [frontend/README.md](frontend/README.md) | 前端路由、登录流程、检查命令 |
 | [backend/docs/frontend-api.md](backend/docs/frontend-api.md) | 前端调用接口的说明和错误码 |
@@ -64,8 +67,9 @@ PostgreSQL 集成测试的运行方法见 [backend/database/README.md](backend/d
 | [backend/docs/database-interface.md](backend/docs/database-interface.md) | 数据库适配器要遵守的约定 |
 | [backend/database/README.md](backend/database/README.md) | 本地 PostgreSQL 搭建和升级 |
 | [backend/docs/outlook-setup.md](backend/docs/outlook-setup.md) | Outlook 同步的配置和实测 |
+| [backend/docs/email-setup.md](backend/docs/email-setup.md) | 邮件通知（Gmail 系统邮箱）的配置和测试 |
 
 ## 注意
 
-- 不要把 `.env`、数据库密码、微软 Token 或 `backend/.local/` 提交进 Git。
+- 不要把 `.env`、数据库密码、微软 Token、Gmail 应用专用密码或 `backend/.local/` 提交进 Git。
 - 提交时按具体文件路径 `git add`，不要 `git add backend`（会带上 `.local`）。

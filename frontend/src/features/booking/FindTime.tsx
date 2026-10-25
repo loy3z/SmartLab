@@ -1,169 +1,104 @@
-import { useEffect, useMemo, useState } from 'react'
+// Sprint 3: search for a specific time, then review one resource. No queries run while editing filters.
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Link } from 'react-router'
+import { useAuth } from '../auth/auth-context'
 import { getDayOverview } from './api'
-import { errorMessage, fmtDate, fmtTime, QUAL_TEXT, todaySydney, TZ } from './format'
-import { cellTitle, kindOf } from './slot-cells'
-import type { DayOverview, DayOverviewRow, Resource, ResourceKind } from './types'
+import { FIND_DURATIONS, hiddenSummary } from './find-time'
+import { errorMessage, fmtDate, fmtDuration, fmtRange, todaySydney, TZ } from './format'
+import { CalendarIcon, CheckIcon, SearchIcon } from './icons'
+import type { DayOverview, DayOverviewQuery, DayOverviewRow, Resource, ResourceKind } from './types'
 
-const DURATIONS = [30, 60, 90, 120, 180, 240]
-// Opening hours of the demo resources (08:00-20:00); "Free at" offers each half hour.
-const START_TIMES = Array.from({ length: 24 }, (_, i) => `${String(8 + Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`)
+function addDays(day: string, days: number) {
+  const value = new Date(`${day}T00:00:00Z`)
+  value.setUTCDate(value.getUTCDate() + days)
+  return value.toISOString().slice(0, 10)
+}
+const localClock = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 
-function addDays(ymd: string, days: number): string {
-  const date = new Date(`${ymd}T00:00:00Z`)
-  date.setUTCDate(date.getUTCDate() + days)
-  return date.toISOString().slice(0, 10)
+/** The server filters the requested interval. Reuse its actual UTC start when opening the confirmation. */
+function matchingSlot(row: DayOverviewRow, query: DayOverviewQuery) {
+  return row.slots.find(slot => slot.available && !slot.requested_by_me && localClock.format(new Date(slot.start)) === query.free_at)
 }
 
-function rowNote(row: DayOverviewRow): string {
-  if (row.resource_status !== 'AVAILABLE') return row.resource_status === 'MAINTENANCE' ? 'Under maintenance' : 'Closed'
-  if (!row.can_request) return QUAL_TEXT[row.qualification_status] ?? 'Not available to you'
-  return ''
-}
-
-/**
- * "Find a free time": filters, then one row per resource with that day's free and taken times. Clicking a free
- * time opens the booking form with the resource and period already chosen. Same rules as each resource's own
- * availability (the backend runs one shared check).
- */
-export function FindTime({ onPick }: { onPick: (resource: Resource, start: string, minutes: number, date: string) => void }) {
-  const [date, setDate] = useState(todaySydney())
+export function FindTime({ onPick, resources = [] }: {
+  onPick: (resource: Resource, start: string, minutes: number, date: string) => void
+  resources?: Resource[]
+}) {
+  const { user } = useAuth()
+  const [date, setDate] = useState(() => addDays(todaySydney(), user?.bypass_booking_rules ? 0 : 7))
   const [duration, setDuration] = useState(60)
   const [kind, setKind] = useState<'' | ResourceKind>('')
   const [roomId, setRoomId] = useState('')
   const [category, setCategory] = useState('')
-  const [freeAt, setFreeAt] = useState('')
+  const [startTime, setStartTime] = useState('09:00')
   const [bookableOnly, setBookableOnly] = useState(true)
+  const [query, setQuery] = useState<DayOverviewQuery | null>(null)
   const [data, setData] = useState<DayOverview | null>(null)
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
+  const rooms = resources.filter(resource => resource.kind === 'ROOM')
+  const categories = useMemo(() => [...new Set(resources.map(resource => resource.category).filter((value): value is string => Boolean(value)))].sort(), [resources])
+  const draft: DayOverviewQuery = { date, duration_minutes: duration, kind: kind || undefined, room_id: roomId || undefined,
+    category: kind === 'ROOM' ? undefined : category || undefined, bookable_only: bookableOnly, free_at: startTime }
+  const filtersChanged = Boolean(query && JSON.stringify(query) !== JSON.stringify(draft))
 
   useEffect(() => {
-    let cancelled = false
-    getDayOverview({
-      date, duration_minutes: duration, kind: kind || undefined, room_id: roomId || undefined,
-      category: kind === 'ROOM' ? undefined : category || undefined, bookable_only: bookableOnly, free_at: freeAt || undefined,
-    })
-      .then((d) => {
-        if (cancelled) return
-        // Open on the first bookable day (today + 7 by default) and stay inside the booking window.
-        if (date < d.earliest_date) return setDate(d.earliest_date)
-        if (date > d.latest_date) return setDate(d.latest_date)
-        setData(d)
-        setError('')
-      })
-      .catch((e: unknown) => !cancelled && (setData(null), setError(errorMessage(e))))
-      .finally(() => !cancelled && setLoading(false))
-    return () => { cancelled = true }
-  }, [date, duration, kind, roomId, category, freeAt, bookableOnly])
+    if (!query) return
+    let active = true
+    getDayOverview(query).then(result => { if (active) setData(result) })
+      .catch((reason: unknown) => { if (active) setError(errorMessage(reason)) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [query])
 
-  const header = useMemo(() => data?.results[0]?.slots ?? [], [data])
-  const atStart = data ? date <= data.earliest_date : true
-  const atEnd = data ? date >= data.latest_date : true
+  function search(event: FormEvent) {
+    event.preventDefault()
+    if (loading || !date || !startTime) return
+    setError('')
+    setData(null)
+    setLoading(true)
+    setQuery({ ...draft })
+  }
+  const hidden = hiddenSummary(data?.not_bookable)
 
-  return (
-    <section aria-label="Find a free time">
-      <div className="bk-find-filters">
-        <label>Date
-          <span className="bk-find-date">
-            <button type="button" className="ui-icon-btn" aria-label="Previous day" disabled={atStart} onClick={() => setDate(addDays(date, -1))}>‹</button>
-            <input type="date" aria-label="Date" value={date} min={data?.earliest_date} max={data?.latest_date}
-              onChange={(e) => e.target.value && setDate(e.target.value)} />
-            <button type="button" className="ui-icon-btn" aria-label="Next day" disabled={atEnd} onClick={() => setDate(addDays(date, 1))}>›</button>
-          </span>
-        </label>
-        <label>Length
-          <select aria-label="Length" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
-            {DURATIONS.map((m) => <option key={m} value={m}>{m < 60 ? `${m} min` : `${m / 60} hour${m === 60 ? '' : 's'}`}</option>)}
-          </select>
-        </label>
-        <label>Free at
-          <select aria-label="Free at" value={freeAt} onChange={(e) => setFreeAt(e.target.value)}>
-            <option value="">Any time</option>
-            {START_TIMES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </label>
-        <label>Type
-          <select aria-label="Type" value={kind} onChange={(e) => setKind(e.target.value as '' | ResourceKind)}>
-            <option value="">Rooms and equipment</option>
-            <option value="ROOM">Rooms only</option>
-            <option value="EQUIPMENT">Equipment only</option>
-          </select>
-        </label>
-        <label>Room
-          <select aria-label="Room" value={roomId} onChange={(e) => setRoomId(e.target.value)}>
-            <option value="">All rooms</option>
-            {data?.rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}
-          </select>
-        </label>
-        <label>Equipment type
-          <select aria-label="Equipment type" value={category} disabled={kind === 'ROOM'} onChange={(e) => setCategory(e.target.value)}>
-            <option value="">All types</option>
-            {data?.categories.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </label>
+  return <section aria-label="Find a free time">
+    <form className="bk-find-query" onSubmit={search}>
+      <div className="bk-find-query-head"><div><h2>A time that works for you.</h2><p>Set your time. Find a resource. Review your booking.</p></div><span className="bk-search-steps" aria-hidden="true"><b>1</b>Find<span>—</span><b>2</b>Review</span></div>
+      <div className="bk-find-primary-fields">
+        <label>Date<input type="date" aria-label="Date" required min={todaySydney()} max={data?.latest_date ?? undefined} value={date} onChange={event => setDate(event.target.value)} /></label>
+        <label>Start time<input type="time" aria-label="Start time" required step={1800} value={startTime} onChange={event => setStartTime(event.target.value)} /></label>
+        <label>Length<select aria-label="Length" value={duration} onChange={event => setDuration(Number(event.target.value))}>{FIND_DURATIONS.map(minutes => <option key={minutes} value={minutes}>{fmtDuration(minutes)}</option>)}</select></label>
+        <label>Type<select aria-label="Type" value={kind} onChange={event => setKind(event.target.value as '' | ResourceKind)}><option value="">All resources</option><option value="ROOM">Rooms only</option><option value="EQUIPMENT">Equipment only</option></select></label>
+        <button type="submit" className="ui-btn ui-btn-primary" disabled={loading}><SearchIcon size={15} />{loading ? 'Searching…' : 'Find available resources'}</button>
       </div>
-      <label className="bk-find-check">
-        <input type="checkbox" checked={bookableOnly} onChange={(e) => setBookableOnly(e.target.checked)} />
-        Only show what I can book now
-      </label>
-
-      <p className="bk-muted">
-        {fmtDate(date)} · times in {TZ}. {data && <>Bookable from {fmtDate(data.earliest_date)} to {fmtDate(data.latest_date)}.</>} Click a free time to book it.
-      </p>
-      {error && <p className="bk-error" role="alert">{error}</p>}
-      {loading && !data && <p role="status">Loading free times…</p>}
-      {data && data.count === 0 && (
-        <div className="ui-hint">
-          {bookableOnly ? 'Nothing you can book matches these filters. Untick “Only show what I can book now” to see everything.' : 'Nothing matches these filters.'}
-        </div>
-      )}
-
-      {data && data.count > 0 && (
-        <div className="ui-tl-scroll">
-          <div className="bk-find-table" style={{ minWidth: 210 + header.length * 26 }}>
-            <div className="bk-find-row" aria-hidden="true">
-              <span />
-              <div className="ui-tl-hours">
-                {header.map((s) => {
-                  const label = fmtTime(s.start)
-                  return <span key={s.start}>{/:00/.test(label) ? label.replace(':00', '') : ''}</span>
-                })}
-              </div>
-            </div>
-            {data.results.map((row) => {
-              const note = rowNote(row)
-              return (
-                <div key={row.resource.id} className="bk-find-row">
-                  <div className="bk-find-name">
-                    <b>{row.resource.name}</b>
-                    <small>{[row.room_name, row.resource.category].filter(Boolean).join(' · ') || (row.resource.kind === 'ROOM' ? 'Room' : '')}</small>
-                    {note && <small className="bk-find-note">{note}</small>}
-                  </div>
-                  <div className="ui-tl-grid" role="group" aria-label={`Times for ${row.resource.name}`}>
-                    {row.slots.map((s) => {
-                      const k = kindOf(s)
-                      const usable = k === 'free' && row.can_request
-                      const title = row.can_request ? cellTitle(s, k, data.min_advance_days, data.max_advance_days) : `${fmtTime(s.start)}: ${note}`
-                      return (
-                        <button key={s.start} type="button" className={`ui-tl-cell bk-find-cell is-${row.can_request ? k : 'closed'}`}
-                          disabled={!usable} title={title} aria-label={`${row.resource.name}, ${title}`}
-                          onClick={() => onPick(row.resource, s.start, duration, date)} />
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            })}
+      <details><summary>More filters</summary><div className="bk-find-secondary-fields">
+        <label>Room<select aria-label="Room" value={roomId} onChange={event => setRoomId(event.target.value)}><option value="">All rooms</option>{rooms.map(room => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label>
+        <label>Equipment type<select aria-label="Equipment type" disabled={kind === 'ROOM'} value={category} onChange={event => setCategory(event.target.value)}><option value="">All types</option>{categories.map(item => <option key={item}>{item}</option>)}</select></label>
+      </div></details>
+      <label className="bk-find-check"><input type="checkbox" checked={bookableOnly} onChange={event => setBookableOnly(event.target.checked)} />Only show resources I am qualified to book</label>
+    </form>
+    {error && <p className="bk-error" role="alert">{error}</p>}
+    {loading && <div className="bk-find-explainer" role="status"><span className="app-loading-dot" /><p>Checking your chosen time…</p></div>}
+    {!query && <div className="bk-find-explainer"><CalendarIcon size={35} /><h3>Your time, then your space.</h3><p>Search when you are ready. We will show resources that are free for your whole session.</p></div>}
+    {data && query && <>
+      <div className="bk-find-results-head"><h3>{data.count} {data.count === 1 ? 'matching resource' : 'matching resources'}</h3><span>{fmtDate(query.date)} · {query.free_at} · {fmtDuration(query.duration_minutes)} · Sydney time</span></div>
+      {filtersChanged && <p className="ui-hint" role="status">Your filters have changed. Search again to update these results.</p>}
+      {!data.test_bypass && data.latest_date && <p className="bk-muted">Normal booking window: {fmtDate(data.earliest_date)}–{fmtDate(data.latest_date)}.{query.date < data.earliest_date && <> <button type="button" className="bk-linkbtn" onClick={() => setDate(data.earliest_date)}>Use the first bookable day</button> For an earlier date, browse a resource and make an urgent request.</>}</p>}
+      {data.count === 0 && <div className="ui-empty"><span className="ui-empty-icon" aria-hidden="true"><SearchIcon size={23} /></span><h3>No matching resources</h3><p>{hidden.text || 'Try a different time, length or resource type.'}</p>{hidden.needsInduction && <Link className="ui-btn ui-btn-ghost" to="/induction">Go to Induction &amp; Training</Link>}</div>}
+      {data.results.map(row => {
+        const slot = matchingSlot(row, query)
+        const available = row.can_request && Boolean(slot)
+        return <article className="bk-find-result" aria-label={row.resource.name} key={row.resource.id}>
+          <span className="bk-find-result-icon" aria-hidden="true"><CalendarIcon size={20} /></span>
+          <div><h3>{row.resource.name}</h3><p>{row.room_name ? `In ${row.room_name}` : row.resource.location}{row.resource.capacity ? ` · Up to ${row.resource.capacity} people` : ''}</p>
+            <span className={`bk-chip ${available ? 'is-ok' : 'is-warn'}`}>{available ? <><CheckIcon size={12} />Available for your session</> : 'Training or availability requirements apply'}</span>
+            {slot && <p>{fmtRange(slot.start, slot.end)}</p>}
           </div>
-          <div className="ui-legend">
-            <span><i className="lg-free" />Free</span>
-            <span><i className="lg-taken" />Booked</span>
-            <span><i className="lg-held" />Awaiting approval</span>
-            <span><i className="lg-mine" />Your request</span>
-            <span><i className="lg-closed" />Not bookable</span>
-          </div>
-        </div>
-      )}
-    </section>
-  )
+          <button type="button" className="ui-btn ui-btn-ghost" disabled={!available || filtersChanged} onClick={() => slot && onPick(row.resource, slot.start, query.duration_minutes, query.date)}>Review booking <span aria-hidden="true">↗</span></button>
+        </article>
+      })}
+      {data.count > 0 && hidden.text && <p className="bk-muted">{hidden.text}.{hidden.needsInduction && <> <Link to="/induction">Check your training</Link></>}</p>}
+      {Boolean(data.too_long) && <p className="bk-muted">{data.too_long} resources do not support the selected length.</p>}
+    </>}
+  </section>
 }

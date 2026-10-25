@@ -63,6 +63,9 @@ CREATE TABLE public.app_users (
     role text NOT NULL,
     university_email text CONSTRAINT app_users_email_not_null NOT NULL,
     active boolean DEFAULT true NOT NULL,
+    no_show_count integer DEFAULT 0 NOT NULL,
+    frozen_until timestamp with time zone,
+    CONSTRAINT app_users_no_show_count_check CHECK ((no_show_count >= 0)),
     CONSTRAINT app_users_role_check CHECK ((role = ANY (ARRAY['STUDENT'::text, 'ADMIN'::text, 'MANAGER'::text])))
 );
 
@@ -105,6 +108,10 @@ CREATE TABLE public.bookable_resource (
     status_reason text,
     room_id uuid,
     category text,
+    capacity integer,
+    details jsonb DEFAULT '[]'::jsonb NOT NULL,
+    CONSTRAINT bookable_resource_capacity_check CHECK (((capacity IS NULL) OR ((kind = 'ROOM'::text) AND (capacity >= 1) AND (capacity <= 1000)))),
+    CONSTRAINT bookable_resource_details_check CHECK ((jsonb_typeof(details) = 'array'::text)),
     CONSTRAINT bookable_resource_room_check CHECK (((room_id IS NULL) OR (kind = 'EQUIPMENT'::text))),
     CONSTRAINT bookable_resource_status_check CHECK (((status = ANY (ARRAY['AVAILABLE'::text, 'MAINTENANCE'::text, 'CLOSED'::text])) AND ((status_reason IS NULL) OR (char_length(status_reason) <= 500)))),
     CONSTRAINT bookable_resource_rules_check CHECK (((kind = ANY (ARRAY['ROOM'::text, 'EQUIPMENT'::text])) AND (slot_minutes > 0) AND (max_booking_minutes > 0) AND (closing_time > opening_time) AND ((pending_hold_minutes >= 1) AND (pending_hold_minutes <= 20160)))),
@@ -136,6 +143,11 @@ CREATE TABLE public.booking (
     created_by uuid,
     urgent boolean DEFAULT false NOT NULL,
     urgent_reason text,
+    series_id uuid,
+    attendance text,
+    checked_in_at timestamp with time zone,
+    replaces_id uuid,
+    CONSTRAINT booking_attendance_check CHECK (((attendance IS NULL) OR (attendance = ANY (ARRAY['CHECKED_IN'::text, 'NO_SHOW'::text, 'EXCUSED'::text, 'NOT_TRACKED'::text])))),
     CONSTRAINT booking_revision_check CHECK ((revision >= 1)),
     CONSTRAINT booking_status_check CHECK ((status = ANY (ARRAY['WAITING_QUALIFICATION'::text, 'PENDING_APPROVAL'::text, 'WAITLISTED'::text, 'APPROVED'::text, 'REJECTED'::text, 'CANCELLED'::text, 'EXPIRED'::text]))),
     CONSTRAINT booking_time_check CHECK (("end" > start))
@@ -179,6 +191,10 @@ CREATE TABLE public.qualification_requirement (
     name text NOT NULL,
     description text DEFAULT ''::text NOT NULL,
     prerequisite_ids uuid[] DEFAULT '{}'::uuid[] NOT NULL,
+    how_to_complete text DEFAULT ''::text NOT NULL,
+    accepted_evidence text DEFAULT ''::text NOT NULL,
+    reviewer text DEFAULT ''::text NOT NULL,
+    contact text DEFAULT ''::text NOT NULL,
     CONSTRAINT qualification_requirement_not_own_prerequisite CHECK ((NOT (id = ANY (prerequisite_ids))))
 );
 
@@ -531,6 +547,118 @@ ALTER TABLE ONLY public.staff_credential
 
 ALTER TABLE ONLY public.staff_credential
     ADD CONSTRAINT staff_credential_principal_fkey FOREIGN KEY (principal_id) REFERENCES public.app_users(id) ON DELETE CASCADE;
+
+
+--
+-- Sprint 3 tables (see migrations/006_calendar_notifications_attendance_series.sql)
+--
+
+-- Weekly series created by staff. Each occurrence is a normal booking row with series_id.
+CREATE TABLE public.booking_series (
+    id uuid NOT NULL,
+    student_id uuid NOT NULL,
+    created_by uuid NOT NULL,
+    resource_id uuid NOT NULL,
+    weekdays text NOT NULL,
+    start_time time without time zone NOT NULL,
+    duration_minutes integer NOT NULL,
+    first_date date NOT NULL,
+    last_date date NOT NULL,
+    purpose text NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+ALTER TABLE public.booking_series ADD CONSTRAINT booking_series_rules_check
+    CHECK (((weekdays ~ '^[1-7](,[1-7])*$'::text) AND (duration_minutes > 0) AND (last_date >= first_date)));
+
+
+-- Website notifications (delivery channels such as Outlook mail can send the same rows later).
+CREATE TABLE public.notification (
+    id uuid NOT NULL,
+    recipient_id uuid NOT NULL,
+    kind text NOT NULL,
+    title text NOT NULL,
+    body text NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    link text,
+    booking_id uuid,
+    read_at timestamp with time zone
+);
+
+-- Secret calendar subscription address, one per person.
+CREATE TABLE public.calendar_feed (
+    principal_id uuid NOT NULL,
+    token text NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
+-- Requests to lift a booking freeze.
+CREATE TABLE public.unfreeze_request (
+    id uuid NOT NULL,
+    principal_id uuid NOT NULL,
+    reason text NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    status text DEFAULT 'PENDING'::text NOT NULL,
+    decided_by uuid,
+    decided_at timestamp with time zone,
+    decision_reason text
+);
+ALTER TABLE public.unfreeze_request ADD CONSTRAINT unfreeze_request_status_check
+    CHECK (((status = ANY (ARRAY['PENDING'::text, 'APPROVED'::text, 'REJECTED'::text])) AND (char_length(reason) <= 1000)));
+
+-- Keys.
+ALTER TABLE ONLY public.booking_series ADD CONSTRAINT booking_series_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.booking
+    ADD CONSTRAINT booking_series_fk FOREIGN KEY (series_id) REFERENCES public.booking_series(id) ON DELETE RESTRICT;
+ALTER TABLE ONLY public.booking_series
+    ADD CONSTRAINT booking_series_student_fk FOREIGN KEY (student_id) REFERENCES public.app_users(id) ON DELETE RESTRICT;
+ALTER TABLE ONLY public.booking_series
+    ADD CONSTRAINT booking_series_created_by_fk FOREIGN KEY (created_by) REFERENCES public.app_users(id) ON DELETE RESTRICT;
+ALTER TABLE ONLY public.booking_series
+    ADD CONSTRAINT booking_series_resource_fk FOREIGN KEY (resource_id) REFERENCES public.bookable_resource(id) ON DELETE RESTRICT;
+
+ALTER TABLE ONLY public.notification ADD CONSTRAINT notification_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.notification
+    ADD CONSTRAINT notification_recipient_fk FOREIGN KEY (recipient_id) REFERENCES public.app_users(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.notification
+    ADD CONSTRAINT notification_booking_fk FOREIGN KEY (booking_id) REFERENCES public.booking(id) ON DELETE CASCADE;
+CREATE INDEX notification_recipient_idx ON public.notification USING btree (recipient_id, created_at DESC);
+
+ALTER TABLE ONLY public.calendar_feed ADD CONSTRAINT calendar_feed_pkey PRIMARY KEY (principal_id);
+ALTER TABLE ONLY public.calendar_feed ADD CONSTRAINT calendar_feed_token_unique UNIQUE (token);
+ALTER TABLE ONLY public.calendar_feed
+    ADD CONSTRAINT calendar_feed_principal_fk FOREIGN KEY (principal_id) REFERENCES public.app_users(id) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.unfreeze_request ADD CONSTRAINT unfreeze_request_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.unfreeze_request
+    ADD CONSTRAINT unfreeze_request_principal_fk FOREIGN KEY (principal_id) REFERENCES public.app_users(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.unfreeze_request
+    ADD CONSTRAINT unfreeze_request_decided_by_fk FOREIGN KEY (decided_by) REFERENCES public.app_users(id) ON DELETE RESTRICT;
+-- At most one undecided request per person.
+CREATE UNIQUE INDEX unfreeze_request_one_pending_idx ON public.unfreeze_request USING btree (principal_id)
+    WHERE (status = 'PENDING'::text);
+
+CREATE INDEX booking_series_idx ON public.booking USING btree (series_id) WHERE (series_id IS NOT NULL);
+
+-- Sprint 3 (1.16.0): change requests and the lab's contact details (see migrations/007_change_requests_guidance_details_contact.sql).
+CREATE TABLE public.site_contact (
+    id uuid NOT NULL,
+    email text DEFAULT ''::text NOT NULL,
+    phone text DEFAULT ''::text NOT NULL,
+    hours text DEFAULT ''::text NOT NULL,
+    note text DEFAULT ''::text NOT NULL,
+    updated_at timestamp with time zone,
+    updated_by uuid
+);
+ALTER TABLE public.site_contact ADD CONSTRAINT site_contact_single_row_check
+    CHECK ((id = '00000000-0000-0000-0000-000000000c01'::uuid));
+ALTER TABLE ONLY public.site_contact ADD CONSTRAINT site_contact_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.site_contact
+    ADD CONSTRAINT site_contact_updated_by_fk FOREIGN KEY (updated_by) REFERENCES public.app_users(id) ON DELETE RESTRICT;
+ALTER TABLE ONLY public.booking
+    ADD CONSTRAINT booking_replaces_fk FOREIGN KEY (replaces_id) REFERENCES public.booking(id) ON DELETE RESTRICT;
+CREATE UNIQUE INDEX booking_one_open_change_idx ON public.booking USING btree (replaces_id)
+    WHERE ((replaces_id IS NOT NULL) AND (status = ANY (ARRAY['WAITING_QUALIFICATION'::text, 'PENDING_APPROVAL'::text, 'WAITLISTED'::text])));
+
 
 --
 -- PostgreSQL database dump complete

@@ -18,6 +18,17 @@
 | Booking | `urgent: bool`、`urgent_reason: str \| None` | 紧急申请标记和原因（≤500 字） |
 | Booking | `hold_until`、`review_due_at: datetime \| None` | 可空、带时区。普通申请进入 `PENDING_APPROVAL` 时两者写同一个值：`min(start, 当时 + pending_hold_minutes)`，不随资源规则变化重算。紧急申请 `review_due_at` 为空、`hold_until=start` |
 | Booking | `revision: int` | 默认 1，每次改期加 1 |
+| Booking | `series_id: str \| None` | 员工的重复预约（外键指向 `booking_series`）；单次预约为空 |
+| Booking | `attendance: str \| None`、`checked_in_at` | 到场标记，只对已批准的预约有意义：`CHECKED_IN`／`NO_SHOW`／`EXCUSED`／`NOT_TRACKED`，未决定时为空。迁移 006 把加列前已开始的已批准预约标为 `NOT_TRACKED`，避免被算成缺席 |
+| Principal | `no_show_count: int`、`frozen_until: datetime \| None` | 冻结后清零的缺席次数；冻结截止时间（带时区）。冻结只影响预约，不影响员工审批 |
+| Booking | `replaces_id: str \| None` | 1.16.0 申请改期：指向它要替换的已批准预约（外键指向 `booking`）。部分唯一索引 `booking_one_open_change_idx` 保证一个预约同时只有一个未决定的改期申请。改期申请被批准时，业务层在同一事务里取消原预约 |
+| Resource | `capacity: int \| None`、`details: tuple[ResourceDetail, ...]` | 1.16.0：房间容纳人数（只有房间，1–1000，检查约束 `bookable_resource_capacity_check`）；`details` 存成 `jsonb` 数组 `[{"label": …, "value": …}]`（检查约束要求是数组，默认 `[]`），适配器读出后转回 `ResourceDetail` |
+| QualificationRequirement | `how_to_complete`、`accepted_evidence`、`reviewer`、`contact: str` | 1.16.0：Manager 写的说明，`text NOT NULL DEFAULT ''` |
+| SiteContact | `id`、`email`、`phone`、`hours`、`note`、`updated_at`、`updated_by` | 1.16.0：表 `site_contact` 只有一行（`id` 固定为 `SITE_CONTACT_ID`，检查约束保证），没有这行时业务层返回空记录 |
+| Notification | `recipient_id`、`kind`、`title`、`body`、`created_at`、`link`、`booking_id`、`read_at` | 表 `notification`，和引起它的变化在同一事务里写入；按收件人、时间倒序读取 |
+| CalendarFeed | `principal_id`、`token`、`created_at` | 表 `calendar_feed`，每人一行，`token` 唯一。重新生成时覆盖 `token` |
+| UnfreezeRequest | `principal_id`、`reason`、`status`、`decided_by`、`decided_at`、`decision_reason` | 表 `unfreeze_request`；部分唯一索引保证每人最多一个 `PENDING` |
+| BookingSeries | `student_id`、`created_by`、`resource_id`、`weekdays`、`start_time`、`duration_minutes`、`first_date`、`last_date`、`purpose` | 表 `booking_series`；`weekdays` 是逗号分隔的 ISO 星期（`"1,3"` = 周一、周三），`start_time` 是资源当地时间 |
 | Booking | `status` | 七种：`WAITING_QUALIFICATION`、`PENDING_APPROVAL`、`WAITLISTED`、`APPROVED`、`REJECTED`、`CANCELLED`、`EXPIRED`。`WAITING_QUALIFICATION` 只出现在早期数据中，现在的流程不会产生 |
 | OutlookSyncRecord | `booking_revision`、`ical_uid`、`last_success_at` 等 | 事件对应关系、版本、重试和租约，均需持久化 |
 | StaffCredential | `principal_id`、`password_hash`、`invite_code`、`updated_at` | 表 `staff_credential`（主键 `principal_id`，外键指向 `app_users`）。只有 Admin／Manager 有；`password_hash` 是 Django 密码哈希，激活前为空；`invite_code` 激活后为空。仓储方法 `get_credential(principal_id)`、`save_credential(credential)`。单独成表，避免密码哈希跟着用户对象被返回 |
@@ -91,13 +102,25 @@ WHERE resource_id = :resource_id
 
 规则更新写入 `RESOURCE_BOOKING_POLICY_UPDATED` 审计，保存前后分钟数。`QualificationSubmission.valid_until` 在 VERIFIED 时由业务服务设定（审核时间加可配置规则 `qualification_validity_days`，默认 120 天），PENDING／REJECTED 为空；`QUALIFICATION_VERIFIED` 审计的 details 带 `valid_until`。审计查询接口 `GET admin/audit/` 在业务层对 `list_audit()` 的结果做筛选和分页；数据量变大后，数据库适配器应为审计表的 `at`、`entity_type`＋`entity_id`、`actor_id`、`action` 建索引，必要时再把筛选下推到查询中（结果需与现有测试一致）。审计记录只追加，不修改、不删除。每个资源关联一项 `required_qualification_id`，不同资源可以不同；该要求的前置项记录在 `qualification_requirement.prerequisite_ids`。不要改成用户全局 inducted 布尔值。
 
+## 通知、订阅、到场确认和重复预约
+
+仓储新增方法：`save_notification`、`get_notification`、`list_notifications(recipient_id)`（最新在前）；`get_calendar_feed(principal_id)`、`get_calendar_feed_by_token(token)`、`save_calendar_feed`；`save_unfreeze_request`、`get_unfreeze_request`、`list_unfreeze_requests(principal_id=None)`（最早在前）；`save_series`、`get_series`；1.16.0：`get_site_contact()`（没有时返回 `None`）、`save_site_contact(contact)`。
+
+- **通知**在保存预约的同一个事务里写入（`_save_booking` 比较新旧状态后决定发什么），失败时一起回滚。其他发送渠道（以后的 Outlook 邮件）在请求结束、事务提交之后才发。
+- **缺席处理**在 `process_due_requests` 的最后一步（`attendance.py` 的 `_process_attendance`）：已批准、`attendance` 为空、到场窗口已结束的预约，在资源＋受益人锁内重读后标记。达到冻结次数时，在同一事务里更新这个人、取消他之后所有的有效预约（每个资源再加资源锁）并递补候补。PostgreSQL 适配器的全局 advisory lock 保证这些嵌套事务不会死锁。
+- **重复预约**在资源＋受益人锁内重新检查每个日期，然后一次写入系列和全部预约；任何一步失败都整体回滚。
+- **每周上限**在创建申请的资源＋受益人锁内统计这个人同一周的有效预约（`series_id` 为空的）。
+
 ## 接入和升级
 
-- 已有数据库按顺序运行 `database/migrations/` 里的全部脚本（001–005，都可重复执行），步骤见 `database/README.md` 第 2 节。
+- 已有数据库按顺序运行 `database/migrations/` 里的全部脚本（001–007，都可重复执行），步骤见 `database/README.md` 第 2 节。
 - 用户邮箱应从可信身份数据补齐；不要编造正式用户邮箱。
 - 环境变量 `DEFAULT_PENDING_HOLD_MINUTES` 仅用于创建演示种子数据，不能覆盖数据库中的 Manager 配置。
 - 时间字段使用带时区存储；API 输出 UTC，开放时间规则使用资源时区。
 - `save_booking`、`save_resource`、`save_principal` 必须读写上述全部字段；替换适配器后保持 API 结构不变。
+- Manager 在网页上新增资源时，`save_resource` 会插入新行（id 由业务层生成 uuid）；下架只是把 `active` 改成 `false`，不删除行，所以预约和审计的外键始终有效。资源规则（名称不重复、设备所在房间、时间步长等）由业务层检查，数据库不需要新约束。
+- 第一个 Manager 用 `python manage.py create_manager --zid … --name … --email …` 创建（输出一次性邀请码），不需要手写 SQL。
+- 提醒（预约快开始、induction 快到期）只发一次：业务层发之前会在这个人的 `notification` 里查同类提醒，所以不需要额外的表或字段。
 
 ## Outlook 同步记录
 

@@ -18,7 +18,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
-from django.db import connection, connections
+from django.db import IntegrityError, connection, connections, transaction  # Sprint 3 (1.16.0): IntegrityError, transaction
 from django.test import override_settings, TransactionTestCase
 
 from booking.domain import (
@@ -155,10 +155,98 @@ class PostgresAdapterTests(TransactionTestCase):
         self.assertEqual(self.repo.get_booking(booking.id), moved)
         self.assertIn("OUTLOOK_EVENT_RECREATED", [item.action for item in self.repo.list_audit() if item.entity_id == booking.id])
 
+    def test_sprint3_records_round_trip(self):
+        from booking.domain import BookingSeries, CalendarFeed, Notification, UnfreezeRequest, UnfreezeStatus
+        feed = CalendarFeed(self.a.id, "t" * 32, self.now)
+        self.repo.save_calendar_feed(feed)
+        self.assertEqual(self.repo.get_calendar_feed(self.a.id), feed)
+        self.assertEqual(self.repo.get_calendar_feed_by_token("t" * 32), feed)
+        self.assertIsNone(self.repo.get_calendar_feed_by_token("unknown-token-value"))
+        older = Notification(str(uuid4()), self.a.id, "BOOKING_APPROVED", "Approved", "Body", self.now, link="/bookings")
+        newer = replace(older, id=str(uuid4()), created_at=self.now + timedelta(minutes=1), read_at=self.now + timedelta(minutes=2))
+        self.repo.save_notification(older)
+        self.repo.save_notification(newer)
+        self.assertEqual(self.repo.list_notifications(self.a.id), [newer, older])
+        self.assertEqual(self.repo.get_notification(older.id), older)
+        request = UnfreezeRequest(str(uuid4()), self.a.id, "Sick", self.now)
+        self.repo.save_unfreeze_request(request)
+        stored = self.repo.get_unfreeze_request(request.id)
+        self.assertEqual((stored, type(stored.status)), (request, UnfreezeStatus))
+        with self.assertRaises(Exception):  # one waiting request per person (unique partial index)
+            self.repo.save_unfreeze_request(UnfreezeRequest(str(uuid4()), self.a.id, "Again", self.now))
+        self.assertEqual(self.repo.list_unfreeze_requests(self.a.id), [request])
+        series = BookingSeries(str(uuid4()), self.a.id, self.admin.id, self.room.id, "1,3", time(9), 60,
+                               self.start.date(), self.start.date() + timedelta(days=13), "Weekly", self.now)
+        self.repo.save_series(series)
+        self.assertEqual(self.repo.get_series(series.id), series)
+        frozen = replace(self.a, no_show_count=2, frozen_until=self.now + timedelta(days=30))
+        self.repo.save_principal(frozen)
+        self.assertEqual(self.repo.get_principal(self.a.id), frozen)
+
+    def test_weekly_series_check_in_and_freeze_are_persisted(self):
+        self.verified(self.a)
+        self.service._override_rule(max_advance_days=30, freeze_after_no_shows=1)
+        first = self.start.date() + timedelta(days=(7 - self.start.weekday()) % 7)
+        series, bookings = self.service.create_series(
+            self.admin, self.room.id, [first.isoweekday()], time(10), 60, first, first + timedelta(days=13), "Weekly",
+            on_behalf_of_zid=self.a.zid)
+        stored = self.repo.get_booking(bookings[0].id)
+        self.assertEqual((stored.series_id, stored.status, stored.attendance), (series.id, BookingStatus.APPROVED, None))
+        self.now = bookings[0].start + timedelta(minutes=1)
+        self.assertEqual(self.service.check_in(self.a, bookings[0].id).attendance, "CHECKED_IN")
+        self.assertEqual(self.repo.get_booking(bookings[0].id).checked_in_at, self.now)
+        self.now = bookings[1].start + timedelta(minutes=31)
+        self.service.process_due_requests()
+        self.assertEqual(self.repo.get_booking(bookings[1].id).attendance, "NO_SHOW")
+        person = self.repo.get_principal(self.a.id)
+        self.assertTrue(person.frozen_at(self.now))
+        kinds = {item.kind for item in self.repo.list_notifications(self.a.id)}
+        self.assertIn("ACCOUNT_FROZEN", kinds)
+
+    def test_resource_setup_is_persisted(self):
+        # Sprint 3: a Manager adds, edits, archives and restores a resource on the website.
+        name = f"Spectrometer {uuid4().hex[:6]}"
+        item = self.service.create_resource(self.manager, "EQUIPMENT", {
+            "name": name, "location": "Lab", "required_qualification_id": self.room.required_qualification_id,
+            "room_id": self.room.id, "category": "Optics", "opening_time": time(9), "max_booking_minutes": 120})
+        self.assertEqual(self.repo.get_resource(item.id), item)
+        self.service.update_resource(self.manager, item.id, {"closing_time": time(17), "category": None})
+        self.assertEqual((self.repo.get_resource(item.id).closing_time, self.repo.get_resource(item.id).category), (time(17), None))
+        self.service.archive_resource(self.manager, item.id)
+        self.assertFalse(self.repo.get_resource(item.id).active)
+        self.assertTrue(self.service.restore_resource(self.manager, item.id).active)
+        self.assertTrue(self.repo.get_resource(item.id).active)
+
     def test_resource_status_is_persisted(self):
         self.service.set_resource_status(self.manager, self.room.id, "MAINTENANCE", "Repairs")
         stored = self.repo.get_resource(self.room.id)
         self.assertEqual((stored.status, stored.status_reason), (ResourceStatus.MAINTENANCE, "Repairs"))
+
+    def test_guidance_details_and_contact_are_persisted(self):
+        # Sprint 3 (1.16.0): induction guidance texts, room capacity and details (jsonb), the lab's contact row.
+        requirement = self.service.create_requirement(self.manager, {"name": f"Laser {uuid4().hex[:6]}", "accepted_evidence": "Sheet"})
+        self.assertEqual(self.repo.get_requirement(requirement.id), requirement)
+        room, _ = self.service.update_resource(self.manager, self.room.id, {  # rooms of other tests share the name
+            "name": f"Laboratory {uuid4().hex[:6]}", "capacity": 16, "details": [{"label": "Floor", "value": "Level 3"}, {"label": "Projector", "value": "Yes"}]})
+        self.assertEqual(self.repo.get_resource(self.room.id), room)
+        self.assertEqual(self.repo.get_resource(self.room.id).details[1].label, "Projector")
+        saved = self.service.update_site_contact(self.manager, {"email": "lab@unsw.example", "note": "Ask at the front desk"})
+        self.assertEqual(self.repo.get_site_contact(), saved)
+
+    def test_change_request_is_persisted_and_replaces_the_old_booking(self):
+        # Sprint 3 (1.16.0): replaces_id column, the one-open-change index and the automatic cancellation.
+        self.verified(self.a)
+        old = self.service.review_booking(self.admin, self.book(self.a).id, "APPROVED")
+        change = self.service.request_time_change(self.a, old.id, self.start + timedelta(hours=4), self.end + timedelta(hours=4))[0]
+        self.assertEqual(self.repo.get_booking(change.id).replaces_id, old.id)
+        with self.assertRaises(IntegrityError):  # the database also allows only one open change per booking
+            with transaction.atomic():
+                self.repo.save_booking(replace(change, id=str(uuid4())))
+        self.service.review_booking(self.admin, change.id, "APPROVED")
+        self.assertEqual(self.repo.get_booking(old.id).status, BookingStatus.CANCELLED)
+        self.service.set_resource_status(self.manager, self.room.id, "CLOSED", "Flood")
+        kinds = {item.kind for item in self.repo.list_notifications(self.a.id)}
+        self.assertTrue({"CHANGE_REQUESTED", "CHANGE_APPROVED", "RESOURCE_OUT_OF_SERVICE"} <= kinds)
 
     def test_evidence_file_and_review_are_persisted(self):
         submission = self.verified(self.a)

@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Smart Lab and Room Booking API",
-    "version": "1.11.1",
-    "description": "Booking backend with Microsoft Graph one-way creation, rescheduling and cancellation of confirmed bookings. Confirmed events can invite the person the booking is for (OUTLOOK_INVITE_MODE); room and equipment availability remains managed by the booking system. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Recurring bookings are not supported yet. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z. Identity includes university_email. Students, Admins and Managers book under the same rules; an Admin or Manager may also book on behalf of someone (student_id is the person the booking is for, created_by who created it), and only a Manager decides urgent requests and reschedules. A student may submit a request only when the induction for the resource, and any prerequisite induction it lists (for example Advanced needs General), is verified and current through the booking end. Every request starts as PENDING_APPROVAL and holds its slot during a review window (pending_hold_minutes, default 1440 = 24 hours, Manager-configurable per resource, capped at the booking start). An Admin or Manager approves or rejects it within the window; if nobody decides, the system approves it when it still follows the rules (AUTO_APPROVED_AFTER_REVIEW_WINDOW) and rejects it otherwise (AUTO_REJECTED_*). Requests for time that is already taken or held are WAITLISTED in submission order and, when the time frees up, become PENDING_APPROVAL with a fresh review window. Induction evidence is always reviewed manually. Bookings must start at least 7 and at most 30 days ahead by default; these values come from a RulesProvider (booking/rules.py, environment variables by default) so they can be changed without code changes. Authentication and resource-specific eligibility are separate. Verified induction expires a fixed number of days after approval (qualification_validity_days from the RulesProvider, default 120, one term); reviewers do not supply an expiry. Admin and Manager can query the audit trail of requests, approvals, changes and cancellations. The prototype seed has 2 labs and 20 independently bookable devices. A Manager has every Admin permission and can also configure booking policies, add staff accounts and deactivate accounts. Admins cannot use any Manager endpoint. Students, Admins and Managers are separate accounts whose role is fixed when created: students are never promoted to staff, and Admin and Manager do not switch. Creating, approving, automatically deciding, promoting from the waitlist and rescheduling all use one shared rule check (account active, resource available, valid time, booking window on create and reschedule, induction and prerequisites). A Manager can mark a resource MAINTENANCE or CLOSED (new requests paused, existing bookings kept) and list or export every booking. Staff accounts are created with Add staff (POST /admin/users/staff/). Equipment records the room it is kept in (room_id); a room's maintenance does not affect its equipment. Two sign-in entry points: students use university sign-in (demo: POST /auth/demo-login/, which refuses staff with USE_STAFF_SIGN_IN); Admins and Managers use the staff page with zID and password (POST /auth/staff-sign-in/). A Manager's Add staff issues an invite code that the staff member uses once to choose a password (POST /auth/staff-activate/); Reset access issues a new code. Password hashes never appear in responses. Outlook sync is one way. The system never reads changes made in Outlook, so nothing done there can bypass the rules or become an approved booking; if a person deleted the event, a Manager's reschedule writes it again at the new time. Invitations follow OUTLOOK_INVITE_MODE (default allowlist: only OUTLOOK_ALLOWED_ATTENDEES are invited). POST /admin/outlook/check/ tests the Microsoft sign-in. Resources have an equipment category, and GET /resources/day-overview/ returns every matching resource's free and taken times on one day for the booking page filter and grid. Demo staff accounts use the password 123."
+    "version": "1.17.0",
+    "description": "Booking backend with Microsoft Graph one-way creation, rescheduling and cancellation of confirmed bookings. Confirmed events can invite the person the booking is for (OUTLOOK_INVITE_MODE); room and equipment availability remains managed by the booking system. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Recurring bookings are not supported yet. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z. Identity includes university_email. Students, Admins and Managers book under the same rules; an Admin or Manager may also book on behalf of someone (student_id is the person the booking is for, created_by who created it), and only a Manager decides urgent requests and reschedules. A student may submit a request only when the induction for the resource, and any prerequisite induction it lists (for example Advanced needs General), is verified and current through the booking end. Every request starts as PENDING_APPROVAL and holds its slot during a review window (pending_hold_minutes, default 1440 = 24 hours, Manager-configurable per resource, capped at the booking start). An Admin or Manager approves or rejects it within the window; if nobody decides, the system approves it when it still follows the rules (AUTO_APPROVED_AFTER_REVIEW_WINDOW) and rejects it otherwise (AUTO_REJECTED_*). Requests for time that is already taken or held are WAITLISTED in submission order and, when the time frees up, become PENDING_APPROVAL with a fresh review window. Induction evidence is always reviewed manually. Bookings must start at least 7 and at most 30 days ahead by default; these values come from a RulesProvider (booking/rules.py, environment variables by default) so they can be changed without code changes. Authentication and resource-specific eligibility are separate. Verified induction expires a fixed number of days after approval (qualification_validity_days from the RulesProvider, default 120, one term); reviewers do not supply an expiry. Admin and Manager can query the audit trail of requests, approvals, changes and cancellations. The prototype seed has 2 labs and 20 independently bookable devices. A Manager has every Admin permission and can also configure booking policies, add staff accounts and deactivate accounts. Admins cannot use any Manager endpoint. Students, Admins and Managers are separate accounts whose role is fixed when created: students are never promoted to staff, and Admin and Manager do not switch. Creating, approving, automatically deciding, promoting from the waitlist and rescheduling all use one shared rule check (account active, resource available, valid time, booking window on create and reschedule, induction and prerequisites). A Manager can mark a resource MAINTENANCE or CLOSED (new requests paused, existing bookings kept) and list or export every booking. Staff accounts are created with Add staff (POST /admin/users/staff/). Equipment records the room it is kept in (room_id); a room's maintenance does not affect its equipment. Two sign-in entry points: students use university sign-in (demo: POST /auth/demo-login/, which refuses staff with USE_STAFF_SIGN_IN); Admins and Managers use the staff page with zID and password (POST /auth/staff-sign-in/). A Manager's Add staff issues an invite code that the staff member uses once to choose a password (POST /auth/staff-activate/); Reset access issues a new code. Password hashes never appear in responses. Outlook sync is one way. The system never reads changes made in Outlook, so nothing done there can bypass the rules or become an approved booking; if a person deleted the event, a Manager's reschedule writes it again at the new time. Invitations follow OUTLOOK_INVITE_MODE (default allowlist: only OUTLOOK_ALLOWED_ATTENDEES are invited). POST /admin/outlook/check/ tests the Microsoft sign-in. Resources have an equipment category, and GET /resources/day-overview/ returns every matching resource's free and taken times on one day for the booking page filter and grid. Demo staff accounts use the password 123. Each person has a private calendar subscription link (GET calendar/link/, feed GET calendar/{token}.ics) that Outlook, Google or Apple Calendar read by themselves. Website notifications (GET notifications/) tell people about decisions and changes. Approved bookings need a check-in (POST bookings/{id}/check-in/) around the start; at the fourth missed check-in (configurable) booking is frozen for 30 days, later bookings are cancelled, and staff decide unfreeze requests. At most 3 bookings per person per week (configurable). Staff can book a weekly series (bookings/series/), approved at once. Managers add, edit, archive and restore rooms and equipment (admin/resources/) and read a usage report (admin/reports/usage/). Staff change their own password (auth/change-password/). Reminders appear in the notification bell the day before an approved booking and when a verified induction expires soon."
   },
   "servers": [
     {
@@ -32,6 +32,10 @@
     },
     {
       "name": "Administration"
+    },
+    {
+      "name": "Resource setup",
+      "description": "Managers add and edit rooms and equipment."
     }
   ],
   "paths": {
@@ -616,7 +620,8 @@
             },
             "description": "Local HH:MM: only resources free for the whole duration from then."
           }
-        ]
+        ],
+        "description": " An explicitly enabled self-only test session may bypass booking policy; see auth/test-session/. Bypass availability uses latest_date=null, test_bypass=true and no review wait."
       }
     },
     "/api/v1/resources/{id}/": {
@@ -1202,7 +1207,7 @@
           "Bookings"
         ],
         "summary": "Create a room or individual equipment booking request",
-        "description": "Any active account: Admins and Managers book under the same rules as students and may book on behalf of someone else with on_behalf_of_zid; the booking belongs to that person (student_id, whose induction is checked) and created_by records the creator. Urgent requests (urgent=true, urgent_reason) may start inside the minimum advance window; they are PENDING_APPROVAL with reason URGENT_AWAITING_MANAGER, review_due_at null and hold_until = start, only a Manager can decide them (URGENT_NEEDS_MANAGER) and they expire at the start if undecided. Requires a VERIFIED, unexpired induction for the selected resource, and for each of its prerequisite inductions, through the booking end; otherwise 403 QUALIFICATION_REQUIRED (details.qualification_status, requirement_id; PREREQUISITE_REQUIRED adds prerequisite_id and prerequisite_status), including while evidence is still PENDING. The local start date must be from today + MIN_ADVANCE_DAYS (default 7) to today + MAX_ADVANCE_DAYS (default 30): BOOKING_TOO_SOON / BOOKING_TOO_FAR_AHEAD (400, details.earliest_date, latest_date, min_advance_days, max_advance_days). A user who already has an overlapping active request for this same resource receives DUPLICATE_BOOKING (409); terminal requests do not block rebooking and different resources remain independent. If no APPROVED booking or active pending request overlaps, the request becomes PENDING_APPROVAL (reason AWAITING_REVIEW) with review_due_at = hold_until = min(start, now + pending_hold_minutes, default 1440). An Admin/Manager decides within that window; when it ends undecided the system re-checks the rules and sets APPROVED (AUTO_APPROVED_AFTER_REVIEW_WINDOW) or REJECTED (AUTO_REJECTED_ACCOUNT_INACTIVE, AUTO_REJECTED_QUALIFICATION, AUTO_REJECTED_RESOURCE_UNAVAILABLE, AUTO_REJECTED_BOOKING_RULES or AUTO_REJECTED_CONFLICT), reviewed_by SYSTEM. If an APPROVED booking or active pending request overlaps, the request becomes WAITLISTED (reason TIME_CONFLICT or TEMPORARY_HOLD_CONFLICT) with waitlist_position. When time frees up (cancellation, rejection, expiry, rescheduling, an automatic rejection or a resource reopening) the earliest waitlisted request that now fits becomes PENDING_APPROVAL (PROMOTED_FROM_WAITLIST) with a fresh review window, or REJECTED with the failing rule's code (for example QUALIFICATION_REQUIRED or ACCOUNT_INACTIVE). Only APPROVED creates an Outlook event. Undecided and waitlisted requests expire at their start time. HTTP 201 never means approved. Interval semantics are [start, end).",
+        "description": "Any active account: Admins and Managers book under the same rules as students and may book on behalf of someone else with on_behalf_of_zid; the booking belongs to that person (student_id, whose induction is checked) and created_by records the creator. Urgent requests (urgent=true, urgent_reason) may start inside the minimum advance window; they are PENDING_APPROVAL with reason URGENT_AWAITING_MANAGER, review_due_at null and hold_until = start, only a Manager can decide them (URGENT_NEEDS_MANAGER) and they expire at the start if undecided. Requires a VERIFIED, unexpired induction for the selected resource, and for each of its prerequisite inductions, through the booking end; otherwise 403 QUALIFICATION_REQUIRED (details.qualification_status, requirement_id; PREREQUISITE_REQUIRED adds prerequisite_id and prerequisite_status), including while evidence is still PENDING. The local start date must be from today + MIN_ADVANCE_DAYS (default 7) to today + MAX_ADVANCE_DAYS (default 30): BOOKING_TOO_SOON / BOOKING_TOO_FAR_AHEAD (400, details.earliest_date, latest_date, min_advance_days, max_advance_days). A user who already has an overlapping active request for this same resource receives DUPLICATE_BOOKING (409); terminal requests do not block rebooking and different resources remain independent. If no APPROVED booking or active pending request overlaps, the request becomes PENDING_APPROVAL (reason AWAITING_REVIEW) with review_due_at = hold_until = min(start, now + pending_hold_minutes, default 1440). An Admin/Manager decides within that window; when it ends undecided the system re-checks the rules and sets APPROVED (AUTO_APPROVED_AFTER_REVIEW_WINDOW) or REJECTED (AUTO_REJECTED_ACCOUNT_INACTIVE, AUTO_REJECTED_QUALIFICATION, AUTO_REJECTED_RESOURCE_UNAVAILABLE, AUTO_REJECTED_BOOKING_RULES or AUTO_REJECTED_CONFLICT), reviewed_by SYSTEM. If an APPROVED booking or active pending request overlaps, the request becomes WAITLISTED (reason TIME_CONFLICT or TEMPORARY_HOLD_CONFLICT) with waitlist_position. When time frees up (cancellation, rejection, expiry, rescheduling, an automatic rejection or a resource reopening) the earliest waitlisted request that now fits becomes PENDING_APPROVAL (PROMOTED_FROM_WAITLIST) with a fresh review window, or REJECTED with the failing rule's code (for example QUALIFICATION_REQUIRED or ACCOUNT_INACTIVE). Only APPROVED creates an Outlook event. Undecided and waitlisted requests expire at their start time. HTTP 201 never means approved. Interval semantics are [start, end). Booking frozen after missed check-ins: 403 ACCOUNT_FROZEN (details.frozen_until). At most MAX_BOOKINGS_PER_WEEK (default 3) pending, waitlisted or approved bookings per person per local week (Monday to Sunday), staff weekly series excluded: 409 WEEKLY_LIMIT_REACHED (details.limit, count, week_start). An explicitly enabled self-only test session may bypass booking policy; see auth/test-session/. Bypass availability uses latest_date=null, test_bypass=true and no review wait.",
         "security": [
           {
             "BearerAuth": []
@@ -1250,7 +1255,7 @@
             }
           },
           "403": {
-            "description": "QUALIFICATION_REQUIRED (no verified, current induction for this resource, including evidence still under review) or the caller is a Manager.",
+            "description": "QUALIFICATION_REQUIRED (no verified, current induction for this resource, including evidence still under review), ACCOUNT_FROZEN, or FORBIDDEN (a student used on_behalf_of_zid).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1270,7 +1275,7 @@
             }
           },
           "409": {
-            "description": "Idempotency key conflicts with a different request, DUPLICATE_BOOKING, resource policy is not configured (RESOURCE_POLICY_NOT_CONFIGURED), or RESOURCE_UNAVAILABLE when the resource is under maintenance or closed.",
+            "description": "Idempotency key conflicts with a different request, DUPLICATE_BOOKING, resource policy is not configured (RESOURCE_POLICY_NOT_CONFIGURED), or RESOURCE_UNAVAILABLE when the resource is under maintenance or closed. WEEKLY_LIMIT_REACHED.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1467,7 +1472,7 @@
           "Bookings"
         ],
         "summary": "Reschedule an approved booking (Manager only)",
-        "description": "Manager only (others receive 403 FORBIDDEN). Moves anyone's future approved booking after rechecking resource rules, the latest booking date (BOOKING_TOO_FAR_AHEAD), qualification validity and conflicts; the minimum advance window does not apply. reason_code becomes RESCHEDULED_BY_MANAGER and the booking stays APPROVED. The old period is released and offered to the waitlist. A successful Outlook sync updates the existing event rather than creating another event. The new length may differ from the old one within the resource's max_booking_minutes.",
+        "description": "Manager only (others receive 403 FORBIDDEN). Moves anyone's future approved booking after rechecking resource rules, the latest booking date (BOOKING_TOO_FAR_AHEAD), qualification validity and conflicts; the minimum advance window does not apply. reason_code becomes RESCHEDULED_BY_MANAGER and the booking stays APPROVED. The old period is released and offered to the waitlist. A successful Outlook sync updates the existing event rather than creating another event. The new length may differ from the old one within the resource's max_booking_minutes. Moving a single booking into a week where the person already has MAX_BOOKINGS_PER_WEEK bookings returns 409 WEEKLY_LIMIT_REACHED (weekly series dates are exempt).",
         "security": [
           {
             "BearerAuth": []
@@ -1878,9 +1883,19 @@
               "format": "date-time"
             },
             "description": "Bookings starting before this time."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "Part of a zID or name (any case): the person the booking is for, or the person who created it."
           }
         ],
-        "description": "Admin or Manager. Without filters returns the manual-approval queue (PENDING_APPROVAL), as before. status accepts one status, several separated by commas, or ALL. Optional resource_id, student_id, since and until (timestamps with offset; returns bookings overlapping the window). Ordered by start time. Each item includes student (zID, name, email), resource_name and resource_kind."
+        "description": "Admin or Manager. Without filters returns the manual-approval queue (PENDING_APPROVAL), as before. status accepts one status, several separated by commas, or ALL. Optional resource_id, student_id, q (part of a zID or name), since and until (timestamps with offset; returns bookings overlapping the window). Ordered by start time. Each item includes student (zID, name, email), resource_name and resource_kind."
       }
     },
     "/api/v1/admin/bookings/{id}/review/": {
@@ -2952,8 +2967,8 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Export bookings as CSV (Manager only)",
-        "description": "Active Manager only. Same filters as GET /admin/bookings/ but status defaults to ALL. UTF-8 CSV with a BOM (opens in Excel) and one row per booking: ID, status, reason, resource, type, local date, start, end, minutes, student zID/name/email, purpose, submitted time, decided by, decision reason. Text starting with = + - @ is prefixed with ' so spreadsheets do not run it as a formula.",
+        "summary": "Export bookings as CSV (Admin or Manager)",
+        "description": "Admin or Manager. Same filters as GET /admin/bookings/ (including q) but status defaults to ALL. UTF-8 CSV with a BOM (opens in Excel) and one row per booking: ID, status, reason, resource, type, local date, start, end, minutes, student zID/name/email, purpose, submitted time, decided by, decision reason, created by, urgent, urgent reason, weekly series (Yes or empty) and attendance (CHECKED_IN, NO_SHOW, EXCUSED, NOT_TRACKED or empty). Text starting with = + - @ is prefixed with ' so spreadsheets do not run it as a formula.",
         "security": [
           {
             "BearerAuth": []
@@ -3007,6 +3022,16 @@
               "format": "date-time"
             },
             "description": "Bookings starting before this time."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "Part of a zID or name (any case): the person the booking is for, or the person who created it."
           }
         ],
         "responses": {
@@ -3301,8 +3326,8 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Set prerequisite inductions (Manager only)",
-        "description": "Active Manager only. Replaces prerequisite_ids. A requirement cannot list itself and prerequisites cannot form a loop (409 PREREQUISITE_CYCLE). Writes REQUIREMENT_PREREQUISITES_UPDATED to the audit trail.",
+        "summary": "Edit an induction: texts and prerequisites (Manager only)",
+        "description": "Active Manager only. 1.16.0: send any of name, description, how_to_complete, accepted_evidence, reviewer, contact (REQUIREMENT_UPDATED in the audit trail; people who hold the induction keep it) and/or prerequisite_ids, which replaces the list. A requirement cannot list itself and prerequisites cannot form a loop (409 PREREQUISITE_CYCLE). Writes REQUIREMENT_PREREQUISITES_UPDATED to the audit trail.",
         "security": [
           {
             "BearerAuth": []
@@ -3324,7 +3349,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PrerequisiteUpdate"
+                "$ref": "#/components/schemas/RequirementUpdate"
               }
             }
           }
@@ -3480,6 +3505,2122 @@
           }
         }
       }
+    },
+    "/api/v1/calendar/link/": {
+      "get": {
+        "operationId": "get__api_v1_calendar_link_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "My calendar subscription link",
+        "description": "The signed-in person's private subscription address, created on first use. Paste the full address into Outlook (Add calendar → Subscribe from web), Google Calendar or Apple Calendar; they read it themselves every few hours.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarLink"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/calendar/link/reset/": {
+      "post": {
+        "operationId": "post__api_v1_calendar_link_reset_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "Make a new calendar subscription link",
+        "description": "Replaces the token: the old address stops working at once (404). Writes CALENDAR_LINK_RESET to the audit trail. Send {}.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarLink"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/calendar/{token}.ics": {
+      "get": {
+        "operationId": "get__api_v1_calendar_token_ics",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "Calendar subscription feed (iCalendar)",
+        "description": "No Authorization header (calendar apps cannot send one): the random token in the address is the only key. Returns the person's APPROVED bookings that end no earlier than 60 days ago, as text/calendar (RFC 5545). Each booking keeps UID <booking id>@smartlab and SEQUENCE grows with revision, so a rescheduled booking replaces its entry; cancelled bookings disappear. Read-only: nothing done in a calendar app changes a booking.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "iCalendar text.",
+            "content": {
+              "text/calendar": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown token, or the account is inactive.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{16,64}$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/notifications/": {
+      "get": {
+        "operationId": "get__api_v1_notifications_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "My notifications",
+        "description": "Newest first. Website notifications are stored with the change they describe: booking approved or rejected (including automatic decisions and waitlist rejections), waitlisted request moved up, rescheduled by a Manager, cancelled by staff, booked for you by staff, induction reviewed, missed check-in, booking frozen or unfrozen; Managers also get urgent requests. Ordinary new requests are not notified to staff. Extra delivery channels (e.g. Outlook mail) are configured on the server with NOTIFICATION_CHANNELS.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown query parameter.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "unread",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/notifications/read-all/": {
+      "post": {
+        "operationId": "post__api_v1_notifications_read_all_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "Mark all my notifications as read",
+        "description": "Send {}. Returns how many were marked.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "updated"
+                  ],
+                  "properties": {
+                    "updated": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/{id}/read/": {
+      "post": {
+        "operationId": "post__api_v1_notifications_id_read_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "Mark one notification as read",
+        "description": "Only your own notifications (others: 404). Send {}.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Notification"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Notification not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/bookings/{id}/check-in/": {
+      "post": {
+        "operationId": "post__api_v1_bookings_id_check_in_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "Check in (I'm here)",
+        "description": "Only the person the booking is for, on an APPROVED booking, from CHECK_IN_OPENS_MINUTES (default 15) before the start until CHECK_IN_CLOSES_MINUTES (default 30) after it (never after the end). Repeating returns the checked-in booking. Without a check-in the booking counts as missed (NO_SHOW) unless the resource was under maintenance or closed; at FREEZE_AFTER_NO_SHOWS (default 4) missed bookings the person's booking is frozen for FREEZE_DAYS (default 30) and their later bookings and requests are cancelled. Send {}.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Extra fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Booking not found or not yours.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CHECK_IN_NOT_OPEN (details.check_in_opens_at), CHECK_IN_CLOSED, or CHECK_IN_NOT_AVAILABLE (not an approved booking).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/account/unfreeze-requests/": {
+      "get": {
+        "operationId": "get__api_v1_account_unfreeze_requests_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "My unfreeze requests",
+        "description": "Newest first.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnfreezeRequestList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "post__api_v1_account_unfreeze_requests_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "Ask to be unfrozen",
+        "description": "Only while your booking is frozen; one waiting request at a time. Staff decide on Booking freezes.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnfreezeRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A reason of 1-1000 characters is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "NOT_FROZEN or UNFREEZE_ALREADY_REQUESTED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnfreezeRequestCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/unfreeze-requests/": {
+      "get": {
+        "operationId": "get__api_v1_admin_unfreeze_requests_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Unfreeze requests (Admin/Manager)",
+        "description": "Oldest first. Filter with status.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnfreezeRequestList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown query parameter.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "APPROVED",
+                "REJECTED"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/unfreeze-requests/{id}/review/": {
+      "post": {
+        "operationId": "post__api_v1_admin_unfreeze_requests_id_review_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Decide an unfreeze request (Admin/Manager)",
+        "description": "APPROVED lifts the freeze at once (cancelled bookings are not restored); REJECTED needs a reason shown to the person. Not for your own request (403 SELF_REVIEW_FORBIDDEN). Notifies the person and writes UNFREEZE_APPROVED / UNFREEZE_REJECTED to the audit trail.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnfreezeRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid decision or missing rejection reason.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ALREADY_REVIEWED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnfreezeReview"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/frozen-users/": {
+      "get": {
+        "operationId": "get__api_v1_admin_frozen_users_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "People whose booking is frozen (Admin/Manager)",
+        "description": "Everyone frozen now, earliest end first, with their waiting unfreeze request if any.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrozenUserList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{id}/unfreeze/": {
+      "post": {
+        "operationId": "post__api_v1_admin_users_id_unfreeze_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Unfreeze a person (Admin/Manager)",
+        "description": "Lifts the freeze directly and closes the person's waiting request. Not for yourself (403 SELF_MODIFICATION_FORBIDDEN). Writes ACCOUNT_UNFROZEN.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Extra fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "NOT_FROZEN.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Unfreeze"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/bookings/series/preview/": {
+      "post": {
+        "operationId": "post__api_v1_bookings_series_preview_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "Check the dates of a weekly series (staff)",
+        "description": "Admin/Manager only. Every date on the chosen weekdays from first_date to last_date (at most MAX_SERIES_WEEKS, default 14 weeks). The series may reach past the normal latest booking date; every other rule applies to each date: minimum advance days, opening hours, length, the person's induction (valid on that date), duplicates and conflicts. The person must not be frozen (403 ACCOUNT_FROZEN). Nothing is saved.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeriesPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid pattern: VALIDATION_ERROR, SERIES_TOO_LONG, SERIES_EMPTY.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN (not staff), ACCOUNT_FROZEN.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or person not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeriesPlan"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bookings/series/": {
+      "post": {
+        "operationId": "post__api_v1_bookings_series_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "Book a weekly series (staff)",
+        "description": "Admin/Manager only. Every date on the chosen weekdays from first_date to last_date (at most MAX_SERIES_WEEKS, default 14 weeks). The series may reach past the normal latest booking date; every other rule applies to each date: minimum advance days, opening hours, length, the person's induction (valid on that date), duplicates and conflicts. The person must not be frozen (403 ACCOUNT_FROZEN). Every kept date is created APPROVED at once (reason SERIES_CREATED_BY_STAFF; staff created it, so there is no review). Dates the preview marks as not available must be listed in skip_dates; a problem date that is not skipped returns 409 SERIES_CONFLICT (details.dates). Series dates do not count towards the weekly limit; check-in applies. The person booked for gets one notification.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingSeries"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid pattern or purpose; SERIES_EMPTY.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN (not staff), ACCOUNT_FROZEN.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or person not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "SERIES_CONFLICT.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeriesCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bookings/series/{id}/": {
+      "get": {
+        "operationId": "get__api_v1_bookings_series_id_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "A weekly series and its dates",
+        "description": "Staff, or the person the series is for.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingSeries"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Series not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/bookings/series/{id}/cancel/": {
+      "post": {
+        "operationId": "post__api_v1_bookings_series_id_cancel_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "Cancel the rest of a weekly series (staff)",
+        "description": "Cancels every future active date (CANCELLED_BY_STAFF); past dates stay. Single dates can also be cancelled with bookings/{id}/cancel/. Send {}.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingSeries"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Extra fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user cannot perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Series not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/resources/": {
+      "get": {
+        "operationId": "get__api_v1_admin_resources_",
+        "tags": [
+          "Resource setup"
+        ],
+        "summary": "List every resource including archived ones (Manager only)",
+        "description": "Archived resources (active=false) are hidden from GET resources/ but listed here.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only an active Manager can do this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "post__api_v1_admin_resources_",
+        "tags": [
+          "Resource setup"
+        ],
+        "summary": "Add a room or equipment (Manager only)",
+        "description": "Unset numbers and times use the defaults. Writes RESOURCE_CREATED.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error; details names the field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only an active Manager can do this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "RESOURCE_NAME_TAKEN: another listed resource has this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResourceCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/resources/{id}/": {
+      "patch": {
+        "operationId": "patch__api_v1_admin_resources_id_",
+        "tags": [
+          "Resource setup"
+        ],
+        "summary": "Edit a resource (Manager only)",
+        "description": "Changes the fields sent. Existing bookings are kept; the new rules apply to later requests, approvals and automatic decisions. Writes RESOURCE_UPDATED with the changed fields.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceUpdateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error; details names the field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only an active Manager can do this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "RESOURCE_NAME_TAKEN, or KIND_IS_FIXED when kind is sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResourceUpdate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/resources/{id}/archive/": {
+      "post": {
+        "operationId": "post__api_v1_admin_resources_id_archive_",
+        "tags": [
+          "Resource setup"
+        ],
+        "summary": "Archive a resource (Manager only)",
+        "description": "Sets active=false: hidden from the booking pages, history kept. Writes RESOURCE_ARCHIVED.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resource"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only an active Manager can do this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "RESOURCE_HAS_BOOKINGS (details.booking_count): future bookings or requests exist; ROOM_HAS_EQUIPMENT (details.equipment): listed equipment is kept in this room.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/resources/{id}/restore/": {
+      "post": {
+        "operationId": "post__api_v1_admin_resources_id_restore_",
+        "tags": [
+          "Resource setup"
+        ],
+        "summary": "Restore an archived resource (Manager only)",
+        "description": "Lists it again. The name must still be free and equipment needs a listed room. Writes RESOURCE_RESTORED.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error; details names the field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only an active Manager can do this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "RESOURCE_NAME_TAKEN.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/reports/usage/": {
+      "get": {
+        "operationId": "get__api_v1_admin_reports_usage_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Usage report per resource (Admin or Manager)",
+        "description": "Admin or Manager. For local dates first_date..last_date (both included, at most 366 days): approved bookings and hours, use of opening hours, attendance of bookings that already ended, cancelled and rejected requests. Read only.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error; details names the field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only an active Manager can do this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "first_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "last_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/change-password/": {
+      "post": {
+        "operationId": "post__api_v1_auth_change_password_",
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Change my staff password",
+        "description": "Admins and Managers only (students use university sign-in: 403 STUDENT_USES_SSO). The new password needs at least 8 characters and must differ from the current one. Writes STAFF_PASSWORD_CHANGED.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "changed"
+                  ],
+                  "properties": {
+                    "changed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_CREDENTIALS (current password wrong) or VALIDATION_ERROR.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "STUDENT_USES_SSO.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePassword"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bookings/{id}/change/": {
+      "post": {
+        "operationId": "post__api_v1_bookings_id_change_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "Ask to move your approved booking (change request)",
+        "description": "1.16.0. Only the person the booking is for, and only for a future APPROVED booking (409 REQUEST_NOT_CHANGEABLE otherwise; others receive 404 or 403). Creates a new request on the same resource with replaces_id set and the same purpose. It follows the normal request rules (booking window, opening hours, length, induction, freeze, weekly limit, where the old booking does not count). Free time: PENDING_APPROVAL with a review window; taken or held time: WAITLISTED. The old booking stays until the new request is approved (by an Admin, by the system when the review window ends, or after moving up the waitlist); then it is cancelled with reason_code REPLACED_BY_CHANGE and its time is offered to the waitlist. If the change is rejected, withdrawn or expires, the old booking stays. One open change per booking (409 CHANGE_ALREADY_REQUESTED with details.booking_id). The same time as now is 400 VALIDATION_ERROR. Notifications CHANGE_REQUESTED, CHANGE_APPROVED, CHANGE_REJECTED. Optional Idempotency-Key header as for POST bookings/.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The new change request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid time, the same time as now, or a rule of the request (e.g. TOO_SOON).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not the person the booking is for.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Booking not found (or not yours).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "REQUEST_NOT_CHANGEABLE, CHANGE_ALREADY_REQUESTED, DUPLICATE_BOOKING, WEEKLY_LIMIT_REACHED or another rule conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingReschedule"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/qualification-requirements/": {
+      "post": {
+        "operationId": "post__api_v1_admin_qualification_requirements_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Add an induction (Manager only)",
+        "description": "1.16.0. Active Manager only. name is required; the other texts are optional. Writes REQUIREMENT_CREATED. Set prerequisites afterwards with PATCH.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequirementFields"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new requirement.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualificationRequirement"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing name or text too long.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only an active Manager can add inductions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "REQUIREMENT_NAME_TAKEN.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/site/contact/": {
+      "get": {
+        "operationId": "get__api_v1_site_contact_",
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "The lab's contact details",
+        "description": "1.16.0. Any signed-in user.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contact details.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteContact"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patch__api_v1_site_contact_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Change the lab's contact details (Manager only)",
+        "description": "1.16.0. Active Manager only. Only the fields sent change. Writes SITE_CONTACT_UPDATED.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteContactUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved contact details.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteContact"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown field, too long, or not an email address.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only an active Manager can change them.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/overview/": {
+      "get": {
+        "operationId": "get__api_v1_admin_overview_",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Today page for staff",
+        "description": "1.16.0. Admin and Manager. Counts and short lists of waiting work; the website home page for staff.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Overview.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffOverview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin or Manager only.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/test-login/": {
+      "post": {
+        "operationId": "post__api_v1_auth_test_login_",
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Sign in to the explicitly enabled local test console as account 1",
+        "description": "Requires DEBUG, ENABLE_DEMO_AUTH and ENABLE_TEST_CONSOLE, and the demo identity provider. Disabled gates return 404; disabling a gate also invalidates existing test tokens. Roles and overrides are session-scoped and never modify stored roles. Only signed test sessions can call test-session. Ordinary accounts cannot request overrides. Bypass applies only to the test account itself, never to on-behalf bookings. Valid future times, a 24-hour test booking limit and conflict protection remain; test bookings do not send external email or Outlook updates.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unknown or inactive demonstration identity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The local test console is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The account cannot use this test operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestLogin"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/test-session/": {
+      "post": {
+        "operationId": "post__api_v1_auth_test_session_",
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Switch the signed test session role and booking override setting",
+        "description": "Requires DEBUG, ENABLE_DEMO_AUTH and ENABLE_TEST_CONSOLE, and the demo identity provider. Disabled gates return 404; disabling a gate also invalidates existing test tokens. Roles and overrides are session-scoped and never modify stored roles. Only signed test sessions can call test-session. Ordinary accounts cannot request overrides. Bypass applies only to the test account itself, never to on-behalf bookings. Valid future times, a 24-hour test booking limit and conflict protection remain; test bookings do not send external email or Outlook updates.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unknown or inactive demonstration identity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The local test console is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The account cannot use this test operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestSession"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3499,7 +5640,10 @@
           "display_name",
           "role",
           "active",
-          "university_email"
+          "university_email",
+          "no_show_count",
+          "frozen_until",
+          "booking_frozen"
         ],
         "properties": {
           "id": {
@@ -3528,6 +5672,29 @@
             "format": "email",
             "maxLength": 254,
             "example": "z1234567@ad.unsw.edu.au"
+          },
+          "no_show_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Missed check-ins since the last booking freeze."
+          },
+          "frozen_until": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Booking is frozen until this time after too many missed check-ins (null: not frozen)."
+          },
+          "booking_frozen": {
+            "type": "boolean",
+            "description": "True while frozen_until is in the future: nobody can book for this person. Reviewing rights of staff are unaffected."
+          },
+          "test_account": {
+            "type": "boolean",
+            "description": "Development-only test console metadata."
+          },
+          "bypass_booking_rules": {
+            "type": "boolean",
+            "description": "Development-only test console metadata."
           }
         },
         "additionalProperties": false
@@ -3662,6 +5829,22 @@
               "format": "uuid"
             },
             "description": "Inductions that must be verified and current before evidence for this one is accepted or verified, and before resources that need it can be booked."
+          },
+          "how_to_complete": {
+            "type": "string",
+            "description": "1.16.0 guidance written by a Manager (empty = not written yet): Where and how to do the training."
+          },
+          "accepted_evidence": {
+            "type": "string",
+            "description": "1.16.0 guidance written by a Manager (empty = not written yet): What proof to upload."
+          },
+          "reviewer": {
+            "type": "string",
+            "description": "1.16.0 guidance written by a Manager (empty = not written yet): Who checks the evidence."
+          },
+          "contact": {
+            "type": "string",
+            "description": "1.16.0 guidance written by a Manager (empty = not written yet): Who to ask."
           }
         },
         "additionalProperties": false
@@ -3768,6 +5951,18 @@
             "nullable": true,
             "maxLength": 60,
             "description": "Equipment type for the booking page filter (e.g. Microscopy, Fabrication). Rooms: null."
+          },
+          "capacity": {
+            "type": "integer",
+            "nullable": true,
+            "description": "1.16.0: rooms only, how many people fit (null = not given)."
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResourceDetail"
+            },
+            "description": "1.16.0: \"label: value\" lines a Manager adds (model, floor, specs...)."
           }
         },
         "additionalProperties": false
@@ -3913,7 +6108,13 @@
           "hold_until",
           "hold_active",
           "blocks_slot",
-          "waitlist_position"
+          "waitlist_position",
+          "series_id",
+          "attendance",
+          "checked_in_at",
+          "check_in_open",
+          "check_in_opens_at",
+          "check_in_closes_at"
         ],
         "properties": {
           "id": {
@@ -3954,12 +6155,12 @@
               "CANCELLED",
               "EXPIRED"
             ],
-            "description": "PENDING_APPROVAL is an undecided request that holds its slot until review_due_at; WAITLISTED is queued behind an earlier booking or request and never holds a slot; only APPROVED is confirmed. WAITING_QUALIFICATION is kept for old data only and is no longer created."
+            "description": "PENDING_APPROVAL is an undecided request that holds its slot until review_due_at; WAITLISTED is queued behind an earlier booking or request and never holds a slot; only APPROVED is confirmed. WAITING_QUALIFICATION appears only in early data; the current flow never creates it."
           },
           "reason_code": {
             "type": "string",
             "nullable": true,
-            "description": "Why the request is in its status, e.g. AWAITING_REVIEW, AUTO_APPROVED_AFTER_REVIEW_WINDOW, AUTO_REJECTED_ACCOUNT_INACTIVE, AUTO_REJECTED_QUALIFICATION, AUTO_REJECTED_BOOKING_RULES, AUTO_REJECTED_RESOURCE_UNAVAILABLE, AUTO_REJECTED_CONFLICT, TIME_CONFLICT, TEMPORARY_HOLD_CONFLICT, PROMOTED_FROM_WAITLIST, QUALIFICATION_REQUIRED, QUALIFICATION_REJECTED, ACCOUNT_DEACTIVATED, ACCOUNT_INACTIVE, START_TIME_PASSED, CANCELLED_BY_USER, CANCELLED_BY_STAFF."
+            "description": "Why the request is in its status, e.g. AWAITING_REVIEW, AUTO_APPROVED_AFTER_REVIEW_WINDOW, AUTO_REJECTED_ACCOUNT_INACTIVE, AUTO_REJECTED_QUALIFICATION, AUTO_REJECTED_BOOKING_RULES, AUTO_REJECTED_RESOURCE_UNAVAILABLE, AUTO_REJECTED_CONFLICT, TIME_CONFLICT, TEMPORARY_HOLD_CONFLICT, PROMOTED_FROM_WAITLIST, QUALIFICATION_REQUIRED, QUALIFICATION_REJECTED, ACCOUNT_DEACTIVATED, ACCOUNT_INACTIVE, START_TIME_PASSED, CANCELLED_BY_USER, CANCELLED_BY_STAFF, URGENT_AWAITING_MANAGER, RESCHEDULED_BY_MANAGER, SERIES_CREATED_BY_STAFF (weekly series, approved at creation), ACCOUNT_FROZEN (cancelled when the person's booking was frozen)."
           },
           "review_due_at": {
             "type": "string",
@@ -4054,21 +6255,65 @@
             "nullable": true
           },
           "booked_for": {
-            "description": "The person the booking is for (student_id).",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/PersonBrief"
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "zid": {
+                "type": "string"
+              },
+              "display_name": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "STUDENT",
+                  "ADMIN",
+                  "MANAGER"
+                ]
               }
+            },
+            "required": [
+              "id",
+              "zid",
+              "display_name",
+              "role"
             ],
-            "nullable": true
+            "description": "The person the booking is for (student_id)."
           },
           "created_by_user": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/PersonBrief"
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "zid": {
+                "type": "string"
+              },
+              "display_name": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "STUDENT",
+                  "ADMIN",
+                  "MANAGER"
+                ]
               }
-            ],
-            "nullable": true
+            },
+            "required": [
+              "id",
+              "zid",
+              "display_name",
+              "role"
+            ]
           },
           "on_behalf": {
             "type": "boolean",
@@ -4081,6 +6326,69 @@
           "urgent_reason": {
             "type": "string",
             "nullable": true
+          },
+          "series_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Weekly series made by staff (GET bookings/series/{id}/); null for single bookings."
+          },
+          "attendance": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "CHECKED_IN",
+              "NO_SHOW",
+              "EXCUSED",
+              "NOT_TRACKED",
+              null
+            ],
+            "description": "Approved bookings only. CHECKED_IN: the person pressed I'm here in time. NO_SHOW: the check-in time passed without one (counts towards a booking freeze). EXCUSED: the resource was under maintenance or closed. NOT_TRACKED: started before check-in existed. null: not decided yet."
+          },
+          "checked_in_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "check_in_open": {
+            "type": "boolean",
+            "description": "True while the person the booking is for can check in now (POST bookings/{id}/check-in/)."
+          },
+          "check_in_opens_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Approved and not yet checked: check-in opens (start minus CHECK_IN_OPENS_MINUTES)."
+          },
+          "check_in_closes_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Approved and not yet checked: check-in closes (start plus CHECK_IN_CLOSES_MINUTES, never after the end); afterwards the booking counts as missed."
+          },
+          "replaces_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "1.16.0: on a change request, the approved booking it would replace. That booking stays until this request is approved, then it is cancelled automatically (reason_code REPLACED_BY_CHANGE)."
+          },
+          "replaces_booking": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BookingTimeRef"
+              }
+            ],
+            "nullable": true,
+            "description": "1.16.0: the booking named by replaces_id (time and status)."
+          },
+          "open_change": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BookingTimeRef"
+              }
+            ],
+            "nullable": true,
+            "description": "1.16.0: on an approved booking, its change request that is still pending or waitlisted."
           }
         },
         "additionalProperties": false
@@ -4122,7 +6430,8 @@
           },
           "urgent_reason": {
             "type": "string",
-            "maxLength": 500
+            "maxLength": 500,
+            "description": "For urgent requests, the single explanation shown in the UI also supplies purpose. Both API fields remain required as before."
           }
         },
         "additionalProperties": false
@@ -4237,7 +6546,7 @@
           },
           "can_request": {
             "type": "boolean",
-            "description": "true only for a student whose induction (and its prerequisites) is verified and current and when the resource is AVAILABLE. Always false for staff."
+            "description": "true only for a student whose induction (and its prerequisites) is verified and current and when the resource is AVAILABLE. Always false for staff. False while the person's booking is frozen."
           },
           "qualification_status": {
             "type": "string",
@@ -4260,7 +6569,8 @@
           "latest_date": {
             "type": "string",
             "format": "date",
-            "description": "Last local date a booking may start on (today + MAX_ADVANCE_DAYS)."
+            "description": "Last permitted local booking date. Null only for an enabled test session with booking-rule bypass.",
+            "nullable": true
           },
           "min_advance_days": {
             "type": "integer",
@@ -4285,7 +6595,7 @@
           "review_window_minutes": {
             "type": "integer",
             "example": 1440,
-            "description": "The resource's Admin review window (pending_hold_minutes)."
+            "description": "The resource's Admin review window; 0 for immediate approval in an enabled test bypass session."
           },
           "missing_prerequisite_id": {
             "type": "string",
@@ -4298,6 +6608,20 @@
           },
           "urgent": {
             "type": "boolean"
+          },
+          "frozen_until": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Set while the person being booked for is frozen; can_request is then false."
+          },
+          "test_bypass": {
+            "type": "boolean",
+            "description": "Development-only test console metadata."
+          },
+          "max_booking_minutes": {
+            "type": "integer",
+            "minimum": 1
           }
         },
         "additionalProperties": false
@@ -4593,6 +6917,10 @@
           "staff_sign_in_enabled": {
             "type": "boolean",
             "description": "Admins and Managers can sign in on the staff page with zID and password."
+          },
+          "test_console_enabled": {
+            "type": "boolean",
+            "description": "Development-only test console metadata."
           }
         },
         "additionalProperties": false
@@ -4622,7 +6950,8 @@
             "enum": [
               "CREATE",
               "UPDATE",
-              "DELETE"
+              "DELETE",
+              null
             ],
             "nullable": true
           },
@@ -4800,12 +7129,51 @@
             "nullable": true
           },
           "last_check": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/OutlookCheck"
-              }
-            ],
+            "type": "object",
             "nullable": true,
+            "properties": {
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "ok": {
+                "type": "boolean"
+              },
+              "code": {
+                "type": "string",
+                "nullable": true,
+                "description": "TOKEN_EXPIRED, OUTLOOK_LOGIN_EXPIRED, OUTLOOK_NOT_CONFIGURED, GRAPH_HTTP_403, OUTLOOK_CALENDAR_READ_ONLY, GRAPH_NETWORK_ERROR, ..."
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "delegated_token",
+                  "delegated_refresh",
+                  "application",
+                  "unconfigured",
+                  "adapter",
+                  "test_adapter"
+                ]
+              },
+              "calendar_name": {
+                "type": "string",
+                "nullable": true
+              },
+              "owner": {
+                "type": "string",
+                "nullable": true,
+                "description": "Organiser mailbox address."
+              }
+            },
+            "required": [
+              "at",
+              "ok",
+              "code",
+              "mode",
+              "calendar_name",
+              "owner"
+            ],
+            "additionalProperties": false,
             "description": "Latest connection check in this server process; reading this page never calls Microsoft."
           },
           "summary": {
@@ -4998,12 +7366,35 @@
             "description": "Action-specific values such as status, reason_code, reason, old/new times or valid_until."
           },
           "actor": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/AuditActor"
-              }
-            ],
+            "type": "object",
             "nullable": true,
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "zid": {
+                "type": "string"
+              },
+              "display_name": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "STUDENT",
+                  "ADMIN",
+                  "MANAGER"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "zid",
+              "display_name",
+              "role"
+            ],
+            "additionalProperties": false,
             "description": "Null for SYSTEM or an unknown user."
           }
         }
@@ -5175,57 +7566,102 @@
         }
       },
       "ManagedUser": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/User"
+        "type": "object",
+        "required": [
+          "id",
+          "zid",
+          "display_name",
+          "role",
+          "active",
+          "university_email",
+          "no_show_count",
+          "frozen_until",
+          "booking_frozen",
+          "inductions",
+          "induction_status",
+          "is_staff",
+          "activation_status",
+          "invite_code"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
           },
-          {
-            "type": "object",
-            "required": [
-              "inductions",
-              "induction_status",
-              "is_staff",
-              "activation_status",
-              "invite_code"
+          "zid": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "STUDENT",
+              "ADMIN",
+              "MANAGER"
+            ]
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "university_email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254,
+            "example": "z1234567@ad.unsw.edu.au"
+          },
+          "no_show_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Missed check-ins since the last booking freeze."
+          },
+          "frozen_until": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Booking is frozen until this time after too many missed check-ins (null: not frozen)."
+          },
+          "booking_frozen": {
+            "type": "boolean",
+            "description": "True while frozen_until is in the future: nobody can book for this person. Reviewing rights of staff are unaffected."
+          },
+          "inductions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InductionStatus"
+            },
+            "description": "Every induction requirement with this person's current status."
+          },
+          "induction_status": {
+            "type": "string",
+            "enum": [
+              "VERIFIED",
+              "INCOMPLETE"
             ],
-            "properties": {
-              "inductions": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/InductionStatus"
-                },
-                "description": "Every induction requirement with this person's current status."
-              },
-              "induction_status": {
-                "type": "string",
-                "enum": [
-                  "VERIFIED",
-                  "INCOMPLETE"
-                ],
-                "description": "VERIFIED only when every induction is verified and not expired. Only meaningful for students."
-              },
-              "is_staff": {
-                "type": "boolean",
-                "description": "true for ADMIN and MANAGER (staff accounts, which do not book)."
-              },
-              "activation_status": {
-                "type": "string",
-                "nullable": true,
-                "enum": [
-                  "AWAITING_ACTIVATION",
-                  "ACTIVATED",
-                  null
-                ],
-                "description": "Staff only (null for students): whether they have chosen a password with their invite code."
-              },
-              "invite_code": {
-                "type": "string",
-                "nullable": true,
-                "description": "Staff awaiting activation only: the code a Manager hands over. Null once activated and for students."
-              }
-            }
+            "description": "VERIFIED only when every induction is verified and not expired. Only meaningful for students."
+          },
+          "is_staff": {
+            "type": "boolean",
+            "description": "true for ADMIN and MANAGER (staff accounts; they may also book)."
+          },
+          "activation_status": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "AWAITING_ACTIVATION",
+              "ACTIVATED",
+              null
+            ],
+            "description": "Staff only (null for students): whether they have chosen a password with their invite code."
+          },
+          "invite_code": {
+            "type": "string",
+            "nullable": true,
+            "description": "Staff awaiting activation only: the code a Manager hands over. Null once activated and for students."
           }
-        ]
+        },
+        "additionalProperties": false
       },
       "StaffCreate": {
         "type": "object",
@@ -5697,7 +8133,9 @@
           },
           "latest_date": {
             "type": "string",
-            "format": "date"
+            "format": "date",
+            "nullable": true,
+            "description": "Last permitted local booking date. Null only for an enabled test session with booking-rule bypass."
           },
           "min_advance_days": {
             "type": "integer"
@@ -5742,9 +8180,1699 @@
               "$ref": "#/components/schemas/DayOverviewRow"
             },
             "description": "Rooms first, then equipment, by name."
+          },
+          "too_long": {
+            "type": "integer",
+            "description": "1.16.0: resources left out because they cannot be booked for duration_minutes (longer than their maximum or not on their time steps). Such a length is no longer a 400 error."
+          },
+          "not_bookable": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "1.16.0: with bookable_only, hidden rows counted by reason: MAINTENANCE / CLOSED, FROZEN, or the induction status (NOT_SUBMITTED, PENDING, PREREQUISITE_REQUIRED, ...)."
+          },
+          "test_bypass": {
+            "type": "boolean",
+            "description": "Development-only test console metadata."
           }
         },
         "additionalProperties": false
+      },
+      "Notification": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "recipient_id",
+          "kind",
+          "title",
+          "body",
+          "created_at",
+          "link",
+          "booking_id",
+          "read_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "recipient_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "description": "BOOKING_SUBMITTED (your own request was received), BOOKING_APPROVED, BOOKING_REJECTED, BOOKING_PROMOTED, BOOKING_RESCHEDULED, BOOKING_CANCELLED, BOOKING_CREATED_FOR_YOU, SERIES_CREATED (staff member's own weekly series), SERIES_CREATED_FOR_YOU, URGENT_REQUEST (Managers), QUALIFICATION_VERIFIED, QUALIFICATION_REJECTED, NO_SHOW_RECORDED, ACCOUNT_FROZEN, UNFREEZE_APPROVED, UNFREEZE_REJECTED, ACCOUNT_UNFROZEN, BOOKING_EXPIRED (waitlisted or undecided request reached its start), BOOKING_REMINDER (the day before an approved booking), INDUCTION_EXPIRING (a verified induction expires soon). 1.16.0: CHANGE_REQUESTED, CHANGE_APPROVED, CHANGE_REJECTED (change requests), RESOURCE_OUT_OF_SERVICE (a resource you have a booking or request on went under maintenance or closed, with the reason) and RESOURCE_REOPENED. When email is on, the kinds in EMAIL_NOTIFICATION_KINDS are also emailed."
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "link": {
+            "type": "string",
+            "nullable": true,
+            "description": "Web app page to open, e.g. /bookings."
+          },
+          "booking_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "read_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "NotificationList": {
+        "type": "object",
+        "required": [
+          "count",
+          "unread_count",
+          "results"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "unread_count": {
+            "type": "integer",
+            "description": "All unread notifications, not only the returned page."
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Notification"
+            }
+          }
+        }
+      },
+      "CalendarLink": {
+        "type": "object",
+        "required": [
+          "path",
+          "created_at"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "example": "/api/v1/calendar/9wPq...xY.ics",
+            "description": "Relative address of the private feed; prefix the site address. Anyone with it can read the feed."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "UnfreezeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "principal_id",
+          "reason",
+          "created_at",
+          "status",
+          "decided_by",
+          "decided_at",
+          "decision_reason",
+          "person",
+          "decided_by_user"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "principal_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "REJECTED"
+            ]
+          },
+          "decided_by": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "decided_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "decision_reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "person": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "zid": {
+                "type": "string"
+              },
+              "display_name": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "STUDENT",
+                  "ADMIN",
+                  "MANAGER"
+                ]
+              },
+              "frozen_until": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true
+              },
+              "booking_frozen": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "zid",
+              "display_name",
+              "role"
+            ]
+          },
+          "decided_by_user": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "zid": {
+                "type": "string"
+              },
+              "display_name": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "STUDENT",
+                  "ADMIN",
+                  "MANAGER"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "zid",
+              "display_name",
+              "role"
+            ]
+          }
+        }
+      },
+      "UnfreezeRequestList": {
+        "type": "object",
+        "required": [
+          "count",
+          "results"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UnfreezeRequest"
+            }
+          }
+        }
+      },
+      "UnfreezeRequestCreate": {
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        }
+      },
+      "UnfreezeReview": {
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "APPROVED",
+              "REJECTED"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "Required when REJECTED; shown to the person."
+          }
+        }
+      },
+      "Unfreeze": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        }
+      },
+      "FrozenUser": {
+        "type": "object",
+        "required": [
+          "id",
+          "zid",
+          "display_name",
+          "role",
+          "active",
+          "university_email",
+          "no_show_count",
+          "frozen_until",
+          "booking_frozen",
+          "pending_request"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "zid": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "STUDENT",
+              "ADMIN",
+              "MANAGER"
+            ]
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "university_email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254,
+            "example": "z1234567@ad.unsw.edu.au"
+          },
+          "no_show_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Missed check-ins since the last booking freeze."
+          },
+          "frozen_until": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Booking is frozen until this time after too many missed check-ins (null: not frozen)."
+          },
+          "booking_frozen": {
+            "type": "boolean",
+            "description": "True while frozen_until is in the future: nobody can book for this person. Reviewing rights of staff are unaffected."
+          },
+          "pending_request": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "principal_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "PENDING",
+                  "APPROVED",
+                  "REJECTED"
+                ]
+              },
+              "decided_by": {
+                "type": "string",
+                "format": "uuid",
+                "nullable": true
+              },
+              "decided_at": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true
+              },
+              "decision_reason": {
+                "type": "string",
+                "nullable": true
+              },
+              "person": {
+                "type": "object",
+                "nullable": true,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "zid": {
+                    "type": "string"
+                  },
+                  "display_name": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "STUDENT",
+                      "ADMIN",
+                      "MANAGER"
+                    ]
+                  },
+                  "frozen_until": {
+                    "type": "string",
+                    "format": "date-time",
+                    "nullable": true
+                  },
+                  "booking_frozen": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "zid",
+                  "display_name",
+                  "role"
+                ]
+              },
+              "decided_by_user": {
+                "type": "object",
+                "nullable": true,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "zid": {
+                    "type": "string"
+                  },
+                  "display_name": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "STUDENT",
+                      "ADMIN",
+                      "MANAGER"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "zid",
+                  "display_name",
+                  "role"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "principal_id",
+              "reason",
+              "created_at",
+              "status",
+              "decided_by",
+              "decided_at",
+              "decision_reason",
+              "person",
+              "decided_by_user"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "FrozenUserList": {
+        "type": "object",
+        "required": [
+          "count",
+          "results"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FrozenUser"
+            }
+          }
+        }
+      },
+      "SeriesPlan": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "resource_id",
+          "weekdays",
+          "start_time",
+          "duration_minutes",
+          "first_date",
+          "last_date"
+        ],
+        "properties": {
+          "resource_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "weekdays": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 7,
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 7
+            },
+            "description": "ISO weekdays: 1 = Monday ... 7 = Sunday."
+          },
+          "start_time": {
+            "type": "string",
+            "pattern": "^[0-2][0-9]:[0-5][0-9]$",
+            "example": "09:00",
+            "description": "Local time of the resource."
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1440
+          },
+          "first_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "last_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "on_behalf_of_zid": {
+            "type": "string",
+            "pattern": "^[zZ][0-9]{7}$",
+            "description": "Book for this person instead of yourself."
+          }
+        }
+      },
+      "SeriesCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "resource_id",
+          "weekdays",
+          "start_time",
+          "duration_minutes",
+          "first_date",
+          "last_date",
+          "purpose"
+        ],
+        "properties": {
+          "resource_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "weekdays": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 7,
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 7
+            },
+            "description": "ISO weekdays: 1 = Monday ... 7 = Sunday."
+          },
+          "start_time": {
+            "type": "string",
+            "pattern": "^[0-2][0-9]:[0-5][0-9]$",
+            "example": "09:00",
+            "description": "Local time of the resource."
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1440
+          },
+          "first_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "last_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "on_behalf_of_zid": {
+            "type": "string",
+            "pattern": "^[zZ][0-9]{7}$",
+            "description": "Book for this person instead of yourself."
+          },
+          "purpose": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "skip_dates": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Dates to leave out; every date the preview marks as not available must be listed."
+          }
+        }
+      },
+      "SeriesOccurrence": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "date",
+          "start",
+          "end",
+          "available",
+          "reason_code",
+          "message"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "reason_code": {
+            "type": "string",
+            "nullable": true,
+            "description": "Why the date cannot be booked: BOOKING_CONFLICT, DUPLICATE_BOOKING, BOOKING_TOO_SOON, OUTSIDE_OPENING_HOURS, INVALID_TIME_INCREMENT, DURATION_LIMIT, INVALID_TIME, QUALIFICATION_REQUIRED, RESOURCE_UNAVAILABLE, ACCOUNT_INACTIVE."
+          },
+          "message": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "SeriesPreview": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "resource_id",
+          "booking_for",
+          "weekdays",
+          "occurrences",
+          "available_count"
+        ],
+        "properties": {
+          "resource_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "booking_for": {
+            "$ref": "#/components/schemas/PersonBrief"
+          },
+          "weekdays": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "occurrences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SeriesOccurrence"
+            }
+          },
+          "available_count": {
+            "type": "integer"
+          }
+        }
+      },
+      "BookingSeries": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "student_id",
+          "created_by",
+          "resource_id",
+          "weekdays",
+          "start_time",
+          "duration_minutes",
+          "first_date",
+          "last_date",
+          "purpose",
+          "created_at",
+          "bookings"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "student_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_by": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "resource_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "weekdays": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "start_time": {
+            "type": "string",
+            "example": "09:00:00"
+          },
+          "duration_minutes": {
+            "type": "integer"
+          },
+          "first_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "last_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "bookings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Booking"
+            }
+          }
+        }
+      },
+      "ResourceUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Unique among listed resources (case is ignored)."
+          },
+          "location": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "required_qualification_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Induction people need to book it."
+          },
+          "room_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Equipment only: the listed room it is kept in."
+          },
+          "category": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 60,
+            "description": "Equipment only: equipment type for the booking page filter."
+          },
+          "slot_minutes": {
+            "type": "integer",
+            "enum": [
+              15,
+              30,
+              60
+            ],
+            "default": 30
+          },
+          "max_booking_minutes": {
+            "type": "integer",
+            "default": 480,
+            "description": "A multiple of slot_minutes that fits within the opening hours."
+          },
+          "opening_time": {
+            "type": "string",
+            "example": "08:00",
+            "description": "Local time HH:MM, on a slot_minutes step.",
+            "default": "08:00"
+          },
+          "closing_time": {
+            "type": "string",
+            "example": "08:00",
+            "description": "After opening_time, on a slot_minutes step.",
+            "default": "20:00"
+          },
+          "pending_hold_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20160,
+            "description": "Review window; default from DEFAULT_PENDING_HOLD_MINUTES."
+          },
+          "capacity": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 1000,
+            "description": "1.16.0: rooms only (equipment: 400 VALIDATION_ERROR)."
+          },
+          "details": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/ResourceDetail"
+            },
+            "description": "1.16.0: at most 12 non-empty lines; empty rows are dropped. Replaces the list."
+          }
+        },
+        "description": "Send only the fields to change. kind cannot change (409 KIND_IS_FIXED)."
+      },
+      "ResourceCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "name",
+          "location",
+          "required_qualification_id"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ROOM",
+              "EQUIPMENT"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Unique among listed resources (case is ignored)."
+          },
+          "location": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "required_qualification_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Induction people need to book it."
+          },
+          "room_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Equipment only: the listed room it is kept in."
+          },
+          "category": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 60,
+            "description": "Equipment only: equipment type for the booking page filter."
+          },
+          "slot_minutes": {
+            "type": "integer",
+            "enum": [
+              15,
+              30,
+              60
+            ],
+            "default": 30
+          },
+          "max_booking_minutes": {
+            "type": "integer",
+            "default": 480,
+            "description": "A multiple of slot_minutes that fits within the opening hours."
+          },
+          "opening_time": {
+            "type": "string",
+            "example": "08:00",
+            "description": "Local time HH:MM, on a slot_minutes step.",
+            "default": "08:00"
+          },
+          "closing_time": {
+            "type": "string",
+            "example": "08:00",
+            "description": "After opening_time, on a slot_minutes step.",
+            "default": "20:00"
+          },
+          "pending_hold_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20160,
+            "description": "Review window; default from DEFAULT_PENDING_HOLD_MINUTES."
+          },
+          "capacity": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 1000,
+            "description": "1.16.0: rooms only (equipment: 400 VALIDATION_ERROR)."
+          },
+          "details": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/ResourceDetail"
+            },
+            "description": "1.16.0: at most 12 non-empty lines; empty rows are dropped. Replaces the list."
+          }
+        },
+        "description": "A room has no room_id and no category."
+      },
+      "ResourceUpdateResponse": {
+        "type": "object",
+        "required": [
+          "resource",
+          "bookings_outside_rules"
+        ],
+        "properties": {
+          "resource": {
+            "$ref": "#/components/schemas/Resource"
+          },
+          "bookings_outside_rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BookingOutsideRules"
+            },
+            "description": "Future pending, waitlisted or approved bookings that no longer fit the new rules. They are kept; a Manager decides."
+          }
+        }
+      },
+      "UsageFigures": {
+        "type": "object",
+        "required": [
+          "approved",
+          "booked_hours",
+          "open_hours",
+          "utilisation",
+          "checked_in",
+          "no_show",
+          "excused",
+          "not_tracked",
+          "attendance_rate",
+          "cancelled",
+          "rejected"
+        ],
+        "properties": {
+          "approved": {
+            "type": "integer"
+          },
+          "booked_hours": {
+            "type": "number"
+          },
+          "open_hours": {
+            "type": "number"
+          },
+          "utilisation": {
+            "type": "number",
+            "nullable": true,
+            "description": "booked_hours / open_hours (0-1)."
+          },
+          "checked_in": {
+            "type": "integer"
+          },
+          "no_show": {
+            "type": "integer"
+          },
+          "excused": {
+            "type": "integer"
+          },
+          "not_tracked": {
+            "type": "integer"
+          },
+          "attendance_rate": {
+            "type": "number",
+            "nullable": true,
+            "description": "checked_in / (checked_in + no_show); null until counted."
+          },
+          "cancelled": {
+            "type": "integer"
+          },
+          "rejected": {
+            "type": "integer"
+          }
+        }
+      },
+      "UsageRow": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/UsageFigures"
+          },
+          {
+            "type": "object",
+            "required": [
+              "resource_id",
+              "name",
+              "kind",
+              "category",
+              "room_name",
+              "active"
+            ],
+            "properties": {
+              "resource_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ROOM",
+                  "EQUIPMENT"
+                ]
+              },
+              "category": {
+                "type": "string",
+                "nullable": true
+              },
+              "room_name": {
+                "type": "string",
+                "nullable": true
+              },
+              "active": {
+                "type": "boolean"
+              }
+            }
+          }
+        ]
+      },
+      "UsageReport": {
+        "type": "object",
+        "required": [
+          "first_date",
+          "last_date",
+          "days",
+          "results",
+          "totals"
+        ],
+        "properties": {
+          "first_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "last_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "days": {
+            "type": "integer"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageRow"
+            }
+          },
+          "totals": {
+            "$ref": "#/components/schemas/UsageFigures"
+          }
+        }
+      },
+      "ChangePassword": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "properties": {
+          "current_password": {
+            "type": "string",
+            "format": "password"
+          },
+          "new_password": {
+            "type": "string",
+            "format": "password",
+            "minLength": 8
+          }
+        }
+      },
+      "BookingOutsideRules": {
+        "type": "object",
+        "required": [
+          "id",
+          "student_id",
+          "resource_id",
+          "start",
+          "end",
+          "purpose",
+          "created_at",
+          "status",
+          "reason_code",
+          "review_due_at",
+          "reviewed_by",
+          "reviewed_at",
+          "decision_reason",
+          "updated_at",
+          "revision",
+          "outlook_sync",
+          "hold_until",
+          "hold_active",
+          "blocks_slot",
+          "waitlist_position",
+          "series_id",
+          "attendance",
+          "checked_in_at",
+          "check_in_open",
+          "check_in_opens_at",
+          "check_in_closes_at",
+          "problem"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "student_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "resource_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "WAITING_QUALIFICATION",
+              "PENDING_APPROVAL",
+              "WAITLISTED",
+              "APPROVED",
+              "REJECTED",
+              "CANCELLED",
+              "EXPIRED"
+            ],
+            "description": "PENDING_APPROVAL is an undecided request that holds its slot until review_due_at; WAITLISTED is queued behind an earlier booking or request and never holds a slot; only APPROVED is confirmed. WAITING_QUALIFICATION appears only in early data; the current flow never creates it."
+          },
+          "reason_code": {
+            "type": "string",
+            "nullable": true,
+            "description": "Why the request is in its status, e.g. AWAITING_REVIEW, AUTO_APPROVED_AFTER_REVIEW_WINDOW, AUTO_REJECTED_ACCOUNT_INACTIVE, AUTO_REJECTED_QUALIFICATION, AUTO_REJECTED_BOOKING_RULES, AUTO_REJECTED_RESOURCE_UNAVAILABLE, AUTO_REJECTED_CONFLICT, TIME_CONFLICT, TEMPORARY_HOLD_CONFLICT, PROMOTED_FROM_WAITLIST, QUALIFICATION_REQUIRED, QUALIFICATION_REJECTED, ACCOUNT_DEACTIVATED, ACCOUNT_INACTIVE, START_TIME_PASSED, CANCELLED_BY_USER, CANCELLED_BY_STAFF, URGENT_AWAITING_MANAGER, RESCHEDULED_BY_MANAGER, SERIES_CREATED_BY_STAFF (weekly series, approved at creation), ACCOUNT_FROZEN (cancelled when the person's booking was frozen)."
+          },
+          "review_due_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "End of the Admin review window for a PENDING_APPROVAL request (same as hold_until). After it the system approves or rejects the request automatically."
+          },
+          "reviewed_by": {
+            "type": "string",
+            "nullable": true,
+            "description": "Id of the Admin/Manager who decided, or SYSTEM for an automatic decision."
+          },
+          "reviewed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "decision_reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "outlook_sync": {
+            "$ref": "#/components/schemas/OutlookSync"
+          },
+          "hold_until": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Historical hold deadline; use hold_active to determine current occupancy."
+          },
+          "hold_active": {
+            "type": "boolean",
+            "description": "PENDING_APPROVAL and hold_until strictly later than server time."
+          },
+          "blocks_slot": {
+            "type": "boolean",
+            "description": "True for APPROVED or a pending request whose review window is active. Never true for WAITLISTED."
+          },
+          "waitlist_position": {
+            "type": "integer",
+            "minimum": 1,
+            "nullable": true,
+            "description": "1-based place among waitlisted requests overlapping this one on the same resource, in submission order. Null unless WAITLISTED."
+          },
+          "student": {
+            "type": "object",
+            "nullable": true,
+            "description": "Admin/Manager booking lists only.",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "zid": {
+                "type": "string"
+              },
+              "display_name": {
+                "type": "string"
+              },
+              "university_email": {
+                "type": "string"
+              }
+            }
+          },
+          "resource_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "Admin/Manager booking lists only."
+          },
+          "resource_kind": {
+            "type": "string",
+            "enum": [
+              "ROOM",
+              "EQUIPMENT"
+            ],
+            "nullable": true,
+            "description": "Admin/Manager booking lists only."
+          },
+          "created_by": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Who created the request. student_id is the person it is for; an Admin or Manager may book on behalf of someone. null for records created before 1.10.0 (migration 004 fills it with student_id).",
+            "nullable": true
+          },
+          "booked_for": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "zid": {
+                "type": "string"
+              },
+              "display_name": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "STUDENT",
+                  "ADMIN",
+                  "MANAGER"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "zid",
+              "display_name",
+              "role"
+            ],
+            "description": "The person the booking is for (student_id)."
+          },
+          "created_by_user": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "zid": {
+                "type": "string"
+              },
+              "display_name": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "STUDENT",
+                  "ADMIN",
+                  "MANAGER"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "zid",
+              "display_name",
+              "role"
+            ]
+          },
+          "on_behalf": {
+            "type": "boolean",
+            "description": "true when created_by differs from student_id."
+          },
+          "urgent": {
+            "type": "boolean",
+            "description": "Urgent request: starts inside the minimum advance window; only a Manager can decide it; never decided automatically."
+          },
+          "urgent_reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "series_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Weekly series made by staff (GET bookings/series/{id}/); null for single bookings."
+          },
+          "attendance": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "CHECKED_IN",
+              "NO_SHOW",
+              "EXCUSED",
+              "NOT_TRACKED",
+              null
+            ],
+            "description": "Approved bookings only. CHECKED_IN: the person pressed I'm here in time. NO_SHOW: the check-in time passed without one (counts towards a booking freeze). EXCUSED: the resource was under maintenance or closed. NOT_TRACKED: started before check-in existed. null: not decided yet."
+          },
+          "checked_in_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "check_in_open": {
+            "type": "boolean",
+            "description": "True while the person the booking is for can check in now (POST bookings/{id}/check-in/)."
+          },
+          "check_in_opens_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Approved and not yet checked: check-in opens (start minus CHECK_IN_OPENS_MINUTES)."
+          },
+          "check_in_closes_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Approved and not yet checked: check-in closes (start plus CHECK_IN_CLOSES_MINUTES, never after the end); afterwards the booking counts as missed."
+          },
+          "problem": {
+            "type": "string",
+            "description": "Rule the booking now breaks, e.g. OUTSIDE_OPENING_HOURS, DURATION_LIMIT, INVALID_TIME_INCREMENT, QUALIFICATION_REQUIRED."
+          }
+        },
+        "additionalProperties": false,
+        "description": "A booking (as in Admin/Manager lists) that no longer fits the resource's new rules."
+      },
+      "BookingTimeRef": {
+        "type": "object",
+        "nullable": true,
+        "required": [
+          "id",
+          "start",
+          "end",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "description": "1.16.0: time and status of a linked booking."
+      },
+      "RequirementFields": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "1.16.0: induction texts a Manager writes. name 1-120 characters and unique (case ignored, 409 REQUIREMENT_NAME_TAKEN); description up to 1000; each guidance text up to 2000.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "how_to_complete": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "accepted_evidence": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "reviewer": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "contact": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        }
+      },
+      "RequirementUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "1.16.0: any of the texts and/or prerequisite_ids (replaces the list).",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "how_to_complete": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "accepted_evidence": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "reviewer": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "contact": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "prerequisite_ids": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "SiteContact": {
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "phone",
+          "hours",
+          "note"
+        ],
+        "additionalProperties": false,
+        "description": "1.16.0: the lab's contact details (one record). Empty strings until a Manager saves them; the website shows only filled-in fields.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "hours": {
+            "type": "string",
+            "description": "When someone answers."
+          },
+          "note": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updated_by": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        }
+      },
+      "SiteContactUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Any of the fields; an empty string clears it. email must look like an address.",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "hours": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        }
+      },
+      "StaffOverview": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "1.16.0: the staff \"Today\" page.",
+        "properties": {
+          "role": {
+            "type": "string"
+          },
+          "pending_inductions": {
+            "type": "integer"
+          },
+          "pending_bookings": {
+            "type": "integer",
+            "description": "Pending, not urgent."
+          },
+          "urgent_requests": {
+            "type": "integer"
+          },
+          "waitlisted": {
+            "type": "integer"
+          },
+          "changes_waiting": {
+            "type": "integer",
+            "description": "Change requests pending or waitlisted."
+          },
+          "due_soon": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Booking"
+            },
+            "description": "Pending requests whose review window ends within due_soon_hours, soonest first (at most 10)."
+          },
+          "due_soon_hours": {
+            "type": "integer"
+          },
+          "unfreeze_requests": {
+            "type": "integer"
+          },
+          "out_of_service": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resource": {
+                  "$ref": "#/components/schemas/Resource"
+                },
+                "affected_bookings": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "today": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Booking"
+            },
+            "description": "Approved bookings starting today (Sydney), at most 10."
+          },
+          "today_count": {
+            "type": "integer"
+          },
+          "missed_today": {
+            "type": "integer"
+          },
+          "can_decide_urgent": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ResourceDetail": {
+        "type": "object",
+        "required": [
+          "label",
+          "value"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 200
+          }
+        }
+      },
+      "TestLogin": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "login_id"
+        ],
+        "properties": {
+          "login_id": {
+            "type": "string",
+            "enum": [
+              "1"
+            ]
+          }
+        }
+      },
+      "TestSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "bypass_booking_rules"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "STUDENT",
+              "ADMIN",
+              "MANAGER"
+            ]
+          },
+          "bypass_booking_rules": {
+            "type": "boolean"
+          }
+        }
       }
     }
   }

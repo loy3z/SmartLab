@@ -21,7 +21,15 @@ from .serializers import (AvailabilityQuerySerializer, DayOverviewQuerySerialize
                           OutlookProcessSerializer, BookingPolicySerializer, AuditQuerySerializer,
                           UserListQuerySerializer, UserUpdateSerializer, ManagerCreateSerializer, ResourceStatusSerializer,
                           AdminBookingQuerySerializer, StaffCreateSerializer, PrerequisiteSerializer,
-                          PersonLookupSerializer)
+                          PersonLookupSerializer, NotificationQuerySerializer, UnfreezeRequestSerializer,
+                          UnfreezeReviewSerializer, UnfreezeListQuerySerializer, UnfreezeSerializer,
+                          SeriesPlanSerializer, SeriesCreateSerializer, ResourceFieldsSerializer,
+                          ResourceCreateSerializer, UsageReportQuerySerializer, ChangePasswordSerializer,
+                          RequirementFieldsSerializer, RequirementUpdateSerializer, SiteContactSerializer)  # Sprint 3 (1.16.0)
+from .ics import render_calendar
+from .test_console import (TestPrincipal, get_test_account, require_test_console,
+                           test_console_enabled, test_identity, TEST_ACCOUNT_ID, booking_rules_bypassed)
+from .serializers import TestLoginSerializer, TestSessionSerializer
 
 def json_value(value):
     if isinstance(value, Enum):
@@ -42,6 +50,17 @@ def json_value(value):
             result["booked_for"] = person_brief(service, value.student_id)
             result["created_by_user"] = person_brief(service, value.created_by) if value.created_by else None
             result["on_behalf"] = bool(value.created_by and value.created_by != value.student_id)
+            result.update(json_value(service.check_in_state(value)))  # Sprint 3: check-in button state
+            # Sprint 3 (1.16.0): change requests. On a change request: the booking it would replace. On an approved
+            # booking: its open change request (pending or waitlisted), if any.
+            old = service.repo.get_booking(value.replaces_id) if value.replaces_id else None
+            result["replaces_booking"] = ({"id": old.id, "start": json_value(old.start), "end": json_value(old.end),
+                                           "status": old.status.value} if old else None)
+            change = service.open_change_for(value) if value.status == BookingStatus.APPROVED else None
+            result["open_change"] = ({"id": change.id, "start": json_value(change.start), "end": json_value(change.end),
+                                      "status": change.status.value} if change else None)
+        if isinstance(value, Principal):  # Sprint 3: booking freeze
+            result["booking_frozen"] = value.frozen_at(get_service().now()) and not booking_rules_bypassed(value)
         return result
     if isinstance(value, dict):
         return {key: json_value(item) for key, item in value.items()}
@@ -76,7 +95,9 @@ def sync_after_write(service, *bookings):
     promoted = [item for item in service.take_promoted_ids() if item not in ids]
     if settings.OUTLOOK_SYNC_ON_WRITE:
         for booking_id in ids + promoted:
-            service.calendar_sync.process_booking(booking_id)
+            record = service.repo.get_booking(booking_id)
+            if record and record.student_id != TEST_ACCOUNT_ID:
+                service.calendar_sync.process_booking(booking_id)
     return tuple(service.repo.get_booking(booking.id) for booking in bookings)
 
 def waitlist_position(service, booking):
@@ -108,7 +129,25 @@ class AuthConfigView(PublicView):
         return Response({"mode": "demo" if demo else "external_provider_required", "demo_auth_enabled": demo,
                          "demo_registration_enabled": demo, "sso_connected": False, "token_type": "Bearer",
                          # Admins and Managers sign in on the staff page with zID + password (prototype; uses the same token).
-                         "staff_sign_in_enabled": demo})
+                         "staff_sign_in_enabled": demo, "test_console_enabled": test_console_enabled()})
+
+class TestLoginView(PublicView):
+    def post(self, request):
+        require_test_console()
+        validated(TestLoginSerializer, request.data)
+        principal = test_identity(get_test_account(get_service()), Role.STUDENT, True)
+        return Response(session_result(principal))
+
+class TestSessionView(APIView):
+    def post(self, request):
+        require_test_console()
+        if not isinstance(request.user, TestPrincipal):
+            raise DomainError("FORBIDDEN", "Only the test account can change its test session.", 403)
+        data = validated(TestSessionSerializer, request.data)
+        principal = test_identity(request.user, data["role"], data["bypass_booking_rules"])
+        get_service()._audit(principal.id, "TEST_SESSION_CHANGED", "principal", principal.id,
+                             role=principal.role.value, bypass_booking_rules=principal.bypass_booking_rules)
+        return Response(session_result(principal))
 
 class DemoRegisterView(PublicView):
     def post(self, request):
@@ -278,6 +317,17 @@ class BookingRescheduleView(APIView):
         booking, = sync_after_write(service, booking)
         return Response(json_value(booking))
 
+class BookingChangeView(APIView):
+    """Sprint 3 (1.16.0): the person a booking is for asks to move it (services/changes.py). Returns the new request;
+    the old booking stays until it is approved."""
+    def post(self, request, booking_id):
+        data = validated(BookingRescheduleSerializer, request.data)
+        service = get_service()
+        booking, created = service.request_time_change(request.user, str(booking_id), data["start"], data["end"],
+                                                       request.headers.get("Idempotency-Key"))
+        booking, = sync_after_write(service, booking)
+        return Response(json_value(booking), status=201 if created else 200)
+
 class DashboardView(APIView):
     def get(self, request):
         service = get_service()
@@ -319,7 +369,7 @@ class AdminQualificationReviewView(APIView):
 def staff_booking_rows(service, user, params):
     data = validated(AdminBookingQuerySerializer, params)
     records = service.booking_report(user, data["status"], data.get("resource_id"), data.get("student_id"),
-                                     data.get("since"), data.get("until"))
+                                     data.get("since"), data.get("until"), data.get("q"))
     people = {item.id: item for item in service.repo.list_principals()}
     resources = {item.id: item for item in service.repo.list_resources()}
     return records, people, resources
@@ -343,10 +393,11 @@ class AdminBookingListView(APIView):
         return Response(collection(records, lambda item: staff_booking_json(item, people, resources)))
 
 class AdminBookingExportView(APIView):
-    """Manager only: the same filters as the list (default status=ALL), as a CSV file for printing or Excel."""
+    """Admin/Manager (Sprint 3: Admins too, for Booking Records): the same filters as the list (default status=ALL),
+    as a CSV file for printing or Excel."""
     def get(self, request):
         service = get_service()
-        service.require_manager(request.user)
+        service.require_staff(request.user)
         params = request.query_params.copy()
         params.setdefault("status", "ALL")
         records, people, resources = staff_booking_rows(service, request.user, params)
@@ -355,7 +406,7 @@ class AdminBookingExportView(APIView):
         writer = csv.writer(buffer)
         writer.writerow(["Booking ID", "Status", "Reason", "Resource", "Type", "Date", "Start", "End", "Minutes",
                          "Student zID", "Student name", "Student email", "Purpose", "Submitted", "Decided by", "Decision reason",
-                         "Created by", "Urgent", "Urgent reason"])
+                         "Created by", "Urgent", "Urgent reason", "Weekly series", "Attendance"])  # last two: Sprint 3
         for item in records:
             person, resource = people.get(item.student_id), resources.get(item.resource_id)
             local = ZoneInfo(resource.timezone) if resource else zone
@@ -369,7 +420,8 @@ class AdminBookingExportView(APIView):
                              item.created_at.astimezone(local).strftime("%Y-%m-%d %H:%M"),
                              reviewer.zid if reviewer else (item.reviewed_by or ""), _csv_safe(item.decision_reason or ""),
                              creator.zid if (creator := people.get(item.created_by)) else (item.created_by or ""),
-                             "Yes" if item.urgent else "", _csv_safe(item.urgent_reason or "")])
+                             "Yes" if item.urgent else "", _csv_safe(item.urgent_reason or ""),
+                             "Yes" if item.series_id else "", item.attendance or ""])
         response = HttpResponse("\ufeff" + buffer.getvalue(), content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = 'attachment; filename="bookings.csv"'
         return response
@@ -429,13 +481,42 @@ class AdminStaffCreateView(APIView):
         return Response(user_json(service, created), status=status.HTTP_201_CREATED)
 
 class RequirementDetailView(APIView):
-    """Manager only: set which inductions must be verified first (e.g. Advanced needs General)."""
+    """Manager only: set which inductions must be verified first (e.g. Advanced needs General).
+
+    Sprint 3 (1.16.0): also changes the name, description and guidance texts; send any of them."""
     def patch(self, request, requirement_id):
         service = get_service()
         service.require_manager(request.user)
-        data = validated(PrerequisiteSerializer, request.data)
-        updated = service.set_prerequisites(request.user, str(requirement_id), [str(item) for item in data["prerequisite_ids"]])
+        data = validated(RequirementUpdateSerializer, request.data)
+        prerequisites = data.pop("prerequisite_ids", None)
+        updated = service.repo.get_requirement(str(requirement_id))
+        if data:
+            updated = service.update_requirement(request.user, str(requirement_id), data)
+        if prerequisites is not None:
+            updated = service.set_prerequisites(request.user, str(requirement_id), [str(item) for item in prerequisites])
+        if updated is None:
+            raise DomainError("NOT_FOUND", "Qualification requirement not found.", 404)
         return Response(json_value(updated))
+
+class RequirementCreateView(APIView):
+    """Sprint 3 (1.16.0), Manager only: add an induction type."""
+    def post(self, request):
+        data = validated(RequirementFieldsSerializer, request.data)
+        return Response(json_value(get_service().create_requirement(request.user, data)), status=201)
+
+class SiteContactView(APIView):
+    """Sprint 3 (1.16.0): the lab's contact details. Anyone signed in reads them; a Manager changes them."""
+    def get(self, request):
+        return Response(json_value(get_service().site_contact()))
+
+    def patch(self, request):
+        data = validated(SiteContactSerializer, request.data)
+        return Response(json_value(get_service().update_site_contact(request.user, data)))
+
+class StaffOverviewView(APIView):
+    """Sprint 3 (1.16.0), Admin and Manager: the "Today" page (services/overview.py)."""
+    def get(self, request):
+        return Response(json_value(get_service().staff_overview(request.user)))
 
 class AdminManagerCreateView(APIView):
     """Manager only ("Add manager"): kept for existing clients; same as Add staff with role MANAGER."""
@@ -549,3 +630,210 @@ class ResourceBookingPolicyView(APIView):
         data = validated(BookingPolicySerializer, request.data)
         resource = service.set_booking_policy(request.user, str(resource_id), data["pending_hold_minutes"])
         return Response(policy_json(resource))
+
+
+# Sprint 3: calendar subscription link ------------------------------------------------------------------------
+
+def calendar_link_json(feed):
+    return {"path": f"/api/v1/calendar/{feed.token}.ics", "created_at": json_value(feed.created_at)}
+
+class CalendarLinkView(APIView):
+    """The signed-in person's secret calendar subscription address (created on first use)."""
+    def get(self, request):
+        return Response(calendar_link_json(get_service().calendar_feed(request.user)))
+
+class CalendarLinkResetView(APIView):
+    """Make a new address; the old one stops working at once."""
+    def post(self, request):
+        return Response(calendar_link_json(get_service().calendar_feed(request.user, reset=True)))
+
+class CalendarFeedView(PublicView):
+    """iCalendar feed read by Outlook / Google / Apple Calendar. The token in the address is the only key."""
+    def get(self, request, token):
+        service = get_service()
+        person, events = service.calendar_feed_events(token)
+        body = render_calendar(f"SmartLab bookings ({person.display_name})", events, service.now())
+        response = HttpResponse(body, content_type="text/calendar; charset=utf-8")
+        response["Content-Disposition"] = 'inline; filename="smartlab-bookings.ics"'
+        response["Cache-Control"] = "no-store"
+        return response
+
+
+# Sprint 3: notifications ------------------------------------------------------------------------------------
+
+class NotificationListView(APIView):
+    def get(self, request):
+        service = get_service()
+        service.process_due_requests()
+        data = validated(NotificationQuerySerializer, request.query_params)
+        items, unread = service.list_notifications(request.user, data["unread"], data["limit"])
+        return Response({"count": len(items), "unread_count": unread, "results": json_value(items)})
+
+class NotificationReadView(APIView):
+    def post(self, request, notification_id):
+        return Response(json_value(get_service().mark_notification_read(request.user, str(notification_id))))
+
+class NotificationReadAllView(APIView):
+    def post(self, request):
+        return Response({"updated": get_service().mark_all_notifications_read(request.user)})
+
+
+# Sprint 3: check-in and booking freeze ----------------------------------------------------------------------
+
+class BookingCheckInView(APIView):
+    def post(self, request, booking_id):
+        if request.data:
+            raise DomainError("VALIDATION_ERROR", "Check-in does not accept extra fields.")
+        return Response(json_value(get_service().check_in(request.user, str(booking_id))))
+
+def unfreeze_json(service, item):
+    result = json_value(item)
+    person = service.repo.get_principal(item.principal_id)
+    result["person"] = ({**person_brief(service, person.id), "frozen_until": json_value(person.frozen_until),
+                         "booking_frozen": person.frozen_at(service.now())} if person else None)
+    result["decided_by_user"] = person_brief(service, item.decided_by) if item.decided_by else None
+    return result
+
+class MyUnfreezeRequestsView(APIView):
+    def get(self, request):
+        service = get_service()
+        return Response(collection(service.my_unfreeze_requests(request.user), lambda item: unfreeze_json(service, item)))
+
+    def post(self, request):
+        service = get_service()
+        data = validated(UnfreezeRequestSerializer, request.data)
+        created = service.request_unfreeze(request.user, data["reason"])
+        return Response(unfreeze_json(service, created), status=status.HTTP_201_CREATED)
+
+class AdminUnfreezeRequestListView(APIView):
+    def get(self, request):
+        service = get_service()
+        service.process_due_requests()
+        data = validated(UnfreezeListQuerySerializer, request.query_params)
+        items = service.list_unfreeze_requests(request.user, data.get("status"))
+        return Response(collection(items, lambda item: unfreeze_json(service, item)))
+
+class AdminUnfreezeReviewView(APIView):
+    def post(self, request, request_id):
+        service = get_service()
+        data = validated(UnfreezeReviewSerializer, request.data)
+        return Response(unfreeze_json(service, service.review_unfreeze(request.user, str(request_id), data["decision"], data["reason"])))
+
+class AdminFrozenUsersView(APIView):
+    """Admin/Manager: everyone whose booking is frozen now, with any waiting unfreeze request."""
+    def get(self, request):
+        service = get_service()
+        service.require_staff(request.user)
+        service.process_due_requests()
+        now = service.now()
+        pending = {item.principal_id: item for item in service.list_unfreeze_requests(request.user, "PENDING")}
+        people = sorted((item for item in service.repo.list_principals() if item.frozen_at(now)), key=lambda item: item.frozen_until)
+        return Response(collection(people, lambda item: {**json_value(item), "pending_request":
+                                                         unfreeze_json(service, pending[item.id]) if item.id in pending else None}))
+
+class AdminUserUnfreezeView(APIView):
+    def post(self, request, user_id):
+        service = get_service()
+        data = validated(UnfreezeSerializer, request.data)
+        return Response(json_value(service.unfreeze(request.user, str(user_id), data["reason"])))
+
+
+# Sprint 3: weekly series (staff) ----------------------------------------------------------------------------
+
+def series_json(series, bookings):
+    return {**json_value(series), "weekdays": [int(item) for item in series.weekdays.split(",") if item],
+            "bookings": json_value(bookings)}
+
+def _series_args(data):
+    return dict(resource_id=str(data["resource_id"]), weekdays=data["weekdays"], start_time=data["start_time"],
+                duration_minutes=data["duration_minutes"], first_date=data["first_date"], last_date=data["last_date"],
+                on_behalf_of_zid=data.get("on_behalf_of_zid") or None)
+
+class SeriesPreviewView(APIView):
+    def post(self, request):
+        data = validated(SeriesPlanSerializer, request.data)
+        return Response(json_value(get_service().preview_series(request.user, **_series_args(data))))
+
+class SeriesCreateView(APIView):
+    def post(self, request):
+        service = get_service()
+        data = validated(SeriesCreateSerializer, request.data)
+        series, bookings = service.create_series(request.user, purpose=data["purpose"], skip_dates=data["skip_dates"],
+                                                 **_series_args(data))
+        bookings = sync_after_write(service, *bookings)
+        return Response(series_json(series, bookings), status=status.HTTP_201_CREATED)
+
+class SeriesDetailView(APIView):
+    def get(self, request, series_id):
+        service = get_service()
+        service.process_due_requests()
+        return Response(series_json(*service.series_detail(request.user, str(series_id))))
+
+class SeriesCancelView(APIView):
+    def post(self, request, series_id):
+        if request.data:
+            raise DomainError("VALIDATION_ERROR", "The cancellation action does not accept extra fields.")
+        service = get_service()
+        series, cancelled = service.cancel_series(request.user, str(series_id))
+        sync_after_write(service, *cancelled)
+        return Response(series_json(*service.series_detail(request.user, series.id)))
+
+
+# Sprint 3: resource setup (Manager) -------------------------------------------------------------------------
+
+def changed_resource_json(service, resource, outside):
+    """The saved resource plus the future bookings that no longer fit its rules (kept until a Manager acts)."""
+    people = {booking.student_id: service.repo.get_principal(booking.student_id) for booking, _ in outside}
+    return {"resource": json_value(resource),
+            "bookings_outside_rules": [{**staff_booking_json(booking, people, {resource.id: resource}), "problem": code}
+                                       for booking, code in outside]}
+
+class AdminResourceListView(APIView):
+    """GET: every resource including archived ones. POST: add a room or equipment."""
+    def get(self, request):
+        return Response(collection(get_service().list_all_resources(request.user)))
+
+    def post(self, request):
+        service = get_service()
+        data = validated(ResourceCreateSerializer, request.data)
+        kind = data.pop("kind")
+        return Response(json_value(service.create_resource(request.user, kind, data)), status=status.HTTP_201_CREATED)
+
+class AdminResourceDetailView(APIView):
+    """PATCH: change the fields sent; the kind cannot change."""
+    def patch(self, request, resource_id):
+        service = get_service()
+        if "kind" in request.data:
+            raise DomainError("KIND_IS_FIXED", "A room cannot become equipment or the other way round. Add a new resource instead.", 409)
+        data = validated(ResourceFieldsSerializer, request.data)
+        resource, outside = service.update_resource(request.user, str(resource_id), data)
+        return Response(changed_resource_json(service, resource, outside))
+
+class AdminResourceArchiveView(APIView):
+    def post(self, request, resource_id):
+        if request.data:
+            raise DomainError("VALIDATION_ERROR", "This action does not accept fields.")
+        return Response(json_value(get_service().archive_resource(request.user, str(resource_id))))
+
+class AdminResourceRestoreView(APIView):
+    def post(self, request, resource_id):
+        if request.data:
+            raise DomainError("VALIDATION_ERROR", "This action does not accept fields.")
+        return Response(json_value(get_service().restore_resource(request.user, str(resource_id))))
+
+
+# Sprint 3: usage report (Manager) -----------------------------------------------------------------------------
+
+class AdminUsageReportView(APIView):
+    def get(self, request):
+        data = validated(UsageReportQuerySerializer, request.query_params)
+        return Response(json_value(get_service().usage_report(request.user, data["first_date"], data["last_date"])))
+
+
+# Sprint 3: staff change their own password --------------------------------------------------------------------
+
+class ChangePasswordView(APIView):
+    def post(self, request):
+        data = validated(ChangePasswordSerializer, request.data)
+        get_service().change_password(request.user, data["current_password"], data["new_password"])
+        return Response({"changed": True})

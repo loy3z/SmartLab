@@ -1,0 +1,57 @@
+/* Sprint 3: notification bell. */
+.nt-bell { position: relative; margin-left: auto; margin-right: 14px; }
+.nt-bell-button { position: relative; }
+
+/* Sprint 3 (1.15.0): badge sits on the bell's top-right corner with a white ring.
+   ".nt-bell-button > .nt-badge" is needed to beat ".app-icon-button > span { font-size: 27px }" in shell.css,
+   which made the number as big as the bell. */
+.nt-bell-button > .nt-badge { position: absolute; top: 3px; left: 22px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: #c62828; box-shadow: 0 0 0 2px #fff; color: #fff; font-size: 10.5px; font-weight: 700; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums; animation: nt-pop var(--motion-base) var(--ease-spring); }
+.nt-bell-icon { transform-origin: 50% 3px; }
+.nt-bell-icon.nt-ring { animation: nt-ring 700ms var(--ease-out); }
+@keyframes nt-ring {
+  0% { transform: rotate(0); }
+  15% { transform: rotate(14deg); }
+  30% { transform: rotate(-12deg); }
+  45% { transform: rotate(8deg); }
+  60% { transform: rotate(-5deg); }
+  75% { transform: rotate(2deg); }
+  100% { transform: rotate(0); }
+}
+@keyframes nt-pop { 0% { transform: scale(.3); } 70% { transform: scale(1.15); } 100% { transform: scale(1); } }
+
+/* Panel: fades in and drops slightly from the bell. */
+.nt-panel { position: absolute; right: 0; top: calc(100% + 10px); z-index: 13; width: min(380px, calc(100vw - 32px)); max-height: min(520px, 75vh); display: flex; flex-direction: column; border: 1px solid var(--app-border, #dfe3ea); border-radius: 12px; background: #fff; box-shadow: 0 14px 36px #202c4224; transform-origin: top right; animation: nt-panel-in var(--motion-base) var(--ease-out); }
+@keyframes nt-panel-in { from { opacity: 0; transform: translateY(-6px) scale(.98); } to { opacity: 1; transform: none; } }
+.nt-panel-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--app-border, #dfe3ea); font-size: 14px; }
+.nt-link { border: 0; background: none; color: #1f5fbf; font-size: 12px; cursor: pointer; padding: 4px; }
+.nt-link:disabled { color: #9aa3b2; cursor: default; }
+.nt-list { margin: 0; padding: 4px 4px 8px; overflow-y: auto; }
+.nt-group ul { list-style: none; margin: 0; padding: 0; }
+.nt-group-title { margin: 10px 10px 4px; color: var(--app-muted, #6b7280); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+
+/* One notification: icon, title + time, two lines of body, blue dot when unread. */
+.nt-item { position: relative; display: flex; gap: 10px; width: 100%; padding: 10px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer; transition: background-color var(--motion-fast) var(--ease-out); }
+.nt-item:hover { background: #f4f6f8; }
+.nt-icon { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: #eef1f5; color: #4b5563; }
+.nt-icon.is-check { background: #e3f4e7; color: #1e7e34; }
+.nt-icon.is-cross { background: #fde7e5; color: #b3261e; }
+.nt-icon.is-clock { background: #fff1cf; color: #9a5b00; }
+.nt-icon.is-info { background: #e8effc; color: #1f5fbf; }
+.nt-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; font-size: 13px; line-height: 1.4; }
+.nt-title-row { display: flex; align-items: baseline; gap: 8px; }
+.nt-title-row strong { flex: 1; min-width: 0; font-weight: 600; color: #374151; }
+.nt-item.is-unread .nt-title-row strong { font-weight: 700; color: #111; }
+.nt-title-row small { flex: none; color: var(--app-muted, #6b7280); font-size: 11px; }
+.nt-body { color: #4b5563; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.nt-unread-dot { flex: none; align-self: center; width: 8px; height: 8px; border-radius: 50%; background: #1f5fbf; }
+.nt-empty { margin: 0; padding: 18px 14px; color: var(--app-muted, #6b7280); font-size: 13px; }
+
+/* Phones: the bell is not at the screen edge (the account button is to its right), so a panel hanging from
+   the bell ran off the left side. Pin it to the screen instead, 16px from each side, under the top bar. */
+@media (max-width: 600px) {
+  .nt-panel { position: fixed; top: 64px; left: 16px; right: 16px; width: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nt-bell-button > .nt-badge, .nt-bell-icon.nt-ring, .nt-panel { animation: none; }
+}

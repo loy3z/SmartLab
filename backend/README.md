@@ -7,20 +7,39 @@ Django 5.2 + Django REST Framework 3.16。提供学生时段查询、房间／�
 - **所有人用同一套规则预约**：学生、Admin、Manager 都可以预约，**只有对应 induction 已通过且有效期覆盖整个预约时才能提交申请**；资料还在审核、被拒或已过期都不能申请，员工也不例外。induction 只能由 Admin／Manager 人工审核，不能审核自己的。
 - **代他人预约**：Admin／Manager 可以用 `on_behalf_of_zid` 替别人预约。预约属于被预约人（`student_id`，检查他的 induction），`created_by` 记录创建者，审计同时记两个人。不能审批给自己的或自己创建的申请。
 - **紧急申请**：开始时间早于最短提前期（默认 7 天）的申请可以标为紧急（必须写原因）。只跳过提前期，induction、开放时间和冲突照常检查（时段必须空闲，不进候补）；只有 Manager 能决定，不自动批准，开始前没人决定就过期。
-- **只有 Manager 能改期**：改任何人已批准的未来预约，不受最短提前期限制（`RESCHEDULED_BY_MANAGER`）。
+- **只有 Manager 能直接改期**：改任何人已批准的未来预约，不受最短提前期限制（`RESCHEDULED_BY_MANAGER`）。
+- **预约人申请改期**（1.16.0，`POST bookings/{id}/change/`）：本人已批准的未来预约可以申请换时间。系统新建一个申请（`replaces_id` 指向原预约），新时间空闲就待审批，被占用就进候补；原预约在新申请批准前一直保留，批准时自动取消（`REPLACED_BY_CHANGE`）并交给候补。规则和普通申请相同，但原预约不算冲突、重复或每周名额；一个预约同时只能有一个改期申请；不能紧急改期。
 - **前置 induction**：一项 induction 可以要求先通过另一项（`QualificationRequirement.prerequisite_ids`，数据库列 `prerequisite_ids uuid[]`）。演示数据中 Advanced laboratory training 要求先有 General laboratory induction：General 未通过时不能提交 Advanced 资料，Admin 也不能通过 Advanced；预约 Advanced 资源时，General 和 Advanced **都必须有效并覆盖整个预约**（缺 General 时 `qualification_status=PREREQUISITE_REQUIRED`）。Manager 可用 `PATCH /api/v1/admin/qualification-requirements/{id}/` 设置 `{"prerequisite_ids":[...]}`，不允许形成循环。
 - **统一规则检查**：创建申请、Admin 批准、超时自动处理、候补递补、改期都调用同一个 `BookingService.rule_violation`，按顺序检查账号是否启用、资源是否可用、时间是否合法、（创建和改期时）预约窗口、资格及前置资格。任何路径都不会绕过其中一项。
 - **账号状态**：停用学生账号时，该学生所有未决申请（待审批和候补）立即拒绝（`ACCOUNT_DEACTIVATED`）并递补下一位；已批准的预约保留，由 Manager 决定是否取消。批准或自动处理时也会再次检查账号是否启用（`AUTO_REJECTED_ACCOUNT_INACTIVE`）。
-- **房间和设备**：设备记录所在房间（`room_id`），页面按房间分组显示。房间维修／关闭只暂停该房间本身的预约，**不影响**房间里设备的借用；设备有自己的状态。
+- **房间和设备**：设备记录所在房间（`room_id`），页面按房间分组显示。房间维修／关闭只暂停该房间本身的预约，**不影响**房间里设备的借用；设备有自己的状态。两者**分开预约**，订房间不包含设备（1.16.0 起页面上写明，怎么组合留给客户决定）。1.16.0 起房间可以填容量（`capacity`），所有资源可以加最多 12 行“标签：内容”（`details`），由 Manager 在 Resources 页面填。
 - **每个申请都先进入待审批 `PENDING_APPROVAL`**（`reason_code=AWAITING_REVIEW`），不算确认，但在审批期限内为申请人占住时段（`hold_until` = `review_due_at`）。Admin／Manager 可以随时批准或拒绝；审批期限（资源的 `pending_hold_minutes`，默认 1440 分钟即 24 小时，Manager 可按资源调整，且不晚于预约开始）到了还没人处理，系统自动处理：资格仍覆盖整个预约、资源可用、时段无已批准冲突就批准（`AUTO_APPROVED_AFTER_REVIEW_WINDOW`），否则拒绝（`AUTO_REJECTED_*`，`decision_reason` 写明原因），`reviewed_by` 为 `SYSTEM`。批准后才写入 Outlook。
 - 预约至少提前 7 天、最多提前 30 天（团队提议，待客户确认）。这些数字不写死在代码里，见下文“可配置规则”。管理员批准时重新检查资格和冲突，不能重复批准相同时段。
 - 同一时段严格先到先得：已批准预约和审批期内的待审批申请占用时段；之后的重叠申请进入等待名单 `WAITLISTED`（`TIME_CONFLICT`／`TEMPORARY_HOLD_CONFLICT`），管理员不能直接批准候补，但可以拒绝。时段空出来时（取消、被拒、过期、改期、资源重新开放），系统按提交顺序递补：申请人资格仍有效就转为新的待审批申请（`PROMOTED_FROM_WAITLIST`，重新计算审批期限），否则拒绝。前一位获批后，候补保留为后备，到开始时间仍未轮到则 `EXPIRED`。资料被拒时，该学生依赖这项资格的所有未决申请（包括候补）会被一并拒绝（`QUALIFICATION_REJECTED`）。
 - 同一学生不能为同一资源重复提交时间重叠的有效申请；已有 `PENDING_APPROVAL`、`WAITLISTED` 或 `APPROVED` 记录时返回 `DUPLICATE_BOOKING`。取消、拒绝或过期后可重新申请；不同资源在同一时间仍可分别预约。
 - 学生查看自己的 dashboard、资格和预约，取消尚未开始的有效预约。员工的“我的预约”还包括自己替别人建的申请。Admin／Manager 查看审批队列并作出决定，也可以取消任何人的预约（`CANCELLED_BY_STAFF`）；Manager 可以改期（可以改时长）。
-- Manager 可以把房间或设备设为维修中／关闭（`PATCH /api/v1/admin/resources/{id}/status/`，需填原因）：暂停新申请、批准和递补，已有预约保留并列出供 Manager 决定是否取消；改回可用后候补自动递补。
-- Admin／Manager 可用 `GET /api/v1/admin/bookings/?status=ALL` 按资源、学生、日期查看所有人的预约（带学生 zID 和姓名）；Manager 可用 `GET /api/v1/admin/bookings/export/` 导出 CSV。
-- **Manager 拥有 Admin 的全部权限**，另外独有审批期限配置、资源状态和人员管理；**Admin 不能访问任何 Manager 页面和接口**（包括读取审批期限）。人员管理：`GET /api/v1/admin/users/` 查看人员名单（带 `is_staff` 和学生的 induction 状态）；Add staff（`POST /api/v1/admin/users/staff/`，`role` 为 `ADMIN` 或 `MANAGER`）新建员工账号；`PATCH /api/v1/admin/users/{id}/` 停用或恢复账号。**Student、Admin、Manager 是三种分开的账号，角色在创建时确定，之后不能互换**（学生不能升为员工，Admin 和 Manager 也不能互相切换，`ROLE_CHANGE_NOT_ALLOWED` 409）；要换人就新建账号、停用旧账号。不能修改自己，至少保留一个启用的 Manager，修改写审计。`POST /api/v1/admin/users/managers/` 等同于 Add staff 选 Manager（兼容接口）。
+- Manager 可以把房间或设备设为维修中／关闭（`PATCH /api/v1/admin/resources/{id}/status/`，需填原因）：暂停新申请、批准和递补，已有预约保留并列出供 Manager 决定是否取消；改回可用后候补自动递补。1.16.0 起状态变化时自动通知（站内和邮件）这个资源上有未来预约或申请的人（`RESOURCE_OUT_OF_SERVICE`／`RESOURCE_REOPENED`）。
+- **预约记录**（Admin／Manager，Booking Records 页面）：`GET /api/v1/admin/bookings/?status=ALL` 按资源、学生、日期、姓名或 zID（`q`）查看所有人的预约（带学生 zID 和姓名）；`GET /api/v1/admin/bookings/export/` 用同样的筛选导出 CSV（含创建人、是否重复预约和到场情况）。
+- **Manager 拥有 Admin 的全部权限**，另外独有审批期限配置、资源状态、人员管理和 Lab setup（1.16.0）；**Admin 不能访问任何 Manager 页面和接口**（包括读取审批期限）。人员管理：`GET /api/v1/admin/users/` 查看人员名单（带 `is_staff` 和学生的 induction 状态）；Add staff（`POST /api/v1/admin/users/staff/`，`role` 为 `ADMIN` 或 `MANAGER`）新建员工账号；`PATCH /api/v1/admin/users/{id}/` 停用或恢复账号。**Student、Admin、Manager 是三种分开的账号，角色在创建时确定，之后不能互换**（学生不能升为员工，Admin 和 Manager 也不能互相切换，`ROLE_CHANGE_NOT_ALLOWED` 409）；要换人就新建账号、停用旧账号。不能修改自己，至少保留一个启用的 Manager，修改写审计。`POST /api/v1/admin/users/managers/` 等同于 Add staff 选 Manager（兼容接口）。
 - Admin／Manager 可通过 `GET /api/v1/admin/audit/` 按资源、学生、操作类型和时间查看审计记录（申请、审批、改期、取消、资格审核等），满足客户对操作轨迹的要求。
+- **日历订阅链接**：每人一条私密地址（`GET /api/v1/calendar/link/`，地址里是系统生成的随机码，和微软 Token 无关）。用户在 Outlook 里“从 Internet 订阅”粘贴即可，Outlook 自己定期读取 `GET /api/v1/calendar/{token}.ics`，里面是本人作为预约人的已批准预约；改期是更新同一条，取消后消失。可以重新生成（`POST calendar/link/reset/`），旧链接立即失效。更新频率由 Outlook 决定，可能要几个小时。
+- **站内通知**（顶部铃铛，`GET /api/v1/notifications/`）：自己提交的申请已收到、预约被批准／拒绝（含系统自动决定）、候补转为待审批、被 Manager 改期、被员工取消、员工替你建了预约、induction 审核结果、缺席记录、冻结与解冻；Manager 还会收到紧急申请。普通新申请不通知管理员。通知和状态变化写在同一个事务里；其他发送渠道写在 `booking/notification_channels.py`，用 `NOTIFICATION_CHANNELS` 配置。
+- **邮件通知**：`booking/email_channel.py` 通过系统 Gmail 邮箱（SMTP + 应用专用密码）把申请已收到、批准或拒绝、过期、候补转正、改期、被员工取消、提醒、替你预约、改期申请的结果和维修／重新开放（1.16.0）这些通知发到预约人的大学邮箱。默认关闭（`EMAIL_ENABLED`）；打开后 `EMAIL_MODE` 默认 `allowlist`，只发给名单里的地址，演示时用 `redirect` 把所有邮件改发给自己。发送失败只记日志。测试命令 `manage.py send_test_email --to 你的邮箱`。配置见 [email-setup.md](docs/email-setup.md)。
+- **到场确认与冻结**：已批准的预约在开始前 15 分钟到开始后 30 分钟之间，由预约人自己在“我的预约”点 I'm here（`POST bookings/{id}/check-in/`）。窗口结束仍未确认就记一次缺席（`attendance=NO_SHOW`；资源当时维修或关闭的记为 `EXCUSED`，不算）。**第 4 次缺席时冻结 30 天**：冻结期间不能提交新申请（员工也不能替他建），并**立即取消他之后所有的预约和申请**，空出的时段交给候补。冻结只看受益人（zID）：员工被冻结只影响预约，不影响审批别人。被冻结的人可以提交解冻申请（`POST account/unfreeze-requests/`），Admin／Manager 在 Booking freezes 页面同意或拒绝，也可以直接解冻；不能处理自己的申请。网站按钮在哪里都能点，所以它防的是“忘了取消”，防不住故意作弊。
+- **每人每周最多 3 次预约**：同一受益人在同一周（悉尼时间周一到周日）里待审批、候补、已批准的预约达到 3 个时，新申请返回 409 `WEEKLY_LIMIT_REACHED`；Manager 改期到满额的那一周也会被拒。取消、被拒、过期后名额自动空出；候补递补和超时自动处理不受影响。员工代建算在受益人头上；重复预约不算。
+- **重复预约（只有员工）**：员工在资源卡片上点 Repeat weekly，选每周几、时间、时长、起止日期（最长 14 周），先预览每个日期（`POST bookings/series/preview/`），有问题的日期跳过（不进候补），再创建（`POST bookings/series/`）。可以突破“最多提前 30 天”，其余规则（最少提前天数、开放时间、受益人每个日期的 induction、冲突）照常检查；员工自己创建，所以**直接批准**。每一次都是一条普通预约（带 `series_id`），可以取消单次或整组剩下的（`POST bookings/series/{id}/cancel/`）；到场确认照常要求。
+- **Manager 在网页上管理房间和设备**（Resources 页面，`GET/POST /api/v1/admin/resources/`、`PATCH admin/resources/{id}/`）：
+  - 新增时必须填名称、地点和所需 induction；设备可以选所在房间、填类别；开放时间、时间步长（15／30／60 分钟）、最长时长、审批期限有默认值。
+  - 名称在未下架的资源里不能重复（不区分大小写）；房间不能有所在房间和类别；开放和关闭时间要落在步长上；最长时长必须是步长的整数倍，并且放得进开放时间。
+  - 类型（房间／设备）创建后不能改（`KIND_IS_FIXED`）。修改不动已有预约：新规则只管之后的申请、审批和自动处理；响应里的 `bookings_outside_rules` 列出不再符合新规则的未来预约，由 Manager 决定取消或改期。
+  - 不真删除：下架（`POST …/archive/`）后从预约页消失，历史和审计都保留，可以恢复（`POST …/restore/`）。还有未来预约（`RESOURCE_HAS_BOOKINGS`），或房间里还有设备（`ROOM_HAS_EQUIPMENT`）时不能下架。
+  - 每次新增、修改、下架、恢复都写审计（`RESOURCE_CREATED`／`RESOURCE_UPDATED`（记录改了哪些字段）／`RESOURCE_ARCHIVED`／`RESOURCE_RESTORED`）。
+- **提醒**（通知铃铛）：已批准的预约开始前 24 小时提醒“记得点 I'm here”；已通过的 induction 在 14 天内到期时提醒重新上传；候补或待审批的申请到开始时间还没轮到或没人决定时，通知“申请已过期”。每条提醒只发一次。
+- **使用情况报表**（Admin／Manager，Booking Records 页面的 Usage statistics 标签，`GET /api/v1/admin/reports/usage/?first_date=&last_date=`）：每个资源在日期范围内的已批准预约数、预约小时数、占开放时间的比例、到场率（已到场 ÷（已到场 + 缺席））、缺席、取消和被拒数。只读。
+- **员工修改自己的密码**（Account 页面，`POST /api/v1/auth/change-password/`）：要填当前密码，新密码至少 8 位且不能和当前相同；学生没有密码（用大学登录）。
+- **Lab setup**（1.16.0，Manager，`/manager/setup`）：新建 induction、编辑名称和四段说明（怎么完成、接受什么证明、谁审核、找谁问，显示在 Induction & Training 页面），以及实验室联系方式（`GET/PATCH site/contact/`，显示在 Help、已批准预约和 induction 说明下）。
+- **员工首页 Today**（1.16.0，`GET admin/overview/`）：Admin 和 Manager 登录后先看到待处理的事项（待审 induction、预约、紧急申请、候补、改期、快到期限的申请、解冻申请、维修中的资源）和今天的预约。
+- **建第一个 Manager**：`python manage.py create_manager --zid z9000003 --name "Lab Manager" --email z9000003@ad.unsw.edu.au`，输出一次性邀请码，对方在 staff 登录页激活。只能在 PostgreSQL 模式用。
 
 Pending 不算确认，但在审批期限内占住时段，后来的人不能抢走正在审核的时段；冲突的申请进入等待名单，不占位。每个资源关联一项资格要求（可带前置），资格有效期必须覆盖预约结束时间。
 
@@ -36,6 +55,14 @@ Manager 可通过 `GET /api/v1/admin/resources/{id}/booking-policy/` 查看审�
 | 最多提前天数 | `max_advance_days` | 30 | `MAX_ADVANCE_DAYS` |
 | induction 有效天数 | `qualification_validity_days` | 120 | `QUALIFICATION_VALIDITY_DAYS` |
 | 新资源默认审批期限（分钟） | `default_review_window_minutes` | 1440 | `DEFAULT_PENDING_HOLD_MINUTES` |
+| 每人每周最多预约数 | `max_bookings_per_week` | 3 | `MAX_BOOKINGS_PER_WEEK` |
+| 到场确认：开始前多少分钟开放 | `check_in_opens_minutes` | 15 | `CHECK_IN_OPENS_MINUTES` |
+| 到场确认：开始后多少分钟截止 | `check_in_closes_minutes` | 30 | `CHECK_IN_CLOSES_MINUTES` |
+| 第几次缺席时冻结 | `freeze_after_no_shows` | 4 | `FREEZE_AFTER_NO_SHOWS` |
+| 冻结天数 | `freeze_days` | 30 | `FREEZE_DAYS` |
+| 重复预约最长周数 | `max_series_weeks` | 14 | `MAX_SERIES_WEEKS` |
+| 预约开始前多少小时提醒 | `reminder_hours_before` | 24 | `REMINDER_HOURS_BEFORE` |
+| induction 到期前多少天提醒 | `induction_reminder_days` | 14 | `INDUCTION_REMINDER_DAYS` |
 
 - 现在：默认的 `SettingsRulesProvider` 读取上面的环境变量，改值后重启即可。
 - 以后：如果客户要在 Manager 页面上修改，新建一个读取数据库表的类，实现 `current()` 返回 `BookingRules`，再把环境变量 `RULES_PROVIDER` 指向它（例如 `RULES_PROVIDER=my_app.rules.DatabaseRulesProvider`）。预约、审批和资格代码都不需要改。
@@ -45,7 +72,7 @@ Manager 可通过 `GET /api/v1/admin/resources/{id}/booking-policy/` 查看审�
 
 预约页有两种方式：浏览资源卡片，或 **Find a free time**（按日期、时长、类型、房间、设备类别筛选，一张表看所有资源当天的空闲时间，点空闲时间直接预约；接口 `GET resources/day-overview/`，见 [frontend-api.md](docs/frontend-api.md)）。设备有 `category` 字段（演示类别是编的）。
 
-**尚未实现**：真实学校 SSO、邮件通知、设备领取／归还、资源增删改后台、重复预约、更完整的 Manager 规则配置。
+**尚未实现**：真实学校 SSO、Outlook 邮件通知（已有 Gmail SMTP 邮件）、设备领取／归还、学生自己的重复预约、更完整的 Manager 规则配置（全局规则目前在环境变量里）。
 
 **两种存储**：默认是内存演示适配器，演示数据、附件和日历事件对应关系在进程重启后丢失，只能单进程运行；PostgreSQL 适配器会持久保存，见 [database/README.md](database/README.md)。
 
@@ -104,7 +131,7 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
 
 ## 业务代码的位置
 
-整体结构见仓库根目录的 [ARCHITECTURE.md](../ARCHITECTURE.md)，历次改动见 [CHANGELOG.md](../CHANGELOG.md)。
+整体结构见仓库根目录的 [ARCHITECTURE.md](../ARCHITECTURE.md)，历次改动见 [CHANGELOG.md](../CHANGELOG.md)，Sprint 3 新增的功能和代码清单见 [SPRINT3.md](../SPRINT3.md)。
 
 所有业务规则都在 `booking/services/` 里，对外只有一个入口 `BookingService`（`from booking.services import BookingService`）。它按主题拆成几个文件，方法都挂在同一个对象上，互相直接用 `self.xxx` 调用：
 
@@ -112,13 +139,22 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
 | --- | --- |
 | `base.py` | 时钟、规则读取、角色检查、审计写入、资源查找、状态分组常量 |
 | `accounts.py` | 用户列表与停用、员工账号（邀请码、登录）、查找代订对象 |
-| `resources.py` | Manager 的资源设置（审批期限、维护/关闭）和预约报表 |
+| `resources.py` | Manager 新增、编辑、下架、恢复资源，审批期限、维护／关闭和预约报表 |
 | `qualifications.py` | induction 上传、审核、有效期、前置资格 |
 | `checks.py` | 所有路径共用的规则检查 `rule_violation` 和冲突查询 |
 | `bookings.py` | 创建（含代订、紧急）、审批、取消、Manager 改期 |
 | `waitlist.py` | 过期处理、超时自动决定、候补递补 |
 | `availability.py` | 单个资源某天的时段，以及预约页的全天总览 |
 | `audit.py` | 审计记录查询 |
+| `notifications.py` | 站内通知（铃铛）；其他发送渠道在 `booking/notification_channels.py` |
+| `calendar_feed.py` | 日历订阅链接（iCalendar 内容由 `booking/ics.py` 生成） |
+| `attendance.py` | 到场确认、缺席、冻结和解冻申请 |
+| `series.py` | 员工的重复预约 |
+| `reminders.py` | 提醒：预约快开始、induction 快到期 |
+| `reports.py` | Manager 的使用情况报表 |
+| `changes.py` | 预约人申请改期（1.16.0） |
+| `site_contact.py` | 实验室联系方式（1.16.0） |
+| `overview.py` | 员工首页 Today（1.16.0） |
 
 新功能放进对应主题的文件；如果是全新主题，新建一个 mixin 文件并加进 `booking/services/__init__.py` 的 `BookingService` 继承列表。
 
@@ -165,10 +201,27 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
 
 ## 定时处理到期申请
 
-审批期限到了的申请需要有人触发自动处理。网页请求会顺带处理，但没人访问时不会执行。使用 PostgreSQL 时请定时运行（例如每分钟一次，Windows 任务计划或 cron）：
+审批期限到了的申请需要有人触发自动处理，开始后没确认到场的预约也要按时记为缺席。网页请求会顺带处理，但没人访问时不会执行。使用 PostgreSQL 时请定时运行（例如每分钟一次，Windows 任务计划或 cron）：
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py process_due
 ```
 
 输出 `Decided or expired N request(s).`。启用 Outlook 时还会处理等待中的同步（`--outlook-limit`，默认 10）。该命令同样拒绝内存适配器。
+
+## Local test console (1.17.0)
+
+To enable account **1** without a password, set these before starting the local backend. The test account works **only with the in-memory store**: test bookings never reach the PostgreSQL database, so they cannot show up in real records, reports or the Today page, and restarting the backend clears them.
+
+```powershell
+$env:DEBUG="true"
+$env:ENABLE_DEMO_AUTH="true"
+$env:ENABLE_TEST_CONSOLE="true"
+$env:AUTH_PROVIDER="booking.authentication.DemoIdentityProvider"
+$env:REPOSITORY_FACTORY="booking.repository.MemoryRepository"
+.\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000 --noreload
+```
+
+The existing machine-local `start-backend.ps1` also accepts `-TestConsole`, which always starts in memory mode (as if `-Memory` were given). Stop the previous backend in its own terminal before starting it again. Without `-TestConsole`, the script disables this feature.
+
+Open the frontend sign-in page, choose **Test console**, enter **1**, then use **Test role** and **Bypass booking rules** in the top bar. Bypass starts on. It applies to this account's own bookings; choose a staff role to test staff pages or weekly series. Turn it off to test normal restrictions. See the [API contract](docs/frontend-api.md#1170-functional-controls) for the exact scope. This is the only development exception to the ordinary-account rules above. No database migration is required. Do not enable it on deployed services.

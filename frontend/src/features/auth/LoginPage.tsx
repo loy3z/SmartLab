@@ -63,6 +63,7 @@ export function LoginPage({ notice = '' }: { notice?: string }) {
             <Link className="auth-submit auth-sso-entry" to="/login/mock-sso" state={location.state} aria-disabled={busy || undefined} onClick={(event) => { if (busy) event.preventDefault() }}>University sign-in (Demo)<span aria-hidden="true">→</span></Link>
             <p className="auth-sso-caption">For students. Enter your demo zID or university email on the next screen.</p>
             <p className="auth-staff-entry">Admin or Manager? <Link to="/staff/login" state={location.state}>Staff sign-in<span aria-hidden="true"> →</span></Link></p>
+            {config.test_console_enabled && <p className="auth-staff-entry">Local testing? <Link to="/test/login" state={location.state}>Test console →</Link></p>}
             <details className="auth-demo-accounts auth-alternative-login">
               <summary>Other demo sign-in options</summary>
             <form onSubmit={submit} className="auth-form">

@@ -7,11 +7,12 @@ from uuid import UUID, uuid4, uuid5
 from ..domain import Booking, BookingStatus, Role
 from ..errors import DomainError
 from .base import HEAD_STATUSES, UNDECIDED_STATUSES
+from ..test_console import booking_rules_bypassed, create_test_booking, test_period_violation
 
 
 class BookingsMixin:
     def create_booking(self, actor, resource_id, start, end, purpose, idempotency_key=None,
-                       on_behalf_of_zid=None, urgent=False, urgent_reason=None):
+                       on_behalf_of_zid=None, urgent=False, urgent_reason=None, replaces=None):
         """Every request starts as pending (never confirmed straight away).
 
         Free time: PENDING_APPROVAL, holding the slot until an Admin decides or the review window
@@ -22,20 +23,28 @@ class BookingsMixin:
         someone else (on_behalf_of_zid). The booking belongs to that person (``student_id``, whose induction
         is checked) and records who created it (``created_by``) for accountability.
 
-        Urgent request (client, 17 Oct): a start sooner than the minimum advance window, with a reason. It
+        Urgent request: a start sooner than the minimum advance window, with a reason. It
         skips only that window; induction, opening hours, length and conflicts still apply, the time must
         be free (no waitlist), and only a Manager can approve it (never automatic). Undecided, it expires
         at its start time.
+
+        replaces (Sprint 3, 1.16.0): the approved booking a change request moves (see changes.py). Its own old time
+        does not count as a clash, a duplicate or an extra booking in the week.
         """
         self.require_booking_user(actor)
         self.process_due_requests()
         resource_id = str(resource_id)
         if not purpose.strip() or len(purpose) > 1000:
             raise DomainError("VALIDATION_ERROR", "A booking purpose of up to 1000 characters is required.")
+        if urgent and replaces is not None:  # Sprint 3 (1.16.0)
+            raise DomainError("VALIDATION_ERROR", "A change request uses the normal booking window; it cannot be urgent.")
         urgent_reason = (urgent_reason or "").strip()
         if urgent and (not urgent_reason or len(urgent_reason) > 500):
             raise DomainError("URGENT_REASON_REQUIRED", "Explain why the request is urgent (up to 500 characters).")
         beneficiary = self._beneficiary(actor, on_behalf_of_zid)
+        bypass = booking_rules_bypassed(actor, beneficiary.id)
+        frozen = self.frozen_violation(  # Sprint 3: booking freeze
+            self.repo.get_principal(beneficiary.id) or beneficiary)
         if start.tzinfo is None or start.utcoffset() is None or end.tzinfo is None or end.utcoffset() is None:
             raise DomainError("INVALID_TIME", "Start and end require UTC offsets.")
         start, end = start.astimezone(UTC), end.astimezone(UTC)
@@ -53,6 +62,11 @@ class BookingsMixin:
                     raise DomainError("IDEMPOTENCY_CONFLICT", "This Idempotency-Key was already used with different booking details.", 409)
                 return existing, False
             resource = self.resource(resource_id)
+            if bypass:
+                return create_test_booking(self, actor, resource, booking_id, start, end, purpose,
+                                           urgent, urgent_reason, replaces)
+            if frozen:
+                raise frozen
             self._validate_period(resource, start, end)
             if urgent:
                 window = self._window_reason(resource, start)
@@ -63,12 +77,14 @@ class BookingsMixin:
                                       400, self._window_details(resource))
             else:
                 self._validate_horizon(resource, start)
-            self._reject_duplicate_request(beneficiary.id, resource_id, start, end)
-            error = self.rule_violation(beneficiary.id, resource, start, end, check_window=not urgent)
+            replaced_id = replaces.id if replaces else None  # Sprint 3 (1.16.0): change request
+            self._reject_duplicate_request(beneficiary.id, resource_id, start, end, replaced_id)
+            error = (self.rule_violation(beneficiary.id, resource, start, end, check_window=not urgent)
+                     or self._weekly_limit_violation(beneficiary.id, resource, start, replaced_id))  # Sprint 3: weekly limit
             if error:
                 raise error
             now = self.now()
-            conflicts = self._overlaps(resource_id, start, end)
+            conflicts = self._overlaps(resource_id, start, end, also_exclude=replaced_id)
             on_behalf = beneficiary.id != actor.id
             if urgent:
                 if conflicts:
@@ -81,6 +97,11 @@ class BookingsMixin:
                 self._audit(actor.id, "BOOKING_CREATED", "booking", booking.id, status=booking.status.value,
                             reason_code=booking.reason_code, hold_until=start.isoformat(), urgent=True,
                             urgent_reason=urgent_reason, booked_for=beneficiary.id if on_behalf else None)
+                self._created_notices(actor, beneficiary, booking)
+                self._notify_managers("URGENT_REQUEST", "Urgent request to decide",
+                                      f"{beneficiary.display_name} ({beneficiary.zid}) asks for {self._booking_label(booking)}. "
+                                      f"Reason: {urgent_reason}", booking, link="/admin/bookings",
+                                      except_ids={actor.id, beneficiary.id})
                 return booking, True
             if conflicts:
                 # Strict FIFO: someone earlier holds or owns this time, so queue behind them.
@@ -91,12 +112,37 @@ class BookingsMixin:
                 status, reason = BookingStatus.PENDING_APPROVAL, "AWAITING_REVIEW"
                 deadline = self._review_deadline(resource, start)
             booking = Booking(booking_id, beneficiary.id, resource_id, start, end, purpose.strip(), now, status, reason,
-                              review_due_at=deadline, updated_at=now, hold_until=deadline, created_by=actor.id)
+                              review_due_at=deadline, updated_at=now, hold_until=deadline, created_by=actor.id,
+                              replaces_id=replaced_id)
             self._save_booking(booking)
             self._audit(actor.id, "BOOKING_CREATED", "booking", booking.id, status=status.value, reason_code=reason,
                         hold_until=deadline.isoformat() if deadline else None,
-                        booked_for=beneficiary.id if on_behalf else None)
+                        booked_for=beneficiary.id if on_behalf else None, replaces=replaced_id)
+            self._created_notices(actor, beneficiary, booking)
             return booking, True
+
+    def _created_notices(self, actor, beneficiary, booking):
+        """Sprint 3: confirm a new request to the person it is for (also emailed when email is on)."""
+        if booking.status == BookingStatus.WAITLISTED:
+            state = "is on the waitlist: it moves up when the time frees"
+        elif booking.urgent:
+            state = "is waiting for a Manager (urgent request)"
+        else:
+            state = f"is waiting for review; if nobody decides by {self.describe_moment(booking.review_due_at, booking)}, the system decides by the rules"
+        if booking.replaces_id:  # Sprint 3 (1.16.0): change request
+            old = self.repo.get_booking(booking.replaces_id)
+            self._notify(beneficiary.id, "CHANGE_REQUESTED", "Change request received",
+                         f"We received your request to move your booking to {self._booking_label(booking)}. It {state}. "
+                         f"Your current booking ({self.describe_time(old) if old else 'the old time'}) stays until the new time is approved.",
+                         booking)
+            return
+        if beneficiary.id != actor.id:
+            self._notify(beneficiary.id, "BOOKING_CREATED_FOR_YOU", "Booking made for you",
+                         f"{actor.display_name} booked {self._booking_label(booking)} for you. It {state}.", booking)
+        else:
+            self._notify(beneficiary.id, "BOOKING_SUBMITTED", "Request received",
+                         f"We received your request for {self._booking_label(booking)}. It {state}. "
+                         "It is not confirmed until it is approved.", booking)
 
     def booking_for(self, actor, booking_id):
         booking = self.repo.get_booking(str(booking_id))
@@ -131,7 +177,7 @@ class BookingsMixin:
                                       409, error.details)
                 if error:
                     raise error
-                blockers = self._overlaps(source.resource_id, source.start, source.end, source.id)
+                blockers = self._overlaps(source.resource_id, source.start, source.end, source.id, source.replaces_id)
                 if any(item.status == BookingStatus.APPROVED for item in blockers):
                     raise DomainError("BOOKING_CONFLICT", "This period is still occupied by an approved booking.", 409)
                 if blockers:
@@ -162,7 +208,7 @@ class BookingsMixin:
             return revised
 
     def reschedule_booking(self, actor, booking_id, start, end):
-        """Manager only (client, 17 Oct): move someone's approved future booking to another valid free time.
+        """Manager only: move someone's approved future booking to another valid free time.
 
         Induction, opening hours, length, the latest booking date and conflicts still apply; the minimum
         advance window does not (a Manager may move a booking to an earlier date, as with an urgent request).
@@ -178,11 +224,15 @@ class BookingsMixin:
             if source.status != BookingStatus.APPROVED or source.start <= self.now():
                 raise DomainError("REQUEST_NOT_RESCHEDULABLE", "Only a future approved booking can be rescheduled.", 409)
             resource = self.resource(source.resource_id)
-            self._validate_period(resource, start, end)
-            if self._window_reason(resource, start) == "BOOKING_TOO_FAR_AHEAD":
-                self._validate_horizon(resource, start)
+            bypass = booking_rules_bypassed(actor, source.student_id)
+            if not bypass:
+                self._validate_period(resource, start, end)
+                if self._window_reason(resource, start) == "BOOKING_TOO_FAR_AHEAD":
+                    self._validate_horizon(resource, start)
             self._reject_duplicate_request(source.student_id, source.resource_id, start, end, source.id)
-            error = self.rule_violation(source.student_id, resource, start, end)
+            error = test_period_violation(self, resource, start, end) if bypass else (
+                self.rule_violation(source.student_id, resource, start, end) or (
+                    None if source.series_id else self._weekly_limit_violation(source.student_id, resource, start, source.id)))
             if error and error.code == "QUALIFICATION_REQUIRED":
                 raise DomainError("QUALIFICATION_NOT_VERIFIED", "A current qualification covering the new booking period is required.",
                                   409, error.details)

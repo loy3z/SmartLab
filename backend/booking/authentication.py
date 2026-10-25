@@ -17,7 +17,15 @@ def require_demo_mode():
 
 def issue_demo_token(principal):
     require_demo_mode()
-    return signing.dumps({"sub": principal.id}, salt="smartlab.demo.auth")
+    from .test_console import TEST_ACCOUNT_ID, TestPrincipal, require_test_console
+    payload = {"sub": principal.id}
+    if principal.id == TEST_ACCOUNT_ID:
+        require_test_console()
+        if not isinstance(principal, TestPrincipal):
+            raise AuthenticationFailed("Use the test console sign-in.", code="INVALID_TOKEN")
+        payload.update(test_console=True, test_role=principal.role.value,
+                       test_bypass=principal.bypass_booking_rules)
+    return signing.dumps(payload, salt="smartlab.demo.auth")
 
 class DemoIdentityProvider:
     def resolve_bearer(self, token):
@@ -30,9 +38,18 @@ class DemoIdentityProvider:
         except signing.BadSignature:
             raise AuthenticationFailed("Invalid token.", code="INVALID_TOKEN")
         from .runtime import get_service
+        from .test_console import TEST_ACCOUNT_ID, test_console_enabled, test_identity
         principal = get_service().repo.get_principal(payload.get("sub", ""))
         if not principal or not principal.active:
             raise AuthenticationFailed("The user is inactive or unknown.", code="INVALID_TOKEN")
+        if principal.id == TEST_ACCOUNT_ID or payload.get("test_console"):
+            if not (principal.id == TEST_ACCOUNT_ID and payload.get("test_console") is True
+                    and test_console_enabled() and isinstance(payload.get("test_bypass"), bool)):
+                raise AuthenticationFailed("Test console is unavailable.", code="INVALID_TOKEN")
+            try:
+                return test_identity(principal, payload["test_role"], payload["test_bypass"])
+            except (KeyError, ValueError):
+                raise AuthenticationFailed("Invalid test session.", code="INVALID_TOKEN")
         return principal
 
 class DisabledIdentityProvider:

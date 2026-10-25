@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 from ..domain import BookingStatus, ResourceKind
 from ..errors import DomainError
 from .base import ACTIVE_REQUEST_STATUSES
+from ..test_console import booking_rules_bypassed, test_availability, test_window
 
 
 class AvailabilityMixin:
@@ -29,6 +30,8 @@ class AvailabilityMixin:
             if excluded.resource_id != resource.id:
                 raise DomainError("VALIDATION_ERROR", "exclude_booking_id must be a booking for this resource.")
             exclude = excluded.id
+        if booking_rules_bypassed(actor, person.id):
+            return test_availability(self, actor, resource, day, duration_minutes, exclude)
         if not resource.active:
             raise DomainError("RESOURCE_UNAVAILABLE", "The resource is inactive.", 409)
         if duration_minutes < 1 or duration_minutes > resource.max_booking_minutes or duration_minutes % resource.slot_minutes:
@@ -37,6 +40,7 @@ class AvailabilityMixin:
         cursor = datetime.combine(day, resource.opening_time, zone).astimezone(UTC)
         closing = datetime.combine(day, resource.closing_time, zone).astimezone(UTC)
         eligibility, _ = self.qualification_state(person.id, resource)
+        frozen_person = self.repo.get_principal(person.id) or person  # Sprint 3: booking freeze
         own_requests = [item for item in self.repo.list_bookings(student_id=person.id, resource_id=resource.id)
                         if item.status in ACTIVE_REQUEST_STATUSES and item.id != exclude]
         slots = []
@@ -63,7 +67,9 @@ class AvailabilityMixin:
                 "resource_status": resource.status.value, "status_reason": resource.status_reason,
                 "review_window_minutes": resource.pending_hold_minutes,
                 # Everyone follows the same rules: the person's induction (and its prerequisites) must be current.
-                "can_request": person.active and eligibility == "VERIFIED" and resource.bookable,
+                "can_request": (person.active and eligibility == "VERIFIED" and resource.bookable
+                                and not frozen_person.frozen_at(self.now())),
+                "frozen_until": frozen_person.frozen_until if frozen_person.frozen_at(self.now()) else None,
                 "qualification_status": eligibility,
                 "missing_prerequisite_id": (self.missing_prerequisite(person.id, resource.required_qualification_id) or (None,))[0]
                 if eligibility == "PREREQUISITE_REQUIRED" else None,
@@ -78,12 +84,19 @@ class AvailabilityMixin:
         Same rules as ``availability`` (one shared check). Filters: kind (ROOM/EQUIPMENT), room_id (the room itself
         and the equipment kept in it), category (equipment type), query (name/location), bookable_only (the person
         may request it now), free_at (local "HH:MM": keep only resources free for the whole duration from then).
+
+        Sprint 3 (1.16.0): resources that cannot be booked for this length (longer than their maximum, or not a
+        multiple of their time step) are left out and counted in ``too_long`` instead of failing the whole page
+        (before, one such resource made the whole request fail with INVALID_DURATION).
+        Rows hidden by bookable_only are counted by reason in ``not_bookable`` (resource status when it is out of
+        service, FROZEN when the person's booking is frozen, otherwise their induction status), so the page can say
+        why nothing is shown.
         """
         self.process_due_requests()
         query = (query or "").strip().casefold()
         active = [item for item in self.repo.list_resources() if item.active]
         rooms = {item.id: item for item in active if item.kind == ResourceKind.ROOM}
-        rows = []
+        rows, too_long, not_bookable = [], 0, {}
         for resource in sorted(active, key=lambda item: (item.kind != ResourceKind.ROOM, item.name)):
             if kind and resource.kind.value != kind:
                 continue
@@ -93,8 +106,16 @@ class AvailabilityMixin:
                 continue
             if query and query not in f"{resource.name} {resource.location} {resource.category or ''}".casefold():
                 continue
+            maximum = 1440 if booking_rules_bypassed(actor) else resource.max_booking_minutes
+            if duration_minutes > maximum or duration_minutes % resource.slot_minutes:  # Sprint 3 (1.16.0)
+                too_long += 1
+                continue
             result = self._availability(actor, resource, day, duration_minutes)
             if bookable_only and not result["can_request"]:
+                status, induction = result["resource_status"], result["qualification_status"]
+                reason = (status if status != "AVAILABLE" else "FROZEN" if result["frozen_until"]
+                          else induction if induction != "VERIFIED" else "NOT_AVAILABLE")
+                not_bookable[reason] = not_bookable.get(reason, 0) + 1  # Sprint 3 (1.16.0)
                 continue
             if free_at is not None:
                 start = datetime.combine(day, free_at, ZoneInfo(resource.timezone)).astimezone(UTC)
@@ -105,7 +126,10 @@ class AvailabilityMixin:
                          **{key: result[key] for key in ("can_request", "qualification_status", "resource_status",
                                                          "status_reason", "slots")}})
         window = self._window_details(next(iter(active))) if active else {}
+        if booking_rules_bypassed(actor):
+            window = test_window(self)
         return {"date": day.isoformat(), "duration_minutes": duration_minutes, "timezone": "Australia/Sydney", **window,
+                "too_long": too_long, "not_bookable": not_bookable,  # Sprint 3 (1.16.0)
                 "rooms": [{"id": item.id, "name": item.name} for item in sorted(rooms.values(), key=lambda r: r.name)],
                 "categories": sorted({item.category for item in active if item.category}),
                 "count": len(rows), "results": rows}

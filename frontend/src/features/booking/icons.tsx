@@ -20,3 +20,5 @@ export const FlaskIcon = mk(<><path d="M9 3h6M10 3v6l-5 10a1 1 0 001 1h12a1 1 0 
 export const UserIcon = mk(<><circle cx="12" cy="8" r="4" /><path d="M4 21c1-4 4-6 8-6s7 2 8 6" /></>)
 export const LogoutIcon = mk(<><path d="M9 4H5v16h4M16 8l4 4-4 4M20 12H9" /></>)
 export const ChevronIcon = mk(<path d="M6 9l6 6 6-6" />)
+// Sprint 3 (1.16.0): Lab Setup in the menu.
+export const SlidersIcon = mk(<><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></>)

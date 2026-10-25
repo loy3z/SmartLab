@@ -1,7 +1,8 @@
 """Booking rules in one place, behind a small interface.
 
 Every number the client may want to change later (how far ahead people may book, how long a verified
-induction stays valid, the default admin review window for new resources) is read through a
+induction stays valid, the default admin review window for new resources, the weekly booking limit, check-in
+times, the missed-booking freeze and the longest weekly series) is read through a
 RulesProvider instead of being written into the booking code.
 
 * Today: SettingsRulesProvider reads environment variables (see config/settings.py and .env.example).
@@ -34,6 +35,21 @@ class BookingRules:
     qualification_validity_days: int = 120
     # Review window given to new resources (each resource can then have its own value).
     default_review_window_minutes: int = 1440
+    # Sprint 3 rules below. Each person may hold at most this many pending, waitlisted or approved bookings starting in one local
+    # week (Monday to Sunday). Weekly series made by staff do not count.
+    max_bookings_per_week: int = 3
+    # "I'm here" check-in is open from this many minutes before the start to this many minutes after it
+    # (never after the end). Not checking in by then is a missed booking (no-show).
+    check_in_opens_minutes: int = 15
+    check_in_closes_minutes: int = 30
+    # Booking is frozen for freeze_days when the missed-booking count reaches freeze_after_no_shows.
+    freeze_after_no_shows: int = 4
+    freeze_days: int = 30
+    # Longest weekly series a staff member may create.
+    max_series_weeks: int = 14
+    # Sprint 3 reminders: this many hours before an approved booking, and days before a verified induction expires.
+    reminder_hours_before: int = 24
+    induction_reminder_days: int = 14
 
     def __post_init__(self):
         _bounded_int("min_advance_days", self.min_advance_days, 0, 365)
@@ -42,6 +58,14 @@ class BookingRules:
             raise ValueError("min_advance_days must not exceed max_advance_days.")
         _bounded_int("qualification_validity_days", self.qualification_validity_days, 1, 3650)
         _bounded_int("default_review_window_minutes", self.default_review_window_minutes, 1, MAX_PENDING_HOLD_MINUTES)
+        _bounded_int("max_bookings_per_week", self.max_bookings_per_week, 1, 100)
+        _bounded_int("check_in_opens_minutes", self.check_in_opens_minutes, 0, 240)
+        _bounded_int("check_in_closes_minutes", self.check_in_closes_minutes, 1, 480)
+        _bounded_int("freeze_after_no_shows", self.freeze_after_no_shows, 1, 100)
+        _bounded_int("freeze_days", self.freeze_days, 1, 365)
+        _bounded_int("max_series_weeks", self.max_series_weeks, 1, 52)
+        _bounded_int("reminder_hours_before", self.reminder_hours_before, 1, 168)
+        _bounded_int("induction_reminder_days", self.induction_reminder_days, 1, 90)
 
 
 class RulesProvider(Protocol):
@@ -60,7 +84,7 @@ class StaticRulesProvider:
 
 
 class SettingsRulesProvider:
-    """Reads MIN_ADVANCE_DAYS, MAX_ADVANCE_DAYS, QUALIFICATION_VALIDITY_DAYS and DEFAULT_PENDING_HOLD_MINUTES."""
+    """Reads the rule environment variables listed in config/settings.py and .env.example."""
 
     def current(self) -> BookingRules:
         from django.conf import settings
@@ -69,4 +93,12 @@ class SettingsRulesProvider:
             max_advance_days=settings.MAX_ADVANCE_DAYS,
             qualification_validity_days=settings.QUALIFICATION_VALIDITY_DAYS,
             default_review_window_minutes=settings.DEFAULT_PENDING_HOLD_MINUTES,
+            max_bookings_per_week=settings.MAX_BOOKINGS_PER_WEEK,
+            check_in_opens_minutes=settings.CHECK_IN_OPENS_MINUTES,
+            check_in_closes_minutes=settings.CHECK_IN_CLOSES_MINUTES,
+            freeze_after_no_shows=settings.FREEZE_AFTER_NO_SHOWS,
+            freeze_days=settings.FREEZE_DAYS,
+            max_series_weeks=settings.MAX_SERIES_WEEKS,
+            reminder_hours_before=settings.REMINDER_HOURS_BEFORE,
+            induction_reminder_days=settings.INDUCTION_REMINDER_DAYS,
         )

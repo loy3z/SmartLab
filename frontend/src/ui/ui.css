@@ -14,6 +14,9 @@
 .ui-btn-reject { background: var(--card); color: var(--red); border-color: #f2c4c0; }
 .ui-btn-reject:hover:not(:disabled) { background: var(--red-bg); }
 .ui-btn-sm { min-height: 32px; padding: 5px 12px; font-size: 13px; }
+/* Sprint 3 (1.15.0): buttons change colour smoothly and dip slightly when pressed. */
+.ui-btn, .bk-btn-outline, .bk-pill, .ui-icon-btn { transition: background-color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), filter var(--motion-fast) var(--ease-out), transform 80ms var(--ease-out); }
+.ui-btn:active:not(:disabled), .bk-btn-outline:active:not(:disabled), .bk-pill:active, .ui-icon-btn:active:not(:disabled) { transform: scale(.97); }
 .ui-icon-btn { display: inline-grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); cursor: pointer; font-size: 20px; line-height: 1; color: var(--muted); }
 .ui-icon-btn:hover:not(:disabled) { color: var(--ink); background: var(--bg); }
 .ui-icon-btn:disabled { opacity: .5; cursor: default; }
@@ -39,6 +42,11 @@
 /* Confirm dialog */
 .ui-dialog { padding: 0; border: 0; border-radius: 16px; width: min(460px, calc(100vw - 32px)); box-shadow: 0 24px 60px rgba(17, 24, 39, .28); }
 .ui-dialog::backdrop { background: rgba(17, 24, 39, .45); }
+/* Sprint 3 (1.15.0): confirm dialogs rise into place. */
+.ui-dialog[open] { animation: ui-dialog-in var(--motion-base) var(--ease-out); }
+.ui-dialog[open]::backdrop { animation: ui-fade-in var(--motion-base) var(--ease-out); }
+@keyframes ui-dialog-in { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes ui-fade-in { from { opacity: 0; } to { opacity: 1; } }
 .ui-dialog-card { padding: 24px; display: flex; flex-direction: column; gap: 14px; }
 .ui-dialog-card h2 { font-size: 20px; font-weight: 800; }
 .ui-dialog-message { color: var(--muted); }
@@ -141,17 +149,22 @@
 .ui-tl { margin: 14px 0 6px; }
 .ui-tl-scroll { overflow-x: auto; padding-bottom: 4px; }
 .ui-tl-grid { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(26px, 1fr); min-width: 100%; }
+/* Sprint 3 (1.15.0): the grid gets a frame and a "now" line; colours below were reworked so the eye lands on
+   what is taken, not on the free time (free used to be the darkest colour and filled the whole screen). */
+.ui-tl-grid { position: relative; border: 1px solid #d5dde8; border-radius: 9px; overflow: hidden; }
+.ui-tl-now { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #d93025; pointer-events: none; z-index: 2; }
+.ui-tl-now::before { content: ''; position: absolute; top: -1px; left: -3px; width: 8px; height: 8px; border-radius: 50%; background: #d93025; }
 .ui-tl-hours { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(26px, 1fr); font-size: 11.5px; color: var(--muted); margin-bottom: 4px; }
 .ui-tl-hours span { white-space: nowrap; overflow: visible; }
-.ui-tl-cell { height: 46px; border: 0; border-right: 1px solid #fff; background: #2f80d1; cursor: pointer; padding: 0; position: relative; }
-.ui-tl-cell:first-child { border-radius: 8px 0 0 8px; }
-.ui-tl-cell:last-child { border-radius: 0 8px 8px 0; border-right: 0; }
-.ui-tl-cell:hover:not(:disabled) { filter: brightness(1.12); }
+/* Free (no extra class): light blue, darker on hover with a blue ring, so it reads as "click here". */
+.ui-tl-cell { height: 46px; border: 0; border-right: 1px solid #fff; background: #e8f1fd; cursor: pointer; padding: 0; position: relative; transition: background-color var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out); }
+.ui-tl-cell:last-child { border-right: 0; }
+.ui-tl-cell.is-free:hover:not(:disabled) { background: #c6dcfa; box-shadow: inset 0 0 0 2px #2f80d1; }
 .ui-tl-cell:focus-visible { outline: 3px solid var(--ink); outline-offset: -3px; z-index: 1; }
-.ui-tl-cell.is-taken { background: repeating-linear-gradient(135deg, #8a8f99 0 5px, #c4c8cf 5px 10px); }
-.ui-tl-cell.is-held { background: repeating-linear-gradient(135deg, #d9a21b 0 5px, #f3d98c 5px 10px); }
+.ui-tl-cell.is-taken { background: #5b6472; }
+.ui-tl-cell.is-held { background: repeating-linear-gradient(135deg, #e6a817 0 5px, #f8dd97 5px 10px); }
 .ui-tl-cell.is-mine { background: repeating-linear-gradient(135deg, #e0701b 0 5px, #f5b37c 5px 10px); cursor: not-allowed; }
-.ui-tl-cell.is-closed { background: #e4e6ea; cursor: not-allowed; }
+.ui-tl-cell.is-closed { background: repeating-linear-gradient(135deg, #e9ebef 0 4px, #f6f7f9 4px 8px); cursor: not-allowed; }
 .ui-tl-cell.is-sel { background: var(--yellow); box-shadow: inset 0 -4px 0 #b99a00; }
 .ui-tl-cell.is-sel.is-taken, .ui-tl-cell.is-sel.is-held { background: repeating-linear-gradient(135deg, #ffd400 0 5px, #fff0a3 5px 10px); }
 .ui-tl-cell.is-sel-start::after, .ui-tl-cell.is-sel-end::after { content: ''; position: absolute; top: 0; bottom: 0; width: 3px; background: #8a7300; }
@@ -161,12 +174,13 @@
 .ui-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
 .ui-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .ui-legend i { width: 16px; height: 12px; border-radius: 3px; display: inline-block; }
-.ui-legend .lg-free { background: #2f80d1; }
+.ui-legend .lg-free { background: #e8f1fd; box-shadow: inset 0 0 0 1px #b9cfee; }
 .ui-legend .lg-sel { background: var(--yellow); }
-.ui-legend .lg-taken { background: repeating-linear-gradient(135deg, #8a8f99 0 3px, #c4c8cf 3px 6px); }
-.ui-legend .lg-held { background: repeating-linear-gradient(135deg, #d9a21b 0 3px, #f3d98c 3px 6px); }
+.ui-legend .lg-taken { background: #5b6472; }
+.ui-legend .lg-held { background: repeating-linear-gradient(135deg, #e6a817 0 3px, #f8dd97 3px 6px); }
 .ui-legend .lg-mine { background: repeating-linear-gradient(135deg, #e0701b 0 3px, #f5b37c 3px 6px); }
-.ui-legend .lg-closed { background: #e4e6ea; }
+.ui-legend .lg-closed { background: repeating-linear-gradient(135deg, #dfe2e7 0 2px, #f6f7f9 2px 4px); box-shadow: inset 0 0 0 1px #dfe2e7; }
+.ui-legend .lg-now { width: 2px; height: 14px; border-radius: 0; background: #d93025; }
 .ui-tl-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ui-tl-head input[type=date] { min-height: 38px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; }
 .ui-tl-day { font-weight: 700; font-size: 16px; margin-right: auto; }
@@ -219,3 +233,62 @@
 .um-ind li { display: flex; justify-content: space-between; gap: 10px; }
 .um-invite { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .um-invite code { font-size: 13px; font-weight: 700; letter-spacing: .06em; padding: 2px 8px; border-radius: 6px; background: var(--bg); border: 1px dashed var(--line); }
+
+/* Sprint 3 (1.16.0): review list purpose, change requests, start/length selects, wide dialogs, guidance, contact. */
+.ui-clamp-2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; max-width: 260px; }
+.ui-change-from { color: #1f5fbf; }
+.ui-table tbody tr.is-attention { background: #fff6f5; }
+.ui-tl-inputs { display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 0 0; }
+.ui-tl-inputs label { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+.ui-tl-inputs select { min-height: 40px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); font-weight: 400; }
+.ui-dialog-wide { width: min(640px, calc(100vw - 32px)); }
+.ind-guide { margin-top: 8px; font-size: 14px; }
+.ind-guide summary { cursor: pointer; font-weight: 600; color: #1f5fbf; }
+.ind-guide dl { display: grid; gap: 6px; margin: 8px 0; }
+.ind-guide dt { font-weight: 600; font-size: 13px; color: var(--muted); }
+.ind-guide dd { margin: 0; white-space: pre-line; }
+.lab-contact h3 { margin-bottom: 8px; font-size: 18px; }
+.lab-contact dl { display: grid; gap: 6px; margin: 0; }
+.lab-contact dl > div { display: grid; grid-template-columns: 70px 1fr; gap: 8px; }
+.lab-contact dt { color: var(--muted); }
+.lab-contact dd { margin: 0; white-space: pre-line; }
+.lab-contact-link { font-size: 13.5px; }
+@media (max-width: 700px) {
+  .ind-steps { flex-wrap: wrap; row-gap: 4px; }      /* the progress steps no longer run off narrow screens */
+  .ui-tl-head { flex-wrap: nowrap; }
+  .ui-tl-head input[type=date] { min-width: 0; flex: 1; }
+  .ui-tl-day { display: none; }                      /* the date input already shows the day */
+}
+
+/* Sprint 3 (1.16.0): the staff "Today" page. */
+.today-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin: 18px 0 22px; }
+.today-card { display: flex; flex-direction: column; gap: 4px; padding: 16px; border: 1px solid var(--line); border-left: 4px solid #c9ced6; border-radius: 12px; background: var(--card); color: inherit; text-decoration: none; transition: transform var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out); }
+.today-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(17, 24, 39, .08); }
+.today-card.is-red { border-left-color: var(--red); }
+.today-card.is-amber { border-left-color: #e6a817; }
+.today-count { font-size: 30px; font-weight: 750; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.today-card.is-grey .today-count { color: var(--muted); }
+.today-label { font-weight: 600; }
+.today-card small { color: var(--muted); font-size: 12.5px; }
+.today-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.today-panel { padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.today-panel.is-wide { grid-column: 1 / -1; }
+.today-panel h2 { font-size: 18px; margin-bottom: 4px; }
+.today-panel h2 small { color: var(--muted); font-weight: 500; font-size: 14px; }
+.today-empty { margin-top: 10px; color: var(--muted); }
+.today-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.today-list a { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 10px 12px; border-radius: 8px; background: var(--bg); color: inherit; text-decoration: none; }
+.today-list a:hover { background: #eef1f5; }
+.today-meta { color: var(--muted); }
+.today-due { margin-left: auto; color: var(--red); font-weight: 600; }
+.today-timeline { list-style: none; margin: 10px 0 8px; padding: 0; display: grid; gap: 6px; }
+.today-timeline li { display: grid; grid-template-columns: 130px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 8px; background: var(--bg); }
+.today-time { font-variant-numeric: tabular-nums; font-weight: 600; }
+.today-att { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.today-att.is-checked_in { color: var(--green); }
+.today-att.is-no_show { color: var(--red); }
+@media (max-width: 800px) {
+  .today-grid { grid-template-columns: minmax(0, 1fr); }
+  .today-timeline li { grid-template-columns: minmax(0, 1fr) auto; }
+  .today-time { grid-column: 1 / -1; }
+}

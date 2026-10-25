@@ -57,12 +57,13 @@ export function InfoDisclosure({ summary, children }: { summary: string; childre
   )
 }
 
-export function EmptyState({ icon = '✓', title, children }: { icon?: ReactNode; title: string; children?: ReactNode }) {
+export function EmptyState({ icon = '✓', title, children, action }: { icon?: ReactNode; title: string; children?: ReactNode; action?: ReactNode }) {
   return (
     <div className="ui-empty">
-      <span className="ui-empty-icon" aria-hidden="true">{icon}</span>
+      <span className="ui-empty-icon" aria-hidden="true">{typeof icon === 'string' ? <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{icon === '✓' ? <path d="m5 12 4 4L19 6" /> : icon === '+' ? <path d="M12 5v14M5 12h14" /> : <path d="M6 12h12" />}</svg> : icon}</span>
       <h3>{title}</h3>
       {children && <p>{children}</p>}
+      {action && <div className="ui-empty-action">{action}</div>}
     </div>
   )
 }

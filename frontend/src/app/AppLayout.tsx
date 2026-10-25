@@ -8,9 +8,12 @@ import {
   HelpIcon,
   LogoutIcon,
   UserIcon,
+  SlidersIcon, // Sprint 3 (1.16.0)
 } from '../features/booking/icons'
 import type { User } from '../features/booking/types'
+import { NotificationBell } from '../features/notifications/NotificationBell' // Sprint 3
 import { homePath } from './routes'
+import { TestConsoleBar } from '../features/auth/TestConsoleBar'
 
 interface AppLayoutProps {
   user: User
@@ -21,6 +24,11 @@ interface NavItem {
   path: string
   label: string
   icon: ReactNode
+}
+
+interface NavSection {
+  label: string
+  items: NavItem[]
 }
 
 function DashboardIcon() {
@@ -86,22 +94,32 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
         { path: '/bookings', label: 'My Bookings', icon: <CalendarIcon /> },
         { path: '/induction', label: 'Induction & Training', icon: <CapIcon /> },
       ]
-  const staffItems: NavItem[] = isStaff ? [
-    { path: '/admin/qualifications', label: 'Qualification Review', icon: <CapIcon /> },
-    { path: '/admin/bookings', label: 'Booking Review', icon: <FileIcon /> },
-    { path: '/admin/calendar-sync', label: 'Calendar Sync', icon: <CalendarIcon /> },
-    ...(user.role === 'MANAGER' ? [
-      {
-        path: '/manager/bookings',
-        label: 'Room Management',
-        icon: <CalendarIcon />,
-      },
-      {
-        path: '/manager/users',
-        label: 'User Management',
-        icon: <UserIcon />,
-      },
-    ] : []),
+  const staffSections: NavSection[] = isStaff ? [
+    {
+      label: 'Daily work',
+      items: [
+        { path: '/admin/today', label: 'Today', icon: <DashboardIcon /> },
+        { path: '/admin/qualifications', label: 'Qualification Review', icon: <CapIcon /> },
+        { path: '/admin/bookings', label: 'Booking Review', icon: <FileIcon /> },
+        { path: '/admin/freezes', label: 'Booking Freezes', icon: <UserIcon /> },
+      ],
+    },
+    ...(user.role === 'MANAGER' ? [{
+      label: 'Lab management',
+      items: [
+        { path: '/manager/bookings', label: 'Room Management', icon: <CalendarIcon /> },
+        { path: '/manager/resources', label: 'Resources', icon: <FileIcon /> },
+        { path: '/manager/users', label: 'User Management', icon: <UserIcon /> },
+        { path: '/manager/setup', label: 'Lab Setup', icon: <SlidersIcon /> },
+      ],
+    }] : []),
+    {
+      label: 'Records & calendar',
+      items: [
+        { path: '/admin/records', label: 'Booking Records', icon: <FileIcon /> },
+        { path: '/admin/calendar-sync', label: 'Calendar Sync', icon: <CalendarIcon /> },
+      ],
+    },
   ] : []
 
   useEffect(() => {
@@ -163,19 +181,20 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
         <Link to={homePath(user.role)} aria-label="UNSW SmartLab portal home" onClick={mobile ? closeMobile : undefined}><AppBrand /></Link>
         {mobile && <button className="app-icon-button" aria-label="Close navigation" onClick={closeMobile}><span aria-hidden="true">×</span></button>}
       </div>
-      <div className="app-product-label">SMARTLAB <span>RESOURCE BOOKING</span></div>
-      <nav aria-label={mobile ? 'Mobile navigation' : 'Main navigation'} className="app-navigation">
+      <div className="app-product-label">SmartLab<span>LAB &amp; RESOURCE BOOKING</span></div>
+      <nav aria-label={mobile ? 'Mobile navigation' : 'Main navigation'} className={`app-navigation${isStaff ? ' is-staff' : ''}`}>
+        {isStaff && <p className="app-nav-label">Personal bookings</p>}
         {mainItems.map((item) => navLink(item, mobile))}
-        {staffItems.length > 0 && (
-          <div className="app-staff-navigation">
-            <p className="app-nav-label">Administration</p>
-            {staffItems.map((item) => navLink(item, mobile))}
+        {staffSections.map((section) => (
+          <div className="app-staff-navigation" key={section.label}>
+            <p className="app-nav-label">{section.label}</p>
+            {section.items.map((item) => navLink(item, mobile))}
           </div>
-        )}
+        ))}
       </nav>
       <div className="app-sidebar-footer">
         {navLink({ path: '/help', label: 'Help & Support', icon: <HelpIcon /> }, mobile)}
-        <p>University spaces, made accessible.</p>
+        <p>UNSW Sydney · Australia</p>
       </div>
     </>
   )
@@ -220,6 +239,7 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
             </button>
             <span className="app-portal-title">{roleLabel} Portal</span>
           </div>
+          <NotificationBell />{/* Sprint 3 */}
           <div className="app-account" ref={accountRef} onBlur={(event) => {
             if (!event.currentTarget.contains(event.relatedTarget)) setAccountOpen(false)
           }}>
@@ -244,7 +264,12 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
             )}
           </div>
         </header>
-        <main className="app-content" id="app-main" tabIndex={-1}><Outlet /></main>
+        {user.test_account && <TestConsoleBar user={user} />}
+        <main className="app-content" id="app-main" tabIndex={-1}>
+          {/* Sprint 3 (1.15.0): key={pathname} re-mounts this wrapper on each page change, so the page fades in.
+              Query changes (e.g. switching tabs) keep the same key and do not fade. */}
+          <div key={pathname} className="app-page"><Outlet /></div>
+        </main>
         <footer className="app-workspace-footer"><span>SmartLab · UNSW Sydney</span><Link to="/help">Help & Support <span aria-hidden="true">↗</span></Link></footer>
       </div>
     </div>

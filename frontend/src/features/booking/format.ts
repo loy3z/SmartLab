@@ -17,8 +17,14 @@ const dayKey = new Intl.DateTimeFormat('en-CA', { timeZone: TZ })
 /** "Mon 19 Oct" in Sydney time. */
 export const fmtDay = (iso: string) => dayLabel.format(new Date(iso))
 
-/** "1 h 30 min", "45 min", "2 h". */
+/** Sprint 3: booking lengths in hours everywhere: "0.5 h", "1 h", "1.5 h", "0.75 h" (15-minute resources). */
 export function fmtDuration(minutes: number): string {
+  const hours = Math.max(0, Math.round(minutes)) / 60
+  return `${Number(hours.toFixed(2))} h`
+}
+
+/** Elapsed time for "in … / … ago": "45 min", "2 h 5 min" (hours with decimals read badly here). */
+function fmtSpan(minutes: number): string {
   const m = Math.max(0, Math.round(minutes))
   const h = Math.floor(m / 60)
   const rest = m % 60
@@ -40,7 +46,7 @@ export function fmtRange(start: string, end: string): string {
 export function fmtRelative(iso: string, now: number): string {
   const diff = Math.round((Date.parse(iso) - now) / 60000)
   if (Math.abs(diff) < 1) return 'just now'
-  const text = Math.abs(diff) >= 2880 ? `${Math.round(Math.abs(diff) / 1440)} days` : fmtDuration(Math.abs(diff))
+  const text = Math.abs(diff) >= 2880 ? `${Math.round(Math.abs(diff) / 1440)} days` : fmtSpan(Math.abs(diff))
   return diff > 0 ? `in ${text}` : `${text} ago`
 }
 
@@ -64,7 +70,9 @@ export function bookingDetail(b: Booking): string {
     case 'APPROVED':
       return b.reason_code === 'AUTO_APPROVED_AFTER_REVIEW_WINDOW'
         ? 'Your booking is confirmed. It was approved automatically because no admin decided within the review period.'
-        : 'Your booking is confirmed.'
+        : b.series_id // Sprint 3: weekly series
+          ? 'Confirmed: part of a weekly series made by staff.'
+          : 'Your booking is confirmed.'
     case 'WAITING_QUALIFICATION':
       return b.hold_active && b.hold_until
         ? `This time is held for you until ${fmtDateTime(b.hold_until)}. If your induction is not approved by then, you will join the waitlist.`
@@ -94,7 +102,11 @@ export function bookingDetail(b: Booking): string {
           ? `This request was rejected automatically at the end of the review period${b.decision_reason ? `: ${b.decision_reason}` : '.'}`
           : `This request was rejected${b.decision_reason ? `: ${b.decision_reason}` : '.'}`
     case 'CANCELLED':
-      return 'This request was cancelled.'
+      return b.reason_code === 'ACCOUNT_FROZEN' // Sprint 3: booking freeze
+        ? 'Cancelled because booking was frozen after missed check-ins.'
+        : b.reason_code === 'CANCELLED_BY_STAFF'
+          ? 'This booking was cancelled by staff.'
+          : 'This request was cancelled.'
     case 'EXPIRED':
       return 'The start time passed before this request was approved.'
   }
@@ -215,4 +227,22 @@ export function submittedMessage(b: Booking): { title: string; message: string }
     title: 'Request submitted',
     message: `${when}. Waiting for admin approval${b.review_due_at ? ` (decided by ${fmtDateTime(b.review_due_at)})` : ''}.`,
   }
+}
+
+// Sprint 3 (1.16.0): shared wording for the booking form and the change-time box.
+
+/** What still stops a request from being sent, in the order the form is filled in ('' when nothing does). */
+export function submitBlocker(state: { ready: boolean; canRequest: boolean; hasTime: boolean; hasPurpose: boolean; needsReason: boolean }): string {
+  if (!state.ready) return 'Check the zID first.'
+  if (!state.canRequest) return 'This cannot be requested yet: see the message above.'
+  if (!state.hasTime) return 'Choose a time above.'
+  if (!state.hasPurpose) return 'Add a purpose to send the request.'
+  if (state.needsReason) return 'Say why the request is urgent.'
+  return ''
+}
+
+/** Rooms and equipment are booked separately: what each booking does not include. */
+export const SEPARATE_BOOKING_TEXT: Record<'ROOM' | 'EQUIPMENT', string> = {
+  ROOM: 'Booking a room does not include the equipment kept in it: book each item you need separately.',
+  EQUIPMENT: 'Booking equipment does not reserve the room it is kept in: book the room separately if you need it.',
 }

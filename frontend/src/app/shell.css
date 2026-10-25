@@ -66,9 +66,17 @@
 .app-nav-link.is-active::before { position: absolute; content: ''; width: 4px; left: 0; top: 0; bottom: 0; border-radius: 6px 0 0 6px; background: var(--app-yellow, #ffdf00); }
 .app-staff-navigation { margin-top: 20px; padding-top: 17px; border-top: 1px solid var(--app-border, #e5e7ec); }
 .app-nav-label { margin: 0 16px 8px; color: #808898; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.4px; }
+.app-navigation.is-staff { gap: 2px; }
+.app-navigation.is-staff .app-nav-link { min-height: 42px; padding-top: 9px; padding-bottom: 9px; }
+.app-navigation.is-staff > .app-nav-label { margin-top: 2px; margin-bottom: 4px; }
+.app-navigation.is-staff .app-staff-navigation { margin-top: 14px; padding-top: 12px; }
 .app-sidebar-footer { padding-top: 28px; }
 .app-sidebar-footer > p { margin: 11px 16px 0; color: #8a909b; font-size: 10px; line-height: 1.7; }
 .app-workspace { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.test-console-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 20px; padding: 12px 24px; border-bottom: 1px solid #e8c95c; background: #fff8d5; font-size: 13px; }
+.test-console-bar label { display: inline-flex; align-items: center; gap: 8px; }
+.test-console-bar select { padding: 5px 8px; border: 1px solid #cabd8b; border-radius: 6px; background: #fff; }
+.test-console-bar > span { color: #68591f; }
 .app-topbar {
   position: sticky;
   top: 0;
@@ -100,6 +108,9 @@
 .app-account-menu svg { color: #647084; flex: none; }
 .app-content { flex: 1; width: 100%; max-width: 1510px; padding: 34px 36px 40px; margin: 0 auto; min-width: 0; }
 .app-content:focus { outline: none; }
+/* Sprint 3 (1.15.0): page fade-in. Opacity only: a transform here would break position: fixed dialogs inside. */
+.app-page { animation: app-page-in var(--motion-base) var(--ease-out); }
+@keyframes app-page-in { from { opacity: 0; } to { opacity: 1; } }
 .app-content h1 { font-size: clamp(27px, 2.5vw, 36px); line-height: 1.2; font-weight: 750; letter-spacing: -1px; }
 .app-content h2 { letter-spacing: -.35px; }
 .app-workspace-footer { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin: 0 36px; padding: 18px 0; border-top: 1px solid var(--app-border); color: #818a98; font-size: 11px; }

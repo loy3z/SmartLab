@@ -4,26 +4,36 @@ import { useAuth } from '../features/auth/auth-context'
 import { LoginPage } from '../features/auth/LoginPage'
 import { MockSsoPage } from '../features/auth/MockSsoPage'
 import { StaffLoginPage } from '../features/auth/StaffLoginPage'
+import { TestLoginPage } from '../features/auth/TestLoginPage'
 import { BookingApp } from '../features/booking/BookingApp'
 import { MyBookings } from '../features/booking/MyBookings'
 import { InductionPage } from '../features/induction/InductionPage'
 import { QualificationReviewPage } from '../features/admin/QualificationReviewPage'
 import { BookingReviewPage } from '../features/admin/BookingReviewPage'
 import { CalendarSyncPage } from '../features/admin/CalendarSyncPage'
+// Sprint 3 pages
+import { FreezesPage } from '../features/admin/FreezesPage'
 import { ManagerBookingsPage } from '../features/manager/ManagerBookingsPage'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { AppLayout } from './AppLayout'
 import { AccountPage, HelpPage } from './UtilityPages'
 import { ManagerUsersPage } from '../features/manager/ManagerUsersPage'
+import { ManagerResourcesPage } from '../features/manager/ManagerResourcesPage'
+import { BookingRecordsPage } from '../features/records/BookingRecordsPage' // Sprint 3
+import { TodayPage } from '../features/admin/TodayPage' // Sprint 3 (1.16.0)
+import { LabSetupPage } from '../features/manager/LabSetupPage' // Sprint 3 (1.16.0)
 import { canAccess, homePath, isKnownPath, loginDestination, normalizePath } from './routes'
 
 const titles: Record<string, string> = {
   '/dashboard': 'Dashboard', '/resources': 'Book a resource', '/bookings': 'My bookings',
   '/induction': 'Induction & training', '/admin/qualifications': 'Qualification review',
-  '/admin/bookings': 'Booking review', '/admin/calendar-sync': 'Calendar sync', '/manager/bookings': 'Room management',
+  '/admin/bookings': 'Booking review', '/admin/freezes': 'Booking freezes', '/admin/calendar-sync': 'Calendar sync', '/manager/bookings': 'Room management',
   '/account': 'Account details', '/help': 'Help & support', '/login': 'Sign in',
-  '/login/mock-sso': 'Demo university sign-in', '/staff/login': 'Staff sign-in',
+  '/login/mock-sso': 'Demo university sign-in', '/staff/login': 'Staff sign-in', '/test/login': 'Test console',
   '/manager/users': 'User management',
+  '/manager/resources': 'Resources',
+  '/admin/records': 'Booking records',
+  '/admin/today': 'Today', '/manager/setup': 'Lab setup', // Sprint 3 (1.16.0)
 }
 
 function useSignOut() {
@@ -40,11 +50,12 @@ function useSignOut() {
 }
 
 // Public route: a successful login returns to an allowed deep link or the role's home.
-function LoginRoute({ page = 'student' }: { page?: 'student' | 'mock-sso' | 'staff' }) {
+function LoginRoute({ page = 'student' }: { page?: 'student' | 'mock-sso' | 'staff' | 'test' }) {
   const { user, notice } = useAuth()
   const location = useLocation()
   if (user) return <Navigate to={loginDestination(location.state, user.role)} replace state={null} />
   if (page === 'staff') return <StaffLoginPage notice={notice} />
+  if (page === 'test') return <TestLoginPage />
   return page === 'mock-sso' ? <MockSsoPage notice={notice} /> : <LoginPage notice={notice} />
 }
 
@@ -126,6 +137,7 @@ export function AppRouter() {
       <Route path="/login" caseSensitive element={<LoginRoute />} />
       <Route path="/login/mock-sso" caseSensitive element={<LoginRoute page="mock-sso" />} />
       <Route path="/staff/login" caseSensitive element={<LoginRoute page="staff" />} />
+      <Route path="/test/login" caseSensitive element={<LoginRoute page="test" />} />
       <Route element={<ProtectedLayout />}>
         <Route index element={auth.user && <Navigate to={homePath(auth.user.role)} replace />} />
         <Route element={<RequireAccess />}>
@@ -133,11 +145,18 @@ export function AppRouter() {
           <Route path="/resources" caseSensitive element={<BookingApp onBooked={() => { void navigate('/bookings') }} />} />
           <Route path="/bookings" caseSensitive element={<MyBookings refreshKey={0} />} />
           <Route path="/induction" caseSensitive element={<InductionPage />} />
+          <Route path="/admin/today" caseSensitive element={<TodayPage />} />{/* Sprint 3 (1.16.0) */}
           <Route path="/admin/qualifications" caseSensitive element={<QualificationReviewPage />} />
           <Route path="/admin/bookings" caseSensitive element={<BookingReviewPage />} />
+          {/* Sprint 3 */}
+          <Route path="/admin/freezes" caseSensitive element={<FreezesPage />} />
           <Route path="/admin/calendar-sync" caseSensitive element={<CalendarSyncPage />} />
           <Route path="/manager/bookings" caseSensitive element={<ManagerBookingsPage />} />
           <Route path="/manager/users" caseSensitive element={<ManagerUsersPage />} />
+          <Route path="/manager/resources" caseSensitive element={<ManagerResourcesPage />} />
+          <Route path="/admin/records" caseSensitive element={<BookingRecordsPage />} />
+          <Route path="/manager/setup" caseSensitive element={<LabSetupPage />} />{/* Sprint 3 (1.16.0) */}
+          <Route path="/manager/usage" caseSensitive element={<Navigate to="/admin/records?tab=usage" replace />} />
           <Route path="/account" caseSensitive element={auth.user && <AccountPage user={auth.user} />} />
           <Route path="/help" caseSensitive element={auth.user && <HelpPage user={auth.user} />} />
         </Route>

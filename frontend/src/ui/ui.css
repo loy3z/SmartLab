@@ -16,7 +16,7 @@
 .ui-btn-sm { min-height: 32px; padding: 5px 12px; font-size: 14px; }
 /* Sprint 3 (1.15.0): buttons change colour smoothly and dip slightly when pressed. */
 .ui-btn, .bk-btn-outline, .bk-pill, .ui-icon-btn { transition: background-color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), filter var(--motion-fast) var(--ease-out), transform 80ms var(--ease-out); }
-.ui-btn:active:not(:disabled), .bk-btn-outline:active:not(:disabled), .bk-pill:active, .ui-icon-btn:active:not(:disabled) { transform: scale(.97); }
+.bk-pill:active, .ui-icon-btn:active:not(:disabled) { transform: scale(.97); }
 .ui-icon-btn { display: inline-grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); cursor: pointer; font-size: 20px; line-height: 1; color: var(--muted); }
 .ui-icon-btn:hover:not(:disabled) { color: var(--ink); background: var(--bg); }
 .ui-icon-btn:disabled { opacity: .5; cursor: default; }

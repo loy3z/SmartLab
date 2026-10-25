@@ -107,9 +107,7 @@
 .app-account-menu svg { color: #647084; flex: none; }
 .app-content { flex: 1; width: 100%; max-width: 1510px; padding: 34px 36px 40px; margin: 0 auto; min-width: 0; }
 .app-content:focus { outline: none; }
-/* Sprint 3 (1.15.0): page fade-in. Opacity only: a transform here would break position: fixed dialogs inside. */
-.app-page { animation: app-page-in var(--motion-base) var(--ease-out); }
-@keyframes app-page-in { from { opacity: 0; } to { opacity: 1; } }
+/* Sprint 3 (1.15.0) page fade-in lived here; the one active rule is .app-page in ui/workspace.css (2026-10-25 cleanup). */
 .app-content h2 { letter-spacing: -.35px; }
 .app-workspace-footer { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin: 0 36px; padding: 18px 0; border-top: 1px solid var(--app-border); color: #818a98; font-size: 12px; }
 .app-workspace-footer a { color: #667083; text-decoration: none; }

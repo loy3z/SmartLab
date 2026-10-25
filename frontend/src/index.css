@@ -29,8 +29,4 @@ body { margin: 0; }
 h1, h2, h3, h4, p { margin: 0; }
 button, input, select, textarea { font: inherit; color: inherit; }
 
-/* Sprint 3 (1.15.0): when the system asks for less motion, every animation and transition is cut to
-   (almost) nothing, so nothing moves but state changes still happen. */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; scroll-behavior: auto !important; }
-}
+/* Sprint 3 (1.15.0) reduced-motion rule lived here; the one active rule is in ui/workspace.css (2026-10-25 cleanup, includes ::backdrop). */

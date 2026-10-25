@@ -239,6 +239,8 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | GET | `notifications/?unread=&limit=50` | 我的通知，最新在前，带 `unread_count` |
 | POST | `notifications/{id}/read/` | 标为已读 |
 | POST | `notifications/read-all/` | 全部标为已读 |
+| GET | `notifications/preferences/` | 我的通知类别开关（没有保存过的类别默认开启） |
+| PUT | `notifications/preferences/` | 保存开关：`{"preferences": {"bookings": true, "reminders": false}}`，未知类别返回 400 |
 | GET / POST | `account/unfreeze-requests/` | 我的解冻申请／提交解冻申请 `{"reason": "…"}` |
 | GET | `admin/unfreeze-requests/?status=PENDING` | Admin／Manager：解冻申请 |
 | POST | `admin/unfreeze-requests/{id}/review/` | Admin／Manager：`decision: APPROVED\|REJECTED`，拒绝要写 `reason` |

@@ -52,7 +52,7 @@
 - **后端**：
   - `booking/services/calendar_feed.py`：`calendar_feed`（生成或重置随机码）、`calendar_feed_events`（订阅里有哪些预约）。
   - `booking/ics.py`：`render_calendar`（iCalendar 文本）。
-  - `views.py`：`CalendarLinkView`、`CalendarLinkResetView`、`CalendarFeedView`。
+  - `views/calendar.py`：`CalendarLinkView`、`CalendarLinkResetView`、`CalendarFeedView`。
 - **接口**：`GET calendar/link/`、`POST calendar/link/reset/`、`GET calendar/{token}.ics`（不需要登录，随机码就是钥匙）。
 - **前端**：`features/booking/CalendarSubscribe.tsx`，地址拼接在 `features/booking/attendance.ts` 的 `calendarUrl`。
 - **数据**：表 `calendar_feed`。
@@ -182,8 +182,8 @@
 
 - **后端**：
   - `services/resources.py` `booking_report` 新增 `query`（zID 或姓名的一部分，预约人或创建人）。
-  - `serializers.py` `AdminBookingQuerySerializer` 新增 `q`；`views.py` `staff_booking_rows` 把它传下去。
-  - `views.py` `AdminBookingExportView` 改为 Admin 也能用，CSV 加 Weekly series、Attendance 两列；`services/reports.py` `usage_report` 改为 Admin 也能用。
+  - `serializers.py` `AdminBookingQuerySerializer` 新增 `q`；`views/admin.py` `staff_booking_rows` 把它传下去。
+  - `views/admin.py` `AdminBookingExportView` 改为 Admin 也能用，CSV 加 Weekly series、Attendance 两列；`services/reports.py` `usage_report` 改为 Admin 也能用。
 - **接口**：`GET admin/bookings/?q=`、`GET admin/bookings/export/?q=`。
 - **前端**：
   - 页面 `features/records/BookingRecordsPage.tsx`（Records 和 Usage statistics 两个标签），筛选换成接口参数在 `features/records/records.ts`（`recordQuery`、`sydneyMidnight`、`creatorText`、`attendanceText`）。
@@ -222,7 +222,7 @@
 - **申请改期**：
   - 后端：`services/changes.py`（`ChangesMixin`）`request_time_change`（谁能申请、什么时候能申请）、`open_change_for`、`_apply_time_change`（新申请批准时取消原预约，在 `base.py` `_save_booking` 里调用）。`bookings.py` `create_booking` 的 `replaces` 参数：重复、每周上限和冲突检查都排除原预约；`checks.py` `_overlaps` 的 `also_exclude`；`waitlist.py` 递补时同样排除。通知在 `notifications.py`（`CHANGE_REQUESTED`／`CHANGE_APPROVED`／`CHANGE_REJECTED`，`_old_time_note`）。
   - 数据：`Booking.replaces_id`；数据库 `booking.replaces_id` 和部分唯一索引 `booking_one_open_change_idx`（一个预约只能有一个待处理的改期）。
-  - 接口：`POST bookings/{id}/change/`（`views.py` `BookingChangeView`）；预约 JSON 新增 `replaces_booking`、`open_change`。
+  - 接口：`POST bookings/{id}/change/`（`views/bookings.py` `BookingChangeView`）；预约 JSON 新增 `replaces_booking`、`open_change`。
   - 前端：`features/booking/ChangeTimeBox.tsx`、`change-requests.ts`（`canAskForChange`、`openChangeText`、`replacesText`、`changeSentMessage`）；`MyBookings.tsx` 的 Change time；`SlotPicker.tsx` 的 `takenNote`（选到被占用的时间时提示只能候补）。
 - **维修和关闭通知**：`services/resources.py` `set_resource_status` → `_notify_status_change`（`RESOURCE_OUT_OF_SERVICE`／`RESOURCE_REOPENED`，每个受影响的预约一条，状态真的变了才发）；邮件类型在 `settings.py` `EMAIL_NOTIFICATION_KINDS`。前端 `ManagerBookingsPage.tsx` 的确认框和 `is-attention` 行。
 - **联系方式**：`domain.py` `SiteContact`；`services/site_contact.py`（`site_contact`、`update_site_contact`）；新表 `site_contact`（只有一行）；接口 `GET/PATCH site/contact/`（`SiteContactView`）。前端 `features/contact/contact.ts`（`hasContact`、`mailtoLink`）、`site-contact-store.ts`（`useSiteContact`）、`LabContact.tsx`（`LabContactCard`、`ContactLink`），用在 Help、My Bookings 和 induction 说明里。
@@ -269,7 +269,7 @@
 - **后端**：
   - 实体和存储：`domain.py`、`repository.py`、`postgres.py`
   - 规则和配置：`rules.py`、`config/settings.py`、`.env.example`
-  - 接口：`serializers.py`、`views.py`、`urls.py`、`middleware.py`
+  - 接口：`serializers.py`、`views/`、`urls.py`、`middleware.py`
   - 业务（`booking/services/`）：`__init__.py`、`accounts.py`、`availability.py`、`base.py`、`bookings.py`、`checks.py`、`qualifications.py`、`resources.py`、`waitlist.py`
   - 命令：`management/commands/process_due.py`
   - 数据库：`database/schema.sql`
@@ -292,7 +292,7 @@
 | ID | Main code and entry points | Verification |
 | --- | --- | --- |
 | FC-01 | `frontend/src/features/booking/BookingForm.tsx`: one required urgent explanation, shared request values | `TestConsoleAPITests.test_urgent_shared_description_is_saved_and_directly_approved`; interactive browser verification remains pending |
-| FC-02 | `backend/booking/test_console.py`: gates, ephemeral signed identity, self-only booking policy, time views; `authentication.py`, `views.py`, `serializers.py`, `urls.py`: `auth/test-login/`, `auth/test-session/`; `services/bookings.py`, `availability.py`, `series.py`: create/move/recurrence; `services/base.py`, `notification_channels.py`: suppress external delivery | `backend/booking/tests/test_test_console.py` (15 API cases including ordinary-account protection, disabled gates, conflicts, recurrence and moves) |
+| FC-02 | `backend/booking/test_console.py`: gates, ephemeral signed identity, self-only booking policy, time views; `authentication.py`, `views/`, `serializers.py`, `urls.py`: `auth/test-login/`, `auth/test-session/`; `services/bookings.py`, `availability.py`, `series.py`: create/move/recurrence; `services/base.py`, `notification_channels.py`: suppress external delivery | `backend/booking/tests/test_test_console.py` (15 API cases including ordinary-account protection, disabled gates, conflicts, recurrence and moves) |
 | FC-02 UI | `features/auth/TestLoginPage.tsx`, `TestConsoleBar.tsx`; `AppRouter.tsx`, `AppLayout.tsx`, `LoginPage.tsx`; booking `SlotPicker.tsx`, `FindTime.tsx`, `ResourceCard.tsx`, `RecurringBookingForm.tsx`, `ChangeTimeBox.tsx`, `change-requests.ts`; `UtilityPages.tsx` hides password form on the test account | Frontend unit, lint and build; real browser checks remain pending |
 | FC-03 | `features/induction/InductionPage.tsx`, `evidence.ts`, booking `booking.css`: required evidence and English picker | `frontend/tests/evidence.test.mjs`; backend existing multipart file validation |
 
@@ -323,7 +323,7 @@ Review fixes (Claude). R1–R7 use the IDs of the code review in project docs `c
 
 ## 19. Account 1 induction access (1.17.1)
 
-FC-04: `backend/booking/test_console.py::_grant_test_inductions` grants all requirements as permanent VERIFIED records without files. `get_test_account` and `authentication.py::DemoIdentityProvider.resolve_bearer` cover login and existing sessions; new requirements are picked up automatically. `views.py::submission_json` returns an empty file URL for fileless grants. `frontend/src/features/induction/InductionPage.tsx` hides the evidence form for the test account. No schema change.
+FC-04: `backend/booking/test_console.py::_grant_test_inductions` grants all requirements as permanent VERIFIED records without files. `get_test_account` and `authentication.py::DemoIdentityProvider.resolve_bearer` cover login and existing sessions; new requirements are picked up automatically. `views/_common.py::submission_json` returns an empty file URL for fileless grants. `frontend/src/features/induction/InductionPage.tsx` hides the evidence form for the test account. No schema change.
 
 Verification: `TestConsoleAPITests.test_all_inductions_are_permanent_fileless_and_survive_role_switches`, `test_existing_session_receives_new_requirements_without_duplicate_grants`, `test_bypass_off_keeps_inductions_but_restores_windows_and_approval`; routing test `test account 1 has verified inductions without an evidence upload form`. Existing tests retain ordinary-account restrictions, disabled-console rejection, conflict checks and self-only bypass.
 
@@ -339,3 +339,29 @@ Direction (Loy): a school's internal tool, not award-site styling. Task list: pr
 | AI-6 naming | `src/app/AppLayout.tsx` (menu), `app/AppRouter.tsx` (`titles`), page H1s; `features/booking/format.ts` `fmtClock`, `fmtHours` used by `ResourceCard.tsx`, `BookingForm.tsx`, `manager/ManagerResourcesPage.tsx`, `FindTime.tsx` | Unit tests: menu label = tab title, sentence case; `fmtClock`/`fmtHours`; routing tests find pages by the new names |
 
 Also: `tests/routing.spec.ts` “book a resource keeps missing inductions open…” now waits for the Induction page before going back (it could collapse both navigations into one).
+
+## 21. Code structure cleanup (2026-10-25)
+
+No API, schema or booking-rule change. Report: project docs `claude/reports/2026-10-25-code-structure-review.md`.
+
+| ID | Code locations | Verification |
+| --- | --- | --- |
+| SC-1 | `backend/booking/views/` (split from `views.py`): `_common.py`, `auth.py`, `resources.py`, `bookings.py`, `admin.py`, `outlook.py`, `notifications.py`, `calendar.py`, `series.py`, `unfreeze.py`, `misc.py`; `__init__.py` re-exports the same names | Backend test suite (355, 18 PostgreSQL skipped), Django system check |
+| SC-2 | Frontend: `features/booking/RescheduleBox.tsx`, `SeriesCard.tsx`, `slot-picker.ts`; `MyBookings.tsx` and `SlotPicker.tsx` import them; `ManagerBookingsPage.tsx` imports `RescheduleBox` from its new file | Frontend unit (68), lint, build, Playwright routing tests |
+| SC-3 | Dead motion code removed: duplicate `.app-page` in `app/shell.css`, duplicate dialog fade in `ui/workspace.css`, second reduced-motion rule in `index.css`, pressed-scale for `.ui-btn` in `ui/ui.css`, and the `animation: none` override for `.nt-ring`; the single reduced-motion rule now includes `::backdrop` | grep; frontend checks |
+| SC-4 | `src/App.css` deleted (no import). | lint/build |
+| SC-5 | Style layering documented in `frontend/README.md` (“Style layers”). | review |
+
+## 22. Notification preferences and induction notice (1.18.0)
+
+No booking-rule change. Migration 008 adds `notification_preference`.
+
+| ID | Code locations | Verification |
+| --- | --- | --- |
+| NP-1 | `backend/booking/domain.py` `NotificationPreference`; `repository.py`, `postgres.py` (save/list); `services/notifications.py` `NOTIFICATION_CATEGORIES`, `notification_category`, `_notify` filter, `notification_preferences`, `save_notification_preferences`; `views/notifications.py` `NotificationPreferencesView`; `urls.py` `notifications/preferences/`; `serializers.py` `NotificationPreferencesSerializer` | `booking/tests/test_notification_preferences.py` (6 cases: defaults, switch off/on, per person, unknown category) |
+| NP-2 | `services/qualifications.py` `submit_qualification` sends `INDUCTION_SUBMITTED` (respects the induction switch) | same test file |
+| NP-3 | Frontend: `features/notifications/NotificationPreferences.tsx`, `app/UtilityPages.tsx` Account card; `features/booking/api.ts` `getNotificationPreferences`/`saveNotificationPreferences`; `types.ts` `NotificationPreference`; `ui/workspace.css` `.app-pref-list` | unit, lint, build, routing tests (mock `notifications/preferences/`) |
+| NP-4 | `ui/workspace.css`: `.bk-earlier .bk-linkbtn` is a yellow button (urgent route) | visual |
+| NP-5 | `features/auth/LoginPage.tsx`: "Other demo sign-in options" removed; its routing test deleted | routing tests |
+| DB | `database/migrations/008_notification_preferences.sql`, `schema.sql` `notification_preference` | `check-local.sh schema` |
+| Docs | `backend/docs/openapi.json` 1.18.0 (69 routes), `backend/docs/frontend-api.md`, CHANGELOG 1.18.0 | openapi check |

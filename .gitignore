@@ -1,2 +1,14 @@
 .DS_Store
 ~$*.docx
+
+# Sprint 3 (2026-10-25): Docker deployment and local artefacts.
+.env.docker
+.env
+backend/.local
+__pycache__/
+*.pyc
+frontend/node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+backend/start-backend.ps1

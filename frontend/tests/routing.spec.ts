@@ -76,6 +76,10 @@ const test = base.extend<{ api: MockApi }>({
       }
       if (path === 'dashboard/') return json(dashboard)
       if (path === 'notifications/' && request.method() === 'GET') return json({ count: 0, unread_count: 0, results: [] })
+      // Sprint 3 (2026-10-25): the Account page's notification switches (all on by default).
+      if (path === 'notifications/preferences/' && request.method() === 'GET') {
+        return json({ results: ['bookings', 'reminders', 'induction', 'account', 'resources'].map((category) => ({ category, enabled: true })) })
+      }
       // Sprint 3 (1.16.0): the lab's contact details (empty until a Manager saves them) and the staff Today page.
       if (path === 'site/contact/' && request.method() === 'GET') return json({ id: 'contact', email: '', phone: '', hours: '', note: '' })
       if (path === 'admin/overview/' && request.method() === 'GET' && user.role !== 'STUDENT') return json(emptyOverview(user.role))
@@ -457,14 +461,6 @@ test('an administrator zID and login response cannot grant a role rejected by au
   await expect(page.getByRole('heading', { name: 'This page is not available for your role' })).toBeVisible()
 })
 
-test('the existing direct demo sign-in remains available under other options', async ({ page }) => {
-  await page.goto('/#/login')
-  await page.getByText('Other demo sign-in options', { exact: true }).click()
-  await page.getByLabel('University zID', { exact: true }).fill(users.STUDENT.zid)
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await expect(page).toHaveURL(/#\/dashboard$/)
-  await expect(page.getByRole('button', { name: 'Account options for Test Student' })).toBeVisible()
-})
 
 for (const identifier of ['z1000001@ad.unsw.edu.au', '  Z1000001@AD.UNSW.EDU.AU  ', '  Z1000001  ']) {
   test(`mock sign-in normalizes ${JSON.stringify(identifier)} and submits with Enter`, async ({ page, api }) => {

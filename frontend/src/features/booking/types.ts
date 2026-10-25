@@ -285,6 +285,12 @@ export interface NotificationList {
   results: AppNotification[]
 }
 
+/** Sprint 3 (2026-10-25): one switch on the Account page; a missing row means the category is on. */
+export interface NotificationPreference {
+  category: string
+  enabled: boolean
+}
+
 export interface CalendarLink {
   /** Relative path of the subscription feed; prefix with the site address. */
   path: string

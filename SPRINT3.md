@@ -2,6 +2,22 @@
 
 这份清单列出 Sprint 3 加入的全部功能，以及每项功能对应的文件、函数、接口、页面和测试，方便检查和演示。Sprint 3 以前的代码都没有列进来。
 
+> **2026-10-25 补充（deepseek修改，Loy已审核）**：本文件记录**已经实现**的 Sprint 3 功能；下面新增一节写 Sprint 3 的目标与范围（未实现，供规划）。Sprint 2 的计划见 [SPRINT2.md](SPRINT2.md)。
+
+## Sprint 3 目标与范围（2026-10-25 规划，未实现）
+
+一句话目标：部署到云上、有真实数据量、接客户真实登录。
+
+| 编号 | 项 | 要做到 | 依赖/风险 |
+| --- | --- | --- | --- |
+| S3-1 | 可视化 | Usage statistics 图表、Today 页面图形、Room Management 时间轴、My Bookings 进度条；倾向手写 SVG，不引入图表库 | 无外部依赖，纯前端 |
+| S3-2 | 云部署 | 选平台、PostgreSQL 托管、HTTPS、环境变量、上传文件持久化、备份 | 需要 Loy 选型；注意 induction 文件和 Outlook token 的存放 |
+| S3-3 | 压力测试 | k6 或 Locust：并发查可用时间、并发抢同一时段、审批吞吐；给出 P95 和错误率 | 需要先有云环境 |
+| S3-4 | 真实 SSO | UNSW 的 OAuth/SAML 接入 | **强依赖客户**，申请审批可能 2–4 周 |
+| S3-5 | 真实 Outlook | 学校账号或学生个人账号的 Graph/Google 接入 | **强依赖客户**；先确认账号类型（见 `claude/reports/2026-10-25-outlook-personal-calendar.md`） |
+
+建议顺序：云部署 → 压力测试 → 可视化 → 真实 SSO/Outlook（客户到位再做）。S3-4、S3-5 是外部依赖，应在 Sprint 2 期间就开始向客户申请。
+
 **代码里怎么认出 Sprint 3 的部分**
 - 新文件：第一行注明 `Sprint 3`。
 - 改动过的旧文件：新增的代码段前有 `Sprint 3` 注释，或行尾有 `# Sprint 3`。

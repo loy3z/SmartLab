@@ -222,6 +222,9 @@ export function ManagerBookingsPage() {
                             <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy !== null || started || !room} title={started ? 'Already started' : undefined} onClick={() => setMoving(booking)}>
                               Reschedule
                             </button>
+                            <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy !== null || started || !room} title={started ? 'Already started' : undefined} onClick={() => setMoving(booking)}>
+                              Reschedule
+                            </button>
                             <button type="button" className="ui-btn ui-btn-reject ui-btn-sm" disabled={busy !== null || started} title={started ? 'Already started' : undefined} onClick={() => void handleCancel(booking)}>
                               {busy === booking.id ? 'Cancelling…' : 'Cancel'}
                             </button>

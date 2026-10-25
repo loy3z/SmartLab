@@ -16,6 +16,19 @@ import type {
   CalendarSyncStatus,
   DayOverview,
   DayOverviewQuery,
+  NotificationList,
+  AppNotification,
+  CalendarLink,
+  UnfreezeRequest,
+  FrozenUser,
+  SeriesPlan,
+  SeriesPreview,
+  BookingSeries,
+  ResourceKind,
+  ResourceInput,
+  ResourceUpdateResult,
+  UsageReport,
+  RequirementInput, SiteContact, StaffOverview, // Sprint 3 (1.16.0)
 } from './types'
 import { request, requestBlob } from '../../lib/api-client'
 export { ApiError, getToken, setToken } from '../../lib/api-client'
@@ -24,6 +37,12 @@ const post = <T>(path: string, data: unknown, headers?: HeadersInit) =>
   request<T>(path, { method: 'POST', body: JSON.stringify(data), headers })
 
 export const getAuthConfig = () => request<AuthConfig>('auth/config/', {}, { authenticated: false })
+export const testLogin = (loginId: string) => request<AuthResponse>('auth/test-login/', {
+  method: 'POST', body: JSON.stringify({ login_id: loginId }),
+}, { authenticated: false })
+export const changeTestSession = (role: User['role'], bypass: boolean) => request<AuthResponse>('auth/test-session/', {
+  method: 'POST', body: JSON.stringify({ role, bypass_booking_rules: bypass }),
+})
 export const demoLogin = (zid: string) => request<AuthResponse>('auth/demo-login/', {
   method: 'POST', body: JSON.stringify({ zid }),
 }, { authenticated: false })
@@ -83,6 +102,10 @@ export const cancelBooking = (id: string) => post<Booking>(`bookings/${id}/cance
 
 export const rescheduleBooking = (id: string, start: string, end: string) =>
   post<Booking>(`bookings/${id}/reschedule/`, { start, end })
+
+/** Sprint 3 (1.16.0): the person a booking is for asks for a new time; returns the new request (the old booking stays until it is approved). */
+export const requestTimeChange = (id: string, start: string, end: string) =>
+  post<Booking>(`bookings/${id}/change/`, { start, end })
 
 export const getMe = () => request<User>('auth/me/')
 export const listRequirements = () => request<ListResponse<Requirement>>('qualification-requirements/')
@@ -179,16 +202,13 @@ export function createStaff(data: { zid: string; display_name: string; universit
   return post<ManagedUser>('admin/users/staff/', data)
 }
 
-export function downloadAllBookings() {
-  return requestBlob('admin/bookings/export/?status=ALL')
+// Sprint 3 (Booking Records, Admin and Manager): the list and its CSV take the same filters
+// (status, since, until, resource_id, q = part of a zID or name).
+export function listBookingRecords(params: URLSearchParams) {
+  return request<ListResponse<Booking>>(`admin/bookings/?${params.toString()}`)
 }
 
-export function downloadUserBookings(studentId: string) {
-  const params = new URLSearchParams({
-    status: 'ALL',
-    student_id: studentId,
-  })
-
+export function downloadBookingRecords(params: URLSearchParams) {
   return requestBlob(`admin/bookings/export/?${params.toString()}`)
 }
 
@@ -223,3 +243,65 @@ export function getDayOverview(query: DayOverviewQuery) {
   if (query.free_at) qs.set('free_at', query.free_at)
   return request<DayOverview>(`resources/day-overview/?${qs}`)
 }
+
+// Sprint 3: calendar subscription link ---------------------------------------------------------------------------------
+export const getCalendarLink = () => request<CalendarLink>('calendar/link/')
+export const resetCalendarLink = () => post<CalendarLink>('calendar/link/reset/', {})
+
+// Sprint 3: notifications ---------------------------------------------------------------------------------------------
+export function listNotifications(options: { unread?: boolean; limit?: number } = {}) {
+  const qs = new URLSearchParams()
+  if (options.unread) qs.set('unread', 'true')
+  if (options.limit) qs.set('limit', String(options.limit))
+  return request<NotificationList>(`notifications/?${qs}`)
+}
+export const markNotificationRead = (id: string) => post<AppNotification>(`notifications/${id}/read/`, {})
+export const markAllNotificationsRead = () => post<{ updated: number }>('notifications/read-all/', {})
+
+// Sprint 3: check-in and booking freeze ---------------------------------------------------------------------------------
+export const checkIn = (bookingId: string) => post<Booking>(`bookings/${bookingId}/check-in/`, {})
+export const listMyUnfreezeRequests = () => request<ListResponse<UnfreezeRequest>>('account/unfreeze-requests/')
+export const requestUnfreeze = (reason: string) => post<UnfreezeRequest>('account/unfreeze-requests/', { reason })
+export const listFrozenUsers = () => request<ListResponse<FrozenUser>>('admin/frozen-users/')
+export function listUnfreezeRequests(status?: 'PENDING' | 'APPROVED' | 'REJECTED') {
+  const qs = new URLSearchParams()
+  if (status) qs.set('status', status)
+  return request<ListResponse<UnfreezeRequest>>(`admin/unfreeze-requests/?${qs}`)
+}
+export const reviewUnfreeze = (id: string, decision: 'APPROVED' | 'REJECTED', reason = '') =>
+  post<UnfreezeRequest>(`admin/unfreeze-requests/${id}/review/`, { decision, reason })
+export const unfreezeUser = (userId: string, reason = '') => post<User>(`admin/users/${userId}/unfreeze/`, { reason })
+
+// Sprint 3: weekly series (staff) ---------------------------------------------------------------------------------------
+export const previewSeries = (plan: SeriesPlan) => post<SeriesPreview>('bookings/series/preview/', plan)
+export const createSeries = (plan: SeriesPlan & { purpose: string; skip_dates: string[] }) =>
+  post<BookingSeries>('bookings/series/', plan)
+export const getSeries = (id: string) => request<BookingSeries>(`bookings/series/${id}/`)
+export const cancelSeries = (id: string) => post<BookingSeries>(`bookings/series/${id}/cancel/`, {})
+
+// Sprint 3: resource setup (Manager) ------------------------------------------------------------------------
+export const listAllResources = () => request<ListResponse<Resource>>('admin/resources/')
+export const createResource = (kind: ResourceKind, fields: ResourceInput) =>
+  post<Resource>('admin/resources/', { kind, ...fields })
+export const updateResource = (resourceId: string, fields: Partial<ResourceInput>) =>
+  request<ResourceUpdateResult>(`admin/resources/${resourceId}/`, { method: 'PATCH', body: JSON.stringify(fields) })
+export const archiveResource = (resourceId: string) => post<Resource>(`admin/resources/${resourceId}/archive/`, {})
+export const restoreResource = (resourceId: string) => post<Resource>(`admin/resources/${resourceId}/restore/`, {})
+
+// Sprint 3: usage report (Manager) ---------------------------------------------------------------------------
+export const getUsageReport = (firstDate: string, lastDate: string) =>
+  request<UsageReport>(`admin/reports/usage/?${new URLSearchParams({ first_date: firstDate, last_date: lastDate })}`)
+
+// Sprint 3: staff change their own password ------------------------------------------------------------------
+export const changePassword = (currentPassword: string, newPassword: string) =>
+  post<{ changed: boolean }>('auth/change-password/', { current_password: currentPassword, new_password: newPassword })
+
+// Sprint 3 (1.16.0): lab setup (Manager), the lab's contact details and the staff "Today" page -----------------
+export const createRequirement = (fields: Partial<RequirementInput> & { name: string }) =>
+  post<Requirement>('admin/qualification-requirements/', fields)
+export const updateRequirement = (requirementId: string, fields: Partial<RequirementInput> & { prerequisite_ids?: string[] }) =>
+  request<Requirement>(`admin/qualification-requirements/${requirementId}/`, { method: 'PATCH', body: JSON.stringify(fields) })
+export const getSiteContact = () => request<SiteContact>('site/contact/')
+export const updateSiteContact = (fields: Partial<SiteContact>) =>
+  request<SiteContact>('site/contact/', { method: 'PATCH', body: JSON.stringify(fields) })
+export const getStaffOverview = () => request<StaffOverview>('admin/overview/')

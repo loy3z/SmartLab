@@ -171,8 +171,8 @@ export function ManagerUsersPage() {
   return (
     <section>
       <PageHeader
-        title="User Management"
-        description="See every account. Students book resources; Admins review requests and evidence; Managers set the rules and manage people. Each role is fixed when the account is created: to replace someone, add the new account and deactivate the old one."
+        title="User management"
+        description="A role cannot change after the account is created: to replace someone, add a new account and deactivate the old one."
         actions={(
           <>
             <RefreshStamp at={loadedAt} onRefresh={reload} busy={loading && loadedAt !== null} />

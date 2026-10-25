@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react'
-import { CalendarIcon, CapIcon, ClockIcon } from '../booking/icons'
 import './auth.css'
 
 /** Shared UNSW-style frame for the student and staff sign-in pages. */
@@ -30,21 +29,15 @@ export function AuthShell({ crumb, children }: { crumb: string; children: ReactN
       <main className="auth-container auth-main">
         <div className="auth-breadcrumb" aria-label="Page location"><span>UNSW Sydney</span><span aria-hidden="true">/</span><span>SmartLab</span><span aria-hidden="true">/</span><strong>{crumb}</strong></div>
         <div className="auth-content-grid">
+          {/* Sprint 3 (internal-tool UI, AI-2 / D7): the service name and one plain line; no slogan, eyebrow or feature list. */}
           <section className="auth-introduction" aria-labelledby="auth-introduction-title">
-            <p className="auth-eyebrow">SPACES TO LEARN. TO EXPLORE. TO CREATE.</p>
-            <h1 id="auth-introduction-title">Lab and room<br /> booking.</h1>
+            <h1 id="auth-introduction-title">SmartLab</h1>
             <div className="auth-title-rule" aria-hidden="true" />
-            <p className="auth-lead">Find the right space for your next idea.</p>
-            <p className="auth-intro-description">Discover shared labs and specialist equipment, check your induction and manage your bookings in one place.</p>
+            <p className="auth-intro-description">Book lab rooms and equipment at UNSW.</p>
             <figure className="auth-campus">
               <img src="/images/unsw-campus.jpg" alt="Aerial view of UNSW's Kensington campus" width="700" height="366" />
               <figcaption><span aria-hidden="true">●</span> Kensington campus · UNSW Sydney</figcaption>
             </figure>
-            <div className="auth-benefits" aria-label="SmartLab services">
-              <div><CalendarIcon size={22} /><span>Book a space<small>Labs, rooms & equipment</small></span></div>
-              <div><CapIcon size={23} /><span>Check your access<small>Induction & training</small></span></div>
-              <div><ClockIcon size={22} /><span>Stay up to date<small>Requests & approvals</small></span></div>
-            </div>
           </section>
           <section className="auth-form-side" aria-labelledby="auth-title">
             <div className="auth-form-wrap">

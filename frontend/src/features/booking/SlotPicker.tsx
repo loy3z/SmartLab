@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { getAvailability } from './api'
 import { errorMessage, fmtDate, fmtDuration, fmtRange, fmtTime, QUAL_TEXT, todaySydney, TZ } from './format'
 import { cellTitle, kindOf } from './slot-cells'
+import { NowLegend, NowLine } from './NowLine' // Sprint 3 (1.15.0)
 import type { Availability, Resource } from './types'
 
 /** A chosen period: start/end are UTC ISO strings. */
@@ -35,6 +36,10 @@ interface Props {
   /** Pre-select a period once the day has loaded (UTC ISO start, length in minutes), e.g. from the day grid. */
   initialStart?: string
   initialMinutes?: number
+  /** Sprint 3 (1.16.0): offer the urgent route when someone is on the first normal day and wants an earlier one. */
+  onAskEarlier?: () => void
+  /** Sprint 3 (1.16.0): replaces the "joins the waitlist" text when part of the chosen time is taken (change requests). */
+  takenNote?: string
 }
 
 /** Shift a YYYY-MM-DD date by whole days. */
@@ -47,18 +52,24 @@ function addDays(ymd: string, days: number): string {
 /** First and last selectable dates: normal window, urgent (the days before it) or Manager reschedule (from today). */
 function dateRange(d: Availability | null, urgent: boolean, allowEarly: boolean): { earliest?: string; latest?: string } {
   if (!d) return {}
+  if (d.test_bypass) return { earliest: d.earliest_date }
   if (urgent) return { earliest: todaySydney(), latest: d.earliest_date ? addDays(d.earliest_date, -1) : undefined }
-  if (allowEarly) return { earliest: todaySydney(), latest: d.latest_date }
-  return { earliest: d.earliest_date, latest: d.latest_date }
+  if (allowEarly) return { earliest: todaySydney(), latest: d.latest_date ?? undefined }
+  return { earliest: d.earliest_date, latest: d.latest_date ?? undefined }
 }
 
-export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualification, onEligibility, fixedMinutes, excludeBookingId, forZid, urgent = false, allowEarly = false, initialDate, initialStart, initialMinutes }: Props) {
+export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualification, onEligibility, fixedMinutes, excludeBookingId, forZid, urgent = false, allowEarly = false, initialDate, initialStart, initialMinutes, onAskEarlier, takenNote }: Props) {
   const [date, setDate] = useState(initialDate ?? todaySydney())
   const [data, setData] = useState<Availability | null>(null)
   const [error, setError] = useState('')
   const [range, setRange] = useState<{ from: number; to: number } | null>(null)
   const [hover, setHover] = useState<number | null>(null)
   const [problem, setProblem] = useState('')
+  // Sprint 3 (workspace UI): coming from Find a free time (a start is given), the day grid starts folded; the
+  // Start / Length selects below stay visible either way.
+  const [showTimeline, setShowTimeline] = useState(!initialStart)
+  // Sprint 3 (1.16.0): length used by the "Start / Length" selects (cells of `step` minutes); 1 hour by default.
+  const [wantedCells, setWantedCells] = useState<number | null>(null)
   // Applied once, on the first load of the initial day; later days and refreshes start empty as before.
   const pendingInitial = useRef(initialStart && initialMinutes ? { start: initialStart, minutes: initialMinutes } : null)
   const onSelectRef = useRef(onSelect)
@@ -69,7 +80,8 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
   })
 
   const step = resource.slot_minutes
-  const maxCells = Math.max(1, Math.floor((fixedMinutes ?? resource.max_booking_minutes) / step))
+  const maximumMinutes = data?.max_booking_minutes ?? resource.max_booking_minutes
+  const maxCells = Math.max(1, Math.floor((fixedMinutes ?? maximumMinutes) / step))
   const fixedCells = fixedMinutes ? Math.max(1, Math.round(fixedMinutes / step)) : null
 
   useEffect(() => {
@@ -134,7 +146,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
 
   function blockedBetween(from: number, to: number): string {
     // An urgent request or a reschedule needs free time: it never joins the waitlist.
-    const strict = urgent || allowEarly
+    const strict = urgent || allowEarly || data?.test_bypass
     const bad = kinds.slice(from, to + 1).findIndex((k) => k === 'closed' || k === 'mine' || (strict && (k === 'taken' || k === 'held')))
     if (bad < 0) return ''
     const kind = kinds[from + bad]
@@ -161,7 +173,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
     // Click a start, then click an end. Clicking before or inside the selection starts again.
     if (range && index > range.to) {
       if (index - range.from + 1 > maxCells) {
-        return setProblem(`Bookings can be at most ${fmtDuration(resource.max_booking_minutes)} for this resource.`)
+        return setProblem(`Bookings can be at most ${fmtDuration(maximumMinutes)} for this resource.`)
       }
       const why = blockedBetween(range.from, index)
       if (why) return setProblem(why)
@@ -172,6 +184,22 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
     if (why) return setProblem(why)
     commit(index, index)
   }
+
+  // Sprint 3 (1.16.0): choose by "Start" and "Length" instead of tapping narrow cells (phones). Same checks as clicking.
+  const defaultCells = fixedCells ?? Math.max(1, Math.min(maxCells, Math.round(60 / step)))
+  const lengthCells = fixedCells ?? wantedCells ?? (range ? range.to - range.from + 1 : defaultCells)
+  function chooseByInputs(from: number, cells: number) {
+    const to = from + cells - 1
+    if (to >= slots.length) return setProblem(`A ${fmtDuration(cells * step)} booking starting then would run past closing time.`)
+    const why = blockedBetween(from, to)
+    if (why) return setProblem(why)
+    commit(from, to)
+  }
+  const strictInputs = urgent || allowEarly || data?.test_bypass
+  const startOptions = slots
+    .map((slot, index) => ({ index, label: fmtTime(slot.start), kind: kinds[index] }))
+    .filter((item) => item.kind !== 'closed' && item.kind !== 'mine' && !(strictInputs && (item.kind === 'taken' || item.kind === 'held')))
+  const lengthOptions = Array.from({ length: maxCells }, (_, i) => i + 1)
 
   const inPreview = (i: number) =>
     !fixedCells && range && range.from === range.to && hover != null && hover > range.from &&
@@ -222,16 +250,25 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
       </div>
       <p className="bk-muted" style={{ marginTop: 6 }}>
         Times in {TZ}.
+        {data?.test_bypass && <> Test overrides: choose a future time, up to 24 h. Booking windows and training checks are bypassed; conflicts still apply.</>}
         {urgent && earliestDate && latestDate && !noUrgentDays && <> Urgent: {fmtDate(earliestDate)} to {fmtDate(latestDate)}, before the normal booking window. Only free times can be chosen.</>}
         {noUrgentDays && <> You can already book from today, so an urgent request is not needed.</>}
         {allowEarly && earliestDate && latestDate && <> Manager reschedule: {fmtDate(earliestDate)} to {fmtDate(latestDate)}. Only free times can be chosen.</>}
         {!urgent && !allowEarly && data?.earliest_date && data.latest_date && <> Bookable from {fmtDate(data.earliest_date)} to {fmtDate(data.latest_date)} ({data.min_advance_days}–{data.max_advance_days} days ahead).</>}
       </p>
+      {/* Sprint 3 (1.16.0): someone who wants an earlier day used to see only a disabled "previous day" button. */}
+      {onAskEarlier && !urgent && !allowEarly && atStart && data?.earliest_date && data.earliest_date > todaySydney() && (
+        <div className="ui-hint bk-earlier">
+          Need a date before {fmtDate(data.earliest_date)}?
+          <button type="button" className="bk-linkbtn" onClick={onAskEarlier}>Make an urgent request</button>
+        </div>
+      )}
 
       {error && <p className="bk-error">{error}</p>}
 
       {data && slots.length === 0 && <div className="ui-hint">This resource is not open on this day.</div>}
-      {data && slots.length > 0 && (
+      {data && slots.length > 0 && <button type="button" className="bk-linkbtn bk-timeline-toggle" aria-expanded={showTimeline} onClick={() => setShowTimeline(value => !value)}>{showTimeline ? 'Hide day availability' : 'View day availability'}</button>}
+      {data && slots.length > 0 && showTimeline && (
         <div className="ui-tl">
           <div className="ui-tl-scroll">
             <div style={{ minWidth: slots.length * 26 }}>
@@ -266,6 +303,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
                     />
                   )
                 })}
+                <NowLine slots={slots} />{/* Sprint 3 (1.15.0) */}
               </div>
             </div>
           </div>
@@ -276,7 +314,31 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
             <span><i className="lg-held" />Awaiting approval</span>
             <span><i className="lg-mine" />{forZid ? 'Their request' : 'Your request'}</span>
             <span><i className="lg-closed" />Not bookable</span>
+            <NowLegend slots={slots} />{/* Sprint 3 (1.15.0) */}
           </div>
+        </div>
+      )}
+
+      {/* Sprint 3 (1.16.0): the same choice with two selects (easier than tapping cells on a phone). */}
+      {data && slots.length > 0 && canRequest && startOptions.length > 0 && (
+        <div className="ui-tl-inputs">
+          <label>Start
+            <select aria-label="Start time" value={range ? range.from : ''} onChange={(e) => e.target.value !== '' && chooseByInputs(Number(e.target.value), lengthCells)}>
+              <option value="" disabled>Choose</option>
+              {startOptions.map((item) => <option key={item.index} value={item.index}>{item.label}{item.kind === 'free' ? '' : ' (waitlist)'}</option>)}
+            </select>
+          </label>
+          {!fixedCells && (
+            <label>Length
+              <select aria-label="Length" value={lengthCells} onChange={(e) => {
+                const cells = Number(e.target.value)
+                setWantedCells(cells)
+                if (range) chooseByInputs(range.from, cells)
+              }}>
+                {lengthOptions.map((cells) => <option key={cells} value={cells}>{fmtDuration(cells * step)}</option>)}
+              </select>
+            </label>
+          )}
         </div>
       )}
 
@@ -288,7 +350,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
             <strong>{fmtRange(selected.start, selected.end)}</strong>
             <span className="ui-sub-text">
               {fmtDuration((Date.parse(selected.end) - Date.parse(selected.start)) / 60000)}
-              {!fixedCells && range && range.from === range.to && ' · click a later time to extend'}
+              {!fixedCells && showTimeline && range && range.from === range.to && ' · click a later time to extend'}
             </span>
           </div>
           <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={clear}>Clear</button>
@@ -297,7 +359,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
         <div className="ui-hint">
           {fixedCells
             ? `Click a start time. The booking keeps its length (${fmtDuration(fixedMinutes!)}).`
-            : `Click a start time, then click the end time. Up to ${fmtDuration(resource.max_booking_minutes)}.`}
+            : `Click a start time, then click the end time. Up to ${fmtDuration(maximumMinutes)}.`}
         </div>
       ))}
 
@@ -305,7 +367,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
         <div className="ui-callout is-blue">
           <div>
             <strong>Part of this time is already taken</strong>
-            Your request joins the waitlist in submission order. If the time frees up, it moves to an admin for approval.
+            {takenNote ?? 'Your request joins the waitlist in submission order. If the time frees up, it moves to an admin for approval.'}
           </div>
         </div>
       )}

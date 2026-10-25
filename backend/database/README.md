@@ -4,10 +4,10 @@
 
 ## 包含的文件和数据
 
-- `database/schema.sql`：9 张表、约束、索引、序列和审计保护触发器。
+- `database/schema.sql`：14 张表（1.16.0 起多了 `site_contact`）、约束、索引、序列和审计保护触发器。
 - `database/seed_resources.sql`：2 条培训要求（Advanced 要求先通过 General）、2 个房间、20 台设备（记录所在房间）。
 - `database/seed_users.sql`：6 个演示账号（与内存版演示数据相同的假 zID 和 id），以及 z1000001 一条已通过的 induction。全部是编造的数据，不要把真实学生的 zID 提交进 Git。
-- `database/migrations/`：已有数据库的升级脚本 001–005，按编号顺序执行，都可以重复执行（见第 2 节）。
+- `database/migrations/`：已有数据库的升级脚本 001–007，按编号顺序执行，都可以重复执行（见第 2 节）。
 - `booking/tests/test_postgres.py`：用真实 PostgreSQL 跑的适配器集成测试（见第 6 节）。
 - `booking/postgres.py`：数据库及上传文件存储适配器。
 - `requirements-postgres.txt`：后端依赖及 PostgreSQL 驱动。
@@ -64,6 +64,8 @@ Get-ChildItem .\database\migrations\*.sql | Sort-Object Name | ForEach-Object {
 | `003_staff_sign_in.sql` | 新表 `staff_credential`（密码哈希和邀请码）；演示账号设好密码，其他已有员工拿到邀请码，在 staff 登录页激活 |
 | `004_staff_booking_urgent.sql` | `booking` 加 `created_by`、`urgent`、`urgent_reason`；已有预约的 `created_by` 填成 `student_id` |
 | `005_resource_category_demo_password.sql` | 设备类别 `bookable_resource.category`（演示设备填上编的类别，已填的不覆盖）；演示账号 z9000001、z9000002 的密码设为 `123` |
+| `006_calendar_notifications_attendance_series.sql` | 新表 `notification`、`calendar_feed`、`unfreeze_request`、`booking_series`；`app_users` 加 `no_show_count`、`frozen_until`；`booking` 加 `series_id`、`attendance`、`checked_in_at`。第一次执行时把已经开始的已批准预约标为 `NOT_TRACKED`，不会算成缺席 |
+| `007_change_requests_guidance_details_contact.sql` | 1.16.0：`booking` 加 `replaces_id`（申请改期，外键指向原预约，加部分唯一索引：一个预约同时只有一个未决定的改期）；`qualification_requirement` 加 `how_to_complete`、`accepted_evidence`、`reviewer`、`contact`（默认空）；`bookable_resource` 加 `capacity`（只有房间，1–1000）和 `details`（`jsonb` 数组，默认 `[]`）；新表 `site_contact`（实验室联系方式，只有一行）。不改已有数据 |
 
 升级后的库和用 `schema.sql` 与种子文件新建的库，`pg_dump --schema-only` 结果完全一致。每次改表结构都要按这个方法验证：新建一个库、一个按旧脚本建的库，后者执行全部升级脚本（执行两遍），再比较两边的 `pg_dump --schema-only`。
 
@@ -136,6 +138,16 @@ npm.cmd run dev
 
 日常启动不需要再次导入 SQL：启动 PostgreSQL、在后端终端重新设置环境变量并运行后端，再启动前端即可。
 
+### 建一个新的 Manager（不用写 SQL）
+
+在设置了上面环境变量的后端终端执行：
+
+```powershell
+python manage.py create_manager --zid z9000003 --name "Lab Manager" --email z9000003@ad.unsw.edu.au
+```
+
+命令会输出一次性邀请码。对方在 Staff sign-in 页面选“首次激活”，填 zID、邀请码和自己的密码。之后的员工由 Manager 在 User Management 页面用 Add staff 添加；房间和设备由 Manager 在 Resources 页面添加。
+
 ### 定时处理到期申请
 
 审批期限到了的申请会在有人访问网页时顺带处理。为了没人访问时也能按时自动批准／拒绝，在设置了同样环境变量的终端里定时运行（例如每分钟一次，用 Windows 任务计划程序或服务器的 cron）：
@@ -144,7 +156,7 @@ npm.cmd run dev
 python manage.py process_due
 ```
 
-输出 `Decided or expired N request(s).`。演示时也可以手动运行一次。该命令只能用于数据库模式，内存模式会直接报错退出。
+输出 `Decided or expired N request(s).`。它也会把开始后没确认到场的预约记为缺席（达到次数会冻结）。演示时也可以手动运行一次。该命令只能用于数据库模式，内存模式会直接报错退出。
 
 ## 6. 用真实数据库跑适配器测试
 
@@ -154,7 +166,7 @@ python manage.py process_due
 python manage.py test booking.tests.test_postgres -v 2
 ```
 
-这组测试覆盖：各类记录读写和类型、房间状态、前置 induction 和设备所在房间、staff 邀请码激活和密码登录、上传附件、完整审批流程（待审批 → 批准 → 取消 → 候补递补 → 24 小时到期自动批准）、事务回滚、审计记录不可修改，以及两个人同时申请同一时段时只有一人进入待审批。
+这组测试覆盖：各类记录读写和类型、房间状态、前置 induction 和设备所在房间、staff 邀请码激活和密码登录、上传附件、完整审批流程（待审批 → 批准 → 取消 → 候补递补 → 24 小时到期自动批准）、事务回滚、审计记录不可修改、两个人同时申请同一时段时只有一人进入待审批，以及通知、订阅链接、解冻申请、重复预约、到场确认和冻结的读写。
 
 其余测试（`python manage.py test booking`）使用内存存储，跑之前先把 `REPOSITORY_FACTORY` 和 `FILE_STORAGE_FACTORY` 两个变量清掉（或新开一个终端）。
 

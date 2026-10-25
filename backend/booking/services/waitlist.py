@@ -17,7 +17,7 @@ class WaitlistMixin:
         if error:
             return (BookingStatus.REJECTED, _AUTO_REJECT_CODES.get(error.code, "AUTO_REJECTED_BOOKING_RULES"),
                     error.message)
-        if any(item.status == BookingStatus.APPROVED for item in self._overlaps(booking.resource_id, booking.start, booking.end, booking.id)):
+        if any(item.status == BookingStatus.APPROVED for item in self._overlaps(booking.resource_id, booking.start, booking.end, booking.id, booking.replaces_id)):
             return BookingStatus.REJECTED, "AUTO_REJECTED_CONFLICT", "The time is already taken by an approved booking."
         return BookingStatus.APPROVED, "AUTO_APPROVED_AFTER_REVIEW_WINDOW", None
 
@@ -42,7 +42,7 @@ class WaitlistMixin:
                 status, reason, action = BookingStatus.EXPIRED, "START_TIME_PASSED", "BOOKING_TIME_PROCESSED"
             else:
                 # A closed resource keeps its queue until it reopens.
-                if resource is None or not resource.bookable or self._overlaps(booking.resource_id, booking.start, booking.end, booking.id):
+                if resource is None or not resource.bookable or self._overlaps(booking.resource_id, booking.start, booking.end, booking.id, booking.replaces_id):
                     continue
                 error = self.rule_violation(booking.student_id, resource, booking.start, booking.end)
                 if error is None:
@@ -71,7 +71,8 @@ class WaitlistMixin:
         - An undecided request whose start time has passed expires.
         - A pending request whose review window has ended without an Admin decision is decided by the
           system: approved if it still follows the rules, otherwise rejected.
-        Freed time is then offered to the waitlist.
+        Freed time is then offered to the waitlist. Finally, approved bookings whose check-in time has passed
+        without a check-in are marked as missed (see attendance.py).
         """
         changed, released = [], set()
         for candidate in self.repo.list_bookings():
@@ -109,4 +110,8 @@ class WaitlistMixin:
                 ids = []
                 _promoted_ids.set(ids)
             ids.extend(item.id for item in changed if item.status == BookingStatus.APPROVED)
+        # Sprint 3 check-in: approved bookings whose check-in time passed without one count as missed (may freeze).
+        changed.extend(self._process_attendance())
+        # Sprint 3: reminders (booking tomorrow, induction expiring soon); each is sent once.
+        self._send_reminders()
         return changed

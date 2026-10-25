@@ -180,6 +180,11 @@ class ManagerToolsAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual([item["id"] for item in mine], [waiting["id"]])
         later = self.items(self.admin.get("/api/v1/admin/bookings/", {"status": "ALL", "since": waiting["start"]}))
         self.assertEqual([item["id"] for item in later], [waiting["id"]])
+        # Sprint 3 (Booking Records): search by part of the zID or name, case-insensitive.
+        for query, expected in (("z1000001", [approved["id"]]), ("1000002", [waiting["id"]]), ("ZZZ", []), ("", [approved["id"], waiting["id"]])):
+            with self.subTest(q=query):
+                found = self.items(self.admin.get("/api/v1/admin/bookings/", {"status": "ALL", "q": query}))
+                self.assertEqual([item["id"] for item in found], expected)
         for bad in ({"status": "NOPE"}, {"status": "APPROVED,,X"}, {"since": "2026-10-10T00:00:00"}, {"unknown": "1"}):
             with self.subTest(bad=bad):
                 self.assert_error(self.admin.get("/api/v1/admin/bookings/", bad), 400)
@@ -188,7 +193,8 @@ class ManagerToolsAPITests(BookingAPIFixtureMixin, SimpleTestCase):
     def test_manager_exports_every_booking_as_csv(self):
         payload = {**self.payload(), "purpose": "=HYPERLINK(\"x\")"}
         booking = self.create_approved(payload=payload)
-        self.assert_error(self.admin.get("/api/v1/admin/bookings/export/"), 403)
+        self.assertEqual(self.admin.get("/api/v1/admin/bookings/export/").status_code, 200)  # Sprint 3: Admins too
+        self.assert_error(self.verified.get("/api/v1/admin/bookings/export/"), 403)
         response = self.manager.get("/api/v1/admin/bookings/export/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
@@ -200,6 +206,7 @@ class ManagerToolsAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual((row["Booking ID"], row["Status"], row["Student zID"], row["Minutes"]), (booking["id"], "APPROVED", "z1000001", "60"))
         self.assertEqual((row["Date"], row["Start"]), (payload["start"][:10], payload["start"][11:16]))
         self.assertTrue(row["Purpose"].startswith("'="))
+        self.assertEqual((row["Weekly series"], row["Attendance"]), ("", booking.get("attendance") or ""))  # Sprint 3 columns
         empty = self.manager.get("/api/v1/admin/bookings/export/", {"status": "CANCELLED"})
         self.assertEqual(len(list(csv.reader(io.StringIO(empty.content.decode("utf-8-sig"))))), 1)
 

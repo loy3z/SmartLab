@@ -28,6 +28,13 @@ class DemoRegisterSerializer(StrictSerializer):
 class DemoLoginSerializer(StrictSerializer):
     zid = serializers.RegexField(r"^z[0-9]{7}$")
 
+class TestLoginSerializer(StrictSerializer):
+    login_id = serializers.ChoiceField(choices=["1"])
+
+class TestSessionSerializer(StrictSerializer):
+    role = serializers.ChoiceField(choices=["STUDENT", "ADMIN", "MANAGER"])
+    bypass_booking_rules = serializers.BooleanField()
+
 class StaffSignInSerializer(StrictSerializer):
     zid = serializers.RegexField(r"^[zZ][0-9]{7}$")
     password = serializers.CharField(max_length=128, trim_whitespace=False)
@@ -170,6 +177,35 @@ class PrerequisiteSerializer(StrictSerializer):
     prerequisite_ids = serializers.ListField(child=serializers.UUIDField(), max_length=20, allow_empty=True)
 
 
+class RequirementFieldsSerializer(StrictSerializer):
+    """Sprint 3 (1.16.0): induction texts a Manager writes. Limits are checked again in qualifications.py."""
+    name = serializers.CharField(required=False, max_length=120)
+    description = serializers.CharField(required=False, allow_blank=True, max_length=1000)
+    how_to_complete = serializers.CharField(required=False, allow_blank=True, max_length=2000)
+    accepted_evidence = serializers.CharField(required=False, allow_blank=True, max_length=2000)
+    reviewer = serializers.CharField(required=False, allow_blank=True, max_length=2000)
+    contact = serializers.CharField(required=False, allow_blank=True, max_length=2000)
+
+
+class RequirementUpdateSerializer(RequirementFieldsSerializer):
+    """Sprint 3 (1.16.0): PATCH takes the texts and/or prerequisite_ids (as before)."""
+    prerequisite_ids = serializers.ListField(child=serializers.UUIDField(), max_length=20, allow_empty=True, required=False)
+
+
+class SiteContactSerializer(StrictSerializer):
+    """Sprint 3 (1.16.0): the lab's contact details (every field optional; blank clears it)."""
+    email = serializers.CharField(required=False, allow_blank=True, max_length=200)
+    phone = serializers.CharField(required=False, allow_blank=True, max_length=60)
+    hours = serializers.CharField(required=False, allow_blank=True, max_length=200)
+    note = serializers.CharField(required=False, allow_blank=True, max_length=1000)
+
+
+class ResourceDetailSerializer(StrictSerializer):
+    """Sprint 3 (1.16.0): one "label: value" line on a resource."""
+    label = serializers.CharField(allow_blank=True, max_length=40)
+    value = serializers.CharField(allow_blank=True, max_length=200)
+
+
 BOOKING_STATUS_VALUES = ["WAITING_QUALIFICATION", "PENDING_APPROVAL", "WAITLISTED", "APPROVED", "REJECTED", "CANCELLED", "EXPIRED"]
 
 
@@ -180,6 +216,8 @@ class AdminBookingQuerySerializer(StrictSerializer):
     student_id = serializers.UUIDField(required=False)
     since = AwareDateTimeField(required=False)
     until = AwareDateTimeField(required=False)
+    # Sprint 3 (Booking Records): part of the zID or name of the person booked for, or of whoever created it.
+    q = serializers.CharField(required=False, allow_blank=True, max_length=100)
 
     def validate_status(self, value):
         if value.strip().upper() == "ALL":
@@ -194,3 +232,83 @@ class AdminBookingQuerySerializer(StrictSerializer):
         if attrs.get("since") and attrs.get("until") and attrs["since"] >= attrs["until"]:
             raise serializers.ValidationError({"until": "until must be later than since."})
         return attrs
+
+
+# Sprint 3 -------------------------------------------------------------------------------------------------------
+
+class NotificationQuerySerializer(StrictSerializer):
+    unread = serializers.BooleanField(required=False, default=False)
+    limit = serializers.IntegerField(required=False, default=50, min_value=1, max_value=200)
+
+
+class UnfreezeRequestSerializer(StrictSerializer):
+    reason = serializers.CharField(max_length=1000)
+
+
+class UnfreezeReviewSerializer(BookingReviewSerializer):
+    pass
+
+
+class UnfreezeListQuerySerializer(StrictSerializer):
+    status = serializers.ChoiceField(choices=["PENDING", "APPROVED", "REJECTED"], required=False)
+
+
+class UnfreezeSerializer(StrictSerializer):
+    reason = serializers.CharField(max_length=1000, required=False, allow_blank=True, default="")
+
+
+class SeriesPlanSerializer(StrictSerializer):
+    resource_id = serializers.UUIDField()
+    # ISO weekdays: 1 = Monday ... 7 = Sunday.
+    weekdays = serializers.ListField(child=serializers.IntegerField(min_value=1, max_value=7), min_length=1, max_length=7)
+    start_time = serializers.TimeField(format="%H:%M", input_formats=["%H:%M"])
+    duration_minutes = serializers.IntegerField(min_value=1, max_value=1440)
+    first_date = serializers.DateField()
+    last_date = serializers.DateField()
+    on_behalf_of_zid = serializers.RegexField(r"^[zZ]\d{7}$", required=False, allow_blank=True)
+
+
+class SeriesCreateSerializer(SeriesPlanSerializer):
+    purpose = serializers.CharField(max_length=1000)
+    skip_dates = serializers.ListField(child=serializers.DateField(), required=False, default=list, max_length=400)
+
+
+class ResourceFieldsSerializer(StrictSerializer):
+    """Manager resource setup. Every field is optional here; the service applies the rules (resources.py)."""
+    name = serializers.CharField(required=False, max_length=120)
+    location = serializers.CharField(required=False, max_length=120)
+    description = serializers.CharField(required=False, allow_blank=True, max_length=1000)
+    required_qualification_id = serializers.UUIDField(required=False)
+    room_id = serializers.UUIDField(required=False, allow_null=True)
+    category = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=60)
+    slot_minutes = serializers.IntegerField(required=False)
+    max_booking_minutes = serializers.IntegerField(required=False)
+    opening_time = serializers.TimeField(required=False)
+    closing_time = serializers.TimeField(required=False)
+    pending_hold_minutes = serializers.IntegerField(required=False)
+    # Sprint 3 (1.16.0): rooms' capacity and free "label: value" details.
+    capacity = serializers.IntegerField(required=False, allow_null=True)
+    details = serializers.ListField(child=ResourceDetailSerializer(), required=False, max_length=50)
+
+    def to_internal_value(self, data):
+        values = super().to_internal_value(data)
+        for field in ("required_qualification_id", "room_id"):
+            if values.get(field) is not None:
+                values[field] = str(values[field])
+        return values
+
+
+class ResourceCreateSerializer(ResourceFieldsSerializer):
+    kind = serializers.ChoiceField(choices=["ROOM", "EQUIPMENT"])
+
+
+class UsageReportQuerySerializer(StrictSerializer):
+    """Sprint 3: local dates of the usage report (both included)."""
+    first_date = serializers.DateField()
+    last_date = serializers.DateField()
+
+
+class ChangePasswordSerializer(StrictSerializer):
+    """Sprint 3: staff change their own password."""
+    current_password = serializers.CharField(max_length=128, trim_whitespace=False)
+    new_password = serializers.CharField(max_length=128, trim_whitespace=False)

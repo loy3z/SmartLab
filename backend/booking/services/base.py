@@ -7,6 +7,7 @@ from uuid import uuid4
 from ..domain import AuditRecord, BookingStatus, Role
 from ..errors import DomainError
 from ..rules import BookingRules, StaticRulesProvider
+from ..test_console import TEST_ACCOUNT_ID
 
 # Requests that hold first place for their slot (blocking others while hold_until is in the future).
 # Only PENDING_APPROVAL is created now; WAITING_QUALIFICATION stays for stored records of the earlier flow.
@@ -74,9 +75,20 @@ class ServiceBase:
         return ids
 
     def _save_booking(self, booking):
+        previous = self.repo.get_booking(booking.id)
         self.repo.save_booking(booking)
-        if self.calendar_sync:
+        if self.calendar_sync and booking.student_id != TEST_ACCOUNT_ID:
             self.calendar_sync.schedule(booking)
+        self._booking_changed(previous, booking)  # Sprint 3: notifications
+        self._apply_time_change(previous, booking)  # Sprint 3 (1.16.0): approved change request replaces the old booking
+
+    def _remember_changed(self, bookings):
+        """Sprint 3: bookings changed as a side effect of this request (promotion, freeze), so the HTTP layer syncs Outlook."""
+        ids = _promoted_ids.get()
+        if ids is None:
+            ids = []
+            _promoted_ids.set(ids)
+        ids.extend(item.id for item in bookings if item.id not in ids)
 
     def now(self):
         current = self.clock()
@@ -89,7 +101,7 @@ class ServiceBase:
             raise DomainError("FORBIDDEN", "This action requires an active student account.", 403)
 
     def require_booking_user(self, actor):
-        """Any active account books and uploads induction evidence (client, 17 Oct): Admins and Managers follow
+        """Any active account books and uploads induction evidence: Admins and Managers follow
         the same eligibility, induction, opening-hours and conflict rules as students."""
         if not actor.active:
             raise DomainError("FORBIDDEN", "This action requires an active account.", 403)

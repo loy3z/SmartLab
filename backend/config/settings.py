@@ -6,6 +6,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 ENABLE_DEMO_AUTH = os.getenv("ENABLE_DEMO_AUTH", "false").lower() == "true"
+ENABLE_TEST_CONSOLE = os.getenv("ENABLE_TEST_CONSOLE", "false").lower() == "true"
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 if not SECRET_KEY:
     if not DEBUG:
@@ -14,7 +15,8 @@ if not SECRET_KEY:
     SECRET_KEY = secrets.token_urlsafe(48)
 ALLOWED_HOSTS = [x.strip() for x in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(",") if x.strip()]
 INSTALLED_APPS = ["rest_framework", "booking"]
-MIDDLEWARE = ["django.middleware.security.SecurityMiddleware", "booking.middleware.CorsMiddleware", "django.middleware.common.CommonMiddleware"]
+MIDDLEWARE = ["django.middleware.security.SecurityMiddleware", "booking.middleware.CorsMiddleware", "django.middleware.common.CommonMiddleware",
+              "booking.middleware.NotificationDeliveryMiddleware"]
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
 # Persistence is chosen by REPOSITORY_FACTORY (below). Only the PostgreSQL adapter needs a Django
@@ -66,6 +68,47 @@ MIN_ADVANCE_DAYS = int(os.getenv("MIN_ADVANCE_DAYS", "7"))
 MAX_ADVANCE_DAYS = int(os.getenv("MAX_ADVANCE_DAYS", "30"))
 if not 0 <= MIN_ADVANCE_DAYS <= MAX_ADVANCE_DAYS <= 365 or MAX_ADVANCE_DAYS < 1:
     raise ValueError("Require 0 <= MIN_ADVANCE_DAYS <= MAX_ADVANCE_DAYS <= 365 and MAX_ADVANCE_DAYS >= 1")
+# Sprint 3 rules. Team proposals (not client-confirmed), validated by booking.rules.BookingRules:
+# at most this many bookings per person per week; check-in window around the start; freeze after this many
+# missed check-ins for this many days; longest weekly series made by staff.
+MAX_BOOKINGS_PER_WEEK = int(os.getenv("MAX_BOOKINGS_PER_WEEK", "3"))
+CHECK_IN_OPENS_MINUTES = int(os.getenv("CHECK_IN_OPENS_MINUTES", "15"))
+CHECK_IN_CLOSES_MINUTES = int(os.getenv("CHECK_IN_CLOSES_MINUTES", "30"))
+FREEZE_AFTER_NO_SHOWS = int(os.getenv("FREEZE_AFTER_NO_SHOWS", "4"))
+FREEZE_DAYS = int(os.getenv("FREEZE_DAYS", "30"))
+MAX_SERIES_WEEKS = int(os.getenv("MAX_SERIES_WEEKS", "14"))
+# Sprint 3 reminders in the notification bell.
+REMINDER_HOURS_BEFORE = int(os.getenv("REMINDER_HOURS_BEFORE", "24"))
+INDUCTION_REMINDER_DAYS = int(os.getenv("INDUCTION_REMINDER_DAYS", "14"))
+# Sprint 3: extra delivery channels for notifications (website notifications are always stored). Comma-separated dotted
+# paths of classes implementing booking.notification_channels.NotificationChannel (e.g. a future Outlook mail channel).
+NOTIFICATION_CHANNELS = [x.strip() for x in os.getenv("NOTIFICATION_CHANNELS", "").split(",") if x.strip()]
+
+# Sprint 3: email notifications from a system mailbox (Gmail SMTP with an app password; see docs/email-setup.md).
+# Set the password only as an environment variable; never put it in a file in the repository.
+EMAIL_ENABLED = os.getenv("EMAIL_ENABLED", "false").lower() == "true"
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "true").lower() == "true"
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "").strip()
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "").replace(" ", "")  # Gmail shows app passwords in groups of 4
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "10"))
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", f"SmartLab <{EMAIL_HOST_USER}>" if EMAIL_HOST_USER else "SmartLab <webmaster@localhost>")
+# Who receives emails: none, allowlist (default: only EMAIL_ALLOWED_RECIPIENTS), redirect (all to EMAIL_REDIRECT_TO), all.
+EMAIL_MODE = os.getenv("EMAIL_MODE", "allowlist").strip().lower()
+EMAIL_ALLOWED_RECIPIENTS = [x.strip() for x in os.getenv("EMAIL_ALLOWED_RECIPIENTS", "").split(",") if x.strip()]
+EMAIL_REDIRECT_TO = os.getenv("EMAIL_REDIRECT_TO", "").strip()
+EMAIL_NOTIFICATION_KINDS = [x.strip() for x in os.getenv("EMAIL_NOTIFICATION_KINDS", ",".join([
+    "BOOKING_SUBMITTED", "BOOKING_CREATED_FOR_YOU", "SERIES_CREATED", "SERIES_CREATED_FOR_YOU",
+    "BOOKING_APPROVED", "BOOKING_REJECTED", "BOOKING_EXPIRED", "BOOKING_PROMOTED", "BOOKING_RESCHEDULED",
+    "BOOKING_CANCELLED", "BOOKING_REMINDER", "INDUCTION_EXPIRING",
+    # Sprint 3 (1.16.0): change requests and resources going out of / back into service.
+    "CHANGE_REQUESTED", "CHANGE_APPROVED", "CHANGE_REJECTED", "RESOURCE_OUT_OF_SERVICE", "RESOURCE_REOPENED"])).split(",") if x.strip()]
+# Address of the web app, used for links in emails.
+SITE_URL = os.getenv("SITE_URL", "http://localhost:5173").strip()
+if EMAIL_ENABLED and "booking.email_channel.EmailChannel" not in NOTIFICATION_CHANNELS:
+    NOTIFICATION_CHANNELS.append("booking.email_channel.EmailChannel")
 CORS_ALLOWED_ORIGINS = [x.strip() for x in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",") if x.strip()]
 DATA_UPLOAD_MAX_MEMORY_SIZE = 6 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024

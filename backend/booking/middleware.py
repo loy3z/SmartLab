@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 
@@ -23,4 +25,25 @@ class CorsMiddleware:
             response["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Idempotency-Key"
             response["Access-Control-Expose-Headers"] = "Content-Disposition"
             response["Vary"] = "Origin"
+        return response
+
+
+class NotificationDeliveryMiddleware:
+    """Sprint 3: after each API request, send its new notifications through extra channels (booking/notification_channels.py).
+
+    Runs after the view, so the database transaction that stored the notifications has finished. Always clears the
+    per-request list, even when no channel is configured.
+    """
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if request.path.startswith("/api/"):
+            try:
+                from .notification_channels import deliver_new_notifications
+                from .runtime import get_service
+                deliver_new_notifications(get_service())
+            except Exception:  # delivery problems never change the API response
+                logging.getLogger(__name__).exception("Notification delivery failed")
         return response

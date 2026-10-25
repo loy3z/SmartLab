@@ -28,3 +28,16 @@ export function cellTitle(slot: Slot, kind: CellKind, minDays: number, maxDays: 
             : slot.reason_code === 'RESOURCE_UNAVAILABLE' ? 'not open for new requests' : 'not bookable'}`
   }
 }
+
+// Sprint 3 (1.15.0): red "now" line on today's grid.
+/**
+ * Where the current time sits across a day's cells, from 0 (start of the first cell) to 1 (end of the last).
+ * Returns null when now is outside the shown hours (other days, before opening, after closing), so no line is drawn.
+ */
+export function nowLineFraction(slots: Pick<Slot, 'start' | 'end'>[], now: number): number | null {
+  if (slots.length === 0) return null
+  const first = Date.parse(slots[0].start)
+  const last = Date.parse(slots[slots.length - 1].end)
+  if (!(now > first && now < last)) return null
+  return (now - first) / (last - first)
+}

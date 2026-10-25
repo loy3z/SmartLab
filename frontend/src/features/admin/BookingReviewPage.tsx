@@ -140,8 +140,8 @@ export function BookingReviewPage() {
   return (
     <>
       <PageHeader
-        title="Booking Review"
-        description="Approve or reject booking requests. Requests nearest their review deadline are listed first."
+        title="Booking review"
+        description="Requests nearest their review deadline are listed first."
         actions={<RefreshStamp at={loadedAt} onRefresh={reload} busy={loading && loadedAt !== null} />}
       />
 
@@ -194,6 +194,7 @@ export function BookingReviewPage() {
                 <th>Student</th>
                 <th>Resource</th>
                 <th>Time</th>
+                <th>Purpose</th>{/* Sprint 3 (1.16.0): what it is for, without opening the details */}
                 {tab === 'WAITLISTED' && <th className="ui-hide-sm">Waiting behind</th>}
                 <th className="ui-hide-sm">Submitted</th>
                 <th><span className="sr-only">Actions</span></th>
@@ -224,10 +225,17 @@ export function BookingReviewPage() {
                     <td>
                       {fmtRange(b.start, b.end)}
                       <span className="ui-sub-text">{fmtDuration(minutesBetween(b.start, b.end))}</span>
+                      {/* Sprint 3 (1.16.0): change request */}
+                      {b.replaces_booking && <span className="ui-sub-text ui-change-from">Change from {fmtRange(b.replaces_booking.start, b.replaces_booking.end)}</span>}
                     </td>
+                    <td><span className="ui-clamp-2" title={b.purpose}>{b.purpose || '—'}</span></td>
                     {tab === 'WAITLISTED' && <td className="ui-hide-sm">{blockerText(b)}</td>}
                     <td className="ui-hide-sm">{fmtRelative(b.created_at, now)}</td>
-                    <td><div className="ui-actions">{actions(b)}</div></td>
+                    <td><div className="ui-actions">
+                      {/* Sprint 3 (1.16.0): a visible way into the details (the whole row also opens them) */}
+                      <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={(event) => { event.stopPropagation(); setOpenId(b.id) }}>Details</button>
+                      {actions(b)}
+                    </div></td>
                   </tr>
                 )
               })}
@@ -304,6 +312,8 @@ function BookingDrawer({ booking: b, resource, resourceName, waitingBehind, bloc
           { label: 'Time', value: fmtRange(b.start, b.end) },
           { label: 'Length', value: fmtDuration(minutesBetween(b.start, b.end)) },
           { label: 'Purpose', value: b.purpose || '—' },
+          // Sprint 3 (1.16.0): change request
+          ...(b.replaces_booking ? [{ label: 'Change request', value: `Moves their approved booking ${fmtRange(b.replaces_booking.start, b.replaces_booking.end)}; that booking is cancelled when this is approved.` }] : []),
           ...(b.urgent ? [{ label: 'Urgent', value: `${b.urgent_reason || 'Yes'} (only a Manager can decide)` }] : []),
           ...(b.on_behalf && b.created_by_user
             ? [{ label: 'Created by', value: `${b.created_by_user.display_name} (${b.created_by_user.zid}, ${b.created_by_user.role.toLowerCase()})` }]

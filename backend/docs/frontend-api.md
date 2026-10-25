@@ -14,9 +14,15 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | 我的预约 | 显示详情、改期／取消确认、操作后刷新 | 判断归属及状态，重新校验并执行改期／取消 |
 | 管理员资格审核 | 审核列表、查看资料、通过／拒绝和原因；显示后端返回的有效期 | 修改资格、自动设定有效期；拒绝时自动拒绝该学生依赖此资格的未决预约（待审批和候补） |
 | 管理员预约审核 | 审核队列、详情、通过／拒绝和原因、显示冲突错误 | 批准前再次检查资格与冲突 |
+| 通知、日历订阅、到场确认 | 顶部铃铛；“我的预约”里的订阅链接、I'm here 按钮、冻结提示和解冻申请 | 生成通知和订阅内容、记录缺席、冻结和取消 |
+| 冻结管理、重复预约（员工） | Booking freezes 页面；资源卡片上的 Repeat weekly | 解冻审批；逐日检查并直接批准重复预约 |
 | 审计记录 | Admin／Manager 按资源、学生、操作、时间筛选并分页查看；预约详情可显示该预约的历史 | 记录并查询申请、审批、改期、取消和资格审核轨迹 |
 | 人员与角色管理（仅 Manager） | 人员列表、按角色筛选；Add staff | 只允许 Manager；角色创建后固定，不能互转；不能改自己；至少保留一个 Manager；写审计 |
 | Manager 审批期限 | 按资源显示和修改审批期限分钟数 | 角色校验、规则保存和审计；Admin 不能读取或修改 |
+| 资源管理（仅 Manager） | Resources 页面：新增、编辑、下架、恢复房间和设备；显示不再符合新规则的预约 | 校验资源规则、保存、审计；列出受影响的预约（不自动取消） |
+| 预约记录与使用情况（Admin／Manager） | Booking Records 页面：Records 标签按日期、资源、状态、姓名／zID 筛选并导出 CSV；Usage statistics 标签显示每个资源的数字 | 筛选、导出 CSV、统计预约、时长、到场率 |
+| 邮件通知 | 无（后端在请求结束后发出） | 按 `EMAIL_MODE` 给预约人发邮件，见 [email-setup.md](email-setup.md) |
+| 修改密码（员工） | Account 页面的表单 | 校验当前密码、保存新密码哈希 |
 
 隐藏按钮只能改善体验；身份、资格和冲突均由后端执行。前端不能直接设置预约状态、资格状态或用户角色。
 
@@ -95,10 +101,13 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 - 前置未通过时，提交该项资料返回 409 `PREREQUISITE_REQUIRED`（`details.prerequisite_id`），Admin 通过该项资料也返回同一错误；学生页面应显示“先完成 General”，并禁用上传。
 - 预约需要该项 induction 的资源时，**前置和本项都必须有效并覆盖整个预约**；缺前置时 `POST bookings/` 返回 403 `QUALIFICATION_REQUIRED`，`details.qualification_status=PREREQUISITE_REQUIRED`、`details.prerequisite_id`、`details.prerequisite_status`。
 - Manager 可用 `PATCH admin/qualification-requirements/{id}/` 设置 `{"prerequisite_ids":["<uuid>"]}`（最多 20 项，不能包含自己，不能形成循环：409 `PREREQUISITE_CYCLE`），写 `REQUIREMENT_PREREQUISITES_UPDATED` 审计。
+- 1.16.0：每项还带四段说明 `how_to_complete`、`accepted_evidence`、`reviewer`、`contact`（空字符串表示还没写），Induction & Training 页面在每项下面显示“How to get this induction”。Manager 在 **Lab setup** 页面（`/manager/setup`）用 `POST admin/qualification-requirements/`（`name` 必填，其余可选）新建，用同一个 `PATCH` 改 `name`、`description` 和四段说明（可以和 `prerequisite_ids` 一起发）。名称不能重复（忽略大小写，409 `REQUIREMENT_NAME_TAKEN`），说明每段最多 2000 字；改文字不影响已经通过的人。
 
 ### 房间和设备
 
-资源的 `room_id`：设备所在房间的 ID，房间本身为 `null`。前端按房间分组设备（“该房间的 N 台设备”）。房间的维修／关闭**只影响房间本身**，房间里的设备仍按各自的 `status` 预约。
+资源的 `room_id`：设备所在房间的 ID，房间本身为 `null`。前端按房间分组设备（“该房间的 N 台设备”）。房间的维修／关闭**只影响房间本身**，房间里的设备仍按各自的 `status` 预约。房间和设备**分开预约**：订房间不包含里面的设备，订设备也不占用房间（1.16.0 起页面上写明）。
+
+1.16.0：资源另有 `capacity`（只有房间，容纳人数，`null` 表示没填）和 `details`（`[{label, value}]`，Manager 自己定的“标签：内容”，例如型号、楼层，最多 12 行）。资源卡片显示容量和前 3 行，预约表单显示全部；房间列表可以按“至少 N 人”筛选（没填容量的房间不会被筛掉）。
 
 可用性查询是当时的快照，提交前后仍可能有人占用时段。显示 `available=false` 的时段不能提示“可立即预约”；学生仍可对已被占用的时段提交申请，但会进入等待名单，界面应明确说明。每个资源的 `required_qualification_id` 可以不同，前端必须读取资源要求，不能用一个全局“已完成 induction”开关判断所有资源的资格。
 
@@ -192,14 +201,18 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | GET | `qualifications/{id}/` | 资料提交详情 |
 | GET | `qualifications/{id}/file/` | 带权限的附件下载 |
 | GET / POST | `bookings/` | 我的预约列表（员工还包括替别人建的）／创建预约（可带 `on_behalf_of_zid`、`urgent`、`urgent_reason`） |
+| POST | `bookings/{id}/change/` | 1.16.0：预约人申请把自己已批准的预约改到新时间（见下文“申请改期”） |
+| GET / PATCH | `site/contact/` | 1.16.0：实验室联系方式；所有人可读，Manager 修改 |
+| POST | `admin/qualification-requirements/` | 1.16.0：Manager 新建 induction |
+| GET | `admin/overview/` | 1.16.0：员工首页 Today 的数字和清单 |
 | GET | `bookings/{id}/` | 预约详情 |
 | POST | `bookings/{id}/cancel/` | 取消预约 |
 | POST | `bookings/{id}/reschedule/` | 仅 Manager：改期已批准且尚未开始的预约：`start`、`end` |
 | GET | `dashboard/` | 我的预约、资料与数量 |
 | GET | `admin/qualifications/?status=PENDING` | 管理员资格队列（`PENDING`／`VERIFIED`／`REJECTED`）；每条带 `student`（`id`、`zid`、`display_name`、`university_email`），审核页直接显示姓名和 zID |
 | POST | `admin/qualifications/{id}/review/` | `decision: VERIFIED\|REJECTED`，可带 `reason`；不接受 `valid_until`，有效期由后端设定 |
-| GET | `admin/bookings/?status=PENDING_APPROVAL` | 待审批队列（默认）；`status=WAITLISTED` 查看候补；`status=ALL&resource_id=&student_id=&since=&until=` 查看所有人的预约（带学生和资源名） |
-| GET | `admin/bookings/export/?status=ALL` | 仅 Manager：按相同筛选导出 CSV |
+| GET | `admin/bookings/?status=PENDING_APPROVAL` | 待审批队列（默认）；`status=WAITLISTED` 查看候补；`status=ALL&resource_id=&student_id=&q=&since=&until=` 查看所有人的预约（带学生和资源名）；`q` 是 zID 或姓名的一部分（预约人或创建人，不分大小写） |
+| GET | `admin/bookings/export/?status=ALL` | Admin／Manager：按相同筛选（含 `q`）导出 CSV，最后两列是 Weekly series 和 Attendance |
 | POST | `admin/bookings/{id}/review/` | `decision: APPROVED\|REJECTED`，可带 `reason`；候补只能拒绝，不能批准 |
 | GET | `admin/users/?role=&active=&q=` | 仅 Manager：人员列表 |
 | POST | `admin/users/staff/` | 仅 Manager：Add staff，`zid`、`display_name`、`university_email`、`role`（`ADMIN`／`MANAGER`）；响应带 `invite_code` |
@@ -215,6 +228,27 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | POST | `admin/outlook/check/` | 测试微软登录和日历权限，`{}` |
 | POST | `admin/outlook/process/` | 处理等待中的日历更新，`{"limit":1}`（最多 5） |
 | POST | `admin/bookings/{id}/outlook-retry/` | 立即重试失败的日历更新，`{}` |
+| POST | `bookings/{id}/check-in/` | 本人确认到场（I'm here），`{}` |
+| POST | `bookings/series/preview/` | 员工：预览重复预约的每个日期 |
+| POST | `bookings/series/` | 员工：创建重复预约（直接批准），`skip_dates` 列出要跳过的日期 |
+| GET | `bookings/series/{id}/` | 重复预约及其每次预约（员工或受益人） |
+| POST | `bookings/series/{id}/cancel/` | 员工：取消整组剩下的日期 |
+| GET | `calendar/link/` | 我的日历订阅地址（首次调用时生成） |
+| POST | `calendar/link/reset/` | 重新生成订阅地址，旧地址立即失效 |
+| GET | `calendar/{token}.ics` | 订阅内容（iCalendar），不需要登录 |
+| GET | `notifications/?unread=&limit=50` | 我的通知，最新在前，带 `unread_count` |
+| POST | `notifications/{id}/read/` | 标为已读 |
+| POST | `notifications/read-all/` | 全部标为已读 |
+| GET / POST | `account/unfreeze-requests/` | 我的解冻申请／提交解冻申请 `{"reason": "…"}` |
+| GET | `admin/unfreeze-requests/?status=PENDING` | Admin／Manager：解冻申请 |
+| POST | `admin/unfreeze-requests/{id}/review/` | Admin／Manager：`decision: APPROVED\|REJECTED`，拒绝要写 `reason` |
+| GET | `admin/frozen-users/` | Admin／Manager：当前被冻结的人 |
+| POST | `admin/users/{id}/unfreeze/` | Admin／Manager：直接解冻 |
+| GET / POST | `admin/resources/` | 仅 Manager：所有资源（含已下架）／新增房间或设备 |
+| PATCH | `admin/resources/{id}/` | 仅 Manager：修改资源（只发要改的字段），返回 `resource` 和 `bookings_outside_rules` |
+| POST | `admin/resources/{id}/archive/`、`…/restore/` | 仅 Manager：下架／恢复，`{}` |
+| GET | `admin/reports/usage/?first_date=&last_date=` | Admin／Manager：使用情况报表 |
+| POST | `auth/change-password/` | Admin／Manager：修改自己的密码 `current_password`、`new_password` |
 
 `POST bookings/` 可带 `Idempotency-Key`，同一用户重试同一请求时复用同一 key；提交不同预约时生成新 key。key 最多 128 个字符，仅可使用字母、数字、点、下划线、冒号、连字符。禁止只依赖禁用按钮防止重复请求。字段 `start`、`end` 表示区间 `[start,end)`。取消仅允许尚未开始的有效请求；重复取消已取消记录返回原记录。改期只允许 Manager 操作未来 `APPROVED` 预约；后端重新检查时间规则、资格有效期与冲突。成功后 `revision` 增加，并更新原 Outlook 事件。
 
@@ -287,6 +321,15 @@ Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{
 | `INVALID_TIME`／`INVALID_TIME_INCREMENT`／`OUTSIDE_OPENING_HOURS`／`DURATION_LIMIT` | 400 | 根据资源规则修正时间 |
 | `VALIDATION_ERROR` | 400 | 在对应字段展示 `details` 错误，包括附件格式／大小问题 |
 | `TOKEN_EXPIRED`／`INVALID_TOKEN` | 401 | 重新登录 |
+| `ACCOUNT_FROZEN` | 403 | 这个人因多次缺席被冻结，`details.frozen_until`；引导去“我的预约”提交解冻申请 |
+| `WEEKLY_LIMIT_REACHED` | 409 | 这个人这一周（周一到周日）已有 3 个预约；`details.limit`、`count`、`week_start` |
+| `RESOURCE_NAME_TAKEN` | 409 | 资源管理：另一个未下架的资源已经用了这个名称 |
+| `KIND_IS_FIXED` | 409 | 资源管理：房间和设备之间不能互改，新建一个再下架旧的 |
+| `RESOURCE_HAS_BOOKINGS`／`ROOM_HAS_EQUIPMENT` | 409 | 下架被拒：还有未来预约（`details.booking_count`）／房间里还有设备（`details.equipment`） |
+| `CHECK_IN_NOT_OPEN`／`CHECK_IN_CLOSED` | 409 | 还没到确认时间（`details.check_in_opens_at`）／已经过了 |
+| `NOT_FROZEN`／`UNFREEZE_ALREADY_REQUESTED` | 409 | 没有被冻结／已有待处理的解冻申请 |
+| `SERIES_TOO_LONG`／`SERIES_EMPTY` | 400 | 重复预约超过 14 周／没有符合的日期 |
+| `SERIES_CONFLICT` | 409 | 有问题的日期没有放进 `skip_dates`；重新预览 |
 
 学生提交冲突请求会得到 201 和 `WAITLISTED`；`BOOKING_CONFLICT` 是管理员试图批准仍冲突的请求时的错误。不要把“收到 201”或“等待管理员”显示成已获批准。
 
@@ -300,6 +343,73 @@ API 输出时间为 ISO 8601 UTC `Z`。前端用 `Australia/Sydney` 显示，支
 
 演示身份选择仅在本地开发模式开启，不代表正式 SSO。正式前端不得保留任意 zID 登录或选择管理员身份的演示入口。内存模式的数据在后端重启后丢失，也不能跨多个后端进程共享；需要保留数据时用 PostgreSQL 模式。
 
+## 日历订阅链接
+
+- `GET calendar/link/` 返回 `{ path, created_at }`。`path` 是相对地址（例如 `/api/v1/calendar/<随机码>.ics`），前端拼上 `window.location.origin` 得到完整地址，让用户复制。
+- 用户在 Outlook 里选“添加日历 → 从 Internet 订阅”，粘贴地址即可，不需要登录微软。Google 日历和苹果日历也能用。
+- 订阅内容是本人作为预约人的**已批准**预约（包括员工替他建的），从 60 天前结束的开始。每条预约 UID 固定（`<预约 ID>@smartlab`），改期是更新，取消后消失。
+- 地址里的随机码是唯一的钥匙：`POST calendar/link/reset/` 生成新地址，旧地址立即返回 404。页面上要提醒用户别把链接发给别人。
+- 更新频率由日历软件决定，可能要几个小时。
+
+## 站内通知
+
+- `GET notifications/` 返回 `{ count, unread_count, results }`，最新在前；`unread=true` 只看未读，`limit` 1–200（默认 50）。`unread_count` 是全部未读数。
+- 每条有 `kind`、`title`、`body`、`created_at`、`link`（站内页面，例如 `/bookings`、`/induction`、`/admin/bookings`）、`booking_id`、`read_at`。
+- 会发通知的事：
+  - 给预约人：`BOOKING_SUBMITTED`（自己提交的申请已收到，说明现在等审批还是在候补）、`BOOKING_APPROVED`、`BOOKING_REJECTED`（含系统自动决定、候补递补时不合格、资料被拒连带拒绝）、`BOOKING_PROMOTED`（候补转为待审批）、`BOOKING_RESCHEDULED`、`BOOKING_CANCELLED`（被员工取消）、`BOOKING_CREATED_FOR_YOU`、`SERIES_CREATED`（员工自己的重复预约）、`SERIES_CREATED_FOR_YOU`、`QUALIFICATION_VERIFIED`／`QUALIFICATION_REJECTED`、`NO_SHOW_RECORDED`、`ACCOUNT_FROZEN`、`UNFREEZE_APPROVED`／`UNFREEZE_REJECTED`、`ACCOUNT_UNFROZEN`，以及提醒：`BOOKING_REMINDER`（已批准的预约开始前 24 小时，提醒点 I'm here）、`INDUCTION_EXPIRING`（已通过的 induction 14 天内到期，链接到 `/induction?requirement=…`）、`BOOKING_EXPIRED`（候补或待审批的申请到开始时间还没轮到或没人决定）。每条提醒只发一次。
+  - 给 Manager：`URGENT_REQUEST`。
+  - 1.16.0 新增：`CHANGE_REQUESTED`／`CHANGE_APPROVED`／`CHANGE_REJECTED`（申请改期），`RESOURCE_OUT_OF_SERVICE`（你有预约或申请的资源进入维修或关闭，带 Manager 写的原因；每个预约一条）和 `RESOURCE_REOPENED`（重新开放）。这些也在默认的邮件类型里。
+- 普通新申请不通知管理员（看审批队列）；自己取消不通知。
+- 前端：顶部铃铛显示未读数，打开页面、切回页面和每 60 秒读一次。点一条就 `POST notifications/{id}/read/` 并跳到 `link`；“全部标为已读”用 `POST notifications/read-all/`。只跳站内路径。
+- 邮件：后端打开邮件渠道后（`EMAIL_ENABLED=true`），上面列出的预约结果、提醒和确认类通知也会发到预约人的大学邮箱，见 [email-setup.md](email-setup.md)。前端不用做任何事，接口不变。
+
+## 到场确认与冻结
+
+- 预约响应新带：`attendance`（`CHECKED_IN`／`NO_SHOW`／`EXCUSED`／`NOT_TRACKED`／`null`）、`checked_in_at`、`check_in_open`、`check_in_opens_at`、`check_in_closes_at`。
+- `check_in_open=true` 且当前用户就是预约人（`student_id`）时，“我的预约”显示 **I'm here** 按钮，调用 `POST bookings/{id}/check-in/`（`{}`）。窗口默认是开始前 15 分钟到开始后 30 分钟（不超过结束时间）。别人点返回 404，太早 409 `CHECK_IN_NOT_OPEN`，太晚 409 `CHECK_IN_CLOSED`。
+- 窗口结束仍未确认，服务器记为 `NO_SHOW`；那段时间资源维修或关闭的记为 `EXCUSED`，不算缺席。
+- 第 4 次缺席时冻结 30 天：`auth/me/` 的 `booking_frozen=true`、`frozen_until`，`no_show_count` 清零；这个人之后所有的预约和申请被取消（`reason_code=ACCOUNT_FROZEN`）；冻结期间新申请返回 403 `ACCOUNT_FROZEN`，员工也不能替他建，时段查询的 `can_request=false` 并带 `frozen_until`。员工被冻结时仍可以审批别人。
+- 被冻结的人在页面上看到冻结提示，可以提交解冻申请：`POST account/unfreeze-requests/` `{"reason":"…"}`（1–1000 字，同一时间只能有一个待处理），`GET account/unfreeze-requests/` 看结果。
+- Admin／Manager 的 **Booking freezes** 页面（`/admin/freezes`）：`GET admin/unfreeze-requests/?status=PENDING`、`GET admin/frozen-users/`；`POST admin/unfreeze-requests/{id}/review/` 同意或拒绝（拒绝要写原因），`POST admin/users/{id}/unfreeze/` 直接解冻。不能处理自己的申请（403 `SELF_REVIEW_FORBIDDEN`／`SELF_MODIFICATION_FORBIDDEN`）。解冻后被取消的预约不会恢复。
+
+## 每周上限
+
+- 同一受益人在同一周（悉尼时间周一到周日）里待审批、候补、已批准的预约最多 3 个。超过时 `POST bookings/` 返回 409 `WEEKLY_LIMIT_REACHED`（`details.limit`、`count`、`week_start`）；Manager 改期到满额的那一周也一样。
+- 候补也算；取消、被拒、过期后名额自动空出。员工代建算在受益人头上；重复预约不算。
+
+## 重复预约（只有员工）
+
+- 资源卡片上的 **Repeat weekly** 按钮（只有 Admin／Manager 看得到）打开表单：预约给谁（自己／输入 zID 替别人）、每周几（1=周一 … 7=周日）、开始时间、时长、起止日期（最长 14 周）、用途。
+- 先 `POST bookings/series/preview/`（`resource_id`、`weekdays`、`start_time` 如 `"09:00"`、`duration_minutes`、`first_date`、`last_date`、可选 `on_behalf_of_zid`），返回每个日期的 `available` 和 `reason_code`。
+- 再 `POST bookings/series/`（同样的字段加 `purpose`、`skip_dates`）。预览里不可用的日期必须放进 `skip_dates`，否则 409 `SERIES_CONFLICT`（重新预览）。冲突的日期不进候补。
+- 创建后每个日期直接是 `APPROVED`（`reason_code=SERIES_CREATED_BY_STAFF`，带 `series_id`），不走审批。可以突破“最多提前 30 天”，其余规则照常检查；不受每周上限限制；到场确认照常要求。
+- 取消单次用 `POST bookings/{id}/cancel/`；取消整组剩下的用 `POST bookings/series/{id}/cancel/`（员工）。`GET bookings/series/{id}/` 返回这组的所有日期。
+
+## 资源管理（只有 Manager）
+
+页面 **Resources**（`/manager/resources`）。规则都在后端 `booking/services/resources.py`，前端 `features/manager/resource-form.ts` 只是提前给出同样的提示。
+
+- `GET admin/resources/`：所有资源，包括已下架的（`active=false`）。普通的 `GET resources/` 只返回未下架的。
+- `POST admin/resources/`：`kind`（`ROOM`／`EQUIPMENT`）、`name`、`location`、`required_qualification_id` 必填；可选 `description`、`room_id`、`category`（只有设备能填）、`slot_minutes`（15／30／60，默认 30）、`max_booking_minutes`（默认 480）、`opening_time`／`closing_time`（`"HH:MM"`，默认 08:00／20:00）、`pending_hold_minutes`（默认 1440）。成功 201 返回资源。
+- `PATCH admin/resources/{id}/`：只发要改的字段。返回 `{resource, bookings_outside_rules}`。后者是不再符合新规则的未来预约（每项是带 `student`、`resource_name` 和 `problem` 的预约，`problem` 如 `OUTSIDE_OPENING_HOURS`），它们**不会被自动取消**，页面应提示 Manager 去处理。发 `kind` 返回 409 `KIND_IS_FIXED`。
+- `POST admin/resources/{id}/archive/`：下架，`{}`。还有未来预约（409 `RESOURCE_HAS_BOOKINGS`）或房间里还有未下架的设备（409 `ROOM_HAS_EQUIPMENT`）时被拒。`POST …/restore/` 恢复（名称仍须没被占用）。
+- 校验错误是 400 `VALIDATION_ERROR`，`details` 里是出错的字段名，例如 `{"max_booking_minutes": ["…"]}`。
+
+## 预约记录与使用情况（Admin 和 Manager）
+
+页面 **Booking Records**（`/admin/records`），两个标签：
+
+- **Records**：`GET admin/bookings/?status=ALL&since=&until=&resource_id=&q=`。日期是悉尼当地日期，前端换成带时区的时间（`since` 是起始日 0 点，`until` 是结束日后一天 0 点）。表格列：时间、资源、预约人（姓名和 zID）、创建人（`on_behalf` 为 false 时显示 Self）、状态、到场。**Export CSV** 用同样的参数调 `admin/bookings/export/`，所以 CSV 和表格一致。
+- **Usage statistics**（`?tab=usage`；旧地址 `/manager/usage` 会跳过来）：见下文。
+
+### 使用情况报表
+
+`GET admin/reports/usage/?first_date=2030-01-01&last_date=2030-01-28`（当地日期，都包含，最多 366 天）返回 `{first_date, last_date, days, results, totals}`。`results` 每行一个资源：`approved`、`booked_hours`、`open_hours`、`utilisation`（0–1）、`checked_in`、`no_show`、`excused`、`not_tracked`、`attendance_rate`（还没有可算的时为 `null`）、`cancelled`、`rejected`，以及 `name`、`kind`、`category`、`room_name`、`active`。到场数字只算已经结束的已批准预约。
+
+## 修改密码（Admin／Manager）
+
+Account 页面上的表单：`POST auth/change-password/` `{"current_password": "…", "new_password": "…"}`，成功返回 `{"changed": true}`。当前密码不对 400 `INVALID_CREDENTIALS`；新密码少于 8 位或和当前相同 400 `VALIDATION_ERROR`；学生 403 `STUDENT_USES_SSO`。
+
 ## 预约页筛选与一天空闲表
 
 Book a Resource 页面有两个标签：**Browse resources**（资源卡片）和 **Find a free time**。后者先选条件，再在一张表里看所有资源当天的空闲情况，点空闲时间直接打开预约表单（资源和时间已选好）。
@@ -307,7 +417,7 @@ Book a Resource 页面有两个标签：**Browse resources**（资源卡片）�
 - 资源的 `category`（设备类别，例如 `Microscopy`、`Electronics testing`、`Fabrication`；房间为 `null`）。演示类别是编的，以后换成客户的设备清单。`GET resources/` 也可以带 `category=` 筛选。
 - `GET resources/day-overview/` 的参数：
   - `date`：必填，悉尼当地日期。
-  - `duration_minutes`：默认 60，必须是 30 的倍数，最长 480。
+  - `duration_minutes`：默认 60。1.16.0 起，某个资源不能按这个时长预约（超过它的最长时长，或不是它时间步长的倍数）时，这个资源不显示并计入 `too_long`，不再让整个请求 400。
   - `kind`：`ROOM`／`EQUIPMENT`。
   - `room_id`：房间本身加上放在这个房间里的设备。
   - `category`：设备类别。
@@ -320,6 +430,7 @@ Book a Resource 页面有两个标签：**Browse resources**（资源卡片）�
   - `rooms`（`id`、`name`）和 `categories`，用来生成筛选下拉框
   - `count`、`results`。每行是 `resource`（完整资源对象）、`room_name`、`can_request`、`qualification_status`、`resource_status`、`status_reason`、`slots`
   - `slots` 和 `resources/{id}/availability/` 的格式完全相同，规则也是同一套：开放时间、预约窗口、induction、冲突、维修状态。
+  - 1.16.0：`too_long`（因时长不显示的资源数）和 `not_bookable`（`bookable_only=true` 时被隐藏的资源，按原因计数，例如 `{"NOT_SUBMITTED": 18, "MAINTENANCE": 1}`；原因是 `MAINTENANCE`／`CLOSED`、`FROZEN` 或 induction 状态）。前端用它说明“为什么什么都没有”，有 induction 原因时给出 Induction & Training 的链接。前端的时长选项到 8 小时。
 - 前端点击空闲格子后打开 BookingForm，并传入 `initialDate`、`initialStart`、`initialMinutes`，SlotPicker 会自动选中这段时间。只有当这段时间全部空闲时才会自动选中。
 
 ## Outlook 同步
@@ -368,3 +479,57 @@ Book a Resource 页面有两个标签：**Browse resources**（资源卡片）�
 - 同步未启用时，`outlook-retry` 返回 409 `OUTLOOK_DISABLED`。
 - 学生调用这些接口一律返回 403。
 - 正式交付前如果删掉这个页面，后端接口可以保留。
+
+## 1.16.0：申请改期、维修通知、联系方式和员工首页
+
+### 申请改期（预约人）
+
+- 已批准、还没开始的预约，预约人本人可以在 My Bookings 点 **Change time**，选新时间后 `POST bookings/{id}/change/` `{"start": "…", "end": "…"}`（可带 `Idempotency-Key`）。同一资源，用途沿用原预约。Manager 仍然用 Reschedule 直接改。
+- 后端新建一个申请，`replaces_id` 指向原预约。新时间空闲：`PENDING_APPROVAL`，正常审批；新时间已被别人预约或占着：`WAITLISTED`。前端在选到被占用的时间时先提示“只能进候补”，按钮和确认框也会写明。
+- **原预约在新申请批准前一直有效。** 新申请被批准（Admin 手动、审批期到了系统自动、或候补转正后批准）的那一刻，原预约自动取消（`reason_code=REPLACED_BY_CHANGE`），它的时间交给候补队列。新申请被拒、撤回或过期，原预约不变。
+- 规则和普通申请相同（预约窗口、开放时间、时长、induction、冻结、每周上限）；原预约本身不算冲突、不算重复、也不在每周上限里多算一次。不支持紧急改期。
+- 一个预约同时只能有一个待处理的改期（409 `CHANGE_ALREADY_REQUESTED`，`details.booking_id` 是那个申请）；不是自己的预约 404／403；不是已批准的未来预约 409 `REQUEST_NOT_CHANGEABLE`；时间和现在一样 400。
+- 预约 JSON 新字段：`replaces_id`、`replaces_booking`（改期申请指向的原预约：`id`、`start`、`end`、`status`）、`open_change`（原预约上还在等的改期申请，同样四个字段）。My Bookings 用它们在两张卡片上互相说明；Booking Review 在时间下面显示“Change from …”。
+
+### 维修和关闭的通知
+
+- Manager 把资源改成 `MAINTENANCE` 或 `CLOSED` 时，所有在这个资源上有未来预约或申请的人都会收到 `RESOURCE_OUT_OF_SERVICE`（站内和邮件），内容带 Manager 写的原因；已批准的预约**仍然保留**，由 Manager 决定改期或取消（改期、取消会另发通知）。改回 `AVAILABLE` 时发 `RESOURCE_REOPENED`。只改原因不改状态不重复通知。房间的状态不影响里面的设备，所以设备的预约人不会收到。
+- Room Management 的确认框列出受影响的预约，并说明会自动通知；下面的列表把不能照常进行的预约标出来。
+
+### 实验室联系方式
+
+- `GET site/contact/` 返回 `{id, email, phone, hours, note, updated_at, updated_by}`，没设置时都是空字符串。`PATCH site/contact/`（只有 Manager）只改发送的字段，空字符串表示清空，`email` 要像邮箱地址，写 `SITE_CONTACT_UPDATED` 审计。
+- 显示在 Help 页面、已批准预约卡片（“Contact the lab”，邮件主题和正文已带资源、时间和预约编号）和每项 induction 的说明下面。只显示填了的字段。
+
+### 员工首页 Today
+
+- Admin 和 Manager 登录后进入 `/admin/today`（以前分别是 Qualification Review 和 Room Management）。
+- `GET admin/overview/` 返回：`pending_inductions`、`pending_bookings`（不含紧急）、`urgent_requests`、`waitlisted`、`changes_waiting`、`due_soon`（6 小时内到审批期限的待审申请，最多 10 个）、`unfreeze_requests`、`out_of_service`（`[{resource, affected_bookings}]`）、`today`（今天开始的已批准预约，最多 10 个）、`today_count`、`missed_today`、`can_decide_urgent`。每张卡片链接到处理它的页面。
+
+### 其他界面改动
+
+- Booking Review 列表加了 Purpose 列和 Details 按钮（整行点开也可以）。
+- 预约表单：Purpose 标为必填，按钮灰着时直接说还差什么；在最早可约的那天会提示“更早要走紧急申请”，可以一键切换；时间条下面可以直接选开始时间和时长；手机上提交按钮和所选时间固定在弹窗底部。
+- 资源设置表单的“最长预约”和“审批期”用小时填写（接口仍是分钟）。
+- 日历订阅分别给出 Outlook、Google 和 Apple 的步骤，并说明更新会有延迟、以网站状态为准。
+
+## 1.17.0: functional controls
+
+### Urgent explanation and evidence
+
+Urgent booking requests still require both `purpose` and `urgent_reason` in `POST bookings/`. The UI collects one **Purpose and urgency** value and sends it in both fields (up to 500 characters). Ordinary booking requests retain their separate Purpose field. Qualification submissions still require a multipart `file`; UI validation does not replace the server's size, MIME and file-content validation.
+
+### Opt-in local test session
+
+- `GET auth/config/` adds `test_console_enabled`. It is true only when `DEBUG=true`, `ENABLE_DEMO_AUTH=true`, `ENABLE_TEST_CONSOLE=true`, `AUTH_PROVIDER=booking.authentication.DemoIdentityProvider` and `REPOSITORY_FACTORY=booking.repository.MemoryRepository` (the in-memory store; with PostgreSQL it stays off). Any disabled condition hides the login endpoint (404) and invalidates existing test tokens (401). Default: disabled.
+- `POST auth/test-login/` accepts exactly `{ "login_id": "1" }`; no password. Returns the usual session envelope with a signed token and user (`zid="1"`, initial `role="STUDENT"`, `test_account=true`, `bypass_booking_rules=true`). Database `id` remains a UUID. The stored role stays STUDENT.
+- `POST auth/test-session/`, authenticated with that test token only, accepts `{ "role": "STUDENT" | "ADMIN" | "MANAGER", "bypass_booking_rules": true | false }`. It returns a fresh signed session. Replace the token and verify with `auth/me/`. Ordinary accounts receive 403 and cannot obtain overrides by adding fields to booking requests. Switching a session does not mutate another tab's already-issued token.
+- Bypass applies to the test account's own bookings, moves and staff weekly series. Free valid future times become APPROVED immediately (`TEST_OVERRIDE` for single bookings); account freeze, induction, 7–30 day window, opening hours, resource maximum duration, maintenance/closed status and weekly booking limit are bypassed. Archived resources remain unavailable. Single appointments are limited to 24 h; staff series to 52 weeks. Existing bookings and held requests cannot be displaced. Booking for someone else uses that person's normal rules. Turning bypass off restores normal booking windows and approvals; account 1 retains its automatically granted inductions.
+- With bypass, availability and day-overview add `test_bypass=true`; `latest_date=null` means no upper calendar-date restriction and date inputs must omit `max`. `min_advance_days` and `max_advance_days` are 0. Single-resource availability adds `max_booking_minutes=1440` and `review_window_minutes=0`; slots cover the local calendar day and preserve past-time/conflict blocks. Normal sessions continue returning their normal window dates. Display a test-override label.
+- Self time changes return APPROVED immediately and cancel the replaced original booking. Test attendance is NOT_TRACKED. Website notifications and audit remain; no test booking is sent to Outlook or external notification channels.
+
+All test UI copy is English. This is a local testing facility; keep it disabled on deployed services.
+
+### 1.17.1: account 1 owns every induction
+
+On login and authenticated test requests, account 1 receives every induction as VERIFIED with `valid_until=null`, including requirements added after sign-in. This applies in Student, Admin and Manager views even with booking-rule bypass off. Grants are idempotent, explicitly marked as test access, have no uploaded file and return `file_id=""`, `file_url=""`. The induction UI omits the upload form for this account. Ordinary users still need valid evidence and manual review. No database migration or external notification is involved; the existing local-memory-only gate remains required.

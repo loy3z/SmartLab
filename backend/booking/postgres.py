@@ -1,7 +1,7 @@
 
 import json
 from contextlib import contextmanager
-from dataclasses import fields
+from dataclasses import asdict, fields
 from enum import Enum
 from uuid import UUID, uuid4
 
@@ -9,9 +9,10 @@ from django.db import connection, transaction
 from psycopg.types.json import Jsonb
 
 from .domain import (
-    AuditRecord, Booking, BookingStatus, OutlookSyncRecord, Principal,
+    AuditRecord, Booking, BookingSeries, BookingStatus, CalendarFeed, Notification, OutlookSyncRecord, Principal,
     QualificationRequirement, QualificationStatus, QualificationSubmission,
-    Resource, ResourceKind, Role, StaffCredential,
+    Resource, ResourceKind, Role, StaffCredential, UnfreezeRequest, UnfreezeStatus,
+    SITE_CONTACT_ID, SiteContact,  # Sprint 3 (1.16.0)
 )
 from .storage import StoredFile
 
@@ -26,20 +27,31 @@ _TABLES = {
     OutlookSyncRecord: 'outlook_sync_record',
     StoredFile: 'stored_file',
     StaffCredential: 'staff_credential',
+    Notification: 'notification',
+    CalendarFeed: 'calendar_feed',
+    UnfreezeRequest: 'unfreeze_request',
+    BookingSeries: 'booking_series',
+    SiteContact: 'site_contact',  # Sprint 3 (1.16.0)
 }
+# Sprint 3 (1.16.0): fields kept as JSON (jsonb) lists of objects rather than uuid[] arrays.
+_JSON_LISTS = {(Resource, 'details')}
 _ENUMS = {
     Principal: {'role': Role},
     Resource: {'kind': ResourceKind},
     QualificationSubmission: {'status': QualificationStatus},
     Booking: {'status': BookingStatus},
+    UnfreezeRequest: {'status': UnfreezeStatus},
 }
 _ORDER = {
     Principal: 'id', Resource: 'id', QualificationRequirement: 'id',
     QualificationSubmission: 'storage_order', Booking: 'created_at, id',
     AuditRecord: 'at, id', OutlookSyncRecord: 'updated_at, booking_id',
     StoredFile: 'id', StaffCredential: 'principal_id',
+    Notification: 'created_at DESC, id DESC', CalendarFeed: 'principal_id',
+    UnfreezeRequest: 'created_at, id', BookingSeries: 'created_at, id',
+    SiteContact: 'id',
 }
-_KEYS = {OutlookSyncRecord: 'booking_id', StaffCredential: 'principal_id'}
+_KEYS = {OutlookSyncRecord: 'booking_id', StaffCredential: 'principal_id', CalendarFeed: 'principal_id'}
 _WRITE_LOCK = 0x534D4152544C4142
 
 
@@ -61,6 +73,10 @@ def _columns(record_type):
 def _decode(record_type, row):
     values = dict(zip(_columns(record_type), row, strict=True))
     for key, value in values.items():
+        if (record_type, key) in _JSON_LISTS:
+            # Sprint 3 (1.16.0): Django returns jsonb as text; the dataclass turns the objects back into records.
+            values[key] = json.loads(value) if isinstance(value, str) else value
+            continue
         if isinstance(value, UUID):
             values[key] = str(value)
         elif isinstance(value, list):  # uuid[] columns such as prerequisite_ids
@@ -158,7 +174,8 @@ def _insert(record, upsert=False):
         query += f' ON CONFLICT ({quote(key)}) DO UPDATE SET {assignments}'
     with _atomic():
         with connection.cursor() as cursor:
-            cursor.execute(query, [_encode(getattr(record, name)) for name in names])
+            cursor.execute(query, [Jsonb([asdict(item) for item in getattr(record, name)]) if (record_type, name) in _JSON_LISTS
+                                   else _encode(getattr(record, name)) for name in names])
 
 
 class PostgresRepository:
@@ -244,6 +261,51 @@ class PostgresRepository:
 
     def save_credential(self, credential):
         _insert(credential, upsert=True)
+
+    # Sprint 3 records ------------------------------------------------------------------------------------
+
+    def save_notification(self, notification):
+        _insert(notification, upsert=True)
+
+    def get_notification(self, notification_id):
+        return _get(Notification, notification_id)
+
+    def list_notifications(self, recipient_id):
+        return _filtered(Notification, recipient_id=recipient_id)
+
+    def get_calendar_feed(self, principal_id):
+        return _get(CalendarFeed, principal_id)
+
+    def get_calendar_feed_by_token(self, token):
+        if not isinstance(token, str) or not token:
+            return None
+        rows = _select(CalendarFeed, 'token = %s', [token])
+        return rows[0] if rows else None
+
+    def save_calendar_feed(self, feed):
+        _insert(feed, upsert=True)
+
+    def save_unfreeze_request(self, request):
+        _insert(request, upsert=True)
+
+    def get_unfreeze_request(self, request_id):
+        return _get(UnfreezeRequest, request_id)
+
+    def list_unfreeze_requests(self, principal_id=None):
+        return _filtered(UnfreezeRequest, principal_id=principal_id)
+
+    def save_series(self, series):
+        _insert(series, upsert=True)
+
+    def get_series(self, series_id):
+        return _get(BookingSeries, series_id)
+
+    # Sprint 3 (1.16.0)
+    def get_site_contact(self):
+        return _get(SiteContact, SITE_CONTACT_ID)
+
+    def save_site_contact(self, contact):
+        _insert(contact, upsert=True)
 
 
 class PostgresFileStorage:

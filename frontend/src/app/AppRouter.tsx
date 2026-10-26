@@ -1,4 +1,6 @@
 import { startTransition, useEffect } from 'react'
+import { NotificationPreferences } from '../features/notifications/NotificationPreferences' // Sprint 3 (1.19.0)
+import { AnnouncementsPage } from '../features/announcements/AnnouncementsPage'
 import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { useAuth } from '../features/auth/auth-context'
 import { LoginPage } from '../features/auth/LoginPage'
@@ -26,6 +28,7 @@ import { canAccess, homePath, isKnownPath, loginDestination, normalizePath } fro
 
 // Browser-tab titles. Sprint 3 (internal-tool UI, AI-6): the same sentence-case names as the navigation and the H1.
 const titles: Record<string, string> = {
+  '/settings/notifications': 'Notifications', '/admin/announcements': 'Announcements', // Sprint 3 (1.19.0)
   '/dashboard': 'Dashboard', '/resources': 'Book a resource', '/bookings': 'My bookings',
   '/induction': 'Induction & training', '/admin/qualifications': 'Induction review',
   '/admin/bookings': 'Booking review', '/admin/freezes': 'Booking freezes', '/admin/calendar-sync': 'Calendar sync', '/manager/bookings': 'Room management',
@@ -158,6 +161,9 @@ export function AppRouter() {
           <Route path="/admin/records" caseSensitive element={<BookingRecordsPage />} />
           <Route path="/manager/setup" caseSensitive element={<LabSetupPage />} />{/* Sprint 3 (1.16.0) */}
           <Route path="/manager/usage" caseSensitive element={<Navigate to="/admin/records?tab=usage" replace />} />
+          {/* Sprint 3 (1.19.0) */}
+          <Route path="/settings/notifications" caseSensitive element={<NotificationPreferences />} />
+          <Route path="/admin/announcements" caseSensitive element={<AnnouncementsPage />} />
           <Route path="/account" caseSensitive element={auth.user && <AccountPage user={auth.user} />} />
           <Route path="/help" caseSensitive element={auth.user && <HelpPage user={auth.user} />} />
         </Route>

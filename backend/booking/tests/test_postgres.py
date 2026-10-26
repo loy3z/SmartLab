@@ -29,7 +29,42 @@ from booking.exceptions import DomainError
 from booking.services import BookingService
 
 SYDNEY = ZoneInfo("Australia/Sydney")
+from booking.tests.test_119 import Acceptance119  # Sprint 3 (1.19.0): identical adapter acceptance cases.
 SCHEMA = Path(settings.BASE_DIR) / "database" / "schema.sql"
+
+
+@unittest.skipUnless(getattr(settings, "USE_POSTGRES", False), "PostgreSQL adapter not configured.")
+class Postgres119Tests(Acceptance119, TransactionTestCase):
+    """Sprint 3 (1.19.0): real database channels, announcement permissions, lifecycle and atomicity."""
+    databases = {"default"}
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT to_regclass('public.booking')")
+            if cursor.fetchone()[0] is None:
+                cursor.execute(_schema_statements())
+
+    def setUp(self):
+        from booking.postgres import PostgresRepository, PostgresFileStorage
+        with connection.cursor() as cursor:
+            cursor.execute('DELETE FROM public.announcement')
+        self.setup_119(PostgresRepository(), PostgresFileStorage())
+
+    def test_009_preserves_legacy_bell_choice_and_defaults_email_on_twice(self):
+        # Transactional DDL rolls back at the end: no other test sees this temporary old structure.
+        migration = Path(settings.BASE_DIR) / 'database/migrations/009_announcements_notification_channels.sql'
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute('ALTER TABLE public.notification_preference DROP COLUMN email_enabled')
+                cursor.execute('INSERT INTO public.notification_preference(id, principal_id, category, enabled) VALUES (%s,%s,%s,false)',
+                               [str(uuid4()), self.student.id, 'bookings'])
+                cursor.execute(migration.read_text())
+                cursor.execute(migration.read_text())
+                cursor.execute('SELECT enabled,email_enabled FROM public.notification_preference WHERE principal_id=%s', [self.student.id])
+                self.assertEqual(cursor.fetchone(), (False, True))
+            transaction.set_rollback(True)
 
 
 def _schema_statements():

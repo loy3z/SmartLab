@@ -17,7 +17,7 @@ from ..errors import DomainError
 # Notifications created during the current request, so extra channels can send them after commit.
 _new_notification_ids = ContextVar("booking_new_notification_ids", default=None)
 
-# Sprint 3 (2026-10-25): categories a person can switch off on the Account page. The Managers' urgent-request
+# Sprint 3 (1.19.0): categories on the dedicated Notifications page. The Managers' urgent-request
 # notice is deliberately not in this list: it is part of their job, not a personal update.
 NOTIFICATION_CATEGORIES = ("bookings", "reminders", "induction", "account", "resources")
 
@@ -68,13 +68,14 @@ class NotificationsMixin:
     def _notify(self, recipient_id, kind, title, body, booking=None, link=None):
         if not recipient_id:
             return None
-        # Sprint 3 (2026-10-25): a person can switch a category off; unknown kinds and missing rows are sent.
+        # Sprint 3 (1.19.0): keep email-only messages out of the bell permanently.
         category = notification_category(kind)
-        if category is not None and not self._category_enabled(recipient_id, category):
+        in_app, email = self._category_channels(recipient_id, category)
+        if not (in_app or email):
             return None
         notification = Notification(str(uuid4()), str(recipient_id), kind, title, body, self.now(),
                                     link=link or ("/bookings" if booking else None),
-                                    booking_id=booking.id if booking else None)
+                                    booking_id=booking.id if booking else None, in_app=in_app, email=email)
         self.repo.save_notification(notification)
         ids = _new_notification_ids.get()
         if ids is None:
@@ -83,28 +84,36 @@ class NotificationsMixin:
         ids.append(notification.id)
         return notification
 
-    def _category_enabled(self, principal_id, category):
-        for item in self.repo.list_notification_preferences(str(principal_id)):
-            if item.category == category:
-                return item.enabled
-        return True
+    # Sprint 3 (1.19.0): missing choices default to enabled; urgent staff duties have no category.
+    def _category_channels(self, principal_id, category):
+        if category is not None:
+            for item in self.repo.list_notification_preferences(str(principal_id)):
+                if item.category == category:
+                    return item.enabled, item.email_enabled
+        return True, True
 
     def notification_preferences(self, actor):
-        """Every choice the Account page shows; a category without a row is on."""
-        saved = {item.category: item.enabled for item in self.repo.list_notification_preferences(actor.id)}
-        return [{"category": category, "enabled": saved.get(category, True)} for category in NOTIFICATION_CATEGORIES]
+        saved = {item.category: item for item in self.repo.list_notification_preferences(actor.id)}
+        return [{"category": category, "in_app": saved[category].enabled if category in saved else True,
+                 "email": saved[category].email_enabled if category in saved else True}
+                for category in NOTIFICATION_CATEGORIES]
 
     def save_notification_preferences(self, actor, choices):
-        """choices: {category: bool}. One stable row per category, so saving again updates instead of duplicating."""
-        # Check every name before saving any, so a refused request changes nothing (review D2, 2026-10-25).
-        unknown = [category for category in choices if category not in NOTIFICATION_CATEGORIES]
+        unknown = set(choices) - set(NOTIFICATION_CATEGORIES)
         if unknown:
-            raise DomainError("VALIDATION_ERROR", f"Unknown notification category: {', '.join(unknown)}.")
-        with self.repo.atomic():
-            for category, enabled in choices.items():
-                record_id = uuid5(NAMESPACE_URL, f"notification-preference:{actor.id}:{category}")
-                self.repo.save_notification_preference(
-                    NotificationPreference(str(record_id), actor.id, category, bool(enabled)))
+            raise DomainError("VALIDATION_ERROR", f"Unknown notification category: {', '.join(sorted(unknown))}.")
+        for value in choices.values():
+            if (not isinstance(value, dict) or not value or set(value) - {"in_app", "email"}
+                    or any(type(item) is not bool for item in value.values())):
+                raise DomainError("VALIDATION_ERROR", "Provide in_app and/or email as booleans.")
+        with self.repo.atomic(student_ids=[actor.id]):
+            saved = {item.category: item for item in self.repo.list_notification_preferences(actor.id)}
+            for category, value in choices.items():
+                previous = saved.get(category)
+                self.repo.save_notification_preference(NotificationPreference(
+                    str(uuid5(NAMESPACE_URL, f"notification-preference:{actor.id}:{category}")), actor.id, category,
+                    value.get("in_app", previous.enabled if previous else True),
+                    value.get("email", previous.email_enabled if previous else True)))
         return self.notification_preferences(actor)
 
     def take_new_notification_ids(self):
@@ -156,7 +165,7 @@ class NotificationsMixin:
         return f" Your current booking ({self.describe_time(old)}) stays as it is."
 
     def list_notifications(self, actor, unread_only=False, limit=50):
-        items = self.repo.list_notifications(actor.id)
+        items = [item for item in self.repo.list_notifications(actor.id) if item.in_app]
         unread = sum(1 for item in items if item.read_at is None)
         if unread_only:
             items = [item for item in items if item.read_at is None]
@@ -164,7 +173,7 @@ class NotificationsMixin:
 
     def mark_notification_read(self, actor, notification_id):
         notification = self.repo.get_notification(str(notification_id))
-        if notification is None or notification.recipient_id != actor.id:
+        if notification is None or notification.recipient_id != actor.id or not notification.in_app:
             raise DomainError("NOT_FOUND", "Notification not found.", 404)
         if notification.read_at is None:
             notification = replace(notification, read_at=self.now())
@@ -174,7 +183,7 @@ class NotificationsMixin:
     def mark_all_notifications_read(self, actor):
         now, count = self.now(), 0
         for item in self.repo.list_notifications(actor.id):
-            if item.read_at is None:
+            if item.in_app and item.read_at is None:
                 self.repo.save_notification(replace(item, read_at=now))
                 count += 1
         return count

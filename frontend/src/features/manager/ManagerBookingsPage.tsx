@@ -1,3 +1,4 @@
+import { ResourceStatusDialog } from './ResourceStatusDialog' // Sprint 3 (1.19.0)
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { EmptyState, PageHeader, RefreshStamp } from '../../ui/components'
 import { useFeedback } from '../../ui/feedback-context'
@@ -5,7 +6,6 @@ import {
   cancelBooking,
   listApprovedBookings,
   listResources,
-  updateResourceStatus,
 } from '../booking/api'
 import { errorMessage, fmtDuration, fmtRange, minutesBetween } from '../booking/format'
 import { Modal } from '../booking/Modal'
@@ -25,6 +25,7 @@ const hasStarted = (b: Booking) => Date.parse(b.start) <= Date.now()
 const who = (b: Booking) => b.student?.display_name || b.student?.zid || b.student_id
 
 export function ManagerBookingsPage() {
+  const [statusTarget, setStatusTarget] = useState<{ room: Resource; status: ResourceStatus } | null>(null)
   const feedback = useFeedback()
   const [bookings, setBookings] = useState<Booking[]>([])
   const [rooms, setRooms] = useState<Resource[]>([])
@@ -66,45 +67,9 @@ export function ManagerBookingsPage() {
     [bookings, roomFilter, now],
   )
 
-  async function changeStatus(room: Resource, status: ResourceStatus) {
-    if (busy) return
-    const affectedList = bookings.filter((b) => b.resource_id === room.id && Date.parse(b.end) > now)
-    const upcoming = affectedList.length
-    // Sprint 3 (1.16.0): say who is affected and that they are told automatically (site notice and email).
-    const affectedDetails = affectedList.slice(0, 5).map((b) => ({ label: 'Booking', value: `${fmtRange(b.start, b.end)} · ${who(b)}${b.student?.zid ? ` (${b.student.zid})` : ''}` }))
-    const answer = await feedback.confirm(status === 'AVAILABLE'
-      ? {
-        title: `Reopen ${room.name}?`,
-        message: `Students can request it again. Waitlisted requests that now fit move to Awaiting approval.${upcoming ? ' People with bookings here are told it is open again.' : ''}`,
-        confirmLabel: 'Reopen room',
-      }
-      : {
-        title: `${status === 'MAINTENANCE' ? 'Put' : 'Close'} ${room.name}${status === 'MAINTENANCE' ? ' under maintenance' : ''}?`,
-        message: `New requests and approvals stop. ${upcoming
-          ? `${upcoming} confirmed booking${upcoming === 1 ? ' is' : 's are'} kept, and everyone with a booking or request here is told on the site and by email (with your reason). Afterwards, move or cancel the ones that cannot go ahead: they are marked in the list below.${upcoming > 5 ? ` First 5 of ${upcoming} shown.` : ''}`
-          : 'There are no upcoming confirmed bookings.'}`,
-        details: affectedDetails,
-        reason: { label: 'Reason (shown to students)', placeholder: 'e.g. Fume hood repairs until Friday', maxLength: 500 },
-        confirmLabel: status === 'MAINTENANCE' ? 'Start maintenance' : 'Close room',
-        danger: true,
-      })
-    if (!answer.confirmed) return
-    setBusy(room.id)
-    try {
-      const result = await updateResourceStatus(room.id, status, status === 'AVAILABLE' ? '' : answer.reason)
-      const affected = result.affected_bookings.length
-      feedback.success(
-        result.resource.status === 'AVAILABLE'
-          ? `${room.name} is open for requests again.`
-          : `${room.name} is now ${STATUS_LABELS[result.resource.status].toLowerCase()}. ${affected ? `${affected} booking${affected === 1 ? '' : 's'} or request${affected === 1 ? '' : 's'} affected; the people were notified. Decide on each below.` : 'No bookings are affected.'}`,
-        'Room status updated',
-      )
-    } catch (err: unknown) {
-      feedback.error(errorMessage(err), 'Status not changed')
-    } finally {
-      setBusy(null)
-      reload()
-    }
+  // Sprint 3 (1.19.0): status errors stay inside its still-open form.
+  function changeStatus(room: Resource, status: ResourceStatus) {
+    setStatusTarget({ room, status })
   }
 
   async function handleCancel(booking: Booking) {
@@ -237,6 +202,11 @@ export function ManagerBookingsPage() {
         </>
       )}
 
+      {statusTarget && <ResourceStatusDialog resource={statusTarget.room} status={statusTarget.status}
+        affected={bookings.filter(item => item.resource_id === statusTarget.room.id && Date.parse(item.end) > now)}
+        onClose={() => setStatusTarget(null)} onSaved={() => {
+          setStatusTarget(null); feedback.success('Resource status updated'); reload()
+        }} />}
       {moving && rooms.some((room) => room.id === moving.resource_id) && (
         <Modal label="Reschedule booking" onClose={() => setMoving(null)}>
           <div className="bk-form">

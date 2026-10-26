@@ -1,3 +1,4 @@
+import { AnnouncementBoard } from '../announcements/AnnouncementBoard' // Sprint 3 (1.19.0)
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { getDashboard, listRequirements, listResources } from '../booking/api'
@@ -89,6 +90,8 @@ function DashboardSession({ user }: { user: User }) {
         <Link className="dash-primary" to="/resources"><CalendarIcon /> Book a resource</Link>
       </header>
 
+      {/* Sprint 3 (1.19.0): the same active announcements as the staff home page. */}
+      <AnnouncementBoard />
       <div className="dash-toolbar">
         <span>{state.status === 'ready' ? `Updated ${fmtTime(new Date(state.loadedAt).toISOString())} · Sydney time` : 'Your booking overview'}</span>
         <button className="dash-text-button" onClick={refresh} disabled={state.status === 'loading'}>

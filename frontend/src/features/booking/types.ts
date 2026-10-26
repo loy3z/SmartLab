@@ -285,10 +285,18 @@ export interface NotificationList {
   results: AppNotification[]
 }
 
-/** Sprint 3 (2026-10-25): one switch on the Account page; a missing row means the category is on. */
+/** Sprint 3 (1.19.0): independent delivery choices; missing preferences default to both channels on. */
 export interface NotificationPreference {
   category: string
-  enabled: boolean
+  in_app: boolean
+  email: boolean
+}
+/** Sprint 3 (1.19.0): attributed home-page announcement, separate from personal notifications. */
+export interface Announcement {
+  id: string; title: string; body: string; kind: 'MANUAL' | 'RESOURCE_STATUS'; resource_id: string | null
+  created_by: string; author_role: 'ADMIN' | 'MANAGER'; author: { id: string; display_name: string; role: 'ADMIN' | 'MANAGER' }
+  created_at: string; updated_at: string | null; expires_at: string | null; removed_at: string | null
+  expected_back: string | null; active: boolean
 }
 
 export interface CalendarLink {

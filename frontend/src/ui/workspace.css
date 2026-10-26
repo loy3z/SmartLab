@@ -277,3 +277,42 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .app-pref-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
 .app-pref-list li label { display: flex; align-items: center; gap: 10px; font-size: 14px; }
 .app-pref-list input { width: 18px; height: 18px; }
+
+/* Sprint 3 (1.19.0): notification matrix and announcements; all new UI styles live here. */
+.notification-settings, .announcements-page { min-width: 0; }
+.notification-settings > .app-card, .announcement-editor { margin-top: 20px; }
+.notification-settings p, .announcement-editor p { font-size: 14px; }
+.notification-email-note { margin-top: 12px; padding: 12px; background: var(--amber-bg); border-radius: 8px; }
+.notification-matrix { margin-top: 20px; min-width: 0; }
+.notification-matrix-head, .notification-matrix-row { display: grid; grid-template-columns: minmax(0,1fr) 110px 110px; gap: 20px; align-items: center; padding: 16px 0; }
+.notification-matrix-head { font-size: 12px; font-weight: 700; border-bottom: 1px solid var(--line); }
+.notification-matrix-head > span:not(:first-child) { text-align: center; }
+.notification-matrix-row { border-bottom: 1px solid var(--line); }
+.notification-matrix-row:last-child { border-bottom: 0; }
+.notification-matrix-row h2 { font-size: 16px; margin: 0; }
+.notification-matrix-row p { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.notification-matrix-row label { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; font-size: 12px; }
+.notification-matrix-row label span { display: none; }
+.notification-matrix-row input { width: 20px; height: 20px; }
+.announcement-board { margin: 20px 0; padding: 20px; border: 1px solid var(--line); border-left: 4px solid var(--yellow); border-radius: 12px; background: var(--card); }
+.announcement-board h2, .announcement-history > h2 { font-size: 20px; margin-bottom: 16px; }
+.announcement-board article + article { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.announcement-board h3, .announcement-history h3 { font-size: 16px; margin: 8px 0; overflow-wrap: anywhere; }
+.announcement-body { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+.announcement-author, .announcement-editor .announcement-time-note { font-size: 12px; color: var(--muted); margin-top: 10px; }
+.announcement-board article { min-width: 0; overflow-wrap: anywhere; }
+.announcement-editor form, form.announcement-editor { display: grid; gap: 16px; min-width: 0; }
+.announcement-editor input, .announcement-editor textarea { width: 100%; min-width: 0; max-width: 100%; }
+.announcement-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.announcement-history { margin-top: 28px; min-width: 0; }
+.announcement-history article { padding: 20px; margin-bottom: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); min-width: 0; overflow-wrap: anywhere; }
+.announcement-history .ui-pill { margin-right: 8px; font-size: 12px; }
+.announcement-error { padding: 12px; margin-bottom: 16px; font-size: 14px; }
+@media (max-width: 600px) {
+  .notification-matrix-head { display: none; }
+  .notification-matrix-row { grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 8px; }
+  .notification-matrix-row > div { grid-column: 1/-1; }
+  .notification-matrix-row label { justify-content: flex-start; }
+  .notification-matrix-row label span { display: inline; }
+  .announcement-board, .announcement-history article { padding: 16px; }
+}

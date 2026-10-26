@@ -9,6 +9,7 @@ from django.db import connection, transaction
 from psycopg.types.json import Jsonb
 
 from .domain import (
+    Announcement,  # Sprint 3 (1.19.0)
     AuditRecord, Booking, BookingSeries, BookingStatus, CalendarFeed, Notification, NotificationPreference,
     OutlookSyncRecord, Principal,
     QualificationRequirement, QualificationStatus, QualificationSubmission,
@@ -33,6 +34,7 @@ _TABLES = {
     UnfreezeRequest: 'unfreeze_request',
     BookingSeries: 'booking_series',
     SiteContact: 'site_contact',  # Sprint 3 (1.16.0)
+    Announcement: 'announcement',  # Sprint 3 (1.19.0)
     NotificationPreference: 'notification_preference',  # Sprint 3 (2026-10-25)
 }
 # Sprint 3 (1.16.0): fields kept as JSON (jsonb) lists of objects rather than uuid[] arrays.
@@ -52,6 +54,7 @@ _ORDER = {
     Notification: 'created_at DESC, id DESC', CalendarFeed: 'principal_id',
     UnfreezeRequest: 'created_at, id', BookingSeries: 'created_at, id',
     SiteContact: 'id',
+    Announcement: 'created_at DESC, id DESC',  # Sprint 3 (1.19.0)
     NotificationPreference: 'category',
 }
 _KEYS = {OutlookSyncRecord: 'booking_id', StaffCredential: 'principal_id', CalendarFeed: 'principal_id'}
@@ -282,6 +285,16 @@ class PostgresRepository:
 
     def list_notification_preferences(self, principal_id):
         return _filtered(NotificationPreference, principal_id=principal_id)
+
+    # Sprint 3 (1.19.0): same record contract as the memory adapter.
+    def save_announcement(self, announcement):
+        _insert(announcement, upsert=True)
+
+    def get_announcement(self, announcement_id):
+        return _get(Announcement, announcement_id)
+
+    def list_announcements(self):
+        return _filtered(Announcement)
 
     def get_calendar_feed(self, principal_id):
         return _get(CalendarFeed, principal_id)

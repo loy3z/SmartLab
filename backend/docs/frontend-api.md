@@ -239,7 +239,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | GET | `notifications/?unread=&limit=50` | 我的通知，最新在前，带 `unread_count` |
 | POST | `notifications/{id}/read/` | 标为已读 |
 | POST | `notifications/read-all/` | 全部标为已读 |
-| GET | `notifications/preferences/` | 我的通知类别开关（没有保存过的类别默认开启） |
+| GET | `notifications/preferences/` | 我的五类站内／邮件开关及网站邮件能力；见 1.19.0 |
 | PUT | `notifications/preferences/` | 保存开关：`{"preferences": {"bookings": true, "reminders": false}}`，未知类别返回 400 |
 | GET / POST | `account/unfreeze-requests/` | 我的解冻申请／提交解冻申请 `{"reason": "…"}` |
 | GET | `admin/unfreeze-requests/?status=PENDING` | Admin／Manager：解冻申请 |
@@ -355,7 +355,7 @@ API 输出时间为 ISO 8601 UTC `Z`。前端用 `Australia/Sydney` 显示，支
 
 ## 站内通知
 
-- `GET notifications/` 返回 `{ count, unread_count, results }`，最新在前；`unread=true` 只看未读，`limit` 1–200（默认 50）。`unread_count` 是全部未读数。
+- `GET notifications/` 返回 `{ count, unread_count, results }`，最新在前；`unread=true` 只看未读，`limit` 1–200（默认 50）。`unread_count` 是全部站内可见的未读数，不含只发邮件的记录（Sprint 3，1.19.0）。
 - 每条有 `kind`、`title`、`body`、`created_at`、`link`（站内页面，例如 `/bookings`、`/induction`、`/admin/bookings`）、`booking_id`、`read_at`。
 - 会发通知的事：
   - 给预约人：`BOOKING_SUBMITTED`（自己提交的申请已收到，说明现在等审批还是在候补）、`BOOKING_APPROVED`、`BOOKING_REJECTED`（含系统自动决定、候补递补时不合格、资料被拒连带拒绝）、`BOOKING_PROMOTED`（候补转为待审批）、`BOOKING_RESCHEDULED`、`BOOKING_CANCELLED`（被员工取消）、`BOOKING_CREATED_FOR_YOU`、`SERIES_CREATED`（员工自己的重复预约）、`SERIES_CREATED_FOR_YOU`、`QUALIFICATION_VERIFIED`／`QUALIFICATION_REJECTED`、`NO_SHOW_RECORDED`、`ACCOUNT_FROZEN`、`UNFREEZE_APPROVED`／`UNFREEZE_REJECTED`、`ACCOUNT_UNFROZEN`，以及提醒：`BOOKING_REMINDER`（已批准的预约开始前 24 小时，提醒点 I'm here）、`INDUCTION_EXPIRING`（已通过的 induction 14 天内到期，链接到 `/induction?requirement=…`）、`BOOKING_EXPIRED`（候补或待审批的申请到开始时间还没轮到或没人决定）。每条提醒只发一次。
@@ -363,7 +363,7 @@ API 输出时间为 ISO 8601 UTC `Z`。前端用 `Australia/Sydney` 显示，支
   - 1.16.0 新增：`CHANGE_REQUESTED`／`CHANGE_APPROVED`／`CHANGE_REJECTED`（申请改期），`RESOURCE_OUT_OF_SERVICE`（你有预约或申请的资源进入维修或关闭，带 Manager 写的原因；每个预约一条）和 `RESOURCE_REOPENED`（重新开放）。这些也在默认的邮件类型里。
 - 普通新申请不通知管理员（看审批队列）；自己取消不通知。
 - 前端：顶部铃铛显示未读数，打开页面、切回页面和每 60 秒读一次。点一条就 `POST notifications/{id}/read/` 并跳到 `link`；“全部标为已读”用 `POST notifications/read-all/`。只跳站内路径。
-- 邮件：后端打开邮件渠道后（`EMAIL_ENABLED=true`），上面列出的预约结果、提醒和确认类通知也会发到预约人的大学邮箱，见 [email-setup.md](email-setup.md)。前端不用做任何事，接口不变。
+- 邮件：后端打开邮件渠道后（`EMAIL_ENABLED=true`），上面列出的预约结果、提醒和确认类通知也会发到预约人的大学邮箱，见 [email-setup.md](email-setup.md)。是否发邮件还取决于本人该类别的 `email` 偏好；邮件类型和站点配置仍然生效。独立渠道接口见下面 1.19.0。
 
 ## 到场确认与冻结
 
@@ -495,7 +495,7 @@ Book a Resource 页面有两个标签：**Browse resources**（资源卡片）�
 
 ### 维修和关闭的通知
 
-- Manager 把资源改成 `MAINTENANCE` 或 `CLOSED` 时，所有在这个资源上有未来预约或申请的人都会收到 `RESOURCE_OUT_OF_SERVICE`（站内和邮件），内容带 Manager 写的原因；已批准的预约**仍然保留**，由 Manager 决定改期或取消（改期、取消会另发通知）。改回 `AVAILABLE` 时发 `RESOURCE_REOPENED`。只改原因不改状态不重复通知。房间的状态不影响里面的设备，所以设备的预约人不会收到。
+- Manager 把资源改成 `MAINTENANCE` 或 `CLOSED` 时，所有在这个资源上有未来预约或申请的人都会收到 `RESOURCE_OUT_OF_SERVICE`（按本人的站内／邮件偏好），内容带 Manager 写的原因；已批准的预约**仍然保留**，由 Manager 决定改期或取消（改期、取消会另发通知）。改回 `AVAILABLE` 时发 `RESOURCE_REOPENED`。只改原因不改状态不重复通知。房间的状态不影响里面的设备，所以设备的预约人不会收到。
 - Room Management 的确认框列出受影响的预约，并说明会自动通知；下面的列表把不能照常进行的预约标出来。
 
 ### 实验室联系方式
@@ -535,3 +535,45 @@ All test UI copy is English. This is a local testing facility; keep it disabled 
 ### 1.17.1: account 1 owns every induction
 
 On login and authenticated test requests, account 1 receives every induction as VERIFIED with `valid_until=null`, including requirements added after sign-in. This applies in Student, Admin and Manager views even with booking-rule bypass off. Grants are idempotent, explicitly marked as test access, have no uploaded file and return `file_id=""`, `file_url=""`. The induction UI omits the upload form for this account. Ordinary users still need valid evidence and manual review. No database migration or external notification is involved; the existing local-memory-only gate remains required.
+
+## 1.19.0：独立通知渠道与公告（Sprint 3）
+
+### 通知设置
+
+三种角色均可访问 `#/settings/notifications`；Account 页只放 **Notification settings** 链接。五类为 `bookings`、`reminders`、`induction`、`account`、`resources`。
+
+`GET notifications/preferences/` 及 `PUT` 的响应为：
+
+```json
+{"results":[{"category":"bookings","in_app":true,"email":true}],"email_available":false}
+```
+
+示例只列一项，实际固定返回全部五类。没有偏好的类别两列都为 true。`email_available` 来自站点 `EMAIL_ENABLED`，不表示 Gmail／Outlook 已连通或邮件必然送达。为 false 时前端禁用邮件列，显示 **Email is not switched on for this site.**，仍保留已保存的选择。
+
+```json
+{"preferences":{"bookings":{"in_app":false,"email":true},"resources":{"email":false}}}
+```
+
+PUT 只改传入的列；未知类别、未知列、空的列对象返回 400，整次不保存。偏好按当前登录人保存。四种组合分别为站内及邮件、仅站内、仅邮件、都不发。每条通知记录保存生成时的 `in_app` / `email`：仅邮件的记录不在 `notifications/`、未读数或 read-all 中出现，以后开启站内也不补进铃铛。Manager 的 `URGENT_REQUEST` 不属于可关闭的个人类别。
+
+### 公告接口
+
+| 方法 | 路径 | 权限与返回 |
+| --- | --- | --- |
+| GET | `announcements/` | 登录人；`{count,results}`，只含未下架、未过期的公告，创建时间降序 |
+| GET | `announcements/?include_ended=true` | Admin / Manager；包含已结束记录，学生 403 |
+| POST | `announcements/` | Admin / Manager；`{title,body,expires_at?}`，201 |
+| PATCH | `announcements/{id}/` | 仅手动公告作者；部分修改 `title`、`body`、`expires_at`，200 |
+| POST | `announcements/{id}/remove/` | 作者或 Manager；空对象，软下架，200；重复下架不重复审计 |
+
+学生调用任何公告写接口先返回 403，包括无效请求体；不会先返回表单错误。`title` 为去空白后 1–120 字符，`body` 为 1–1000 字符；`expires_at` 为带时区的 ISO 日期时间或 null（一直保留）。请求不能指定 `kind`、`resource_id`、作者、状态等字段，指定即 400。Manager 可以下架别人的手动公告，不能修改；Admin 不能改或下架别人的。状态公告通过这些写接口返回 403。
+
+每条公告含 `id,title,body,kind,resource_id,created_by,created_at,expires_at,removed_at,removed_by,updated_at,author_role,expected_back`，另带 `author:{id,display_name,role}` 和 `active`。`author_role` 为发布时角色，署名显示姓名及角色。不存在返回 404；已下架的手动公告不能再改（409）。创建、修改、下架均写审计，但不会产生通知。
+
+### 资源状态公告
+
+`PATCH admin/resources/{id}/status/` 仍仅 Manager 可用，Admin 403；请求在原 `status,reason` 上增加可选 `expected_back`（带时区 ISO 或 null）。不提交时视作没有估计。响应结构仍为 `{resource,affected_bookings}`；对应公告通过公告列表读取。
+
+`set_resource_status` 对房间及设备在原事务内创建／更新 `RESOURCE_STATUS` 公告，原因作为正文，状态变更 Manager 作为署名；每个资源同时只保留一条未下架的状态公告。改原因不产生第二条；`AVAILABLE` 自动下架。`expected_back` 单独存储、仅用于展示，不自动过期或重开资源，已过估计时间仍显示公告，直至 Manager 改回可用。原 `RESOURCE_OUT_OF_SERVICE` / `RESOURCE_REOPENED` 通知逻辑保留。
+
+首页 Dashboard / Today 只加载生效公告，空列表不渲染公告区；员工管理页标注 **From room status**，不提供状态公告修改或下架按钮。页面日期输入按 Australia/Sydney 转为 ISO，夏令时不存在的时间显示错误并保留输入；弹窗错误显示在弹窗内。

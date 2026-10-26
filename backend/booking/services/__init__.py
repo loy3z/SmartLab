@@ -21,10 +21,12 @@ each file holds one part (all methods share ``self``: repo, storage, clock, rule
   changes.py         change requests: the person a booking is for asks for a new time (Sprint 3)
   site_contact.py    the lab's contact details, set by a Manager (Sprint 3)
   overview.py        the staff "Today" page: what needs doing first (Sprint 3)
+  announcements.py   attributed public notices and resource-status announcements (Sprint 3, 1.19.0)
 
 To add a feature, put its methods in the file for its topic (or a new mixin listed below) and its tests next to
 the existing ones; import ``BookingService`` from ``booking.services`` as before.
 """
+from .announcements import AnnouncementsMixin  # Sprint 3 (1.19.0)
 from .accounts import AccountsMixin, new_invite_code, normalize_invite_code
 from .attendance import AttendanceMixin
 from .audit import AuditMixin
@@ -45,7 +47,7 @@ from .series import SeriesMixin
 from .waitlist import WaitlistMixin
 
 
-class BookingService(AccountsMixin, ResourcesMixin, QualificationsMixin, BookingsMixin, ChangesMixin, SeriesMixin, WaitlistMixin,
+class BookingService(AnnouncementsMixin, AccountsMixin, ResourcesMixin, QualificationsMixin, BookingsMixin, ChangesMixin, SeriesMixin, WaitlistMixin,
                      AttendanceMixin, RemindersMixin, ReportsMixin, OverviewMixin, SiteContactMixin, AvailabilityMixin, CalendarFeedMixin, NotificationsMixin, AuditMixin,
                      ChecksMixin,
                      ServiceBase):

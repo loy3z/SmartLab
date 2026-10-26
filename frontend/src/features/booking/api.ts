@@ -1,3 +1,4 @@
+import type { Announcement } from './types' // Sprint 3 (1.19.0)
 import type {
   AuthConfig,
   AuthResponse,
@@ -217,13 +218,14 @@ export function updateResourceStatus(
   resourceId: string,
   status: ResourceStatus,
   reason: string,
+  expected_back?: string | null, // Sprint 3 (1.19.0)
 ) {
   return request<{
     resource: Resource
     affected_bookings: Booking[]
   }>(`admin/resources/${resourceId}/status/`, {
     method: 'PATCH',
-    body: JSON.stringify({ status, reason }),
+    body: JSON.stringify({ status, reason, ...(expected_back !== undefined ? { expected_back } : {}) }),
   })
 }
 
@@ -261,9 +263,9 @@ export const markAllNotificationsRead = () => post<{ updated: number }>('notific
 
 // Sprint 3 (2026-10-25): notification category choices.
 export const getNotificationPreferences = () =>
-  request<{ results: NotificationPreference[] }>('notifications/preferences/')
-export const saveNotificationPreferences = (preferences: Record<string, boolean>) =>
-  request<{ results: NotificationPreference[] }>('notifications/preferences/', {
+  request<{ results: NotificationPreference[]; email_available: boolean }>('notifications/preferences/')
+export const saveNotificationPreferences = (preferences: Record<string, Partial<Pick<NotificationPreference, 'in_app' | 'email'>>>) =>
+  request<{ results: NotificationPreference[]; email_available: boolean }>('notifications/preferences/', {
     method: 'PUT', body: JSON.stringify({ preferences }),
   })
 
@@ -314,3 +316,9 @@ export const getSiteContact = () => request<SiteContact>('site/contact/')
 export const updateSiteContact = (fields: Partial<SiteContact>) =>
   request<SiteContact>('site/contact/', { method: 'PATCH', body: JSON.stringify(fields) })
 export const getStaffOverview = () => request<StaffOverview>('admin/overview/')
+
+// Sprint 3 (1.19.0): public announcements do not generate personal notifications.
+export const listAnnouncements = (includeEnded = false) => request<ListResponse<Announcement>>(`announcements/${includeEnded ? '?include_ended=true' : ''}`)
+export const createAnnouncement = (values: { title: string; body: string; expires_at: string | null }) => post<Announcement>('announcements/', values)
+export const updateAnnouncement = (id: string, values: { title: string; body: string; expires_at: string | null }) => request<Announcement>(`announcements/${id}/`, { method: 'PATCH', body: JSON.stringify(values) })
+export const removeAnnouncement = (id: string) => post<Announcement>(`announcements/${id}/remove/`, {})

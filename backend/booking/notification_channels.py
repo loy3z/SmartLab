@@ -57,7 +57,7 @@ def deliver_new_notifications(service):
     for notification_id in ids:
         notification = service.repo.get_notification(notification_id)
         recipient = service.repo.get_principal(notification.recipient_id) if notification else None
-        if notification is None or recipient is None or recipient.id == TEST_ACCOUNT_ID:
+        if notification is None or not notification.email or recipient is None or recipient.id == TEST_ACCOUNT_ID:  # Sprint 3 (1.19.0)
             continue
         for channel in channels:
             try:

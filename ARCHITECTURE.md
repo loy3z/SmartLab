@@ -227,6 +227,12 @@ sequenceDiagram
 | 测试数据不发送外部消息、日历同步（1.17.0） | `services/base.py` `_save_booking`；`views/_common.py` `sync_after_write`；`notification_channels.py` `deliver_new_notifications` |
 | Urgent 只有一份说明，evidence 必填提示（1.17.0） | 前端 `BookingForm.tsx` `bookingPurpose`；`induction/evidence.ts` `evidenceProblem` |
 | 员工登录后进哪个页面（1.16.0） | 前端 `app/routes.ts` `homePath` |
+| 独立通知渠道、邮件专用记录不进铃铛（Sprint 3，1.19.0） | `services/notifications.py` `_category_channels`、`_notify`、`list_notifications`、`mark_notification_read`、`mark_all_notifications_read`；`notification_channels.py` `deliver_new_notifications` |
+| 五类偏好部分保存、默认值及邮件站点能力（1.19.0） | `services/notifications.py` `notification_preferences`、`save_notification_preferences`；`views/notifications.py` `NotificationPreferencesView` |
+| 公告生效、过期、作者编辑与 Manager 额外下架权（1.19.0） | `services/announcements.py` `list_announcements`、`create_announcement`、`update_announcement`、`remove_announcement`；`views/announcements.py`（学生写请求先验权限） |
+| 维修／关闭自动公告、同资源更新、可用时下架（1.19.0） | `services/resources.py` `set_resource_status` 在资源事务内调用 `AnnouncementsMixin._status_announcement`；唯一索引 `announcement_resource_status_idx` |
+| 公告署名与恢复估计独立于有效期（1.19.0） | `domain.py` `Announcement.author_role/expected_back`；`views/announcements.py` `announcement_json`；前端 `features/announcements/AnnouncementBoard.tsx` `AnnouncementText` |
+| 通知与公告手机布局、悉尼时间输入（1.19.0） | `features/notifications/NotificationPreferences.tsx`、`features/announcements/AnnouncementsPage.tsx`、`dates.ts`；`manager/ResourceStatusDialog.tsx`；新增样式仅 `ui/workspace.css` |
 | 所有数字的默认值 | `rules.py` `BookingRules`（环境变量见 `.env.example`） |
 
 ## 11. 文档地图

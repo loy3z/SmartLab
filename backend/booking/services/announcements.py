@@ -26,9 +26,15 @@ class AnnouncementsMixin:
             raise DomainError('VALIDATION_ERROR', 'Use a title of 1–120 characters and a message of 1–1000 characters.')
         return title, body
 
+    def _check_removal_time(self, expires_at):
+        # Review 1.19.0 R1: a past removal time would publish an announcement that no home page shows.
+        if expires_at is not None and expires_at <= self.now():
+            raise DomainError('VALIDATION_ERROR', 'Choose a removal time in the future, or leave it blank.')
+
     def create_announcement(self, actor, title, body, expires_at=None):
         self.require_staff(actor)
         title, body = self._announcement_fields(title, body)
+        self._check_removal_time(expires_at)
         with self.repo.atomic():
             item = Announcement(str(uuid4()), title, body, 'MANUAL', None, actor.id, self.now(),
                                 expires_at=expires_at, updated_at=self.now(), author_role=actor.role.value)
@@ -47,6 +53,8 @@ class AnnouncementsMixin:
             if not changes or set(changes) - {'title', 'body', 'expires_at'}:
                 raise DomainError('VALIDATION_ERROR', 'Provide a title, message or expiry date.')
             title, body = self._announcement_fields(changes.get('title', item.title), changes.get('body', item.body))
+            if 'expires_at' in changes:
+                self._check_removal_time(changes['expires_at'])
             updated = replace(item, title=title, body=body, expires_at=changes.get('expires_at', item.expires_at), updated_at=self.now())
             self.repo.save_announcement(updated)
             self._audit(actor.id, 'ANNOUNCEMENT_UPDATED', 'announcement', item.id)

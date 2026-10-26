@@ -13,6 +13,8 @@
 - 迁移 `009_announcements_notification_channels.sql` 可重复执行；新表 `announcement`、通知渠道快照和偏好邮件列同步到 `schema.sql`。`author_role` 保存发布时的角色，`expected_back` 与 `expires_at` 分开；资源状态公告有部分唯一索引。
 - 接口升到 1.19.0，72 条路由均有 OpenAPI；新增行为覆盖 Memory / PostgreSQL、HTTP 权限、日期转换和 390px 浏览器检查。代码索引见 SPRINT3 第 24 节。
 - 本轮不做 D2；EC2 未更新，Docker 和部署文件未改。
+- 审查修复（Claude Code，`claude/reports/2026-10-26-review-1.19.0.md` R1）：手动公告的下架时间（Remove at）以前可以填过去的时间，公告一发布就是已过期，哪个首页都看不到，也没有提示；现在发布和修改时必须晚于当前时间，否则返回 400。
+- 部署说明更正（`DEPLOY.md` 第三节、`backend/entrypoint.sh` 注释）：原来写的是先 `up -d --build` 换上新代码、再 `exec` 跑迁移，这样新代码会先在旧结构的库上运行；改为先 `build`、用新镜像 `run --rm api migrate <文件>`，再 `up -d`。
 
 ## 1.18.0 审查修复、学生注册入口、Docker 部署（2026-10-25，接口仍为 1.18.0）
 

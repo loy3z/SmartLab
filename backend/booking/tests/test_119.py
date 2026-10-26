@@ -92,6 +92,20 @@ class Acceptance119:
         self.assertGreaterEqual(len(self.service.list_announcements(self.admin, include_ended=True)), 2)
         self.denied(self.service.list_announcements, self.student, include_ended=True)
 
+    def test_removal_time_must_be_in_the_future(self):
+        # Review 1.19.0 R1: a past "Remove at" used to publish an announcement that no home page showed.
+        for when in [self.now, self.now - timedelta(minutes=1)]:
+            with self.subTest(when=when):
+                with self.assertRaises(DomainError) as error:
+                    self.service.create_announcement(self.admin, 'Notice', 'Details', when)
+                self.assertEqual(error.exception.code, 'VALIDATION_ERROR')
+        self.assertEqual(self.repo.list_announcements(), [])
+        item = self.service.create_announcement(self.admin, 'Notice', 'Details', self.now + timedelta(hours=1))
+        with self.assertRaises(DomainError):
+            self.service.update_announcement(self.admin, item.id, {'expires_at': self.now - timedelta(minutes=1)})
+        self.assertEqual(self.repo.get_announcement(item.id).expires_at, self.now + timedelta(hours=1))
+        self.assertIsNone(self.service.update_announcement(self.admin, item.id, {'expires_at': None}).expires_at)
+
     def test_manual_announcement_ownership_matrix_and_audit(self):
         for author in [self.admin, self.manager, self.other_admin]:
             for actor in [self.student, self.admin, self.manager, self.other_admin]:

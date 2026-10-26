@@ -1,10 +1,10 @@
 import { AnnouncementBoard } from '../announcements/AnnouncementBoard' // Sprint 3 (1.19.0)
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
-import { getDashboard, listRequirements, listResources } from '../booking/api'
+import { getDashboard, listRequirements, listResources } from '../../api/index.ts'
 import { errorMessage, fmtDateTime, fmtRange, fmtTime, STATUS_TEXT, TZ } from '../booking/format'
 import { AlertIcon, CalendarIcon, CapIcon, CheckIcon, ClockIcon } from '../booking/icons'
-import type { Dashboard, Qualification, Requirement, Resource, User } from '../booking/types'
+import type { Dashboard, Qualification, Requirement, Resource, User } from '../../api/types/index.ts'
 import { InductionRow } from '../induction/InductionRow'
 import { blockingPrerequisite } from '../induction/status'
 import './dashboard.css'

@@ -2,11 +2,11 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { useAuth } from '../auth/auth-context'
-import { getDayOverview } from './api'
+import { getDayOverview } from '../../api/index.ts'
 import { FIND_DURATIONS, hiddenSummary } from './find-time'
 import { errorMessage, fmtClock, fmtDate, fmtDuration, fmtRange, todaySydney, TZ } from './format'
 import { CalendarIcon, CheckIcon, SearchIcon } from './icons'
-import type { DayOverview, DayOverviewQuery, DayOverviewRow, Resource, ResourceKind } from './types'
+import type { DayOverview, DayOverviewQuery, DayOverviewRow, Resource, ResourceKind } from '../../api/types/index.ts'
 
 function addDays(day: string, days: number) {
   const value = new Date(`${day}T00:00:00Z`)

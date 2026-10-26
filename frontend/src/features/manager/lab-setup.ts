@@ -1,5 +1,5 @@
 // Sprint 3 (1.16.0): form helpers for Lab setup (LabSetupPage.tsx).
-import type { Requirement, RequirementInput } from '../booking/types.ts'
+import type { Requirement, RequirementInput } from '../../api/types/index.ts'
 
 export function emptyRequirement(): RequirementInput {
   return { name: '', description: '', how_to_complete: '', accepted_evidence: '', reviewer: '', contact: '' }

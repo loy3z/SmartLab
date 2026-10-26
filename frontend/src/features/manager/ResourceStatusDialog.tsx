@@ -1,9 +1,9 @@
 // Sprint 3 (1.19.0): resource status and optional recovery estimate; errors stay in the dialog.
 import { useId, useState, type FormEvent } from 'react'
-import { updateResourceStatus } from '../booking/api'
+import { updateResourceStatus } from '../../api/index.ts'
 import { Modal } from '../booking/Modal'
 import { errorMessage, fmtRange } from '../booking/format'
-import type { Booking, Resource, ResourceStatus } from '../booking/types'
+import type { Booking, Resource, ResourceStatus } from '../../api/types/index.ts'
 import { dateTimeISO } from '../announcements/dates'
 
 export function ResourceStatusDialog({ resource, status, affected, onClose, onSaved }: {

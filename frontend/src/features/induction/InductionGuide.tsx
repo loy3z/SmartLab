@@ -1,6 +1,6 @@
 // Sprint 3 (1.16.0): "How to get this induction" under each induction on the Induction & Training page.
 import { ContactLink } from '../contact/LabContact'
-import type { Requirement } from '../booking/types'
+import type { Requirement } from '../../api/types/index.ts'
 import { guideItems } from './guide'
 
 /**

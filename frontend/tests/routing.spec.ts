@@ -1,5 +1,5 @@
 import { expect, test as base, type Page } from '@playwright/test'
-import type { AuthConfig, Dashboard, Role, User } from '../src/features/booking/types'
+import type { AuthConfig, Dashboard, Role, User } from '../src/api/types/index.ts'
 
 // Synthetic accounts exist only in these intercepted responses. No real backend is used.
 const users: Record<Role, User> = {

@@ -1,10 +1,10 @@
 // Sprint 3 (1.19.0): staff manual announcements with server-enforced ownership.
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import { useAuth } from '../auth/auth-context'
-import { createAnnouncement, listAnnouncements, removeAnnouncement, updateAnnouncement } from '../booking/api'
+import { createAnnouncement, listAnnouncements, removeAnnouncement, updateAnnouncement } from '../../api/index.ts'
 import { errorMessage } from '../booking/format'
 import { Modal } from '../booking/Modal'
-import type { Announcement } from '../booking/types'
+import type { Announcement } from '../../api/types/index.ts'
 import { AnnouncementText } from './AnnouncementBoard'
 import { dateTimeInput, dateTimeISO } from './dates'
 

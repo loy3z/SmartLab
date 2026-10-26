@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
-import { getAvailability } from './api'
+import { getAvailability } from '../../api/index.ts'
 import { errorMessage, fmtDate, fmtDuration, fmtRange, fmtTime, QUAL_TEXT, todaySydney, TZ } from './format'
 import { addDays, dateRange } from './slot-picker' // Sprint 3 (2026-10-25 cleanup): moved out of this file
 import { cellTitle, kindOf } from './slot-cells'
 import { NowLegend, NowLine } from './NowLine' // Sprint 3 (1.15.0)
-import type { Availability, Resource } from './types'
+import type { Availability, Resource } from '../../api/types/index.ts'
 
 /** A chosen period: start/end are UTC ISO strings. */
 export interface SlotRange {

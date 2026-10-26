@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { ATTENDANCE_TEXT, canCheckIn, checkInHint } from './attendance'
 import { fmtDay, fmtDuration, fmtRange, fmtTime, minutesBetween, STATUS_TEXT } from './format'
 import { ACTIVE, seriesSummary } from './my-bookings'
-import type { Booking, Resource } from './types'
+import type { Booking, Resource } from '../../api/types/index.ts'
 
 /**
  * Sprint 3: a weekly series as one card. Shows the pattern, date range, how many dates are left and the next date;

@@ -72,17 +72,12 @@
 .auth-sso-caption { margin-top: 10px; color: #626262; font-size: 12px; }
 .auth-staff-entry { margin-top: 18px; padding-top: 14px; border-top: 1px solid #e3e3e3; font-size: 14px; color: #3b3b3b; }
 .auth-staff-entry a { color: #141414; font-weight: 700; text-underline-offset: 3px; }
-.auth-alternative-login .auth-form { margin-top: 20px; }
 .auth-form fieldset:disabled { opacity: .65; }
 .auth-form fieldset:disabled .auth-submit { cursor: progress; }
 .auth-switch { margin-top: 20px; color: #555; font-size: 12px; line-height: 1.6; }
 .auth-text-button { background: none; color: #141414; border: 0; padding: 3px 0; font-size: inherit; text-decoration: underline; text-underline-offset: 3px; font-weight: 700; cursor: pointer; }
 .auth-text-button:hover { text-decoration-thickness: 2px; }
 .auth-text-button:disabled { cursor: not-allowed; opacity: .6; }
-.auth-demo-accounts { margin-top: 22px; padding-top: 17px; border-top: 1px solid #ddd; color: #555; font-size: 12px; }
-.auth-demo-accounts summary { cursor: pointer; font-weight: 700; color: #333; padding: 3px 0; }
-.auth-demo-accounts p { margin-top: 12px; }
-.auth-demo-accounts ul { margin-bottom: 0; padding-left: 18px; line-height: 2; }
 .auth-error, .auth-notice { padding: 13px 15px; margin: 16px 0; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
 .auth-error { color: #9d1919; background: #fff0f0; border-left: 3px solid #b3261e; }
 .auth-notice { color: #5b4600; background: #fff9da; border-left: 3px solid var(--auth-yellow); }

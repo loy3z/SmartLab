@@ -3,9 +3,9 @@ import { AnnouncementBoard } from '../announcements/AnnouncementBoard' // Sprint
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { PageHeader, RefreshStamp } from '../../ui/components'
-import { getStaffOverview, listResources } from '../booking/api'
+import { getStaffOverview, listResources } from '../../api/index.ts'
 import { errorMessage, fmtRelative, fmtTime } from '../booking/format'
-import type { Booking, Resource, StaffOverview } from '../booking/types'
+import type { Booking, Resource, StaffOverview } from '../../api/types/index.ts'
 import { attendanceLabel, todoCards } from './today'
 import { CheckIcon } from '../booking/icons'
 

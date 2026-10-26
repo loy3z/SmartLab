@@ -1,8 +1,8 @@
 // Sprint 3 (1.19.0): shared active announcements on student and staff home pages.
 import { useEffect, useState } from 'react'
-import { listAnnouncements } from '../booking/api'
+import { listAnnouncements } from '../../api/index.ts'
 import { errorMessage, fmtDate, fmtDateTime } from '../booking/format'
-import type { Announcement } from '../booking/types'
+import type { Announcement } from '../../api/types/index.ts'
 import { dateTimeInput } from './dates'
 
 export function AnnouncementText({ item }: { item: Announcement }) {

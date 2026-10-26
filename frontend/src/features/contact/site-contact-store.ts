@@ -1,7 +1,7 @@
 // Sprint 3 (1.16.0): the lab's contact details, read once per page load (shared by every place that shows them).
 import { useEffect, useState } from 'react'
-import { getSiteContact } from '../booking/api'
-import type { SiteContact } from '../booking/types'
+import { getSiteContact } from '../../api/index.ts'
+import type { SiteContact } from '../../api/types/index.ts'
 
 let cached: Promise<SiteContact | null> | null = null
 

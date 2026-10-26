@@ -2,9 +2,9 @@
 // (booking/services/reports.py).
 import { useEffect, useMemo, useState } from 'react'
 import { EmptyState } from '../../ui/components'
-import { getUsageReport } from '../booking/api'
+import { getUsageReport } from '../../api/index.ts'
 import { errorMessage, todaySydney } from '../booking/format'
-import type { UsageReport } from '../booking/types'
+import type { UsageReport } from '../../api/types/index.ts'
 import { lastFourWeeks, percent, sortUsage } from '../manager/usage'
 
 export function UsageTab() {

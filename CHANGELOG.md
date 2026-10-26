@@ -2,6 +2,16 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 结构整理 S1 + S3（2026-10-27，接口仍为 1.19.0）
+
+按 `reports/2026-10-27-code-structure-review.md` 的 4.3、4.4 节，只做搬移和删除，不改任何行为：没有接口、数据库、预约规则、界面文案或样式效果的变化。
+
+- **S1：删掉 31 个没用过的 CSS 类名**：`features/booking/booking.css` 21 个、`ui/workspace.css` 8 个、`app/shell.css` 3 个、`features/auth/auth.css` 2 个（有 3 个类名在两个文件里都有规则）。审查清单原来写 32 个，其中 `ttf` 是字体地址 `manrope-regular.ttf` 被误认成类名，实际没有这个类，也没有删任何东西。删前对每个类名在 `frontend/src` 和 `frontend/tests` 里搜过 `.ts`、`.tsx`、`.mjs`，全部只出现在 CSS 里。含 `:is()` 的选择器只移除它里面的目标成员（例如手机断点的 `.app-shell :is(.ui-tabs, .bk-pills, .bk-mode-tabs)` 保留前两个）。
+- **S3：接口层搬到 `src/api/`**：`features/booking/api.ts`（73 个函数）和 `types.ts`（52 个类型）按领域拆成 `src/api/{auth,bookings,resources,admin,notifications,announcements,site}.ts`、`src/api/client.ts` 和 `src/api/types/<领域>.ts`，`src/api/index.ts` 和 `src/api/types/index.ts` 统一导出。函数体和类型定义一个字没改；旧文件删除，不留转发。原文件里局部定义的 `BookingRequest` 一并移到 `types/bookings.ts`。审查时发现拆分把 19 条说明注释挂到了别的声明上（例如 `lookupPerson` 的说明跑到了 `listBookings` 上面），已全部放回原位（Claude Code，`claude/reports/2026-10-27-review-structure.md` R1）。
+- 所有使用方改成从 `src/api`（`index.ts`）导入；Node 单元测试导入的文件仍写完整 `.ts` 扩展名、类型用 `import type`。
+- 行为不变的证据：`check-local.sh` 全通过（backend 379、pg 26、openapi 1.19.0 / 72 路由、unit 72、lint、build、e2e 75）；截图比对：22 个页面 × 桌面 1440×900 / 手机 390×844 = 44 张，每张改动后的截图都能和改动前（`8ae931f`）的某一次截图逐像素相同（有 5 个页面同一版本连截两次也会有几十到上千像素的随机差异，对这些页面多截了几次）。交付时写的“44 张全部一致”不成立：当时的比较脚本只看透明通道、不看颜色，且其中 8 张是白屏，已修正脚本并重新截图（审查报告 R2）。
+- 文档：`ARCHITECTURE.md` 第 7 节、`frontend/README.md` 的路径说明；`SPRINT3.md` 第 25 节列了搬移和删除。旧的 SPRINT3 小节是历史记录，没有改。
+
 ## 1.19.0：通知设置页和署名公告（2026-10-26，Sprint 3）
 
 依据 Loy 确认的 `claude/tasks-1.19.0.md`（N1、N2、A1–A4、D1）。通知设置原来藏在 Account 页，且一个开关同时控制站内和邮件；现在侧栏 **Notifications** 独立显示五个类别，两列 **In the bell / By email** 分别即时保存。Account 只保留设置链接。网站关闭邮件时，邮件列禁用并说明原因。

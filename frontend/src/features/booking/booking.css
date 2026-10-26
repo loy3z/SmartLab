@@ -32,7 +32,6 @@
 .bk-btn-outline { background: var(--card); border: 1.5px solid var(--ink); border-radius: 8px; padding: 11px 20px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .bk-btn-outline:hover:not(:disabled) { background: var(--bg); }
 .bk-btn-outline:disabled { opacity: .4; cursor: not-allowed; }
-.bk-sm { padding: 7px 14px; font-size: 14px; }
 .bk-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 8px; font-size: 14px; font-weight: 500; }
 .bk-chip.is-ok, .bk-chip.st-APPROVED { background: var(--green-bg); color: var(--green); }
 .bk-chip.is-warn, .bk-chip.st-WAITLISTED, .bk-chip.st-WAITING_QUALIFICATION, .bk-chip.st-PENDING_APPROVAL { background: var(--amber-bg); color: var(--amber); }
@@ -57,21 +56,9 @@
 /* Keep the card grid steady on hover; use its border and shadow for feedback. */
 .bk-rcard { transition: box-shadow var(--motion-fast) var(--ease-out), border-color var(--motion-fast); }
 .bk-rcard:hover { box-shadow: 0 10px 24px rgba(17, 24, 39, .08); border-color: #d9dde3; }
-.bk-rcard:hover .bk-cover-icon { transform: scale(1.06); }
 /* Sprint 3 (1.15.0): cover = tint of the group colour + faint dot grid + icon tile (covers.ts picks the group). */
-.bk-cover { --cover-ink: #4b5563; --cover-bg: #eef0f3; position: relative; height: 112px; display: grid; place-items: center; color: var(--cover-ink); background: radial-gradient(circle, color-mix(in srgb, var(--cover-ink) 14%, transparent) 1px, transparent 1.5px) 0 0 / 14px 14px, var(--cover-bg); border-bottom: 1px solid var(--line); }
-.bk-cover-icon { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 12px; background: #fff; box-shadow: 0 4px 14px color-mix(in srgb, var(--cover-ink) 18%, transparent); transition: transform var(--motion-base) var(--ease-spring); }
-.bk-cover-label { position: absolute; left: 12px; bottom: 10px; padding: 2px 8px; border-radius: 999px; background: rgba(255, 255, 255, .85); color: var(--cover-ink); font-size: 12px; font-weight: 600; }
-.bk-cover.is-room { --cover-ink: #1f4fa8; --cover-bg: #e8eefc; }
-.bk-cover.is-microscopy { --cover-ink: #5b3fb0; --cover-bg: #efeafc; }
-.bk-cover.is-imaging { --cover-ink: #11756b; --cover-bg: #e3f5f3; }
-.bk-cover.is-electronics { --cover-ink: #8a5a00; --cover-bg: #fff1d6; }
-.bk-cover.is-soldering { --cover-ink: #a8401c; --cover-bg: #fde9e2; }
-.bk-cover.is-fabrication { --cover-ink: #2f7a35; --cover-bg: #e6f4e7; }
-.bk-cover.is-analysis { --cover-ink: #a12d66; --cover-bg: #fce8f1; }
 .bk-rbody { min-width: 0; padding: 20px; display: flex; flex-direction: column; gap: 20px; flex: 1; }
 .bk-rcard-info { min-width: 0; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; flex: 1; overflow-wrap: anywhere; }
-.bk-kind { background: var(--grey-bg); border-radius: 8px; padding: 3px 12px; font-size: 14px; font-weight: 500; }
 .bk-rbody h3 { font-size: 20px; font-weight: 700; }
 .bk-loc { display: flex; align-items: center; gap: 6px; color: var(--muted); }
 .bk-loc svg, .bk-chip svg { flex: none; }
@@ -85,16 +72,7 @@
 .bk-close { position: absolute; right: 14px; top: 8px; border: 0; background: none; font-size: 28px; cursor: pointer; color: var(--muted); }
 .bk-form h2 { font-size: 16px; font-weight: 700; }
 .bk-form > p.bk-muted { margin: 4px 0 16px; }
-.bk-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
-.bk-row label { display: flex; gap: 8px; align-items: center; font-weight: 500; }
-.bk-row input, .bk-row select, .bk-login input, .bk-block textarea { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--card); }
-.bk-slots { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
-.bk-slot { padding: 8px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); cursor: pointer; }
-.bk-slot:hover:not(:disabled) { border-color: var(--ink); }
-.bk-slot small { color: var(--muted); }
-.bk-slot-off { background: var(--bg); border-style: dashed; }
-.bk-slot-on { background: var(--yellow); border-color: var(--yellow); font-weight: 600; }
-.bk-slot:disabled { opacity: .35; cursor: not-allowed; }
+.bk-block textarea { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--card); }
 .bk-block { display: block; margin: 14px 0; font-weight: 500; }
 .bk-block textarea { display: block; width: 100%; margin-top: 6px; resize: vertical; }
 
@@ -116,8 +94,6 @@
 .bk-resched { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-top: 8px; width: 100%; background: var(--bg); }
 
 /* Login */
-.bk-login { min-height: 100vh; display: grid; place-items: center; }
-.bk-panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 32px; display: flex; flex-direction: column; gap: 12px; width: 340px; }
 
 .bk-mobile-nav { display: none; }
 
@@ -128,31 +104,16 @@
   .bk-content { padding: 20px 16px; }
   .bk-grid { grid-template-columns: 1fr; }
 }
-
-.bk-notice { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; background: var(--green-bg); color: var(--green); border: 1px solid #b9dfc2; border-radius: 8px; padding: 12px 16px; margin-bottom: 14px; font-weight: 500; }
-.bk-notice button { background: none; border: 0; font-size: 20px; line-height: 1; cursor: pointer; color: inherit; }
 .bk-pill-count { display: inline-block; min-width: 22px; margin-left: 6px; padding: 0 7px; border-radius: 999px; background: var(--grey-bg); color: var(--ink); font-size: 14px; font-weight: 700; text-align: center; }
 .bk-pill.is-on .bk-pill-count { background: var(--yellow); }
 .bk-room-filter { margin-left: auto; min-height: 42px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); }
 .bk-linkbtn { border: 0; background: none; padding: 0; color: #234a9c; font-weight: 600; cursor: pointer; }
 .bk-linkbtn:hover { text-decoration: underline; }
 .bk-unavailable { padding: 8px 10px; border-radius: 8px; background: var(--red-bg); color: var(--red); font-size: 14px; }
-.bk-rcard.is-unavailable .bk-cover { filter: grayscale(.7); }
 
 /* Find a free time: filters and the one-day grid of every matching resource */
 .bk-mode { margin: 18px 0 6px; }
-.bk-find-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 14px 0 8px; }
-.bk-find-filters label { display: grid; gap: 6px; font-weight: 600; font-size: 14px; }
-.bk-find-filters select, .bk-find-filters input[type=date] { min-height: 38px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); font: inherit; font-weight: 400; }
-.bk-find-date { display: flex; gap: 6px; align-items: center; }
-.bk-find-date input { flex: 1; min-width: 0; }
 .bk-find-check { display: flex; gap: 8px; align-items: center; margin: 4px 0 10px; font-size: 14px; }
-.bk-find-table { display: grid; gap: 6px; margin-top: 10px; }
-.bk-find-row { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 10px; align-items: center; }
-.bk-find-name { display: grid; line-height: 1.3; }
-.bk-find-name small { color: var(--muted); font-size: 12px; }
-.bk-find-name .bk-find-note { color: #9a6700; }
-.ui-tl-cell.bk-find-cell { height: 34px; }
 
 /* Sprint 3: calendar subscription, check-in, freeze */
 .bk-calsub { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; margin: 0 0 18px; border: 1px solid var(--app-border, #dfe3ea); border-radius: 8px; background: #fafbfd; }
@@ -211,9 +172,7 @@
 .rec-time { white-space: nowrap; }
 .rec-note { margin: 0 0 12px; }
 
-/* Sprint 3 (1.16.0): fixes from the user review (CHANGELOG 1.16.0). */
-.bk-cover { height: 84px; }                          /* smaller covers: room for capacity and details */
-.bk-cover-icon { width: 52px; height: 52px; border-radius: 12px; }
+/* Sprint 3 (1.16.0): fixes from the user review (CHANGELOG 1.16.0). */                          /* smaller covers: room for capacity and details */
 .bk-facts { display: grid; gap: 2px; margin: 2px 0 0; font-size: 14px; }
 .bk-facts > div { display: flex; gap: 6px; }
 .bk-facts dt { color: var(--muted); }
@@ -235,7 +194,6 @@
 .bk-change-note { margin: 2px 0; padding: 6px 10px; border-left: 3px solid #3b6fd8; border-radius: 0 8px 8px 0; background: #eef3fd; font-size: 14px; }
 .bk-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 4px; }
 .bk-resched-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
-.bk-find-hidden { margin: 6px 0 0; font-size: 14px; }
 .bk-calsub-apps { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
 .bk-calsub-apps .bk-pill { padding: 6px 14px; font-size: 14px; }
 .bk-calsub-steps { margin: 4px 0; padding-left: 20px; font-size: 14px; line-height: 1.6; }

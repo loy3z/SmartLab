@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router'
-import { getAuthConfig } from '../booking/api'
+import { getAuthConfig } from '../../api/index.ts'
 import { errorMessage } from '../booking/format'
-import type { AuthConfig } from '../booking/types'
+import type { AuthConfig } from '../../api/types/index.ts'
 import { AuthShell } from './AuthShell'
 
 /** Sign-in hub: simulated university sign-in (students), staff sign-in and the local test console. */

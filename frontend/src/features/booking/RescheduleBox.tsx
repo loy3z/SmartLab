@@ -2,10 +2,10 @@
 import { useState } from 'react'
 import { useFeedback } from '../../ui/feedback-context'
 import { useAuth } from '../auth/auth-context'
-import { rescheduleBooking } from './api'
+import { rescheduleBooking } from '../../api/index.ts'
 import { errorMessage, fmtRange, minutesBetween, TZ } from './format'
 import { SlotPicker, type SlotRange } from './SlotPicker'
-import type { Booking, Resource } from './types'
+import type { Booking, Resource } from '../../api/types/index.ts'
 
 /** Manager only: move an approved booking. The minimum advance window does not apply. */
 export function RescheduleBox({ booking, resource, onDone, onClose }: {

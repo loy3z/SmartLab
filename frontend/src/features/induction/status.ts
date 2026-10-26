@@ -1,5 +1,5 @@
 import { TZ } from '../booking/format'
-import type { Qualification, Requirement, Resource } from '../booking/types'
+import type { Qualification, Requirement, Resource } from '../../api/types/index.ts'
 
 export type InductionStatus = 'NOT_SUBMITTED' | 'PENDING' | 'VERIFIED' | 'REJECTED' | 'EXPIRED'
 export type Tone = 'grey' | 'amber' | 'green' | 'red'

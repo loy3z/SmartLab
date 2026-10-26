@@ -159,7 +159,7 @@ sequenceDiagram
 ## 7. 前端
 
 - `src/app/AppRouter.tsx` 定义页面路由；`src/app/routes.ts` 是权限表（哪个角色能进哪个页面）；`AppLayout.tsx` 是菜单和页面框架。
-- 每个功能在 `src/features/<功能>/` 里，页面组件、接口调用和样式放在一起。顶部铃铛在 `features/notifications/`。业务接口集中在 `features/booking/api.ts`，类型在 `features/booking/types.ts`。
+- 每个功能在 `src/features/<功能>/` 里，页面组件、接口调用和样式放在一起。顶部铃铛在 `features/notifications/`。业务接口集中在 `src/api/`（按领域拆成 auth、bookings、resources、admin、notifications、announcements、site，`index.ts` 统一导出），类型在 `src/api/types/`。
 - `src/lib/api-client.ts` 统一处理 token、JSON、文件上传下载和登录失效。
 - 显示时间一律按 `Australia/Sydney`（`features/booking/format.ts`）。
 - 测试：`tests/*.test.mjs` 用 `node --test` 直接导入 `.ts` 文件（导入路径要写 `.ts` 扩展名）；`tests/routing.spec.ts` 是 Playwright，接口全部 mock，不需要后端。

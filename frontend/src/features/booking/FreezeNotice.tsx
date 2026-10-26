@@ -2,10 +2,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useFeedback } from '../../ui/feedback-context'
 import { useAuth } from '../auth/auth-context'
-import { listMyUnfreezeRequests, requestUnfreeze } from './api'
+import { listMyUnfreezeRequests, requestUnfreeze } from '../../api/index.ts'
 import { frozenUntilText } from './attendance'
 import { errorMessage } from './format'
-import type { UnfreezeRequest } from './types'
+import type { UnfreezeRequest } from '../../api/types/index.ts'
 
 /** Shown while the signed-in person's booking is frozen after missed check-ins, with the unfreeze request form. */
 export function FreezeNotice() {

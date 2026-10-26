@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router'
 import { EmptyState, Tabs } from '../../ui/components'
 import { useAuth } from '../auth/auth-context'
 import { useFeedback } from '../../ui/feedback-context'
-import { cancelBooking, cancelSeries, checkIn, listBookings, listResources } from './api'
+import { cancelBooking, cancelSeries, checkIn, listBookings, listResources } from '../../api/index.ts'
 import { ATTENDANCE_TEXT, canCheckIn, checkInHint } from './attendance'
 import { CalendarSubscribe } from './CalendarSubscribe'
 import { ChangeTimeBox } from './ChangeTimeBox' // Sprint 3 (1.16.0)
@@ -14,7 +14,7 @@ import { bookingDetail, errorMessage, fmtDuration, fmtRange, fmtTime, minutesBet
 import { ACTIVE, groupBookings } from './my-bookings'
 import { RescheduleBox } from './RescheduleBox'
 import { SeriesCard } from './SeriesCard'
-import type { Booking, Resource } from './types'
+import type { Booking, Resource } from '../../api/types/index.ts'
 
 
 const BOOKING_VIEWS = [

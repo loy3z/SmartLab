@@ -2,10 +2,10 @@
 import { useMemo, useState } from 'react'
 import { useAuth } from '../auth/auth-context'
 import { useFeedback } from '../../ui/feedback-context'
-import { createSeries, lookupPerson, previewSeries } from './api'
+import { createSeries, lookupPerson, previewSeries } from '../../api/index.ts'
 import { errorMessage, fmtDuration, fmtRange, todaySydney } from './format'
 import { addDaysIso, isoWeekday, problemDates, SERIES_REASON_TEXT, startTimes, WEEKDAYS } from './series'
-import type { PersonBrief, Resource, SeriesPlan, SeriesPreview } from './types'
+import type { PersonBrief, Resource, SeriesPlan, SeriesPreview } from '../../api/types/index.ts'
 
 /**
  * Staff only: book the same time every week. Check the dates first; dates with a problem are skipped (never queued).

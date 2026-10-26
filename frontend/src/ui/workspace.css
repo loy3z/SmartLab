@@ -78,12 +78,12 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .app-shell :is(.ui-pill.is-grey,.st-CANCELLED,.st-EXPIRED) { color: var(--muted); background: var(--grey-bg); }
 .app-shell :is(.ui-pill.is-red,.st-REJECTED) { color: var(--red); background: var(--red-bg); }
 .app-shell :is(.ui-pill.is-blue) { color: var(--blue); background: var(--blue-bg); }
-.app-shell :is(.ui-tabs,.bk-pills,.bk-mode-tabs) { background: transparent; gap: 5px; padding: 0; border-radius: 0; }
+.app-shell :is(.ui-tabs, .bk-pills) { background: transparent; gap: 5px; padding: 0; border-radius: 0; }
 .app-shell :is(.ui-tab,.bk-pill) { min-height: 40px; padding: 9px 15px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 600; }
 .app-shell :is(.ui-tab.is-on,.bk-pill.is-on) { background: var(--ink); color: #fff; border-color: var(--ink); box-shadow: none; }
 .app-shell :is(.ui-count,.bk-pill-count) { min-width: 18px; padding: 1px 5px; border-radius: 8px; color: inherit; background: #86908022; font-size: 12px; }
 .app-shell :is(.ui-tab.is-on .ui-count,.bk-pill.is-on .bk-pill-count) { background: #ffffff26; color: #fff; }
-.app-shell :is(.ui-field input,.ui-field select,.ui-field textarea,.ui-filters input,.ui-filters select,.bk-find-filters input,.bk-find-filters select,.bk-find-query input,.bk-find-query select,.bk-row input,.bk-row select,.bk-room-filter,.bk-block textarea,.ui-tl-head input,.ui-tl-controls select) { min-height: 42px; border: 1px solid var(--line); border-radius: var(--radius-control); padding: 10px 12px; background: #fff; color: var(--ink); font-size: 12px; box-shadow: none; }
+.app-shell :is(.ui-field input, .ui-field select, .ui-field textarea, .ui-filters input, .ui-filters select, .bk-find-query input, .bk-find-query select, .bk-room-filter, .bk-block textarea, .ui-tl-head input) { min-height: 42px; border: 1px solid var(--line); border-radius: var(--radius-control); padding: 10px 12px; background: #fff; color: var(--ink); font-size: 12px; box-shadow: none; }
 .app-shell .bk-bcard :is(input:not([type=checkbox]):not([type=radio]),select,textarea) { border-color: var(--line); border-radius: 8px; font-size: 12px; min-height: 42px; }
 .app-shell input[type=checkbox], .app-shell input[type=radio] { width: 15px; height: 15px; min-height: 0; flex-shrink: 0; }
 .app-shell :is(.ui-field,.bk-block) { font-size: 12px; }
@@ -112,8 +112,6 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .app-shell .bk-required { padding: 0; border-radius: 0; margin-left: 5px; color: var(--muted); background: transparent; font-size: 12px; font-weight: 600; text-transform: none; }
 .app-shell .bk-required::before { content: '* '; color: var(--red); }
 .app-shell .bk-missing { color: var(--muted); font-size: 12px; }
-.app-shell .bk-ind-banner { background: #f0f3eb; border: 1px solid #dce3d5; border-radius: 8px; font-size: 12px; padding: 11px 14px; gap: 10px 16px; }
-.app-shell .bk-ind-banner a { color: var(--ink); }
 .app-shell .bk-search { background: #fff; border-color: var(--line); border-radius: 8px; padding: 6px; gap: 8px; margin-block: 20px; }
 .app-shell .bk-search input { min-width: 0; font-size: 12px; padding-inline: 12px; }
 .app-shell .bk-search svg { width: 18px; height: 18px; margin-left: 8px; color: var(--muted); flex-shrink: 0; }
@@ -162,7 +160,6 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .bookings-filters { margin: 0 0 20px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
 .bookings-list .bk-bcard { margin-bottom: 13px; }
 .bookings-list .bk-bhead { align-items: center; }
-.app-shell .app-utility-page > .app-eyebrow { display: none; }
 .app-shell .app-help-grid { gap: 16px; }
 .app-shell .app-help-grid p { font-size: 12px; color: var(--muted); }
 .app-shell .app-help-grid .app-card { border-color: var(--line); box-shadow: none; }
@@ -182,8 +179,6 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .app-shell .today-panel { padding: 22px; }
 .app-shell .today-panel h2 { font-size: 16px; }
 .app-shell .today-empty { font-size: 12px; margin-top: 10px; color: var(--muted); }
-.today-quiet { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 12px; margin-bottom: 22px; }
-.today-quiet svg { color: var(--green); flex-shrink: 0; }
 .bk-find-query { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 22px; }
 .bk-find-primary-fields { display: grid; grid-template-columns: 1.25fr 1fr .8fr 1.2fr auto; align-items: end; gap: 12px; }
 .bk-find-query label { display: flex; flex-direction: column; gap: 7px; font-size: 12px; font-weight: 600; }
@@ -238,8 +233,8 @@ input::placeholder, textarea::placeholder { color: #78837d; }
   .ui-page-actions { flex-wrap: wrap; width: 100%; }
   .app-shell .ui-table { min-width: 620px; }
   /* Sprint 3 (UI review #1): a row of tabs wider than the phone scrolls sideways inside itself instead of widening the page. */
-  .app-shell :is(.ui-tabs,.bk-pills,.bk-mode-tabs) { max-width: 100%; overflow-x: auto; flex-wrap: nowrap; }
-  .app-shell :is(.ui-tabs,.bk-pills,.bk-mode-tabs) > * { flex-shrink: 0; white-space: nowrap; }
+  .app-shell :is(.ui-tabs, .bk-pills) { max-width: 100%; overflow-x: auto; flex-wrap: nowrap; }
+  .app-shell :is(.ui-tabs, .bk-pills) > * { flex-shrink: 0; white-space: nowrap; }
   .app-shell .ui-btn-sm { min-height: 40px; }
   .app-shell .bk-grid { grid-template-columns: 1fr; gap: 13px; }
   .bk-browse-toolbar { flex-direction: column; align-items: stretch; }
@@ -248,7 +243,6 @@ input::placeholder, textarea::placeholder { color: #78837d; }
   .app-shell .bk-search input { width: 100%; flex: 1; }
   .app-shell .bk-rbody { padding: 17px 19px 19px; }
   .resource-card-head { padding-inline: 19px; }
-  .app-shell .bk-ind-banner { font-size: 12px; }
   .app-shell .bk-modal { width: 100%; max-height: calc(100dvh - 24px); padding: 22px 18px; border-radius: 12px; }
   .bk-native-dialog { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); border-radius: 12px; }
   .app-shell .bk-native-dialog .bk-modal { max-height: calc(100dvh - 24px); }
@@ -274,9 +268,6 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after,::backdrop { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 
 /* Sprint 3 (2026-10-25): notification switches on the Account page. */
-.app-pref-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
-.app-pref-list li label { display: flex; align-items: center; gap: 10px; font-size: 14px; }
-.app-pref-list input { width: 18px; height: 18px; }
 
 /* Sprint 3 (1.19.0): notification matrix and announcements; all new UI styles live here. */
 .notification-settings, .announcements-page { min-width: 0; }

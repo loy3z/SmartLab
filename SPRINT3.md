@@ -391,3 +391,13 @@ No API, schema or booking-rule change. Review: project docs `claude/reports/2026
 | D1 文档 | `openapi.json` 1.19.0（72 路由）；`frontend-api.md`；`database/README.md`；CHANGELOG；本节；ARCHITECTURE 第 10 节；`frontend/README.md`、`PROJECT_GUIDE.md` 使用说明 | OpenAPI 校验及路由覆盖；任务卡记录完整检查的实际结果行 |
 
 实现前的失败日志和完整检查结果放在项目外 `9900/output/1.19.0-checks/`；最终验收和截图索引见 `claude/tasks-1.19.0.md` 及本轮交付报告。通知邮件的实际外部送达、线上 EC2 页面未在本轮验证。
+
+## 25. 结构整理 S1 + S3（2026-10-27，接口仍为 1.19.0）
+
+只搬移和删除，不改行为。报告：项目文档 `reports/2026-10-27-code-structure-review.md` 4.3、4.4 节。
+
+| 项 | 内容 | 证据 |
+| --- | --- | --- |
+| S1 | 删 31 个没用过的 CSS 类名：booking.css 21、workspace.css 8、shell.css 3、auth.css 2（审查清单里的 `ttf` 是字体扩展名，不是类名） | 每个类名在 src/tests 里搜不到（任务卡）；删除前后的 CSS 用 PostCSS 逐条比对：被删的选择器都含清单里的类，留下的规则声明一条没变（审查报告）；`check-local.sh` 全通过；截图比对见下 |
+| S3 | `features/booking/api.ts`、`types.ts` → `src/api/`：函数 7 个领域文件 + `client.ts`，类型 8 个文件，`index.ts` 统一导出；旧文件删除，不留转发 | 对照表（任务卡）；用 TypeScript 语法树逐条比对 128 条顶层语句：126 条一字不差，`post` 只多了 `export`，`ApiError` 的转发只改了相对路径；说明注释全部在原来的声明上方（审查修复 R1）；`grep "features/booking/(api\|types)"` 无结果；`check-local.sh` 全通过；截图比对：44 张改动后的截图都能和 `8ae931f` 的某一次截图逐像素相同（审查修复 R2） |
+| 文档 | `ARCHITECTURE.md` 第 7 节、`frontend/README.md` 的路径说明 | review |

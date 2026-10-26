@@ -2,11 +2,11 @@
 import { useState } from 'react'
 import { useAuth } from '../auth/auth-context'
 import { useFeedback } from '../../ui/feedback-context'
-import { requestTimeChange } from './api'
+import { requestTimeChange } from '../../api/index.ts'
 import { changeSentMessage } from './change-requests'
 import { errorMessage, fmtRange, TZ } from './format'
 import { SlotPicker, type SlotRange } from './SlotPicker'
-import type { Booking, Resource } from './types'
+import type { Booking, Resource } from '../../api/types/index.ts'
 
 /**
  * Pick a new time for an approved booking on the same resource. Free time is sent for review; time someone else

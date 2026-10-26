@@ -1,5 +1,5 @@
 // Sprint 3: My Bookings shows a weekly series as one card instead of one card per date.
-import type { Booking } from './types.ts'
+import type { Booking } from '../../api/types/index.ts'
 
 /** Approval states that still count as live on My Bookings cards (shared by the page and SeriesCard). */
 export const ACTIVE = ['WAITING_QUALIFICATION', 'WAITLISTED', 'PENDING_APPROVAL', 'APPROVED']

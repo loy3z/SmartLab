@@ -6,11 +6,11 @@ import {
   cancelBooking,
   listApprovedBookings,
   listResources,
-} from '../booking/api'
+} from '../../api/index.ts'
 import { errorMessage, fmtDuration, fmtRange, minutesBetween } from '../booking/format'
 import { Modal } from '../booking/Modal'
 import { RescheduleBox } from '../booking/RescheduleBox'
-import type { Booking, Resource, ResourceStatus } from '../booking/types'
+import type { Booking, Resource, ResourceStatus } from '../../api/types/index.ts'
 
 const STATUS_LABELS: Record<ResourceStatus, string> = {
   AVAILABLE: 'Available',

@@ -1,4 +1,4 @@
-import type { Role } from '../features/booking/types.ts'
+import type { Role } from '../api/types/index.ts'
 
 const permissions: Record<string, readonly Role[]> = {
   '/dashboard': ['STUDENT'],

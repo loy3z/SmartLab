@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useLocation } from 'react-router'
-import { demoLogin, demoRegister, getAuthConfig, setToken } from '../booking/api'
+import { demoLogin, demoRegister, getAuthConfig, setToken } from '../../api/index.ts'
 import { errorMessage } from '../booking/format'
-import type { AuthConfig } from '../booking/types'
+import type { AuthConfig } from '../../api/types/index.ts'
 import './mock-sso.css'
 
 // University sign-in is for students. Admins and Managers use the staff sign-in page.

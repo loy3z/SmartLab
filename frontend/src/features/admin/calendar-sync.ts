@@ -1,4 +1,4 @@
-import type { CalendarCheck, CalendarSyncItem, CalendarSyncStatus } from '../booking/types.ts'
+import type { CalendarCheck, CalendarSyncItem, CalendarSyncStatus } from '../../api/types/index.ts'
 
 export type Tone = 'green' | 'amber' | 'red' | 'grey' | 'blue'
 

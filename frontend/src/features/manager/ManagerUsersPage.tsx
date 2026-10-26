@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { EmptyState, PageHeader, RefreshStamp, Tabs } from '../../ui/components'
 import { useFeedback } from '../../ui/feedback-context'
 import { useAuth } from '../auth/auth-context'
-import { createStaff, listManagerUsers, resetStaffAccess, setUserActive } from '../booking/api'
+import { createStaff, listManagerUsers, resetStaffAccess, setUserActive } from '../../api/index.ts'
 import { errorMessage, fmtDateTime } from '../booking/format'
-import type { ManagedUser, Role, UserInduction } from '../booking/types'
+import type { ManagedUser, Role, UserInduction } from '../../api/types/index.ts'
 
 type Filter = 'ALL' | Role
 

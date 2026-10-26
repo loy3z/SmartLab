@@ -1,5 +1,5 @@
-import type { ApiError } from './api'
-import type { Booking, BookingStatus, QualificationStatus } from './types'
+import type { ApiError } from '../../api/index.ts'
+import type { Booking, BookingStatus, QualificationStatus } from '../../api/types/index.ts'
 
 export const TZ = 'Australia/Sydney'
 

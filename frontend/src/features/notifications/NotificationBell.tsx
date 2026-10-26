@@ -1,9 +1,9 @@
 // Sprint 3: notification bell in the top bar.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
-import { listNotifications, markAllNotificationsRead, markNotificationRead } from '../booking/api'
+import { listNotifications, markAllNotificationsRead, markNotificationRead } from '../../api/index.ts'
 import { errorMessage, fmtRelative } from '../booking/format'
-import type { AppNotification } from '../booking/types'
+import type { AppNotification } from '../../api/types/index.ts'
 import { badgeText, groupNotifications, notificationIcon, notificationTarget, shouldRing, type NotificationIcon } from './notifications'
 import './notifications.css'
 

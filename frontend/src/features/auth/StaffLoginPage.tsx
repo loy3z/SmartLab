@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useLocation } from 'react-router'
-import { getAuthConfig, setToken, staffActivate, staffSignIn } from '../booking/api'
+import { getAuthConfig, setToken, staffActivate, staffSignIn } from '../../api/index.ts'
 import { errorMessage } from '../booking/format'
-import type { AuthConfig } from '../booking/types'
+import type { AuthConfig } from '../../api/types/index.ts'
 import { AuthShell } from './AuthShell'
 
 type Mode = 'sign-in' | 'activate'

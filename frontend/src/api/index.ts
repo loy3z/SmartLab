@@ -1,0 +1,10 @@
+// Sprint 3 (2026-10-27): the site's API layer, re-exported from one place.
+export { ApiError, getToken, setToken } from '../lib/api-client'
+export * from './auth'
+export * from './bookings'
+export * from './resources'
+export * from './admin'
+export * from './notifications'
+export * from './announcements'
+export * from './site'
+export * from './types'

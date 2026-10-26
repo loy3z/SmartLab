@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { EmptyState, PageHeader, RefreshStamp } from '../../ui/components'
 import { useFeedback } from '../../ui/feedback-context'
-import { checkCalendarConnection, getCalendarSync, processCalendarSync, retryCalendarSync } from '../booking/api'
+import { checkCalendarConnection, getCalendarSync, processCalendarSync, retryCalendarSync } from '../../api/index.ts'
 import { errorMessage, fmtRange, fmtRelative } from '../booking/format'
-import type { CalendarSyncItem, CalendarSyncStatus } from '../booking/types'
+import type { CalendarSyncItem, CalendarSyncStatus } from '../../api/types/index.ts'
 import { connectionSummary, syncErrorText, syncPill } from './calendar-sync'
 
 /**

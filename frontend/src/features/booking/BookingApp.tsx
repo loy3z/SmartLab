@@ -3,14 +3,14 @@ import { Link } from 'react-router'
 import { useAuth } from '../auth/auth-context'
 import { BookingForm } from './BookingForm'
 import { FindTime } from './FindTime'
-import { listQualifications, listRequirements, listResources } from './api'
+import { listQualifications, listRequirements, listResources } from '../../api/index.ts'
 import { errorMessage, SEPARATE_BOOKING_TEXT } from './format' // Sprint 3 (1.16.0): SEPARATE_BOOKING_TEXT
 import { AlertIcon, CheckIcon, SearchIcon, UploadIcon } from './icons'
 import { FreezeNotice } from './FreezeNotice' // Sprint 3
 import { Modal } from './Modal'
 import { RecurringBookingForm } from './RecurringBookingForm' // Sprint 3
 import { ResourceCard, type InductionState } from './ResourceCard'
-import type { Qualification, Requirement, Resource } from './types'
+import type { Qualification, Requirement, Resource } from '../../api/types/index.ts'
 
 function latestStatus(requirementId: string, quals: Qualification[]) {
   const latest = quals

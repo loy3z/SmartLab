@@ -212,7 +212,27 @@ export function errorMessage(e: unknown): string {
   return err?.message ?? 'Something went wrong.'
 }
 
-export const newIdempotencyKey = () => `bk-${crypto.randomUUID()}`
+/**
+ * A unique client request key. randomUUID is restricted to secure contexts in
+ * some browsers, so an HTTP demo deployment must not rely on it being present.
+ */
+export function newIdempotencyKey(): string {
+  const cryptoApi = globalThis.crypto
+  if (typeof cryptoApi?.randomUUID === 'function') return `bk-${cryptoApi.randomUUID()}`
+
+  const words = new Uint32Array(4)
+  if (typeof cryptoApi?.getRandomValues === 'function') {
+    cryptoApi.getRandomValues(words)
+  } else {
+    // Idempotency keys are identifiers, not secrets. This last fallback keeps
+    // the booking form usable in older browsers without the Web Crypto API.
+    for (let index = 0; index < words.length; index += 1) {
+      words[index] = Math.floor(Math.random() * 0x100000000)
+    }
+  }
+  const randomPart = Array.from(words, (word) => word.toString(16).padStart(8, '0')).join('')
+  return `bk-${Date.now().toString(36)}-${randomPart}`
+}
 
 /** One-line confirmation shown after a request is accepted by the server. */
 export function submittedMessage(b: Booking): { title: string; message: string } {

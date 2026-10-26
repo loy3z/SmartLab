@@ -1478,6 +1478,18 @@ for (const role of ['STUDENT', 'ADMIN', 'MANAGER'] as Role[]) {
     await page.reload()
     await expect(page.getByText('Email is not switched on for this site.', { exact: true })).toBeVisible()
     await expect(page.getByRole('checkbox', { name: 'Booking updates: By email', exact: true })).toBeDisabled()
+    // Review Q1 (2026-10-27): with email off the whole column shows unchecked; the saved choice returns when email is on.
+    for (const category of ['Booking updates', 'Reminders', 'Induction and training', 'Account and booking freeze', 'Room and equipment status']) {
+      await expect(page.getByRole('checkbox', { name: `${category}: By email`, exact: true })).not.toBeChecked()
+    }
+    expect(writes).toHaveLength(1)
+    available = true
+    await page.reload()
+    await expect(page.getByRole('checkbox', { name: 'Booking updates: By email', exact: true })).toBeChecked()
+    await expect(page.getByRole('checkbox', { name: 'Booking updates: By email', exact: true })).toBeEnabled()
+    available = false
+    await page.reload()
+    await expect(page.getByText('Email is not switched on for this site.', { exact: true })).toBeVisible()
     await page.setViewportSize({ width: 390, height: 844 })
     expect(await page.evaluate(() => document.documentElement.scrollWidth === document.documentElement.clientWidth)).toBe(true)
     expect(await page.locator('.notification-settings').evaluate(root => Array.from(root.querySelectorAll('h1,h2,p,label,span,input,button')).every(element => Number.parseFloat(getComputedStyle(element).fontSize) >= 12))).toBe(true)

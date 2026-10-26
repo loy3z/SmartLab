@@ -4,8 +4,10 @@
 #
 # Migrations are NOT run on every start (review 2026-10-25): schema.sql is already the latest structure, and
 # migration 005 resets the demo staff passwords, so re-running it would undo password changes. When a later
-# release adds a migration, apply it once to the running database (see DEPLOY.md):
-#   docker compose --env-file .env.docker exec api ./entrypoint.sh migrate database/migrations/009_example.sql
+# release adds a migration, apply it once with the new image before switching containers (DEPLOY.md section 3):
+#   docker compose --env-file .env.docker build
+#   docker compose --env-file .env.docker run --rm api migrate database/migrations/009_example.sql
+#   docker compose --env-file .env.docker up -d
 set -e
 
 export PGPASSWORD="${DB_PASSWORD}"

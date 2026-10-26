@@ -548,7 +548,7 @@ On login and authenticated test requests, account 1 receives every induction as 
 {"results":[{"category":"bookings","in_app":true,"email":true}],"email_available":false}
 ```
 
-示例只列一项，实际固定返回全部五类。没有偏好的类别两列都为 true。`email_available` 来自站点 `EMAIL_ENABLED`，不表示 Gmail／Outlook 已连通或邮件必然送达。为 false 时前端禁用邮件列，显示 **Email is not switched on for this site.**，仍保留已保存的选择。
+示例只列一项，实际固定返回全部五类。没有偏好的类别两列都为 true。`email_available` 来自站点 `EMAIL_ENABLED`，不表示 Gmail／Outlook 已连通或邮件必然送达。为 false 时前端禁用邮件列并整列显示为不勾选，显示 **Email is not switched on for this site.**；接口仍返回并保留已保存的选择。
 
 ```json
 {"preferences":{"bookings":{"in_app":false,"email":true},"resources":{"email":false}}}

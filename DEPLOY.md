@@ -46,16 +46,20 @@ docker compose --env-file .env.docker logs -f api
 
 ## 三、更新代码和数据库
 
-```bash
-# 换成新代码后
-docker compose --env-file .env.docker up -d --build
-```
-
-**迁移不会自动执行。** `schema.sql` 已经是最新结构，所以新建的数据库不需要迁移；已经在运行的数据库，遇到新版本带来的迁移（`backend/database/migrations/` 里新增的文件）时，手动执行一次：
+**迁移不会自动执行。** `schema.sql` 已经是最新结构，所以新建的数据库不需要迁移；已经在运行的数据库，遇到新版本带来的迁移（`backend/database/migrations/` 里新增的文件）时，要在换上新代码**之前**执行一次。换成新代码后按这个顺序：
 
 ```bash
-docker compose --env-file .env.docker exec api ./entrypoint.sh migrate database/migrations/009_example.sql
+# 1. 备份数据库
+docker compose --env-file .env.docker exec -T db pg_dump -U smartlab smartlab > ~/backup-before-update.sql
+# 2. 只构建新镜像，旧容器继续服务
+docker compose --env-file .env.docker build
+# 3. 用新镜像临时跑一次新迁移（旧容器里没有新迁移文件，所以不能用 exec）；没有新迁移就跳过
+docker compose --env-file .env.docker run --rm api migrate database/migrations/009_example.sql
+# 4. 换上新容器
+docker compose --env-file .env.docker up -d
 ```
+
+`api` 的入口就是 `entrypoint.sh`，所以第 3 步的参数直接写 `migrate <文件>`。先迁移再换代码，新代码启动时数据库已经是新结构；迁移只加列和表时，旧代码在迁移后的库上也照常运行，不会中断服务。
 
 为什么不在每次启动时重跑全部迁移：迁移 005 会把两个演示员工账号的密码改回演示密码，重跑会冲掉 Manager 改过的密码。
 
@@ -109,5 +113,5 @@ docker compose --env-file .env.docker down -v
    ```
 
 7. **配置并启动**：按第一节建 `.env.docker`（`ALLOWED_HOSTS=localhost,<公网IP>`，`SITE_URL=http://<公网IP>`），再按第二节启动。第一次构建要几分钟。
-8. **更新**：本机提交后重新打包上传，解压覆盖到 `~/smartlab`（`.env.docker` 不在压缩包里，不会被覆盖），再 `docker compose --env-file .env.docker up -d --build`。
+8. **更新**：本机提交后重新打包上传，解压覆盖到 `~/smartlab`（`.env.docker` 不在压缩包里，不会被覆盖），再按第三节的四步更新（有新迁移时先迁移再换容器）。
 9. **省额度**：不用时在 EC2 控制台 Stop 实例（数据在磁盘上，保留）；彻底不用时 Terminate（数据全部删除）。

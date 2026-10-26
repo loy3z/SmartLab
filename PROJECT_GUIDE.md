@@ -51,7 +51,7 @@ The [current business rules](backend/README.md) explain deadlines, limits and ex
 
 ## 通知和公告（Sprint 3，1.19.0）
 
-从侧栏 **Notifications** 设置个人更新：五类分别选择 **In the bell** 和 **By email**，自动保存。只开邮件时铃铛不显示该条，邮件未在网站启用时该列不可操作。Account 页的 **Notification settings** 也可进入。
+从侧栏 **Notifications** 设置个人更新：五类分别选择 **In the bell** 和 **By email**，自动保存。只开邮件时铃铛不显示该条，邮件未在网站启用时该列不可操作，并显示为不勾选（保存的选择不变，启用后恢复）。Account 页的 **Notification settings** 也可进入。
 
 所有人的首页顶部显示生效公告和发布人署名。员工从 **Daily work → Announcements** 发布公告：Title、Message 必填，Remove at 可选，按悉尼时间填写。作者能修改和下架自己的，Manager 还能下架别人的。已结束公告仍可在管理页查到。
 

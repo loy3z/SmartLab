@@ -180,7 +180,7 @@ Urgent bookings use one required **Purpose and urgency** explanation. Training u
 
 ## 通知和公告使用说明（Sprint 3，1.19.0）
 
-- 所有人从侧栏 **Notifications** 打开设置。五类更新各有 **In the bell** / **By email** 两列；勾选即时保存，失败显示错误并保留之前已保存的选择。网站未开邮件时邮件列禁用；这不代表实际邮箱已连接。
+- 所有人从侧栏 **Notifications** 打开设置。五类更新各有 **In the bell** / **By email** 两列；勾选即时保存，失败显示错误并保留之前已保存的选择。网站未开邮件时邮件列禁用并整列显示为不勾选（保存的选择不变，开邮件后恢复）；开了也不代表实际邮箱已连接。
 - Dashboard 和 Today 顶部显示生效公告、署名和日期；无公告时不显示公告区。公告不进铃铛、不发邮件。
 - Admin / Manager 从 **Daily work → Announcements** 发布手动公告，填写 Title、Message，可选 Remove at（悉尼时间）。自己的公告可以编辑、下架；Manager 还可下架他人的，不能编辑他人的。历史列表保留已过期和已下架记录。
 - Manager 从 **Room management** 设维修／关闭，填写原因和可选 **Expected back**。原因出现在首页状态公告中，恢复估计不自动重新开放。重新开放房间时自动下架公告；状态公告在 Announcements 页标 **From room status**，不能在该页改或删。设备后端同样支持状态公告，设备状态页面入口仍是后续任务。

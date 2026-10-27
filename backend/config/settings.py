@@ -109,6 +109,15 @@ EMAIL_NOTIFICATION_KINDS = [x.strip() for x in os.getenv("EMAIL_NOTIFICATION_KIN
 SITE_URL = os.getenv("SITE_URL", "http://localhost:5173").strip()
 if EMAIL_ENABLED and "booking.email_channel.EmailChannel" not in NOTIFICATION_CHANNELS:
     NOTIFICATION_CHANNELS.append("booking.email_channel.EmailChannel")
+# 2026-10-27: print the booking app's INFO lines (email sent / skipped, with times) in the server log
+# (docker compose logs api). Without this, Python showed only warnings and errors.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"plain": {"format": "%(asctime)s %(levelname)s %(name)s: %(message)s"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain"}},
+    "loggers": {"booking": {"handlers": ["console"], "level": os.getenv("LOG_LEVEL", "INFO").upper()}},
+}
 CORS_ALLOWED_ORIGINS = [x.strip() for x in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",") if x.strip()]
 DATA_UPLOAD_MAX_MEMORY_SIZE = 6 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024

@@ -7,7 +7,8 @@ To add one later (for example Outlook mail through Microsoft Graph ``sendMail`` 
 plain email):
 
 1. Write a class with a ``name`` and ``deliver(notification, recipient)``. It must not raise for ordinary
-   delivery problems; log them instead, because the booking change has already been saved.
+   delivery problems; log them instead, because the booking change has already been saved. A channel that
+   sends in the background (like email) also has ``wait(timeout)``; see ``wait_for_deliveries``.
 2. List its dotted path in the ``NOTIFICATION_CHANNELS`` environment variable.
 
 No booking code changes: services only create Notification records.
@@ -66,3 +67,11 @@ def deliver_new_notifications(service):
             except Exception:  # one channel failing must not undo a saved booking change
                 logger.exception("Notification channel %s failed for %s", getattr(channel, "name", channel), notification_id)
     return sent
+
+
+def wait_for_deliveries(timeout=None):
+    """manage.py commands and tests: wait until channels that send in the background have finished.
+
+    True when everything was sent (or failed and was logged) within ``timeout`` seconds.
+    """
+    return all(channel.wait(timeout) for channel in configured_channels() if hasattr(channel, "wait"))

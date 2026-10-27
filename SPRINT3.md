@@ -171,12 +171,12 @@
   - `EMAIL_MODE` 决定谁真的收到：`none`、`allowlist`（默认）、`redirect`（演示：全部改发给一个地址）、`all`。
   - 发送失败只记日志，不影响预约。
 - **后端**：
-  - `booking/email_channel.py`：`EmailChannel.deliver`（选不选发）、`choose_recipient`（按模式选收件人）、`compose`（主题和正文）、`booking_label`、`site_link`。
+  - `booking/email_channel.py`：`EmailChannel.deliver`（选不选发，写好后放进队列）、`choose_recipient`（按模式选收件人）、`compose`（主题和正文）、`booking_label`、`site_link`；`EmailOutbox`（2026-10-27：后台线程发送，同一批共用一条连接，每封记日志）；`notification_channels.wait_for_deliveries`（命令和测试等后台发完）。日志设置在 `config/settings.py` 的 `LOGGING`。
   - 配置：`config/settings.py` 的 `EMAIL_*`、`SITE_URL`；`EMAIL_ENABLED=true` 时把邮件渠道加进 `NOTIFICATION_CHANNELS`。
   - 命令：`booking/management/commands/send_test_email.py`。
   - “申请已收到”：`services/bookings.py` `_created_notices`（`BOOKING_SUBMITTED`）；员工自己的重复预约：`services/series.py` `create_series`（`SERIES_CREATED`）；时间文字 `services/notifications.py` `describe_moment`。
 - **文档**：`backend/docs/email-setup.md`。
-- **测试**：`test_email_channel.py`；`test_sprint3.py` 里关于 `BOOKING_SUBMITTED`、`SERIES_CREATED` 的断言。
+- **测试**：`test_email_channel.py`（2026-10-27 新增：`test_the_response_does_not_wait_for_the_mail_server`、`test_emails_waiting_together_share_one_connection`、`test_each_sent_email_is_logged_with_its_notification_and_recipient_domain`、`test_a_mail_server_that_cannot_be_reached_is_logged_and_later_emails_still_go`）；`test_sprint3.py` 里关于 `BOOKING_SUBMITTED`、`SERIES_CREATED` 的断言。
 
 ## 12. Booking Records
 

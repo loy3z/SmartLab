@@ -65,6 +65,12 @@ class WaitlistMixin:
             ids.extend(item.id for item in changed)
         return changed
 
+    @staticmethod
+    def _due_for_processing(booking, now):
+        """Whether time processing would change this undecided request: its start has passed, or its review window has ended."""
+        return booking.start <= now or (booking.status in HEAD_STATUSES and booking.review_due_at is not None
+                                        and booking.review_due_at <= now)
+
     def process_due_requests(self):
         """Idempotent time processing; called from queries and actions (or a future scheduler).
 
@@ -76,7 +82,10 @@ class WaitlistMixin:
         """
         changed, released = [], set()
         for candidate in self.repo.list_bookings():
-            if candidate.status not in UNDECIDED_STATUSES:
+            # Every API request runs this, so a request that is not due yet is skipped before taking any lock
+            # (2026-10-27, performance P5: 200 waiting requests added about 0.5 s to each API request).
+            # The same check is repeated under the lock below.
+            if candidate.status not in UNDECIDED_STATUSES or not self._due_for_processing(candidate, self.now()):
                 continue
             with self.repo.atomic(resource_ids=[candidate.resource_id], student_ids=[candidate.student_id]):
                 current = self.repo.get_booking(candidate.id)

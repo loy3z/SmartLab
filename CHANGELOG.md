@@ -2,6 +2,20 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 邮件改为后台发送、到期处理不再逐条加锁（2026-10-27，接口仍为 1.19.0）
+
+依据 `claude/tasks-performance-2026-10-27.md` P1–P4（Loy 2026-10-27 说“开始”）。线上开了邮件之后，提交预约要卡 2–3 秒。原因是请求返回前同步发邮件，而从 EC2 连接、加密、登录 Gmail 的中位数是 1875 ms（只连不发，连测 5 次），每封邮件都新建一次连接。
+
+- **P1 后台发送**：`booking/email_channel.py` 的 `EmailOutbox`。请求里只把写好的邮件放进队列，每个后端进程一个后台线程负责发送，接口响应不再等邮件服务器。发送失败照旧只记日志。代价：进程被强行杀掉时，队列里还没发出的邮件会丢；正常关闭时最多等 `EMAIL_TIMEOUT` 秒发完。`manage.py process_due` 退出前等邮件发完（最多 60 秒）。
+- **P2 共用连接**：同时在排队的邮件（约 0.2 秒内进来的）用一条 SMTP 连接发出。
+- **P3 发送日志**：每批记连接耗时；每封记通知编号、收件人域名、排队时间和发送耗时。`config/settings.py` 新增 `LOGGING`，把 `booking` 的 INFO 日志打到控制台（可用 `LOG_LEVEL` 调）。以前没有日志配置，Python 默认只显示 WARNING 以上，INFO 级别的“邮件跳过”在服务器日志里看不到。
+- **P4**：`EMAIL_TIMEOUT` 保持 10 秒；`backend/docs/email-setup.md` 写了它现在的作用、日志格式和局限。
+- 本机效果（PostgreSQL 临时库 5000 条预约；用假邮件后端模拟 Gmail：连接 1.9 秒，每封 0.3 秒）：提交预约的中位数从 2729 ms 降到 491 ms；5 封邮件都发出，用了 3 条连接（改前是 5 条）。剩下的约 0.5 秒是 `process_due_requests`（见任务卡，本轮没改）。
+- 邮件晚到约 4 分钟不是应用的原因：看邮件头，时间花在 UNSW 那边（Proofpoint 2 分 30 秒、Microsoft 365 1 分 19 秒，`claude/reports/2026-10-27-email-headers.md`），这次的改动不会让邮件更早到。
+- 测试：`test_email_channel.py` 新增 4 个，改动前都失败；原有的邮件测试改为等后台发完再检查。
+- **P5 到期处理先判断再加锁**（Loy 2026-10-27 说“开始”）：每个 API 请求都会跑 `process_due_requests`（`services/waitlist.py`），它以前对每条还没决定的申请都开事务、加锁、重读，哪怕还没到期。本机 200 条待审批时，每个请求要多跑约 1200 条 SQL、多花约 0.2 秒，并且每次都锁住这些资源和学生行。现在先用读到的数据判断（`_due_for_processing`：开始时间已过，或审批期已到），没到期就跳过；加锁后照旧再判断一次，规则不变。本机 `process_due_requests` 从 1204 条 SQL、521 ms 降到 4 条 SQL、329 ms；各接口从约 530 ms 降到约 335 ms。测试 `test_approval_flow.py` `test_requests_that_are_not_due_yet_are_not_locked`（改前失败：2 != 0）。
+- 剩下的约 330 ms（本机 5000 条预约）：`process_due_requests`、`_process_attendance`、`_booking_reminders` 每次请求各把**全部**预约读出来再在 Python 里筛，一次约 110 ms，随历史预约总数线性增长。本轮没改。
+
 ## 结构整理 S1 + S3（2026-10-27，接口仍为 1.19.0）
 
 按 `reports/2026-10-27-code-structure-review.md` 的 4.3、4.4 节，只做搬移和删除，不改任何行为：没有接口、数据库、预约规则、界面文案或样式效果的变化。

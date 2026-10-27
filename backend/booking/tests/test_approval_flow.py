@@ -5,6 +5,7 @@ and rejects it if not. Later requests for the same time queue in submission orde
 
 from dataclasses import replace
 from datetime import timedelta
+from unittest.mock import patch
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -47,6 +48,22 @@ class ApprovalFlowServiceTests(BookingFixtureMixin, SimpleTestCase):
     def state(self, booking):
         current = self.get(booking)
         return current.status, current.reason_code
+
+    def test_requests_that_are_not_due_yet_are_not_locked(self):
+        # 2026-10-27 (performance P5): every API request runs time processing, so a request that is not due yet
+        # must not cost a transaction and row locks; with 200 waiting requests that added about 0.5 s per request.
+        first = self.book(self.a)
+        queued = self.book(self.b)
+        with patch.object(self.repo, "atomic", wraps=self.repo.atomic) as atomic:
+            self.assertEqual(self.service.process_due_requests(), [])
+        self.assertEqual(atomic.call_count, 0)
+        self.now = first.review_due_at
+        self.service.process_due_requests()
+        self.assertEqual(self.state(first), (BookingStatus.APPROVED, "AUTO_APPROVED_AFTER_REVIEW_WINDOW"))
+        self.assertEqual(self.state(queued), (BookingStatus.WAITLISTED, "TEMPORARY_HOLD_CONFLICT"))
+        self.now = queued.start
+        self.service.process_due_requests()
+        self.assertEqual(self.state(queued), (BookingStatus.EXPIRED, "START_TIME_PASSED"))
 
     def test_first_request_holds_the_slot_for_the_review_window_and_later_ones_queue(self):
         first = self.book(self.a)

@@ -3,14 +3,18 @@
 Django's test runner swaps in the in-memory email backend, so nothing leaves the machine: sent emails appear in
 django.core.mail.outbox.
 """
+import threading
 from io import StringIO
 from unittest import mock
 
 from django.core import mail
+from django.core.mail.backends import locmem
 from django.core.management import CommandError, call_command
 from django.test import SimpleTestCase, override_settings
 
-from booking.notification_channels import reset_channels
+from booking import notification_channels
+from booking.notification_channels import deliver_new_notifications, reset_channels
+from booking.runtime import fixed_id
 from booking.tests.test_api import BookingAPIFixtureMixin
 
 EMAIL_ON = dict(NOTIFICATION_CHANNELS=["booking.email_channel.EmailChannel"], SITE_URL="https://smartlab.example",
@@ -34,6 +38,7 @@ class EmailChannelTests(BookingAPIFixtureMixin, SimpleTestCase):
             self.assertEqual(response.status_code, 201, response.data)
             booking = response.data
             self.admin.post(f"/api/v1/admin/bookings/{booking['id']}/review/", {"decision": "APPROVED"}, format="json")
+            self.assertTrue(notification_channels.wait_for_deliveries(5))  # emails are sent in the background
         return mail.outbox
 
     def test_allowlist_sends_confirmation_and_decision_with_subject_and_link(self):
@@ -67,12 +72,73 @@ class EmailChannelTests(BookingAPIFixtureMixin, SimpleTestCase):
 
     def test_a_failing_mail_server_does_not_undo_the_booking(self):
         with override_settings(**EMAIL_ON, EMAIL_MODE="all"), \
-                mock.patch("booking.email_channel.send_mail", side_effect=OSError("no network")), \
+                mock.patch.object(locmem.EmailBackend, "send_messages", side_effect=OSError("no network")), \
                 self.assertLogs("booking.email_channel", "ERROR") as logged:
             reset_channels()
             response = self.create_booking()
+            notification_channels.wait_for_deliveries(5)
         self.assertEqual(response.status_code, 201, response.data)
         self.assertIn("no network", "\n".join(logged.output))
+
+    # 2026-10-27 (performance P1–P3): Gmail takes about 1.9 s to connect, so emails go out on a background thread.
+
+    def test_the_response_does_not_wait_for_the_mail_server(self):
+        release, sent = threading.Event(), threading.Event()
+        real_send = locmem.EmailBackend.send_messages
+
+        def slow_send(backend, messages):  # a mail server that answers only when the test says so
+            release.wait(5)
+            count = real_send(backend, messages)
+            sent.set()
+            return count
+
+        with override_settings(**EMAIL_ON, EMAIL_MODE="all"), mock.patch.object(locmem.EmailBackend, "send_messages", slow_send):
+            reset_channels()
+            response = self.create_booking(payload=self.payload())
+            self.assertEqual(response.status_code, 201, response.data)
+            self.assertFalse(sent.is_set(), "the response waited for the mail server")
+            release.set()
+            self.assertTrue(notification_channels.wait_for_deliveries(5))
+        self.assertEqual([item.to for item in mail.outbox], [["z1000001@ad.unsw.edu.au"]])
+
+    def test_emails_waiting_together_share_one_connection(self):
+        created = []
+        real_init = locmem.EmailBackend.__init__
+
+        def counting_init(backend, *args, **kwargs):
+            created.append(backend)
+            real_init(backend, *args, **kwargs)
+
+        with override_settings(**EMAIL_ON, EMAIL_MODE="all"), mock.patch.object(locmem.EmailBackend, "__init__", counting_init):
+            reset_channels()
+            self.service.take_new_notification_ids()
+            for title in ["Booking approved", "Booking rescheduled"]:
+                self.service._notify(fixed_id(501), "BOOKING_APPROVED", title, "Details")
+            deliver_new_notifications(self.service)
+            self.assertTrue(notification_channels.wait_for_deliveries(5))
+        self.assertEqual([item.subject for item in mail.outbox], ["SmartLab: Booking approved", "SmartLab: Booking rescheduled"])
+        self.assertEqual(len(created), 1)
+
+    def test_each_sent_email_is_logged_with_its_notification_and_recipient_domain(self):
+        with self.assertLogs("booking.email_channel", "INFO") as logged:
+            self.run_booking_flow(EMAIL_MODE="all")
+        lines = [line for line in logged.output if "Email sent for notification" in line]
+        self.assertEqual(len(lines), 2, logged.output)
+        self.assertRegex(lines[0], r"to @ad\.unsw\.edu\.au: waited \d+ ms, sent in \d+ ms$")
+        self.assertNotIn("z1000001", "\n".join(lines))  # the log names the domain only
+
+    def test_a_mail_server_that_cannot_be_reached_is_logged_and_later_emails_still_go(self):
+        with override_settings(**EMAIL_ON, EMAIL_MODE="all"), \
+                mock.patch.object(locmem.EmailBackend, "open", side_effect=[OSError("connection refused"), None]), \
+                self.assertLogs("booking.email_channel", "INFO") as logged:
+            reset_channels()
+            self.service.take_new_notification_ids()
+            for title in ["First", "Second"]:
+                self.service._notify(fixed_id(501), "BOOKING_APPROVED", title, "Details")
+                deliver_new_notifications(self.service)
+                self.assertTrue(notification_channels.wait_for_deliveries(5))
+        self.assertIn("connection refused", "\n".join(logged.output))
+        self.assertEqual([item.subject for item in mail.outbox], ["SmartLab: Second"])
 
 
 class SendTestEmailCommandTests(SimpleTestCase):

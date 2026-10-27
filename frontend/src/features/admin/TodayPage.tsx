@@ -1,4 +1,5 @@
 import { AnnouncementBoard } from '../announcements/AnnouncementBoard' // Sprint 3 (1.19.0)
+import { useAnnouncements } from '../announcements/use-announcements' // Sprint 3 (fluency V5)
 // Sprint 3 (1.16.0): "Today" — the Admin and Manager home page: what needs doing first, each card linking to its page.
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router'
@@ -10,6 +11,7 @@ import { attendanceLabel, todoCards } from './today'
 import { CheckIcon } from '../booking/icons'
 
 export function TodayPage() {
+  const announcements = useAnnouncements()
   const [data, setData] = useState<StaffOverview | null>(null)
   const [names, setNames] = useState<Record<string, string>>({})
   const [error, setError] = useState('')
@@ -39,16 +41,18 @@ export function TodayPage() {
   const now = loadedAt ?? 0
   const who = (b: Booking) => b.booked_for?.display_name ?? 'Someone'
   const today = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Sydney', weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())
+  // Sprint 3 (fluency V5): gate only the first paint; retain the existing refresh behavior once data exists.
+  const homeReady = announcements.settled && (data !== null || !loading)
 
   return (
     <section className="today">
       <PageHeader title="Today" description={today}
-        actions={<RefreshStamp at={loadedAt} onRefresh={() => void load()} busy={loading && loadedAt !== null} />} />
+        actions={<RefreshStamp at={loadedAt} onRefresh={() => void load()} busy={(loading || !announcements.settled) && loadedAt !== null} />} />
       {/* Sprint 3 (1.19.0): public notices are independent of personal notifications. */}
-      <AnnouncementBoard />
+      {homeReady && <AnnouncementBoard announcements={announcements} />}
       {error && <p className="bk-error" role="alert">{error}</p>}
-      {!data && loading && <p role="status">Loading…</p>}
-      {data && (
+      {(!data && loading || !announcements.settled) && <p role="status">Loading…</p>}
+      {homeReady && data && (
         <>
           {/* Sprint 3 (internal-tool UI, AI-2): a plain status line instead of a slogan. */}
           <div className="today-brief">

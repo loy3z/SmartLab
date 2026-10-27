@@ -61,6 +61,8 @@ export function ManagerBookingsPage() {
   }, [])
 
   const now = loadedAt ?? 0
+  // Sprint 3 (fluency V6): a failed first load has a text retry, not a misleading loading stamp.
+  const initialLoadFailed = loadedAt === null && !loading && Boolean(error)
   const roomName = (id: string) => rooms.find((room) => room.id === id)?.name ?? 'Room'
   const visibleBookings = useMemo(
     () => bookings.filter((b) => (!roomFilter || b.resource_id === roomFilter) && Date.parse(b.end) > now),
@@ -107,10 +109,11 @@ export function ManagerBookingsPage() {
     <div>
       <PageHeader
         title="Room management"
-        actions={<RefreshStamp at={loadedAt} onRefresh={reload} busy={loading && loadedAt !== null} />}
+        actions={initialLoadFailed ? undefined : <RefreshStamp at={loadedAt} onRefresh={reload} busy={loading && loadedAt !== null} />}
       />
 
-      {error && <p role="alert" className="bk-error">{error}</p>}
+      {error && (!loading || loadedAt !== null) && <p role="alert" className="bk-error">{error}</p>}
+      {initialLoadFailed && <button type="button" className="ui-btn ui-btn-ghost" onClick={reload}>Try again</button>}
       {loading && loadedAt === null && <p role="status">Loading rooms and bookings…</p>}
 
       {loadedAt !== null && (

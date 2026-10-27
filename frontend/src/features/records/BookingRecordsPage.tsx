@@ -32,9 +32,13 @@ function RecordsTab() {
   const [filters, setFilters] = useState<RecordFilters>(initial)
   const [search, setSearch] = useState('') // typed text; applied on Search / Enter
   const [resources, setResources] = useState<Resource[]>([])
-  const [rows, setRows] = useState<Booking[] | null>(null)
+  // Sprint 3 (fluency V4): retain the exact filters behind the visible rows, even after a failed request.
+  const [result, setResult] = useState<{ rows: Booking[]; filters: RecordFilters } | null>(null)
+  const [settledFilters, setSettledFilters] = useState<RecordFilters | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const rows = result?.rows ?? null
+  const updating = settledFilters !== filters
 
   useEffect(() => {
     listResources({}).then((data) => setResources(data.results)).catch(() => setResources([]))
@@ -43,8 +47,12 @@ function RecordsTab() {
   useEffect(() => {
     let active = true
     listBookingRecords(recordQuery(filters))
-      .then((data) => { if (active) { setRows(data.results); setError('') } })
-      .catch((e: unknown) => active && (setRows(null), setError(errorMessage(e))))
+      .then((data) => {
+        if (active) { setResult({ rows: data.results, filters }); setError(''); setSettledFilters(filters) }
+      })
+      .catch((e: unknown) => {
+        if (active) { setError(errorMessage(e)); setSettledFilters(filters) }
+      })
     return () => { active = false }
   }, [filters])
 
@@ -52,9 +60,10 @@ function RecordsTab() {
   const resourceName = (b: Booking) => b.resource_name ?? resources.find((item) => item.id === b.resource_id)?.name ?? 'Resource'
 
   async function exportCsv() {
+    if (updating || !result?.rows.length) return
     setBusy(true)
     try {
-      saveCsv(await downloadBookingRecords(recordQuery(filters)), `smartlab-bookings-${filters.from}-to-${filters.to}.csv`)
+      saveCsv(await downloadBookingRecords(recordQuery(result.filters)), `smartlab-bookings-${result.filters.from}-to-${result.filters.to}.csv`)
       feedback.success('The CSV has the same bookings as the table.', 'Download ready')
     } catch (e) {
       feedback.error(errorMessage(e), 'Download failed')
@@ -80,20 +89,20 @@ function RecordsTab() {
           <button type="submit" className="ui-btn ui-btn-ghost">Search</button>
         </form>
         <div className="ui-actions">
-          <button type="button" className="ui-btn ui-btn-ghost" onClick={() => window.print()}>Print</button>
-          <button type="button" className="ui-btn ui-btn-primary" disabled={busy || !rows?.length} onClick={() => void exportCsv()}>
+          <button type="button" className="ui-btn ui-btn-ghost" disabled={updating} onClick={() => window.print()}>Print</button>
+          <button type="button" className="ui-btn ui-btn-primary" disabled={busy || updating || !rows?.length} onClick={() => void exportCsv()}>
             {busy ? 'Preparing…' : 'Export CSV'}
           </button>
         </div>
       </div>
-      {error && <p role="alert" className="bk-error">{error}</p>}
-      {!rows && !error && <p role="status">Loading bookings…</p>}
+      {!updating && error && <p role="alert" className="bk-error">{error}{rows && ' Showing the previous results.'}</p>}
+      {updating && <p role="status">{rows ? 'Updating…' : 'Loading bookings…'}</p>}
       {rows && rows.length === 0 && <EmptyState icon="–" title="No bookings match these filters" />}
       {rows && rows.length > 0 && (
         <>
           <p className="bk-muted" role="status">{rows.length} booking{rows.length === 1 ? '' : 's'}</p>
           <div className="ui-table-wrap">
-            <table className="ui-table" aria-label="Bookings">
+            <table className="ui-table" aria-label="Bookings" aria-busy={updating}>
               <thead>
                 <tr>
                   <th>Time</th><th>Resource</th><th>Booked for</th><th className="ui-hide-sm">Created by</th><th>Status</th><th>Attendance</th>

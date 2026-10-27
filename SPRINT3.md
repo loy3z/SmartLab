@@ -401,3 +401,17 @@ No API, schema or booking-rule change. Review: project docs `claude/reports/2026
 | S1 | 删 31 个没用过的 CSS 类名：booking.css 21、workspace.css 8、shell.css 3、auth.css 2（审查清单里的 `ttf` 是字体扩展名，不是类名） | 每个类名在 src/tests 里搜不到（任务卡）；删除前后的 CSS 用 PostCSS 逐条比对：被删的选择器都含清单里的类，留下的规则声明一条没变（审查报告）；`check-local.sh` 全通过；截图比对见下 |
 | S3 | `features/booking/api.ts`、`types.ts` → `src/api/`：函数 7 个领域文件 + `client.ts`，类型 8 个文件，`index.ts` 统一导出；旧文件删除，不留转发 | 对照表（任务卡）；用 TypeScript 语法树逐条比对 128 条顶层语句：126 条一字不差，`post` 只多了 `export`，`ApiError` 的转发只改了相对路径；说明注释全部在原来的声明上方（审查修复 R1）；`grep "features/booking/(api\|types)"` 无结果；`check-local.sh` 全通过；截图比对：44 张改动后的截图都能和 `8ae931f` 的某一次截图逐像素相同（审查修复 R2） |
 | 文档 | `ARCHITECTURE.md` 第 7 节、`frontend/README.md` 的路径说明 | review |
+
+## 26. 页面流畅度 B 卡（2026-10-27，接口仍为 1.19.0）
+
+只改前端，任务卡：项目文档 `claude/tasks-fluency-2026-10-27.md`；不做卡 A 维修链路。
+
+| 项 | 文件和行为 | 验证 |
+| --- | --- | --- |
+| V2 | `frontend/src/features/booking/BookingApp.tsx`、`ui/workspace.css`：人数和设备房间筛选独立于标签区 | `tests/fluency.spec.ts` V2（320/390/1440px，完整标签、仅 tab、设备筛选、无水平溢出） |
+| V4 | `features/records/BookingRecordsPage.tsx`、`ui/workspace.css`：保留结果及对应筛选；更新中变淡/aria-busy/禁用输出；失败恢复，CSV 使用可见结果的筛选 | 同文件 V4（延迟、成功、失败、旧结果导出查询） |
+| V5 | 新 `features/announcements/use-announcements.ts`；`AnnouncementBoard.tsx` 改为接收状态；`dashboard/DashboardPage.tsx`、`admin/TodayPage.tsx` 协调首页首次显示 | 同文件 V5（三角色、公告延迟1.6秒、首帧位移0、失败/重试/空公告、首页数据晚到、刷新时公告不收起） |
+| V6 | `features/manager/ManagerBookingsPage.tsx`：仅首次加载错误显示与文字重试 | 同文件 V6（错误后无 Loading，重试恢复）；现有 routing 用例验证其他页面 |
+| V8 | `ui/workspace.css`：移除整页入场，不影响状态动效 | 同文件 V8（计算样式无入场、reduced-motion 仍有效） |
+
+红灯日志、前后截图和全套检查结果：项目外 `9900/output/fluency-2026-10-27/`，索引与验收状态见任务卡。

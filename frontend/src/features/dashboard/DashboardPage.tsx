@@ -1,4 +1,5 @@
 import { AnnouncementBoard } from '../announcements/AnnouncementBoard' // Sprint 3 (1.19.0)
+import { useAnnouncements } from '../announcements/use-announcements' // Sprint 3 (fluency V5)
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { getDashboard, listRequirements, listResources } from '../../api/index.ts'
@@ -42,6 +43,7 @@ export function DashboardPage({ user }: { user: User }) {
 }
 
 function DashboardSession({ user }: { user: User }) {
+  const announcements = useAnnouncements()
   const [state, setState] = useState<DashboardState>({ status: 'loading' })
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -80,6 +82,10 @@ function DashboardSession({ user }: { user: User }) {
     setState({ status: 'loading' })
     setRefreshKey((value) => value + 1)
   }
+  // Sprint 3 (fluency V5): publish the first home and announcement result together; errors also settle.
+  const loading = state.status === 'loading' || !announcements.settled
+  // Only the first paint waits; "Refresh overview" reloads the overview and the announcements stay in place.
+  const showAnnouncements = announcements.settled && (refreshKey > 0 || state.status !== 'loading')
   return (
     <div className="dash-page">
       {/* Sprint 3 (internal-tool UI, AI-2 / D5): the page is named like its menu item; no greeting, dateline or slogan. */}
@@ -91,21 +97,21 @@ function DashboardSession({ user }: { user: User }) {
       </header>
 
       {/* Sprint 3 (1.19.0): the same active announcements as the staff home page. */}
-      <AnnouncementBoard />
+      {showAnnouncements && <AnnouncementBoard announcements={announcements} />}
       <div className="dash-toolbar">
-        <span>{state.status === 'ready' ? `Updated ${fmtTime(new Date(state.loadedAt).toISOString())} · Sydney time` : 'Your booking overview'}</span>
-        <button className="dash-text-button" onClick={refresh} disabled={state.status === 'loading'}>
-          {state.status === 'loading' ? 'Refreshing…' : 'Refresh overview'}
+        <span>{state.status === 'ready' && !loading ? `Updated ${fmtTime(new Date(state.loadedAt).toISOString())} · Sydney time` : 'Your booking overview'}</span>
+        <button className="dash-text-button" onClick={refresh} disabled={loading}>
+          {loading ? 'Refreshing…' : 'Refresh overview'}
         </button>
       </div>
 
-      {state.status === 'loading' && (
+      {loading && (
         <div className="dash-loading" role="status">
           <span className="dash-loading-dot" aria-hidden="true" /> Loading your dashboard…
         </div>
       )}
 
-      {state.status === 'error' && (
+      {!loading && state.status === 'error' && (
         <div className="dash-error" role="alert">
           <AlertIcon size={28} />
           <div><h2>We couldn’t load your dashboard</h2><p>{state.message}</p></div>
@@ -113,7 +119,7 @@ function DashboardSession({ user }: { user: User }) {
         </div>
       )}
 
-      {state.status === 'ready' && <DashboardContent state={state} />}
+      {!loading && state.status === 'ready' && <DashboardContent state={state} />}
     </div>
   )
 }

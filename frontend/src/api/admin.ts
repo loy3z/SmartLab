@@ -29,10 +29,11 @@ export function reviewQualification(
   })
 }
 
-export function listApprovedBookings() {
-  return request<ListResponse<Booking>>(
-    'admin/bookings/?status=APPROVED',
-  )
+/** Room management (maintenance card A, 2026-10-28): bookings and requests that have not ended yet,
+ *  i.e. everyone a resource status change notifies. */
+export function listUnfinishedBookings(since: string) {
+  const params = new URLSearchParams({ status: 'APPROVED,PENDING_APPROVAL,WAITLISTED,WAITING_QUALIFICATION', since })
+  return request<ListResponse<Booking>>(`admin/bookings/?${params}`)
 }
 
 export function listAdminBookings(

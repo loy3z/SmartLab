@@ -2,6 +2,16 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 维修链路 A 卡（2026-10-28，接口仍为 1.19.0）
+
+依据项目任务卡 `claude/tasks-maintenance-2026-10-27.md`（Loy 2026-10-27 定 B1 只显示合计数，并把卡 A 收窄为只改前端的最简版本）。来源：Codex 维修流程审查 M1、B1、V3 和 Claude Code 的复查。
+
+- **M1①**：Room management 不再取回全部历史已批准预约，改为只请求还没结束的预约和申请（`status=APPROVED,PENDING_APPROVAL,WAITLISTED,WAITING_QUALIFICATION&since=<现在>`，现有接口参数）。本机 5000 条合成预约时，保存后的刷新从约 3.7 秒降到约 0.76 秒（线上预约很少，没有线上实测）。`listApprovedBookings` 换成 `listUnfinishedBookings`。
+- **B1**：维修、关闭、重开弹窗的人数改为已批准预约加待审批、候补申请的合计，和后端实际通知的范围一致；之前只算已批准的，只有申请时会显示 0。页面上的预约表和 Upcoming 列仍只算已批准的。弹窗文案：`N upcoming bookings and requests affected.`
+- **V3**：保存成功后立即用接口返回的房间状态更新这一行，再照旧刷新（重开会推进候补）；刷新完成前，房间的状态按钮不能点，避免在旧状态上再点一次又发一轮通知。
+- 先不做（Loy：系统已有点臃肿）：M1② 序列化批量查询、M3、M4；按类型分开显示人数等细节作为和客户提的想法。
+- 验证入口：`frontend/tests/maintenance.spec.ts`（拦截全部 API）。
+
 ## 页面流畅度 B 卡（2026-10-27，接口仍为 1.19.0）
 
 依据项目任务卡 `claude/tasks-fluency-2026-10-27.md` 中 Loy 已确认的 V2、V4、V5、V6、V8。仅改前端，不改接口、后端或维修业务链路。

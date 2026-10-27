@@ -7,7 +7,7 @@ import type { Booking, Resource, ResourceStatus } from '../../api/types/index.ts
 import { dateTimeISO } from '../announcements/dates'
 
 export function ResourceStatusDialog({ resource, status, affected, onClose, onSaved }: {
-  resource: Resource; status: ResourceStatus; affected: Booking[]; onClose: () => void; onSaved: () => void
+  resource: Resource; status: ResourceStatus; affected: Booking[]; onClose: () => void; onSaved: (resource: Resource) => void
 }) {
   const fieldId = useId()
   const [reason, setReason] = useState('')
@@ -21,8 +21,8 @@ export function ResourceStatusDialog({ resource, status, affected, onClose, onSa
     if (busy) return
     setBusy(true); setError('')
     try {
-      await updateResourceStatus(resource.id, status, reopening ? '' : reason.trim(), reopening ? null : dateTimeISO(expected))
-      onSaved()
+      const saved = await updateResourceStatus(resource.id, status, reopening ? '' : reason.trim(), reopening ? null : dateTimeISO(expected))
+      onSaved(saved.resource)
     } catch (problem) { setError(errorMessage(problem)) }
     finally { setBusy(false) }
   }
@@ -30,7 +30,8 @@ export function ResourceStatusDialog({ resource, status, affected, onClose, onSa
     <form className="announcement-editor" onSubmit={event => void save(event)}>
       <h2>{title}</h2>
       <p>{reopening ? 'New requests are allowed again. The resource status announcement will be removed.' : 'New requests and approvals stop. Existing bookings are kept. A status announcement will appear on the home pages.'}</p>
-      <p>{affected.length} upcoming booking{affected.length === 1 ? '' : 's'} affected. People with bookings or requests are notified using their notification settings.</p>
+      {/* Card A (B1): one total for bookings and requests, the same people the server notifies. */}
+      <p>{affected.length === 1 ? '1 upcoming booking or request affected.' : `${affected.length} upcoming bookings and requests affected.`} People with bookings or requests are notified using their notification settings.</p>
       {affected.slice(0, 5).map(booking => <p key={booking.id}>{fmtRange(booking.start, booking.end)} · {booking.student?.display_name ?? booking.student_id}</p>)}
       {!reopening && <>
         <div className="ui-field"><label htmlFor={`${fieldId}-reason`}>Reason (shown to students)</label><textarea id={`${fieldId}-reason`} required maxLength={500} value={reason} onChange={event => setReason(event.target.value)} /></div>

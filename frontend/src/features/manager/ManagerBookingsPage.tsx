@@ -4,8 +4,8 @@ import { EmptyState, PageHeader, RefreshStamp } from '../../ui/components'
 import { useFeedback } from '../../ui/feedback-context'
 import {
   cancelBooking,
-  listApprovedBookings,
   listResources,
+  listUnfinishedBookings,
 } from '../../api/index.ts'
 import { errorMessage, fmtDuration, fmtRange, minutesBetween } from '../booking/format'
 import { Modal } from '../booking/Modal'
@@ -39,7 +39,8 @@ export function ManagerBookingsPage() {
 
   useEffect(() => {
     let active = true
-    Promise.all([listApprovedBookings(), listResources({ kind: 'ROOM' })])
+    // Card A (M1①, 2026-10-28): only bookings and requests that have not ended, not the whole history.
+    Promise.all([listUnfinishedBookings(new Date().toISOString()), listResources({ kind: 'ROOM' })])
       .then(([bookingData, resourceData]) => {
         if (!active) return
         const roomIds = new Set(resourceData.results.map((room) => room.id))
@@ -64,9 +65,11 @@ export function ManagerBookingsPage() {
   // Sprint 3 (fluency V6): a failed first load has a text retry, not a misleading loading stamp.
   const initialLoadFailed = loadedAt === null && !loading && Boolean(error)
   const roomName = (id: string) => rooms.find((room) => room.id === id)?.name ?? 'Room'
+  // Card A (B1): the tables show confirmed bookings; the status dialog counts requests too (they are notified as well).
+  const confirmed = useMemo(() => bookings.filter((b) => b.status === 'APPROVED'), [bookings])
   const visibleBookings = useMemo(
-    () => bookings.filter((b) => (!roomFilter || b.resource_id === roomFilter) && Date.parse(b.end) > now),
-    [bookings, roomFilter, now],
+    () => confirmed.filter((b) => (!roomFilter || b.resource_id === roomFilter) && Date.parse(b.end) > now),
+    [confirmed, roomFilter, now],
   )
 
   // Sprint 3 (1.19.0): status errors stay inside its still-open form.
@@ -131,16 +134,16 @@ export function ManagerBookingsPage() {
                       <td><span className="ui-primary-text">{room.name}</span><span className="ui-sub-text">{room.location}</span></td>
                       <td><span className={`ui-pill ${STATUS_TONE[room.status]}`}>{STATUS_LABELS[room.status]}</span></td>
                       <td className="ui-hide-sm">{room.status_reason || <span className="bk-muted">—</span>}</td>
-                      <td className="ui-num">{bookings.filter((b) => b.resource_id === room.id && Date.parse(b.end) > now).length}</td>
+                      <td className="ui-num">{confirmed.filter((b) => b.resource_id === room.id && Date.parse(b.end) > now).length}</td>
                       <td>
                         <div className="ui-actions">
                           {room.status === 'AVAILABLE' ? (
                             <>
-                              <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy !== null} onClick={() => void changeStatus(room, 'MAINTENANCE')}>Maintenance</button>
-                              <button type="button" className="ui-btn ui-btn-reject ui-btn-sm" disabled={busy !== null} onClick={() => void changeStatus(room, 'CLOSED')}>Close</button>
+                              <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy !== null || loading} onClick={() => void changeStatus(room, 'MAINTENANCE')}>Maintenance</button>
+                              <button type="button" className="ui-btn ui-btn-reject ui-btn-sm" disabled={busy !== null || loading} onClick={() => void changeStatus(room, 'CLOSED')}>Close</button>
                             </>
                           ) : (
-                            <button type="button" className="ui-btn ui-btn-approve ui-btn-sm" disabled={busy !== null} onClick={() => void changeStatus(room, 'AVAILABLE')}>{busy === room.id ? 'Saving…' : 'Reopen'}</button>
+                            <button type="button" className="ui-btn ui-btn-approve ui-btn-sm" disabled={busy !== null || loading} onClick={() => void changeStatus(room, 'AVAILABLE')}>{busy === room.id ? 'Saving…' : 'Reopen'}</button>
                           )}
                         </div>
                       </td>
@@ -207,7 +210,9 @@ export function ManagerBookingsPage() {
 
       {statusTarget && <ResourceStatusDialog resource={statusTarget.room} status={statusTarget.status}
         affected={bookings.filter(item => item.resource_id === statusTarget.room.id && Date.parse(item.end) > now)}
-        onClose={() => setStatusTarget(null)} onSaved={() => {
+        onClose={() => setStatusTarget(null)} onSaved={(saved) => {
+          // Card A (V3): show the saved status at once; the refresh still runs (reopening can promote the waitlist).
+          setRooms((current) => current.map((item) => (item.id === saved.id ? saved : item)))
           setStatusTarget(null); feedback.success('Resource status updated'); reload()
         }} />}
       {moving && rooms.some((room) => room.id === moving.resource_id) && (

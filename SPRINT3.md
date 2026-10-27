@@ -415,3 +415,13 @@ No API, schema or booking-rule change. Review: project docs `claude/reports/2026
 | V8 | `ui/workspace.css`：移除整页入场，不影响状态动效 | 同文件 V8（计算样式无入场、reduced-motion 仍有效） |
 
 红灯日志、前后截图和全套检查结果：项目外 `9900/output/fluency-2026-10-27/`，索引与验收状态见任务卡。
+
+## 27. 维修链路 A 卡（2026-10-28，接口仍为 1.19.0）
+
+只改前端，任务卡：项目文档 `claude/tasks-maintenance-2026-10-27.md`。
+
+| 项 | 文件和行为 | 验证 |
+| --- | --- | --- |
+| M1① | `frontend/src/api/admin.ts` `listUnfinishedBookings(since)`（替换 `listApprovedBookings`）；`features/manager/ManagerBookingsPage.tsx` 只请求还没结束的预约和申请 | `tests/maintenance.spec.ts` M1（请求的四个状态和 `since`） |
+| B1 | `ManagerBookingsPage.tsx` 的预约表和 Upcoming 列只用已批准的（`confirmed`）；`manager/ResourceStatusDialog.tsx` 显示预约加申请的合计 | 同文件 B1（弹窗 3 条含待审批、候补；表格只有已批准的） |
+| V3 | `ResourceStatusDialog.tsx` `onSaved(resource)` 交出接口返回的房间；`ManagerBookingsPage.tsx` 立即更新这一行，刷新中状态按钮禁用 | 同文件 V3（刷新延迟时这一行已是 Maintenance，Reopen 禁用；刷新后恢复） |

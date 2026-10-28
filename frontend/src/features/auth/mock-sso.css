@@ -60,6 +60,7 @@
 .mock-sso-options-content p:last-child { color: #666; font-size: 12px; }
 .mock-sso-error { margin-top: 12px; color: #a4262c; font-size: 14px; overflow-wrap: anywhere; }
 .mock-sso-error button { margin-top: 10px; }
+.mock-sso-error a { color: inherit; font-weight: 600; text-decoration: underline; } /* Sprint 3 (feedback L1) */
 .mock-sso-notice { margin: 12px 0; padding: 12px; background: #fff8d9; font-size: 14px; }
 .mock-sso-notice h2 { margin-bottom: 8px; font-size: 14px; }
 .mock-sso-notice button { margin-top: 10px; }

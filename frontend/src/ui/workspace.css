@@ -165,12 +165,15 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .app-shell .app-help-grid h2 { font-size: 16px; }
 .today-brief { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 8px 0; margin-bottom: 12px; color: var(--ink); }
 .today-brief h2 { font-size: 16px; font-weight: 700; letter-spacing: 0; }
-.today-brief p { color: #c2cec5; font-size: 12px; margin-top: 5px; }
 .today-brief-mark { display: grid; place-items: center; width: 28px; height: 28px; color: var(--green); flex-shrink: 0; }
-.app-shell .today-cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); gap: 12px; margin-bottom: 24px; }
+/* Sprint 3 (2026-10-28 feedback L2): three fixed columns, so one card does not stretch across the page. */
+.app-shell .today-cards { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-bottom: 24px; }
 .app-shell .today-card { border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; background: #fff; box-shadow: none; color: var(--ink); min-height: auto; }
 .app-shell .today-card:hover { transform: none; border-color: var(--ink); background: #fcfdf8; }
 .app-shell .today-card.is-amber { border-top: 3px solid var(--yellow); }
+/* Sprint 3 (2026-10-28 feedback L5): urgent requests stand out from the yellow cards. */
+.app-shell .today-card.is-red { border-top: 3px solid var(--red); }
+.app-shell .today-card.is-red .today-count { color: var(--red); }
 .app-shell .today-count { font-size: 28px; line-height: 1; letter-spacing: -.5px; }
 .app-shell .today-label { font-size: 12px; margin-top: 10px; }
 .app-shell .today-card small { color: var(--muted); font-size: 12px; }
@@ -301,6 +304,9 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .announcement-history { margin-top: 28px; min-width: 0; }
 .announcement-history article { padding: 20px; margin-bottom: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); min-width: 0; overflow-wrap: anywhere; }
 .announcement-history .ui-pill { margin-right: 8px; font-size: 12px; }
+/* Sprint 3 (2026-10-28 feedback L3) */
+.announcement-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.announcement-card-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .announcement-error { padding: 12px; margin-bottom: 16px; font-size: 14px; }
 @media (max-width: 600px) {
   .notification-matrix-head { display: none; }

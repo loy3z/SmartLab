@@ -440,6 +440,11 @@ test('each sign-in page refuses the other kind of account', async ({ page, api }
   await page.getByLabel('Demo zID or university email', { exact: true }).fill(users.ADMIN.zid)
   await page.getByRole('button', { name: 'Next', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('Staff sign-in page')
+  // Sprint 3 (2026-10-28 feedback L1, L4): the hint links to staff sign-in, whose breadcrumb leads back.
+  await page.getByRole('alert').getByRole('link', { name: 'Staff sign-in page', exact: true }).click()
+  await expect(page).toHaveURL(/#\/staff\/login$/)
+  await page.getByRole('link', { name: 'SmartLab', exact: true }).click()
+  await expect(page).toHaveURL(/#\/login$/)
   await page.goto('/#/staff/login')
   await page.getByLabel('Staff zID', { exact: true }).fill(users.STUDENT.zid)
   await page.getByLabel('Password', { exact: true }).fill(STAFF_PASSWORD)
@@ -1520,8 +1525,27 @@ test('staff start on Today, whose cards open the pages that handle them', async 
   await expect(page.getByText('A Manager decides these')).toBeVisible()
   await expect(page.getByText('Water leak')).toBeVisible()
   await expect(page.getByText('2 future bookings')).toBeVisible()
+  // Sprint 3 (2026-10-28 feedback L2, L5): urgent has its own red line; the check only shows when nothing waits.
+  await expect(page.getByRole('link', { name: /Urgent requests/ })).toHaveCSS('border-top-color', 'rgb(173, 63, 57)')
+  await expect(page.locator('.today-brief-mark')).toHaveCount(0)
   await page.getByRole('link', { name: /Induction evidence to review/ }).click()
   await expect(page).toHaveURL(/#\/admin\/qualifications$/)
+})
+
+test('Today keeps a lone card and a lone panel in proportion', async ({ page }) => {
+  // Sprint 3 (2026-10-28 feedback L2): one card stays a third wide; a panel without its neighbour spans the row.
+  await page.route('**/api/v1/admin/overview/', (route) => route.fulfill({ json: {
+    role: 'ADMIN', pending_inductions: 1, pending_bookings: 0, urgent_requests: 0, waitlisted: 0, changes_waiting: 0,
+    due_soon: [], due_soon_hours: 6, unfreeze_requests: 0,
+    out_of_service: [{ resource: { ...reviewRoom, status: 'MAINTENANCE', status_reason: 'Water leak' }, affected_bookings: 1 }],
+    today: [], today_count: 0, missed_today: 0, can_decide_urgent: false } }))
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/#/login')
+  await signIn(page, 'ADMIN')
+  await expect(page.getByText('Water leak')).toBeVisible()
+  const width = (selector: string) => page.locator(selector).first().evaluate(element => element.getBoundingClientRect().width)
+  expect(await width('.today-card')).toBeLessThan(await width('.today-cards') / 2)
+  expect(Math.abs(await width('.today-panel') - await width('.today-grid'))).toBeLessThan(2)
 })
 
 test('the induction page says how to get an induction and offers the lab\'s email', async ({ page }) => {
@@ -1678,6 +1702,12 @@ test('1.19 announcements: staff manage own notices; public boards show signature
   await page.getByLabel('Title', { exact: true }).fill('Updated safety')
   await page.getByRole('button', { name: 'Save changes', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Remove Updated safety', exact: true })).toBeVisible()
+  // Sprint 3 (2026-10-28 feedback L3): Remove sits in the card's top-right corner, above the title.
+  const removeBox = await page.getByRole('button', { name: 'Remove Updated safety', exact: true }).boundingBox()
+  const cardBox = await page.locator('.announcement-history article', { hasText: 'Updated safety' }).boundingBox()
+  const titleBox = await page.locator('.announcement-history article', { hasText: 'Updated safety' }).getByRole('heading').boundingBox()
+  expect(removeBox!.y).toBeLessThan(titleBox!.y)
+  expect(cardBox!.x + cardBox!.width - (removeBox!.x + removeBox!.width)).toBeLessThan(40)
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth === document.documentElement.clientWidth)).toBe(true)
   expect(await page.locator('.announcements-page').evaluate(root => Array.from(root.querySelectorAll('h1,h2,h3,p,label,span,input,textarea,button')).every(element => Number.parseFloat(getComputedStyle(element).fontSize) >= 12))).toBe(true)

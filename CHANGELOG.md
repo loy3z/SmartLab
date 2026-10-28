@@ -2,6 +2,17 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.20.0 之后：线上试用反馈 L1–L5（2026-10-28，接口不变）
+
+依据 Loy 部署后的试用反馈 `claude/reports/2026-10-28-live-feedback.md`。只改前端。
+
+- L1：用员工账号在大学登录页登录时，提示里的“Staff sign-in page”改成链接，直接打开员工登录页。
+- L2：Today 页的待办卡在电脑上固定每行 3 张，只有一张时不再拉满整行；“Decide soon”和“Out of service”只出现一个时占满整行。右边的绿勾只在没有待审事项时显示。
+- L3：公告卡片的 Edit／Remove 挪到右上角。真删除和 7 天折叠区不做，作为提议问客户。
+- L4：登录页面包屑里的“SmartLab”改成链接，可以回到登录首页；员工登录页不再是死胡同。
+- L5：Today 页的 Urgent 卡片顶部加红线，数字改成红色，和黄线的普通待办区分开。
+- 顺带删掉一条死规则 `.today-brief p`：页面上已经没有这个元素。
+
 ## 1.20.0：Booking 筛选、个人历史与首页（2026-10-28，迁移 010）
 
 依据 Loy 对 eDoc 的分析及随后“直接动手改”的授权，任务卡 `claude/tasks-booking-history-2026-10-28.md`。

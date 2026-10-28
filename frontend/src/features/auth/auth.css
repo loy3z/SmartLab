@@ -39,6 +39,7 @@
 .auth-main { flex: 1; padding-bottom: 54px; }
 .auth-breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 24px 0 34px; font-size: 12px; color: #626262; }
 .auth-breadcrumb strong { color: #252525; font-weight: 400; }
+.auth-breadcrumb a { color: inherit; text-decoration: underline; text-underline-offset: 3px; } /* Sprint 3 (feedback L4) */
 .auth-breadcrumb > span[aria-hidden] { color: #969696; }
 .auth-content-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 438px); gap: clamp(44px, 6vw, 92px); align-items: start; }
 .auth-introduction { min-width: 0; }

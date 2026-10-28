@@ -577,3 +577,11 @@ PUT 只改传入的列；未知类别、未知列、空的列对象返回 400，
 `set_resource_status` 对房间及设备在原事务内创建／更新 `RESOURCE_STATUS` 公告，原因作为正文，状态变更 Manager 作为署名；每个资源同时只保留一条未下架的状态公告。改原因不产生第二条；`AVAILABLE` 自动下架。`expected_back` 单独存储、仅用于展示，不自动过期或重开资源，已过估计时间仍显示公告，直至 Manager 改回可用。原 `RESOURCE_OUT_OF_SERVICE` / `RESOURCE_REOPENED` 通知逻辑保留。
 
 首页 Dashboard / Today 只加载生效公告，空列表不渲染公告区；员工管理页标注 **From room status**，不提供状态公告修改或下架按钮。页面日期输入按 Australia/Sydney 转为 ISO，夏令时不存在的时间显示错误并保留输入；弹窗错误显示在弹窗内。
+
+## 1.20.0：个人历史移除（Sprint 3）
+
+- `POST bookings/{id}/remove-from-history/`：空请求或 `{}`，成功为 `204` 无响应体。重复调用仍为 `204`。
+- 仅预约受益人（`student_id`）或创建人（`created_by`）可移除自己的条目。员工也不能移除无关预约的个人历史，返回 `404`。身份由服务端取得，不接受 user_id 等额外字段（`400`）。
+- `CANCELLED`、`REJECTED`、`EXPIRED` 或 `end <= now` 可移除；未来／进行中的有效预约返回 `409 BOOKING_NOT_HISTORY`，先取消／撤回。每个重复预约日期独立处理。
+- `GET bookings/` 与 `GET dashboard/`（包括 counts）排除当前用户移除的条目。代约的双方互不影响。详情接口、员工 records/CSV/usage、原预约及缺席／冻结、通知、日历均不变；不发取消或移除邮件。
+- 前端按钮 `Remove from my history`；确认框说明保留员工记录。失败保留可见条目，成功才移除。My bookings 的 Resource 与状态分类取交集，URL `view` / `resource` 记住条件；不新增后端筛选参数。

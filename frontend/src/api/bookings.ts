@@ -14,6 +14,9 @@ export const listBookings = () => request<ListResponse<Booking>>('bookings/')
 
 export const cancelBooking = (id: string) => post<Booking>(`bookings/${id}/cancel/`, {})
 
+// Sprint 3 (1.20.0): personal visibility only; the shared booking remains in staff records.
+export const removeBookingHistory = (id: string) => post<void>(`bookings/${id}/remove-from-history/`, {})
+
 export const rescheduleBooking = (id: string, start: string, end: string) =>
   post<Booking>(`bookings/${id}/reschedule/`, { start, end })
 

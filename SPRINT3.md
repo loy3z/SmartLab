@@ -425,3 +425,13 @@ No API, schema or booking-rule change. Review: project docs `claude/reports/2026
 | M1① | `frontend/src/api/admin.ts` `listUnfinishedBookings(since)`（替换 `listApprovedBookings`）；`features/manager/ManagerBookingsPage.tsx` 只请求还没结束的预约和申请 | `tests/maintenance.spec.ts` M1（请求的四个状态和 `since`） |
 | B1 | `ManagerBookingsPage.tsx` 的预约表和 Upcoming 列只用已批准的（`confirmed`）；`manager/ResourceStatusDialog.tsx` 显示预约加申请的合计 | 同文件 B1（弹窗 3 条含待审批、候补；表格只有已批准的） |
 | V3 | `ResourceStatusDialog.tsx` `onSaved(resource)` 交出接口返回的房间；`ManagerBookingsPage.tsx` 立即更新这一行，刷新中状态按钮禁用 | 同文件 V3（刷新延迟时这一行已是 Maintenance，Reopen 禁用；刷新后恢复） |
+
+## 28. Booking 筛选、个人历史与首页（2026-10-28，1.20.0，迁移 010）
+
+| 项 | 文件与入口 | 验证 |
+| --- | --- | --- |
+| F1 | `features/booking/MyBookings.tsx`、`ui/workspace.css`：资源／状态交集与 URL、数量、Clear filters | `tests/routing.spec.ts` booking history resource（三角色、刷新、空结果与手机） |
+| H1 后端 | `services/bookings.py` `remove_booking_history`；`views/bookings.py` `BookingHistoryRemoveView`、`my_bookings`；`urls.py`；`repository.py` / `postgres.py` 的 `hide_booking`、`hidden_booking_ids`；迁移 010 / schema.sql | `test_booking_history.py`：权限、状态、幂等、代约双方、回滚、原记录／缺席／日历保留、API 与 Dashboard；`test_postgres.py` 持久化与迁移连跑两遍 |
+| H1 前端 | `api/bookings.ts` `removeBookingHistory`；`MyBookings.tsx`、`SeriesCard.tsx`；`my-bookings.ts` `canRemoveBookingHistory` | routing booking history removal（三角色、取消确认、503 保留、成功与刷新）、逐日期移除 |
+| D1 | `DashboardPage.tsx`、`dashboard.css`、`workspace.css`：独立统计卡、紧凑 Next session 与预约列表、员工 Today 横幅 | routing booking dashboard（真实列表形状、桌面与320/390px）；既有 fluency 用例回归公告 |
+| 文档 | OpenAPI 1.20.0 / frontend-api.md、数据库 README、ARCHITECTURE 第10节、CHANGELOG | check-local 的 openapi 和 schema；具体输出见任务卡 |

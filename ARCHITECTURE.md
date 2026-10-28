@@ -188,6 +188,8 @@ sequenceDiagram
 
 | 规则 | 函数 |
 | --- | --- |
+| 个人历史移除条件、本人／创建人范围（1.20.0） | `services/bookings.py` `remove_booking_history`；两种 repo 的 `hide_booking`、`hidden_booking_ids`；个人列表和 Dashboard 用 `views/bookings.py` `my_bookings`，报表不使用隐藏条件 |
+| My bookings 资源／分类交集及逐日期按钮（1.20.0） | 前端 `MyBookings.tsx`；`my-bookings.ts` `canRemoveBookingHistory`；`SeriesCard.tsx` |
 | 新增／编辑资源的字段规则（名称不重复、房间和设备、时间步长、最长时长） | `services/resources.py` `_check_resource_fields` |
 | 编辑后哪些未来预约不再符合 | `services/resources.py` `_bookings_outside_rules` |
 | 什么时候不能下架 | `services/resources.py` `archive_resource` |

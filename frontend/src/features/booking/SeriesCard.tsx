@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { ATTENDANCE_TEXT, canCheckIn, checkInHint } from './attendance'
 import { fmtDay, fmtDuration, fmtRange, fmtTime, minutesBetween, STATUS_TEXT } from './format'
-import { ACTIVE, seriesSummary } from './my-bookings'
+import { ACTIVE, canRemoveBookingHistory, seriesSummary } from './my-bookings'
 import type { Booking, Resource } from '../../api/types/index.ts'
 
 /**
@@ -10,7 +10,7 @@ import type { Booking, Resource } from '../../api/types/index.ts'
  * the "I'm here" button of today's date comes up to the card. "Show dates" lists every date, each cancellable on
  * its own; staff can cancel the rest of the series at once.
  */
-export function SeriesCard({ bookings, resource, userId, now, isStaff, isManager, onCancel, onCancelRest, onCheckIn, onReschedule }: {
+export function SeriesCard({ bookings, resource, userId, now, isStaff, isManager, onCancel, onCancelRest, onCheckIn, onReschedule, onRemoveHistory, removing }: {
   bookings: Booking[]
   resource: Resource | undefined
   userId: string | undefined
@@ -21,6 +21,8 @@ export function SeriesCard({ bookings, resource, userId, now, isStaff, isManager
   onCancelRest: (b: Booking) => void
   onCheckIn: (b: Booking) => void
   onReschedule: (b: Booking) => void
+  onRemoveHistory: (b: Booking) => void // Sprint 3 (1.20.0): remove one historical date.
+  removing: string | null
 }) {
   const [open, setOpen] = useState(false)
   const summary = seriesSummary(bookings, now)
@@ -77,6 +79,9 @@ export function SeriesCard({ bookings, resource, userId, now, isStaff, isManager
                   <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => onReschedule(b)}>Reschedule</button>
                 )}
                 {cancellable(b) && <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => onCancel(b)}>Cancel this date</button>}
+                {canRemoveBookingHistory(b, now) && <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={removing !== null} onClick={() => onRemoveHistory(b)}>
+                  {removing === b.id ? 'Removing…' : 'Remove from my history'}
+                </button>}
               </span>
             </li>
           ))}

@@ -2,6 +2,14 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.20.0：Booking 筛选、个人历史与首页（2026-10-28，迁移 010）
+
+依据 Loy 对 eDoc 的分析及随后“直接动手改”的授权，任务卡 `claude/tasks-booking-history-2026-10-28.md`。
+
+- My bookings 在现有分类下增加 Resource 筛选、匹配数量和 Clear filters；URL 同时记住分类和资源，切换本地筛选不重取预约。
+- 学生、Admin、Manager 可逐条移除自己的已结束／取消／拒绝／过期历史；重复预约逐日期处理。服务端按用户保存隐藏记录，代约双方独立。原预约、员工报表、缺席、通知和日历保留，未来或进行中的有效预约须先取消／撤回。
+- 学生 Dashboard 独立统计卡、缩小 Next session，后续预约与它同栏；员工 Today 缩小状态横幅。保留公告、培训、审批与维修信息，不加图表或日期筛选。
+
 ## 维修链路 A 卡（2026-10-28，接口仍为 1.19.0）
 
 依据项目任务卡 `claude/tasks-maintenance-2026-10-27.md`（Loy 2026-10-27 定 B1 只显示合计数，并把卡 A 收窄为只改前端的最简版本）。来源：Codex 维修流程审查 M1、B1、V3 和 Claude Code 的复查。

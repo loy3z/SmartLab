@@ -62,6 +62,9 @@ class Repository(Protocol):
         resource_id: str | None = None,
     ) -> list[Booking]: ...
     def save_booking(self, booking: Booking) -> None: ...
+    # Sprint 3 (1.20.0): per-person visibility, separate from the shared booking.
+    def hidden_booking_ids(self, principal_id: str) -> set[str]: ...
+    def hide_booking(self, principal_id: str, booking_id: str, at: datetime) -> None: ...
     def list_blocking_bookings(
         self, resource_id: str, start: datetime, end: datetime, at: datetime,
         exclude_id: str | None = None,
@@ -115,6 +118,7 @@ class MemoryRepository:
         self._requirements: dict[str, QualificationRequirement] = {}
         self._submissions: dict[str, QualificationSubmission] = {}
         self._bookings: dict[str, Booking] = {}
+        self._hidden_bookings: dict[tuple[str, str], datetime] = {}  # Sprint 3 (1.20.0)
         self._audit: list[AuditRecord] = []
         self._outlook_sync: dict[str, OutlookSyncRecord] = {}
         self._credentials: dict[str, StaffCredential] = {}
@@ -139,6 +143,7 @@ class MemoryRepository:
                 self._requirements.copy(),
                 self._submissions.copy(),
                 self._bookings.copy(),
+                self._hidden_bookings.copy(),  # Sprint 3 (1.20.0): include visibility in rollback.
                 deepcopy(self._audit),
                 self._outlook_sync.copy(),
                 self._credentials.copy(),
@@ -158,6 +163,7 @@ class MemoryRepository:
                     self._requirements,
                     self._submissions,
                     self._bookings,
+                    self._hidden_bookings,
                     self._audit,
                     self._outlook_sync,
                     self._credentials,
@@ -247,6 +253,15 @@ class MemoryRepository:
     def save_booking(self, booking: Booking) -> None:
         with self._lock:
             self._bookings[booking.id] = booking
+
+    # Sprint 3 (1.20.0): never remove the shared booking or change its status.
+    def hidden_booking_ids(self, principal_id: str) -> set[str]:
+        with self._lock:
+            return {booking_id for person_id, booking_id in self._hidden_bookings if person_id == principal_id}
+
+    def hide_booking(self, principal_id: str, booking_id: str, at: datetime) -> None:
+        with self._lock:
+            self._hidden_bookings.setdefault((principal_id, booking_id), at)
 
     def list_blocking_bookings(self, resource_id, start, end, at, exclude_id=None):
         """Use server time, strict overlap and active pending holds, not status alone."""

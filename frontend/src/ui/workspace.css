@@ -163,10 +163,10 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .app-shell .app-help-grid p { font-size: 12px; color: var(--muted); }
 .app-shell .app-help-grid .app-card { border-color: var(--line); box-shadow: none; }
 .app-shell .app-help-grid h2 { font-size: 16px; }
-.today-brief { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 24px 26px; margin-bottom: 22px; border-radius: 12px; background: var(--ink); color: #fff; }
-.today-brief h2 { font-size: 20px; font-weight: 700; letter-spacing: 0; }
+.today-brief { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 8px 0; margin-bottom: 12px; color: var(--ink); }
+.today-brief h2 { font-size: 16px; font-weight: 700; letter-spacing: 0; }
 .today-brief p { color: #c2cec5; font-size: 12px; margin-top: 5px; }
-.today-brief-mark { display: grid; place-items: center; width: 48px; height: 48px; border: 1px solid #69796d; color: var(--yellow); border-radius: 50%; flex-shrink: 0; }
+.today-brief-mark { display: grid; place-items: center; width: 28px; height: 28px; color: var(--green); flex-shrink: 0; }
 .app-shell .today-cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); gap: 12px; margin-bottom: 24px; }
 .app-shell .today-card { border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; background: #fff; box-shadow: none; color: var(--ink); min-height: auto; }
 .app-shell .today-card:hover { transform: none; border-color: var(--ink); background: #fcfdf8; }
@@ -256,7 +256,7 @@ input::placeholder, textarea::placeholder { color: #78837d; }
   .app-shell .bk-bcard { padding: 18px; }
   .app-shell .bk-bcard h3 { font-size: 16px; }
   .app-shell .today-cards { grid-template-columns: repeat(2,minmax(0,1fr)); }
-  .today-brief { padding: 21px; }
+  .today-brief { padding: 8px 0; }
   .app-shell .today-grid { grid-template-columns: 1fr; }
   .app-shell .today-panel { padding: 19px; }
   .bk-find-query { padding: 18px; }
@@ -309,4 +309,13 @@ input::placeholder, textarea::placeholder { color: #78837d; }
   .notification-matrix-row label { justify-content: flex-start; }
   .notification-matrix-row label span { display: inline; }
   .announcement-board, .announcement-history article { padding: 16px; }
+}
+
+/* Sprint 3 (1.20.0): resource filter stays on its own wrapping row below status tabs. */
+.bookings-resource-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 14px 0 20px; }
+.bookings-resource-filter label { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 12px; }
+.bookings-resource-filter select { min-width: 0; max-width: 100%; width: 260px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); font: inherit; }
+@media (max-width:600px) {
+  .bookings-resource-filter label { width: 100%; }
+  .bookings-resource-filter select { flex: 1; width: 0; }
 }

@@ -2,7 +2,7 @@
 
 from ._common import *  # noqa: F401,F403 - shared imports, helpers and PublicView.
 
-__all__ = ["BookingListView", "my_bookings", "PersonLookupView", "BookingDetailView", "BookingCancelView", "BookingRescheduleView", "BookingChangeView", "DashboardView", "BookingCheckInView"]
+__all__ = ["BookingListView", "my_bookings", "PersonLookupView", "BookingDetailView", "BookingCancelView", "BookingRescheduleView", "BookingChangeView", "DashboardView", "BookingCheckInView", "BookingHistoryRemoveView"]
 
 class BookingListView(APIView):
     def get(self, request):
@@ -26,7 +26,18 @@ def my_bookings(service, user):
     mine = {item.id: item for item in service.repo.list_bookings(student_id=user.id)}
     if user.role in (Role.ADMIN, Role.MANAGER):
         mine.update({item.id: item for item in service.repo.list_bookings() if item.created_by == user.id})
-    return sorted(mine.values(), key=lambda item: (item.created_at, item.id))
+    # Sprint 3 (1.20.0): personal lists and Dashboard share visibility; reports keep the original rows.
+    hidden = service.repo.hidden_booking_ids(user.id)
+    return sorted((item for item in mine.values() if item.id not in hidden), key=lambda item: (item.created_at, item.id))
+
+
+class BookingHistoryRemoveView(APIView):
+    """Sprint 3 (1.20.0): remove only the caller's personal history entry, idempotently."""
+    def post(self, request, booking_id):
+        if request.data:
+            raise DomainError("VALIDATION_ERROR", "The history removal action does not accept extra fields.")
+        get_service().remove_booking_history(request.user, str(booking_id))
+        return Response(status=204)
 
 class PersonLookupView(APIView):
     """Admin/Manager: check whom you are booking for before submitting."""

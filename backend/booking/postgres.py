@@ -233,6 +233,19 @@ class PostgresRepository:
     def save_booking(self, booking):
         _insert(booking, upsert=True)
 
+    # Sprint 3 (1.20.0): personal history visibility survives sessions and adapter instances.
+    def hidden_booking_ids(self, principal_id):
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT booking_id FROM public.booking_history_removal WHERE principal_id = %s',
+                           [principal_id])
+            return {str(row[0]) for row in cursor.fetchall()}
+
+    def hide_booking(self, principal_id, booking_id, at):
+        with connection.cursor() as cursor:
+            cursor.execute('''INSERT INTO public.booking_history_removal(principal_id, booking_id, removed_at)
+                              VALUES (%s, %s, %s) ON CONFLICT (principal_id, booking_id) DO NOTHING''',
+                           [principal_id, booking_id, at])
+
     def list_blocking_bookings(self, resource_id, start, end, at, exclude_id=None):
         resource_id = _uuid(resource_id)
         if resource_id is None:

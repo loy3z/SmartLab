@@ -854,6 +854,143 @@ test('booking status tabs filter locally and retain the selected view after relo
   await expect(page.locator('.bk-bcard')).toContainText('Cancelled session')
 })
 
+// Sprint 3 (1.20.0): resource and status filters compose without another API read.
+for (const role of ['STUDENT', 'ADMIN', 'MANAGER'] as const) {
+  test(`booking history resource filter composes and survives reload: ${role}`, async ({ page }) => {
+    let reads = 0
+    const rooms = ['room-1', 'room-2', 'room-empty'].map((id, i) => ({ id, name: `Lab Room ${i + 1}`, kind: 'ROOM', active: true }))
+    await page.route('**/api/v1/resources/**', route => route.fulfill({ json: { count: rooms.length, results: rooms } }))
+    await page.route('**/api/v1/bookings/', route => {
+      reads++
+      return route.fulfill({ json: { count: 3, results: [
+        approvedBooking({ id: 'a', resource_id: 'room-1', purpose: 'First future', start: '2099-01-10T00:00:00Z', end: '2099-01-10T01:00:00Z', check_in_open: false }),
+        approvedBooking({ id: 'b', resource_id: 'room-2', purpose: 'Second future', start: '2099-01-10T00:00:00Z', end: '2099-01-10T01:00:00Z', check_in_open: false }),
+        approvedBooking({ id: 'c', resource_id: 'room-1', purpose: 'First past', start: '2020-01-10T00:00:00Z', end: '2020-01-10T01:00:00Z', check_in_open: false }),
+      ] } })
+    })
+    await page.goto('/#/login')
+    await signIn(page, role)
+    await page.goto('/#/bookings')
+    await expect(page.locator('.bk-bcard')).toHaveCount(3)
+    const initialReads = reads
+    await page.getByRole('combobox', { name: 'Resource', exact: true }).selectOption('room-1')
+    await expect(page.locator('.bk-bcard')).toHaveCount(2)
+    await page.getByRole('tab', { name: 'Past 1', exact: true }).click()
+    await expect(page.locator('.bk-bcard')).toHaveCount(1)
+    await expect(page.locator('.bk-bcard')).toContainText('First past')
+    expect(reads).toBe(initialReads)
+    await page.reload()
+    await expect(page.getByRole('combobox', { name: 'Resource', exact: true })).toHaveValue('room-1')
+    await expect(page.getByRole('tab', { name: 'Past 1', exact: true })).toHaveAttribute('aria-selected', 'true')
+    await page.getByRole('combobox', { name: 'Resource', exact: true }).selectOption('room-empty')
+    await expect(page.getByText('No bookings match these filters.')).toBeVisible()
+    await page.getByRole('button', { name: 'Clear filters', exact: true }).click()
+    await expect(page.locator('.bk-bcard')).toHaveCount(3)
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 844 })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    }
+    if (role === 'STUDENT') await page.screenshot({ path: '../../output/booking-history-2026-10-28/my-bookings-390.png', fullPage: true })
+  })
+
+  test(`booking history removal confirms, keeps failed rows and persists: ${role}`, async ({ page }) => {
+    let removed = false
+    let fail = true
+    const historical = approvedBooking({ id: 'history', start: '2020-01-10T00:00:00Z', end: '2020-01-10T01:00:00Z', check_in_open: false, purpose: 'Completed practical' })
+    const future = approvedBooking({ id: 'live', start: '2099-01-10T00:00:00Z', end: '2099-01-10T01:00:00Z', check_in_open: false, purpose: 'Future practical' })
+    await page.route('**/api/v1/bookings/', route => route.fulfill({ json: { count: removed ? 1 : 2, results: removed ? [future] : [historical, future] } }))
+    await page.route('**/api/v1/bookings/history/remove-from-history/', route => {
+      expect(route.request().method()).toBe('POST')
+      expect(route.request().postDataJSON()).toEqual({})
+      if (fail) return route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE', message: 'Try again later.' } } })
+      removed = true
+      return route.fulfill({ status: 204 })
+    })
+    await page.goto('/#/login')
+    await signIn(page, role)
+    await page.goto('/#/bookings')
+    await expect(page.getByRole('button', { name: 'Remove from my history', exact: true })).toHaveCount(1)
+    const remove = () => page.getByRole('button', { name: 'Remove from my history', exact: true }).click()
+    await remove()
+    let dialog = page.getByRole('dialog', { name: 'Remove from your history?' })
+    await expect(dialog).toContainText('Staff records and reports are kept.')
+    await dialog.getByRole('button', { name: 'Keep it', exact: true }).click()
+    expect(removed).toBe(false)
+    await remove()
+    dialog = page.getByRole('dialog', { name: 'Remove from your history?' })
+    await dialog.getByRole('button', { name: 'Remove from my history', exact: true }).click()
+    await expect(page.getByRole('alert')).toContainText('Try again later.')
+    await expect(page.locator('.bk-bcard')).toHaveCount(2)
+    fail = false
+    await remove()
+    await page.getByRole('dialog').getByRole('button', { name: 'Remove from my history', exact: true }).click()
+    await expect(page.locator('.bk-bcard')).toHaveCount(1)
+    await expect(page.locator('.bk-bcard')).toContainText('Future practical')
+    await page.reload()
+    await expect(page.locator('.bk-bcard')).toHaveCount(1)
+    expect(removed).toBe(true)
+  })
+}
+
+test('booking history removes one series date and preserves the next date', async ({ page }) => {
+  let removed = false
+  const rows = [
+    approvedBooking({ id: 'old-date', series_id: 'weekly', start: '2020-01-10T00:00:00Z', end: '2020-01-10T01:00:00Z', check_in_open: false }),
+    approvedBooking({ id: 'next-date', series_id: 'weekly', start: '2099-01-10T00:00:00Z', end: '2099-01-10T01:00:00Z', check_in_open: false }),
+  ]
+  await page.route('**/api/v1/bookings/', route => route.fulfill({ json: { count: removed ? 1 : 2, results: removed ? rows.slice(1) : rows } }))
+  await page.route('**/api/v1/bookings/old-date/remove-from-history/', route => { removed = true; return route.fulfill({ status: 204 }) })
+  await page.goto('/#/login')
+  await signIn(page, 'MANAGER')
+  await page.goto('/#/bookings')
+  await page.getByRole('button', { name: 'Show dates (2)', exact: true }).click()
+  await page.getByRole('button', { name: 'Remove from my history', exact: true }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Remove from my history', exact: true }).click()
+  await expect(page.getByRole('list', { name: 'Series dates' }).getByRole('listitem')).toHaveCount(1)
+  await expect(page.getByRole('button', { name: 'Cancel this date', exact: true })).toBeVisible()
+})
+
+test('booking dashboard uses distinct metrics and a compact next session on desktop and phone', async ({ page }) => {
+  const bookings = [10, 11, 12].map(day => approvedBooking({ id: `next-${day}`, resource_id: 'room-1',
+    start: `2099-01-${day}T00:00:00Z`, end: `2099-01-${day}T01:00:00Z`, check_in_open: false }))
+  await page.route('**/api/v1/dashboard/', route => route.fulfill({ json: { ...dashboard, bookings, counts: { ...dashboard.counts, APPROVED: 3 } } }))
+  await page.route('**/api/v1/resources/**', route => route.fulfill({ json: { count: 1, results: [{ id: 'room-1', name: 'Lab Room 1', kind: 'ROOM', active: true, location: 'Demo laboratory' }] } }))
+  await page.goto('/#/login')
+  await signIn(page, 'STUDENT')
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  const metrics = page.locator('.dash-stats .dash-stat')
+  await expect(metrics).toHaveCount(3)
+  expect(await metrics.first().evaluate(el => getComputedStyle(el).borderRadius)).not.toBe('0px')
+  expect((await page.locator('.dash-session').boundingBox())!.height).toBeLessThan(240)
+  await expect(page.getByRole('heading', { name: 'More upcoming', exact: true })).toBeVisible()
+  await expect(page.locator('.dash-recent .dash-booking')).toHaveCount(2)
+  await page.screenshot({ path: '../../output/booking-history-2026-10-28/dashboard-1440.png', fullPage: true })
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  }
+  await page.screenshot({ path: '../../output/booking-history-2026-10-28/dashboard-390.png', fullPage: true })
+})
+
+test('booking staff overview retains its tasks with a compact status line', async ({ page }) => {
+  await page.route('**/api/v1/admin/overview/', route => route.fulfill({ json: { ...emptyOverview('MANAGER'),
+    pending_bookings: 3, urgent_requests: 1, pending_inductions: 2,
+    today_count: 1, today: [approvedBooking({ check_in_open: false })],
+  } }))
+  await page.goto('/#/login')
+  await signIn(page, 'MANAGER')
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await expect(page.getByRole('link', { name: /Booking requests to decide/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Bookings today/ })).toBeVisible()
+  expect((await page.locator('.today-brief').boundingBox())!.height).toBeLessThan(60)
+  await page.screenshot({ path: '../../output/booking-history-2026-10-28/today-1440.png', fullPage: true })
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  }
+  await page.screenshot({ path: '../../output/booking-history-2026-10-28/today-390.png', fullPage: true })
+})
+
 test('a frozen person sees the freeze and can ask to be unfrozen', async ({ page }) => {
   const sent: unknown[] = []
   await page.route('**/api/v1/**', async (route) => {

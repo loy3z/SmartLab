@@ -26,9 +26,14 @@ class RemindersMixin:
     def _booking_reminders(self):
         now, sent = self.now(), 0
         horizon = now + timedelta(hours=self.rules().reminder_hours_before)
-        for booking in self.repo.list_bookings():
+        # 2026-10-29 (load test S1): read only bookings that may be due, and look up the reminders already sent for
+        # them in one query (before: every booking, then one notification query per due booking).
+        candidates = self.repo.list_bookings(statuses=[BookingStatus.APPROVED], unmarked=True, start_from=now, start_to=horizon)
+        sent_for = {(item.recipient_id, item.booking_id) for item in
+                    self.repo.list_booking_notifications(BOOKING_REMINDER, [item.id for item in candidates])} if candidates else set()
+        for booking in candidates:
             due = booking.status == BookingStatus.APPROVED and booking.attendance is None and now < booking.start <= horizon
-            if not due or self._already_sent(booking.student_id, BOOKING_REMINDER, booking_id=booking.id):
+            if not due or (booking.student_id, booking.id) in sent_for:
                 continue
             opens, closes = self.check_in_window(booking)
             resource = self.repo.get_resource(booking.resource_id)

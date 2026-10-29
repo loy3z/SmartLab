@@ -17,14 +17,19 @@ from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+from unittest.mock import patch
+
 from django.conf import settings
 from django.db import IntegrityError, connection, connections, transaction  # Sprint 3 (1.16.0): IntegrityError, transaction
+from django.db import close_old_connections  # 2026-10-29 (load test S3)
 from django.test import override_settings, TransactionTestCase
+from django.test.utils import CaptureQueriesContext
 
 from booking.domain import (
-    AuditRecord, BookingStatus, Principal, QualificationRequirement, QualificationStatus,
+    AuditRecord, Booking, BookingStatus, Principal, QualificationRequirement, QualificationStatus,
     Resource, ResourceKind, ResourceStatus, Role,
 )
+from booking.repository import MemoryRepository  # 2026-10-29 (load test R1)
 from booking.exceptions import DomainError
 from booking.services import BookingService
 
@@ -394,3 +399,88 @@ class PostgresAdapterTests(TransactionTestCase):
             t.join()
         self.assertEqual(errors, [])
         self.assertEqual(sorted(s.value for s in results), ["PENDING_APPROVAL", "WAITLISTED"])
+
+    # 2026-10-29 (tasks-load-2026-10-29.md R1, S1, S5, S3): per-request work must not grow with past bookings.
+
+    def raw_booking(self, start, status, student=None, **fields):
+        """Save a booking directly (no rules), as history or a fixture for time processing."""
+        student = student or self.a
+        booking = Booking(str(uuid4()), student.id, self.room.id, start, start + timedelta(hours=1), "History",
+                          start - timedelta(days=10), status, None, **fields)
+        self.repo.save_booking(booking)
+        return booking
+
+    def decoded_bookings(self):
+        """Ids of every booking row read from PostgreSQL inside the with-block."""
+        from booking import postgres
+        original, seen = postgres._decode, []
+
+        def spy(record_type, row):
+            record = original(record_type, row)
+            if record_type is Booking:
+                seen.append(record.id)
+            return record
+        return patch.object(postgres, "_decode", spy), seen
+
+    def test_load_list_booking_filters_match_the_memory_repository(self):
+        memory = MemoryRepository()
+        base = self.now + timedelta(hours=1)
+        statuses = list(BookingStatus)
+        for i in range(21):
+            booking = Booking(str(uuid4()), self.a.id, self.room.id, base + timedelta(hours=i), base + timedelta(hours=i, minutes=30),
+                              "Filters", self.now + timedelta(seconds=i), statuses[i % len(statuses)], None,
+                              review_due_at=base + timedelta(hours=i % 3) if i % 2 else None,
+                              created_by=self.admin.id if i % 3 == 0 else None,
+                              attendance="NO_SHOW" if i % 4 == 0 else None)
+            self.repo.save_booking(booking)
+            memory.save_booking(booking)
+        undecided = [BookingStatus.WAITING_QUALIFICATION, BookingStatus.PENDING_APPROVAL, BookingStatus.WAITLISTED]
+        cases = [{}, {"statuses": [BookingStatus.APPROVED]}, {"statuses": undecided}, {"statuses": []},
+                 {"start_from": base + timedelta(hours=3)}, {"start_to": base + timedelta(hours=5)},
+                 {"end_from": base + timedelta(hours=6, minutes=30)}, {"due_by": base + timedelta(hours=2)},
+                 {"created_by": self.admin.id}, {"unmarked": True},
+                 {"statuses": [BookingStatus.APPROVED], "unmarked": True, "start_from": base, "start_to": base + timedelta(hours=14)}]
+        for filters in cases:
+            with self.subTest(filters=filters):
+                ids = [item.id for item in self.repo.list_bookings(resource_id=self.room.id, **filters)]
+                self.assertEqual(ids, [item.id for item in memory.list_bookings(resource_id=self.room.id, **filters)])
+
+    def test_load_time_processing_and_staff_pages_do_not_read_past_bookings(self):
+        from booking.views.bookings import my_bookings
+        history = [self.raw_booking(self.now - timedelta(days=1 + i), status, student=self.b,
+                                    attendance="NO_SHOW" if status == BookingStatus.APPROVED else None).id
+                   for i in range(50)
+                   for status in (BookingStatus.APPROVED, BookingStatus.REJECTED, BookingStatus.CANCELLED, BookingStatus.EXPIRED)]
+        spy, seen = self.decoded_bookings()
+        with spy:
+            self.service.process_due_requests()
+            self.service.staff_overview(self.admin)
+            my_bookings(self.service, self.admin)
+        self.assertEqual(set(seen) & set(history), set())
+
+    def test_load_reminder_check_uses_the_same_queries_for_1_or_20_bookings(self):
+        def queries_after_reminders():
+            self.service.process_due_requests()  # sends any new reminder
+            with CaptureQueriesContext(connection) as captured:
+                self.service.process_due_requests()  # nothing new to send: this is the per-request cost
+            return len(captured.captured_queries)
+
+        soon = self.now + timedelta(hours=3)
+        self.raw_booking(soon, BookingStatus.APPROVED)
+        one = queries_after_reminders()
+        for _ in range(19):
+            self.raw_booking(soon, BookingStatus.APPROVED, student=self.person())
+        twenty = queries_after_reminders()
+        self.assertEqual(len([item for item in self.repo.list_notifications(self.a.id) if item.kind == "BOOKING_REMINDER"]), 1)
+        self.assertEqual(twenty, one)
+
+    def test_load_database_connection_is_reused_between_requests(self):
+        def backend_pid():
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_backend_pid()")
+                return cursor.fetchone()[0]
+
+        connection.close()
+        first = backend_pid()
+        close_old_connections()  # what Django runs at the end of every request
+        self.assertEqual(backend_pid(), first)

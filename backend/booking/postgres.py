@@ -227,8 +227,31 @@ class PostgresRepository:
     def get_booking(self, booking_id):
         return _get(Booking, booking_id)
 
-    def list_bookings(self, student_id=None, resource_id=None):
-        return _filtered(Booking, student_id=student_id, resource_id=resource_id)
+    def list_bookings(self, student_id=None, resource_id=None, *, statuses=None, start_from=None, start_to=None,
+                      end_from=None, due_by=None, created_by=None, unmarked=False):
+        """2026-10-29 (load test R1): the same keyword filters as repository.booking_matches, applied in SQL so only
+        the rows a caller may need are read and decoded."""
+        clauses, params = [], []
+        for column, value in (('student_id', student_id), ('resource_id', resource_id), ('created_by', created_by)):
+            if value is not None:
+                if (normalized := _uuid(value)) is None:
+                    return []
+                clauses.append(f'{column} = %s')
+                params.append(normalized)
+        if statuses is not None:
+            clauses.append('status = ANY(%s)')
+            params.append([_encode(status) for status in statuses])
+        for condition, value in (('"start" >= %s', start_from), ('"start" <= %s', start_to),
+                                 ('"end" >= %s', end_from)):
+            if value is not None:
+                clauses.append(condition)
+                params.append(value)
+        if due_by is not None:
+            clauses.append('("start" <= %s OR review_due_at <= %s)')
+            params += [due_by, due_by]
+        if unmarked:
+            clauses.append('attendance IS NULL')
+        return _select(Booking, ' AND '.join(clauses), params)
 
     def save_booking(self, booking):
         _insert(booking, upsert=True)
@@ -291,6 +314,13 @@ class PostgresRepository:
 
     def list_notifications(self, recipient_id):
         return _filtered(Notification, recipient_id=recipient_id)
+
+    def list_booking_notifications(self, kind, booking_ids):
+        # 2026-10-29 (load test S1): one query for reminder de-duplication instead of one per booking.
+        ids = [normalized for item in booking_ids if (normalized := _uuid(item)) is not None]
+        if not ids:
+            return []
+        return _select(Notification, 'kind = %s AND booking_id = ANY(%s::uuid[])', [kind, ids])
 
     # Sprint 3 (2026-10-25): notification category choices.
     def save_notification_preference(self, preference):

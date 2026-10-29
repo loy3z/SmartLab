@@ -7,7 +7,7 @@ from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from ..domain import BookingStatus, QualificationStatus, ResourceStatus, Role, UnfreezeStatus
-from .base import ACTIVE_REQUEST_STATUSES
+from .base import ACTIVE_REQUEST_STATUSES, UNDECIDED_STATUSES
 
 DUE_SOON_HOURS = 6   # pending requests whose review window ends within this many hours are listed first
 LIST_LIMIT = 10      # longest list shown on a card; the full list is on the linked page
@@ -29,14 +29,20 @@ class OverviewMixin:
         self.require_staff(actor)
         self.process_due_requests()
         now = self.now()
-        bookings = self.repo.list_bookings()
+        local_today = now.astimezone(_SYDNEY).date()
+        day_start = datetime.combine(local_today, time(0), _SYDNEY)
+        day_end = day_start + timedelta(days=1)
+        # 2026-10-29 (load test S5): read every undecided request, approved bookings that have not ended and
+        # today's approved bookings, instead of every booking ever made. Each count below still applies its own checks.
+        bookings = list({item.id: item for query in (
+            self.repo.list_bookings(statuses=UNDECIDED_STATUSES),
+            self.repo.list_bookings(statuses=[BookingStatus.APPROVED], end_from=now),
+            self.repo.list_bookings(statuses=[BookingStatus.APPROVED], start_from=day_start, start_to=day_end),
+        ) for item in query}.values())
         undecided = [item for item in bookings if item.status == BookingStatus.PENDING_APPROVAL]
         due_limit = now + timedelta(hours=DUE_SOON_HOURS)
         due_soon = sorted((item for item in undecided if item.review_due_at and item.review_due_at <= due_limit),
                           key=lambda item: (item.review_due_at, item.id))
-        local_today = now.astimezone(_SYDNEY).date()
-        day_start = datetime.combine(local_today, time(0), _SYDNEY)
-        day_end = day_start + timedelta(days=1)
         today = sorted((item for item in bookings if item.status == BookingStatus.APPROVED and day_start <= item.start < day_end),
                        key=lambda item: (item.start, item.id))
         out_of_service = []

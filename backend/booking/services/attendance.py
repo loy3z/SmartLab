@@ -59,7 +59,9 @@ class AttendanceMixin:
     def _process_attendance(self):
         """Mark approved bookings whose check-in time has passed without a check-in. Returns cancelled bookings."""
         cancelled = []
-        for candidate in self.repo.list_bookings():
+        # 2026-10-29 (load test S1): check-in closes after the start (check_in_closes_minutes >= 1), so only approved,
+        # unmarked bookings that have started can be due. Past bookings are already marked and are not read again.
+        for candidate in self.repo.list_bookings(statuses=[BookingStatus.APPROVED], unmarked=True, start_to=self.now()):
             if candidate.status != BookingStatus.APPROVED or candidate.attendance is not None:
                 continue
             if self.check_in_window(candidate)[1] > self.now():

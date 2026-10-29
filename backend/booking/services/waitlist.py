@@ -32,7 +32,7 @@ class WaitlistMixin:
         considered first.
         """
         resource = self.repo.get_resource(str(resource_id))
-        queue = sorted((item for item in self.repo.list_bookings(resource_id=str(resource_id))
+        queue = sorted((item for item in self.repo.list_bookings(resource_id=str(resource_id), statuses=[BookingStatus.WAITLISTED])
                         if item.status == BookingStatus.WAITLISTED), key=lambda item: (item.created_at, item.id))
         changed = []
         for booking in queue:
@@ -81,7 +81,9 @@ class WaitlistMixin:
         without a check-in are marked as missed (see attendance.py).
         """
         changed, released = [], set()
-        for candidate in self.repo.list_bookings():
+        # 2026-10-29 (load test S1): read only undecided requests that may be due, not every booking ever made
+        # (5000 past bookings made each API request about 0.8 s slower). The exact checks below are unchanged.
+        for candidate in self.repo.list_bookings(statuses=UNDECIDED_STATUSES, due_by=self.now()):
             # Every API request runs this, so a request that is not due yet is skipped before taking any lock
             # (2026-10-27, performance P5: 200 waiting requests added about 0.5 s to each API request).
             # The same check is repeated under the lock below.
@@ -110,7 +112,8 @@ class WaitlistMixin:
                 self._audit("SYSTEM", action, "booking", updated.id, status=status.value, reason_code=reason)
                 changed.append(updated)
         for resource_id in sorted(released):
-            if any(item.status == BookingStatus.WAITLISTED for item in self.repo.list_bookings(resource_id=resource_id)):
+            if any(item.status == BookingStatus.WAITLISTED
+                   for item in self.repo.list_bookings(resource_id=resource_id, statuses=[BookingStatus.WAITLISTED])):
                 with self.repo.atomic(resource_ids=[resource_id]):
                     changed.extend(self._promote_waitlist(resource_id))
         if any(item.status == BookingStatus.APPROVED for item in changed):

@@ -27,6 +27,7 @@ from .domain import (
     UnfreezeRequest,
     OutlookSyncRecord,
     QualificationRequirement,
+    QualificationStatus,
     QualificationSubmission,
     Resource,
     StaffCredential,
@@ -53,6 +54,17 @@ def booking_matches(booking: Booking, *, statuses: Sequence[BookingStatus] | Non
             and (not unmarked or booking.attendance is None))
 
 
+def submission_matches(submission: QualificationSubmission, *, student_ids: Sequence[str] | None = None,
+                       statuses: Sequence[QualificationStatus] | None = None,
+                       valid_from: datetime | None = None, valid_to: datetime | None = None) -> bool:
+    """The list_submissions keyword filters (2026-10-29, load test S8); PostgresRepository applies them in SQL.
+    valid_from / valid_to bound valid_until (inclusive) and skip submissions without one."""
+    return ((student_ids is None or submission.student_id in student_ids)
+            and (statuses is None or submission.status in statuses)
+            and (valid_from is None or (submission.valid_until is not None and submission.valid_until >= valid_from))
+            and (valid_to is None or (submission.valid_until is not None and submission.valid_until <= valid_to)))
+
+
 class Repository(Protocol):
     def atomic(
         self,
@@ -70,10 +82,16 @@ class Repository(Protocol):
     def list_requirements(self) -> list[QualificationRequirement]: ...
     def save_requirement(self, requirement: QualificationRequirement) -> None: ...
     def get_submission(self, submission_id: str) -> QualificationSubmission | None: ...
+    # 2026-10-29 (load test S8): keyword filters as for list_bookings (inclusive bounds; see submission_matches).
     def list_submissions(
         self,
         student_id: str | None = None,
         requirement_id: str | None = None,
+        *,
+        student_ids: Sequence[str] | None = None,
+        statuses: Sequence[QualificationStatus] | None = None,
+        valid_from: datetime | None = None,
+        valid_to: datetime | None = None,
     ) -> list[QualificationSubmission]: ...
     def save_submission(self, submission: QualificationSubmission) -> None: ...
     def get_booking(self, booking_id: str) -> Booking | None: ...
@@ -113,6 +131,8 @@ class Repository(Protocol):
     def list_notifications(self, recipient_id: str) -> list[Notification]: ...
     # 2026-10-29 (load test S1): notifications of one kind about any of these bookings, for reminder de-duplication.
     def list_booking_notifications(self, kind: str, booking_ids: Sequence[str]) -> list[Notification]: ...
+    # 2026-10-29 (load test S8): notifications of one kind to any of these people (induction reminder de-duplication).
+    def list_kind_notifications(self, kind: str, recipient_ids: Sequence[str]) -> list[Notification]: ...
     # Sprint 3 (2026-10-25): per-person notification category choices (a missing row means enabled).
     # Sprint 3 (1.19.0): announcement storage port.
     def save_announcement(self, announcement: Announcement) -> None: ...
@@ -253,6 +273,7 @@ class MemoryRepository:
         self,
         student_id: str | None = None,
         requirement_id: str | None = None,
+        **filters,
     ) -> list[QualificationSubmission]:
         with self._lock:
             return [
@@ -260,6 +281,7 @@ class MemoryRepository:
                 for submission in self._submissions.values()
                 if (student_id is None or submission.student_id == student_id)
                 and (requirement_id is None or submission.requirement_id == requirement_id)
+                and submission_matches(submission, **filters)
             ]
 
     def save_submission(self, submission: QualificationSubmission) -> None:
@@ -371,6 +393,13 @@ class MemoryRepository:
         with self._lock:
             return sorted((item for item in self._notifications.values()
                            if item.kind == kind and item.booking_id in wanted),
+                          key=lambda item: (item.created_at, item.id), reverse=True)
+
+    def list_kind_notifications(self, kind: str, recipient_ids: Sequence[str]) -> list[Notification]:
+        wanted = set(recipient_ids)
+        with self._lock:
+            return sorted((item for item in self._notifications.values()
+                           if item.kind == kind and item.recipient_id in wanted),
                           key=lambda item: (item.created_at, item.id), reverse=True)
 
     # Sprint 3 (2026-10-25): notification category choices.

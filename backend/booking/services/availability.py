@@ -4,8 +4,34 @@ from zoneinfo import ZoneInfo
 
 from ..domain import BookingStatus, ResourceKind
 from ..errors import DomainError
-from .base import ACTIVE_REQUEST_STATUSES
+from .base import ACTIVE_REQUEST_STATUSES, HEAD_STATUSES
+from .qualifications import EligibilitySources
 from ..test_console import booking_rules_bypassed, test_availability, test_window
+
+
+class _DaySources:
+    """2026-10-29 (load test S7): what every resource of the day overview needs about the person and the day, read
+    once (before: about 6 queries per resource, 130 for the 22 demo resources).
+
+    Each part answers exactly what the single-resource path asks, filtered per resource in memory: the person's
+    eligibility records, their freeze state, their active requests, and the bookings or active holds overlapping
+    the day (the same rule as list_blocking_bookings, over the earliest opening to the latest closing).
+    """
+    def __init__(self, service, person, resources, day):
+        repo, now = service.repo, service.now()
+        self.eligibility = EligibilitySources(repo.list_submissions(student_id=person.id), repo.list_requirements())
+        self.frozen_person = repo.get_principal(person.id) or person
+        self.own_requests = repo.list_bookings(student_id=person.id, statuses=ACTIVE_REQUEST_STATUSES)
+        opens = min(datetime.combine(day, item.opening_time, ZoneInfo(item.timezone)) for item in resources)
+        closes = max(datetime.combine(day, item.closing_time, ZoneInfo(item.timezone)) for item in resources)
+        stored = repo.list_bookings(statuses=(BookingStatus.APPROVED, *HEAD_STATUSES), start_to=closes, end_from=opens)
+        self._blockers = {}
+        for item in stored:
+            if item.start < closes and opens < item.end and item.blocks_resource_at(now):
+                self._blockers.setdefault(item.resource_id, []).append(item)
+
+    def blockers_for(self, resource_id):
+        return self._blockers.get(resource_id, [])
 
 
 class AvailabilityMixin:
@@ -22,7 +48,8 @@ class AvailabilityMixin:
                                   for_zid, urgent)
 
     def _availability(self, actor, resource, day, duration_minutes=30, exclude_booking_id=None, for_zid=None,
-                      urgent=False):
+                      urgent=False, shared=None):
+        """shared: a _DaySources read once for every resource of the day overview (2026-10-29, load test S7)."""
         person = self._beneficiary(actor, for_zid)
         exclude = None
         if exclude_booking_id:
@@ -39,14 +66,17 @@ class AvailabilityMixin:
         zone = ZoneInfo(resource.timezone)
         cursor = datetime.combine(day, resource.opening_time, zone).astimezone(UTC)
         closing = datetime.combine(day, resource.closing_time, zone).astimezone(UTC)
-        eligibility, _ = self.qualification_state(person.id, resource)
-        frozen_person = self.repo.get_principal(person.id) or person  # Sprint 3: booking freeze
-        own_requests = [item for item in self.repo.list_bookings(student_id=person.id, resource_id=resource.id)
-                        if item.status in ACTIVE_REQUEST_STATUSES and item.id != exclude]
+        sources = shared.eligibility if shared else None
+        eligibility, _ = self.qualification_state(person.id, resource, sources=sources)
+        frozen_person = shared.frozen_person if shared else (self.repo.get_principal(person.id) or person)  # Sprint 3: booking freeze
+        mine = shared.own_requests if shared else self.repo.list_bookings(student_id=person.id, resource_id=resource.id)
+        own_requests = [item for item in mine
+                        if item.resource_id == resource.id and item.status in ACTIVE_REQUEST_STATUSES and item.id != exclude]
         # 2026-10-29 (load test S6): one query for the whole opening day instead of one per slot (22 resources made
         # the day overview run 500+ queries). Every slot lies inside the day, so filtering this list by the same
         # strict overlap gives exactly what _overlaps would return for that slot.
-        day_blockers = self.repo.list_blocking_bookings(resource.id, cursor, closing, self.now(), exclude)
+        day_blockers = (shared.blockers_for(resource.id) if shared
+                        else self.repo.list_blocking_bookings(resource.id, cursor, closing, self.now(), exclude))
         slots = []
         while cursor + timedelta(minutes=duration_minutes) <= closing:
             end = cursor + timedelta(minutes=duration_minutes)
@@ -75,7 +105,8 @@ class AvailabilityMixin:
                                 and not frozen_person.frozen_at(self.now())),
                 "frozen_until": frozen_person.frozen_until if frozen_person.frozen_at(self.now()) else None,
                 "qualification_status": eligibility,
-                "missing_prerequisite_id": (self.missing_prerequisite(person.id, resource.required_qualification_id) or (None,))[0]
+                "missing_prerequisite_id": (self.missing_prerequisite(person.id, resource.required_qualification_id,
+                                                                      sources=sources) or (None,))[0]
                 if eligibility == "PREREQUISITE_REQUIRED" else None,
                 "booking_for": {"id": person.id, "zid": person.zid, "display_name": person.display_name,
                                 "role": person.role.value},
@@ -101,6 +132,7 @@ class AvailabilityMixin:
         active = [item for item in self.repo.list_resources() if item.active]
         rooms = {item.id: item for item in active if item.kind == ResourceKind.ROOM}
         rows, too_long, not_bookable = [], 0, {}
+        shared = _DaySources(self, actor, active, day) if active else None  # 2026-10-29 (load test S7)
         for resource in sorted(active, key=lambda item: (item.kind != ResourceKind.ROOM, item.name)):
             if kind and resource.kind.value != kind:
                 continue
@@ -114,7 +146,7 @@ class AvailabilityMixin:
             if duration_minutes > maximum or duration_minutes % resource.slot_minutes:  # Sprint 3 (1.16.0)
                 too_long += 1
                 continue
-            result = self._availability(actor, resource, day, duration_minutes)
+            result = self._availability(actor, resource, day, duration_minutes, shared=shared)
             if bookable_only and not result["can_request"]:
                 status, induction = result["resource_status"], result["qualification_status"]
                 reason = (status if status != "AVAILABLE" else "FROZEN" if result["frozen_until"]

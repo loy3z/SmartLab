@@ -27,6 +27,7 @@ from django.test.utils import CaptureQueriesContext
 
 from booking.domain import (
     AuditRecord, Booking, BookingStatus, Principal, QualificationRequirement, QualificationStatus,
+    QualificationSubmission,  # 2026-10-29 (load test S8)
     Resource, ResourceKind, ResourceStatus, Role,
 )
 from booking.repository import MemoryRepository  # 2026-10-29 (load test R1)
@@ -410,14 +411,14 @@ class PostgresAdapterTests(TransactionTestCase):
         self.repo.save_booking(booking)
         return booking
 
-    def decoded_bookings(self):
-        """Ids of every booking row read from PostgreSQL inside the with-block."""
+    def decoded_bookings(self, wanted=Booking):
+        """Ids of every booking (or ``wanted``) row read from PostgreSQL inside the with-block."""
         from booking import postgres
         original, seen = postgres._decode, []
 
         def spy(record_type, row):
             record = original(record_type, row)
-            if record_type is Booking:
+            if record_type is wanted:
                 seen.append(record.id)
             return record
         return patch.object(postgres, "_decode", spy), seen
@@ -562,3 +563,64 @@ class PostgresAdapterTests(TransactionTestCase):
             self.staff_list_fixture()  # 40 more bookings with every kind of lookup
         large = queries()
         self.assertEqual((large[0], large[1]), (small[0], small[1] + 40))
+
+    # 2026-10-29 (tasks-load-2026-10-29.md round 3: S7, S8).
+
+    def extra_room(self, name, requirement_id):
+        room = Resource(str(uuid4()), name, ResourceKind.ROOM, "Building A", "Test room",
+                        required_qualification_id=requirement_id, opening_time=time(8), closing_time=time(20))
+        self.repo.save_resource(room)
+        return room
+
+    def test_load_day_overview_reads_the_person_once_and_matches_each_resource(self):
+        advanced = QualificationRequirement(str(uuid4()), "Advanced", "Needs the lab induction", prerequisite_ids=(self.requirement.id,))
+        self.repo.save_requirement(advanced)
+        advanced_room = self.extra_room("Advanced room", advanced.id)
+        self.verified(self.a)
+        when = datetime(2030, 1, 10, 9, tzinfo=SYDNEY)
+        self.raw_booking(when, BookingStatus.APPROVED, student=self.b)  # taken
+        self.raw_booking(when + timedelta(hours=2), BookingStatus.PENDING_APPROVAL, hold_until=self.now + timedelta(days=1))  # a's own, held
+        day = self.start.date()
+        fields = ("can_request", "qualification_status", "resource_status", "status_reason", "slots")
+
+        def overview(person):
+            with CaptureQueriesContext(connection) as captured:
+                result = self.service.day_overview(person, day, 60)
+            return len(captured.captured_queries), {row["resource"].id: row for row in result["results"]}
+
+        before, _ = overview(self.a)
+        for i in range(5):
+            self.extra_room(f"Extra room {i}", self.requirement.id)
+        after, rows = overview(self.a)
+        self.assertEqual(after, before)
+        for person in (self.a, self.b):  # b has no induction: the advanced room needs its prerequisite first
+            _, rows = overview(person)
+            for resource in self.repo.list_resources():
+                if resource.id in rows:
+                    single = self.service._availability(person, resource, day, 60)
+                    with self.subTest(person=person.zid, resource=resource.name):
+                        self.assertEqual({key: rows[resource.id][key] for key in fields}, {key: single[key] for key in fields})
+            if person is self.b:
+                self.assertEqual((rows[self.room.id]["qualification_status"], rows[advanced_room.id]["qualification_status"]),
+                                 ("NOT_SUBMITTED", "PREREQUISITE_REQUIRED"))
+
+    def test_load_induction_reminders_read_only_people_with_inductions_expiring_soon(self):
+        settled = [self.verified(self.person()) for _ in range(30)]  # valid for 120 days: nothing is due yet
+        spy, seen = self.decoded_bookings(QualificationSubmission)
+        with spy:
+            self.service.process_due_requests()
+        self.assertEqual(set(seen) & {item.id for item in settled}, set())
+
+        # The latest submission still decides: c's verified induction is about to expire, d already uploaded new evidence.
+        c, d = self.person(), self.person()
+        self.verified(c)
+        self.verified(d)
+        self.now += timedelta(days=110)
+        stored = self.storage.save(b"%PDF-1.4 renewal", "renewal.pdf", "application/pdf", d.id)
+        self.repo.save_submission(QualificationSubmission(str(uuid4()), d.id, self.requirement.id, "Renewal", "", stored.id, self.now))
+        self.service.process_due_requests()
+        self.service.process_due_requests()  # sent once only
+
+        def reminders(person):
+            return len([item for item in self.repo.list_notifications(person.id) if item.kind == "INDUCTION_EXPIRING"])
+        self.assertEqual((reminders(c), reminders(d)), (1, 0))

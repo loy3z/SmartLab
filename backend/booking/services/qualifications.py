@@ -10,6 +10,17 @@ from ..errors import DomainError
 from .base import UNDECIDED_STATUSES
 
 
+class EligibilitySources:
+    """2026-10-29 (load test S7): one person's submissions and every requirement, read once and shared by the
+    eligibility checks of many resources (the day overview checked 22 resources with 4-5 queries each).
+
+    submissions must be that person's, in repository order (the order breaks ties between equal submission times).
+    """
+    def __init__(self, submissions, requirements):
+        self.submissions = list(submissions)
+        self.requirements = {item.id: item for item in requirements}
+
+
 class QualificationsMixin:
     def induction_summary(self, student_id):
         """Each induction requirement with this person's current status (NOT_SUBMITTED, PENDING, VERIFIED, REJECTED, EXPIRED)."""
@@ -112,14 +123,15 @@ class QualificationsMixin:
                         previous=list(requirement.prerequisite_ids), prerequisites=list(wanted))
         return updated
 
-    def latest_submission(self, student_id, requirement_id):
-        records = self.repo.list_submissions(student_id=student_id, requirement_id=requirement_id)
+    def latest_submission(self, student_id, requirement_id, sources=None):
+        records = ([item for item in sources.submissions if item.requirement_id == requirement_id] if sources
+                   else self.repo.list_submissions(student_id=student_id, requirement_id=requirement_id))
         # Creation time is authoritative; retain insertion order for equal timestamps.
         return max(enumerate(records), key=lambda pair: (pair[1].submitted_at, pair[0]))[1] if records else None
 
-    def _requirement_status(self, student_id, requirement_id, end=None):
+    def _requirement_status(self, student_id, requirement_id, end=None, sources=None):
         """NOT_SUBMITTED, PENDING, REJECTED, EXPIRED, EXPIRES_BEFORE_END or VERIFIED, from the latest submission."""
-        record = self.latest_submission(student_id, requirement_id)
+        record = self.latest_submission(student_id, requirement_id, sources)
         if record is None:
             return "NOT_SUBMITTED"
         if record.status == QualificationStatus.VERIFIED:
@@ -130,11 +142,12 @@ class QualificationsMixin:
             return "VERIFIED"
         return record.status.value
 
-    def _prerequisite_chain(self, requirement_id):
+    def _prerequisite_chain(self, requirement_id, sources=None):
         """Every prerequisite of a requirement, nearest first, following the chain (General before Advanced)."""
         chain, seen, pending = [], {str(requirement_id)}, [str(requirement_id)]
         while pending:
-            requirement = self.repo.get_requirement(pending.pop(0))
+            next_id = pending.pop(0)
+            requirement = sources.requirements.get(next_id) if sources else self.repo.get_requirement(next_id)
             for item in (requirement.prerequisite_ids if requirement else ()):
                 if item not in seen:
                     seen.add(item)
@@ -142,15 +155,15 @@ class QualificationsMixin:
                     pending.append(item)
         return chain
 
-    def missing_prerequisite(self, student_id, requirement_id, end=None):
+    def missing_prerequisite(self, student_id, requirement_id, end=None, sources=None):
         """(requirement_id, status) of the first prerequisite that is not verified and current, or None."""
-        for item in self._prerequisite_chain(requirement_id):
-            status = self._requirement_status(student_id, item, end)
+        for item in self._prerequisite_chain(requirement_id, sources):
+            status = self._requirement_status(student_id, item, end, sources)
             if status != "VERIFIED":
                 return item, status
         return None
 
-    def qualification_state(self, student_id, resource, end=None):
+    def qualification_state(self, student_id, resource, end=None, sources=None):
         """Single eligibility check used by create, approve, automatic decisions, waitlist promotion,
         reschedule and availability.
 
@@ -159,12 +172,13 @@ class QualificationsMixin:
         prerequisite is reported as PREREQUISITE_REQUIRED. Eligibility comes only from the latest
         QualificationSubmission of each requirement; a future source (school records, Moodle) can be an
         adapter that saves VERIFIED submissions, and these rules need no change.
+        sources: an EligibilitySources read once for many resources (2026-10-29, load test S7); same answer.
         """
         if not resource.required_qualification_id:
             return "NOT_CONFIGURED", False
-        if self.missing_prerequisite(student_id, resource.required_qualification_id, end):
+        if self.missing_prerequisite(student_id, resource.required_qualification_id, end, sources):
             return "PREREQUISITE_REQUIRED", False
-        status = self._requirement_status(student_id, resource.required_qualification_id, end)
+        status = self._requirement_status(student_id, resource.required_qualification_id, end, sources)
         return status, status == "VERIFIED"
 
     def submission_for(self, actor, submission_id):

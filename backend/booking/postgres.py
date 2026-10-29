@@ -218,8 +218,29 @@ class PostgresRepository:
     def get_submission(self, submission_id):
         return _get(QualificationSubmission, submission_id)
 
-    def list_submissions(self, student_id=None, requirement_id=None):
-        return _filtered(QualificationSubmission, student_id=student_id, requirement_id=requirement_id)
+    def list_submissions(self, student_id=None, requirement_id=None, *, student_ids=None, statuses=None,
+                         valid_from=None, valid_to=None):
+        """2026-10-29 (load test S8): the same keyword filters as repository.submission_matches, in SQL."""
+        if student_ids is None and statuses is None and valid_from is None and valid_to is None:
+            return _filtered(QualificationSubmission, student_id=student_id, requirement_id=requirement_id)
+        clauses, params = [], []
+        for column, value in (('student_id', student_id), ('requirement_id', requirement_id)):
+            if value is not None:
+                if (normalized := _uuid(value)) is None:
+                    return []
+                clauses.append(f'{column} = %s')
+                params.append(normalized)
+        if student_ids is not None:
+            clauses.append('student_id = ANY(%s::uuid[])')
+            params.append([normalized for item in student_ids if (normalized := _uuid(item)) is not None])
+        if statuses is not None:
+            clauses.append('status = ANY(%s)')
+            params.append([_encode(status) for status in statuses])
+        for condition, value in (('valid_until >= %s', valid_from), ('valid_until <= %s', valid_to)):
+            if value is not None:
+                clauses.append(condition)
+                params.append(value)
+        return _select(QualificationSubmission, ' AND '.join(clauses), params)
 
     def save_submission(self, submission):
         _insert(submission, upsert=True)
@@ -321,6 +342,13 @@ class PostgresRepository:
         if not ids:
             return []
         return _select(Notification, 'kind = %s AND booking_id = ANY(%s::uuid[])', [kind, ids])
+
+    def list_kind_notifications(self, kind, recipient_ids):
+        # 2026-10-29 (load test S8): one query for induction reminder de-duplication instead of one per person.
+        ids = [normalized for item in recipient_ids if (normalized := _uuid(item)) is not None]
+        if not ids:
+            return []
+        return _select(Notification, 'kind = %s AND recipient_id = ANY(%s::uuid[])', [kind, ids])
 
     # Sprint 3 (2026-10-25): notification category choices.
     def save_notification_preference(self, preference):

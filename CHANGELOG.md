@@ -2,6 +2,14 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.20.0 之后：压力测试性能修复第三轮（2026-10-29，接口和数据库结构不变）
+
+任务卡 `claude/tasks-load-2026-10-29.md` 的 S7 和 S8（第二轮压测后新发现，Loy 定做第三轮）。规则和返回的数据不变。
+
+- **S7**：Find a free time 不再对每个资源分别查这个人的 induction 记录、冻结状态、已有申请和当天占用，改为一次读出、各资源共用（`EligibilitySources`、`_DaySources`）。induction 判断（含前置要求）用的是同一段代码，只是数据来源不同。之前 22 个资源约 130 条 SQL。
+- **S8**：induction 到期提醒不再每个请求读全部 induction 提交。先查有没有“已认证、在提醒期内到期”的提交（平时没有，只查 1 次）；有的话只读这些人的提交来判断哪条是最新的，已发过的提醒一次查完。`list_submissions` 加了关键字筛选，新增 `list_kind_notifications`；不再使用的 `_already_sent` 删除。
+- 测试：`test_postgres.py` 新增 2 个（多 5 个资源时 Find a free time 的查询数不变，且每个资源的结果和单独查询相同，包括缺前置要求的情况；30 条不到期的 induction 不会被读出，最新一条决定是否提醒），在 `b5964d7` 上都会失败。
+
 ## 1.20.0 之后：压力测试性能修复第二轮（2026-10-29，接口和数据库结构不变）
 
 任务卡 `claude/tasks-load-2026-10-29.md` 的 S2 和 S6（S6 是第一轮压测时新发现的，Loy 定并入这一轮）。返回的数据不变。

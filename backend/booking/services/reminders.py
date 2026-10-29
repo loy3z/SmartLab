@@ -19,10 +19,6 @@ class RemindersMixin:
         """Send every reminder that is due and not sent yet. Returns how many were sent."""
         return self._booking_reminders() + self._induction_reminders()
 
-    def _already_sent(self, person_id, kind, booking_id=None, link=None):
-        return any(item.kind == kind and (booking_id is None or item.booking_id == booking_id)
-                   and (link is None or item.link == link) for item in self.repo.list_notifications(person_id))
-
     def _booking_reminders(self):
         now, sent = self.now(), 0
         horizon = now + timedelta(hours=self.rules().reminder_hours_before)
@@ -48,8 +44,16 @@ class RemindersMixin:
     def _induction_reminders(self):
         now, sent = self.now(), 0
         horizon = now + timedelta(days=self.rules().induction_reminder_days)
+        # 2026-10-29 (load test S8): a reminder is due only for a person who has a verified induction expiring in the
+        # window, so find those first (usually none: one query) and read only their submissions to find each latest
+        # one, instead of every submission on every request. Reminders already sent are read in one query.
+        expiring_soon = self.repo.list_submissions(statuses=[QualificationStatus.VERIFIED], valid_from=now, valid_to=horizon)
+        if not expiring_soon:
+            return 0
+        people = sorted({item.student_id for item in expiring_soon})
+        sent_links = {(item.recipient_id, item.link) for item in self.repo.list_kind_notifications(INDUCTION_EXPIRING, people)}
         latest = {}
-        for submission in self.repo.list_submissions():
+        for submission in self.repo.list_submissions(student_ids=people):
             key = (submission.student_id, submission.requirement_id)
             if key not in latest or submission.submitted_at >= latest[key].submitted_at:
                 latest[key] = submission
@@ -57,7 +61,7 @@ class RemindersMixin:
             expiring = (submission.status == QualificationStatus.VERIFIED and submission.valid_until is not None
                         and now < submission.valid_until <= horizon)
             link = f"/induction?requirement={submission.requirement_id}&submission={submission.id}"
-            if not expiring or self._already_sent(submission.student_id, INDUCTION_EXPIRING, link=link):
+            if not expiring or (submission.student_id, link) in sent_links:
                 continue
             requirement = self.repo.get_requirement(submission.requirement_id)
             name = requirement.name if requirement else "induction"

@@ -175,7 +175,13 @@ python manage.py create_manager --zid z9000003 --name "Lab Manager" --email z900
 
 ### 定时处理到期申请
 
-审批期限到了的申请会在有人访问网页时顺带处理。为了没人访问时也能按时自动批准／拒绝，在设置了同样环境变量的终端里定时运行（例如每分钟一次，用 Windows 任务计划程序或服务器的 cron）：
+审批期限到了的申请会在有人访问网页时顺带处理。Docker Compose 使用独立的 `scheduler` 服务；本地数据库开发可以在设置了同样环境变量的终端里持续运行：
+
+```powershell
+python manage.py run_scheduler
+```
+
+也可以通过 Windows 任务计划程序或服务器的 cron 每分钟运行一次：
 
 ```powershell
 python manage.py process_due

@@ -31,6 +31,7 @@ class SchedulerCommandTests(SimpleTestCase):
         process_due.assert_called_once()
         self.assertEqual(process_due.call_args.args, ("process_due",))
         self.assertEqual(process_due.call_args.kwargs["outlook_limit"], 7)
+        self.assertEqual(process_due.call_args.kwargs["email_limit"], 50)
 
     def test_refuses_process_local_memory_data(self):
         service = SimpleNamespace(repo=MemoryRepository())
@@ -47,6 +48,7 @@ class SchedulerCommandTests(SimpleTestCase):
             ("--once", "--interval-seconds", "0"),
             ("--once", "--interval-seconds", "3601"),
             ("--once", "--outlook-limit", "101"),
+            ("--once", "--email-limit", "501"),
         ):
             with self.subTest(arguments=arguments), self.assertRaises(CommandError):
                 self.run_command(*arguments)

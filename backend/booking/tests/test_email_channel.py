@@ -4,6 +4,7 @@ Django's test runner swaps in the in-memory email backend, so nothing leaves the
 django.core.mail.outbox.
 """
 import threading
+from datetime import timedelta
 from io import StringIO
 from unittest import mock
 
@@ -13,8 +14,10 @@ from django.core.management import CommandError, call_command
 from django.test import SimpleTestCase, override_settings
 
 from booking import notification_channels
+from booking.domain import Principal, Role
 from booking.notification_channels import deliver_new_notifications, reset_channels
 from booking.runtime import fixed_id
+from booking.test_console import TEST_ACCOUNT_ID
 from booking.tests.test_api import BookingAPIFixtureMixin
 
 EMAIL_ON = dict(NOTIFICATION_CHANNELS=["booking.email_channel.EmailChannel"], SITE_URL="https://smartlab.example",
@@ -139,6 +142,65 @@ class EmailChannelTests(BookingAPIFixtureMixin, SimpleTestCase):
                 self.assertTrue(notification_channels.wait_for_deliveries(5))
         self.assertIn("connection refused", "\n".join(logged.output))
         self.assertEqual([item.subject for item in mail.outbox], ["SmartLab: Second"])
+
+    def test_failed_email_is_persisted_and_retried_after_backoff(self):
+        with override_settings(**EMAIL_ON, EMAIL_MODE="all"):
+            reset_channels()
+            self.service.take_new_notification_ids()
+            notification = self.service._notify(fixed_id(501), "BOOKING_APPROVED", "Retry me", "Details")
+            pending = self.service.repo.get_email_delivery(notification.id)
+            self.assertEqual((pending.status, pending.attempts), ("PENDING", 0))
+
+            with mock.patch.object(locmem.EmailBackend, "send_messages", side_effect=OSError("temporary outage")):
+                self.service.email_delivery.process_pending(10)
+            retry = self.service.repo.get_email_delivery(notification.id)
+            self.assertEqual((retry.status, retry.attempts), ("RETRY", 1))
+            self.assertIn("temporary outage", retry.last_error)
+            self.assertIsNotNone(retry.next_attempt_at)
+
+            self.service.email_delivery.clock = lambda: retry.next_attempt_at + timedelta(seconds=1)
+            self.service.email_delivery.process_pending(10)
+            sent = self.service.repo.get_email_delivery(notification.id)
+            self.assertEqual((sent.status, sent.attempts), ("SENT", 2))
+            self.assertIsNotNone(sent.sent_at)
+
+    def test_email_outbox_rolls_back_with_the_notification(self):
+        before = len(self.service.repo.list_email_deliveries())
+        with override_settings(**EMAIL_ON, EMAIL_MODE="all"), self.assertRaises(RuntimeError):
+            with self.service.repo.atomic(student_ids=[fixed_id(501)]):
+                self.service._notify(fixed_id(501), "BOOKING_APPROVED", "Rolled back", "Details")
+                raise RuntimeError("cancel transaction")
+        self.assertEqual(len(self.service.repo.list_email_deliveries()), before)
+
+    def test_test_console_account_never_enters_the_external_email_queue(self):
+        self.service.repo.save_principal(Principal(
+            TEST_ACCOUNT_ID, "1", "Test account 1", Role.STUDENT, "test-account@invalid.example"))
+        with override_settings(**EMAIL_ON, EMAIL_MODE="all"):
+            notification = self.service._notify(
+                TEST_ACCOUNT_ID, "BOOKING_APPROVED", "Test notice", "Do not deliver externally.")
+        self.assertIsNone(self.service.repo.get_email_delivery(notification.id))
+
+    def test_expired_worker_lease_can_be_recovered(self):
+        with override_settings(**EMAIL_ON, EMAIL_MODE="all"):
+            self.service.take_new_notification_ids()
+            notification = self.service._notify(fixed_id(501), "BOOKING_APPROVED", "Recover me", "Details")
+            now = self.service.email_delivery.now()
+            first = self.service.repo.claim_email_deliveries(now, 1, "worker-a", now + timedelta(minutes=5))[0]
+            self.assertEqual((first.status, first.attempts), ("IN_PROGRESS", 1))
+            self.assertEqual(self.service.repo.claim_email_deliveries(now, 1, "worker-b", now + timedelta(minutes=5)), [])
+            recovered = self.service.repo.claim_email_deliveries(
+                now + timedelta(minutes=6), 1, "worker-b", now + timedelta(minutes=11))[0]
+            self.assertEqual((recovered.notification_id, recovered.worker_id, recovered.attempts),
+                             (notification.id, "worker-b", 2))
+
+    def test_maximum_attempts_moves_email_to_terminal_failure(self):
+        with override_settings(**EMAIL_ON, EMAIL_MODE="all", EMAIL_MAX_ATTEMPTS=1):
+            self.service.take_new_notification_ids()
+            notification = self.service._notify(fixed_id(501), "BOOKING_APPROVED", "Fail once", "Details")
+            with mock.patch.object(locmem.EmailBackend, "send_messages", side_effect=OSError("permanent failure")):
+                self.service.email_delivery.process_pending(10)
+            failed = self.service.repo.get_email_delivery(notification.id)
+            self.assertEqual((failed.status, failed.attempts, failed.next_attempt_at), ("FAILED", 1, None))
 
 
 class SendTestEmailCommandTests(SimpleTestCase):

@@ -18,10 +18,14 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--outlook-limit", type=int, default=10,
                             help="Also push up to this many due Outlook updates (0 to skip).")
+        parser.add_argument("--email-limit", type=int, default=50,
+                            help="Also send up to this many due email deliveries (0 to skip).")
 
     def handle(self, *args, **options):
         if not 0 <= options["outlook_limit"] <= 100:
             raise CommandError("Use --outlook-limit between 0 and 100.")
+        if not 0 <= options["email_limit"] <= 500:
+            raise CommandError("Use --email-limit between 0 and 500.")
         service = get_service()
         if isinstance(service.repo, MemoryRepository):
             raise CommandError("Memory data is process-local. Use PostgreSQL (REPOSITORY_FACTORY), or "
@@ -32,6 +36,10 @@ class Command(BaseCommand):
         if not wait_for_deliveries(60):  # emails go out on a background thread; the command must not exit first
             self.stderr.write("Some emails were still being sent after 60 seconds; see the log.")
         self.stdout.write(f"Decided or expired {len(changed)} request(s).")
+        email_delivery = getattr(service, "email_delivery", None)
+        if options["email_limit"] and email_delivery is not None:
+            deliveries = email_delivery.process_pending(options["email_limit"])
+            self.stdout.write(f"Processed {len(deliveries)} email job(s).")
         sync = getattr(service, "calendar_sync", None)
         if options["outlook_limit"] and sync is not None and sync.enabled:
             records = sync.process_pending(options["outlook_limit"])

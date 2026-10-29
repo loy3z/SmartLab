@@ -9,6 +9,7 @@ The memory implementation is neither durable nor safe across multiple workers.
 
 from contextlib import contextmanager
 from copy import deepcopy
+from dataclasses import replace
 from datetime import datetime
 from threading import RLock
 from typing import ContextManager, Iterator, Protocol, Sequence
@@ -21,6 +22,7 @@ from .domain import (
     Booking,
     BookingSeries,
     CalendarFeed,
+    EmailDelivery,
     Notification,
     Principal,
     UnfreezeRequest,
@@ -80,6 +82,12 @@ class Repository(Protocol):
     def save_notification(self, notification: Notification) -> None: ...
     def get_notification(self, notification_id: str) -> Notification | None: ...
     def list_notifications(self, recipient_id: str) -> list[Notification]: ...
+    def save_email_delivery(self, delivery: EmailDelivery) -> None: ...
+    def get_email_delivery(self, notification_id: str) -> EmailDelivery | None: ...
+    def list_email_deliveries(self) -> list[EmailDelivery]: ...
+    def claim_email_deliveries(
+        self, now: datetime, limit: int, worker_id: str, lease_until: datetime,
+    ) -> list[EmailDelivery]: ...
     # Sprint 3 (2026-10-25): per-person notification category choices (a missing row means enabled).
     # Sprint 3 (1.19.0): announcement storage port.
     def save_announcement(self, announcement: Announcement) -> None: ...
@@ -123,6 +131,7 @@ class MemoryRepository:
         self._outlook_sync: dict[str, OutlookSyncRecord] = {}
         self._credentials: dict[str, StaffCredential] = {}
         self._notifications: dict[str, Notification] = {}
+        self._email_deliveries: dict[str, EmailDelivery] = {}
         self._notification_preferences: dict[str, NotificationPreference] = {}
         self._announcements: dict[str, Announcement] = {}  # Sprint 3 (1.19.0)
         self._calendar_feeds: dict[str, CalendarFeed] = {}
@@ -148,6 +157,7 @@ class MemoryRepository:
                 self._outlook_sync.copy(),
                 self._credentials.copy(),
                 self._notifications.copy(),
+                self._email_deliveries.copy(),
                 self._calendar_feeds.copy(),
                 self._unfreeze_requests.copy(),
                 self._series.copy(),
@@ -168,6 +178,7 @@ class MemoryRepository:
                     self._outlook_sync,
                     self._credentials,
                     self._notifications,
+                    self._email_deliveries,
                     self._calendar_feeds,
                     self._unfreeze_requests,
                     self._series,
@@ -292,6 +303,7 @@ class MemoryRepository:
             self._outlook_sync.clear()
             self._credentials.clear()
             self._notifications.clear()
+            self._email_deliveries.clear()
             self._calendar_feeds.clear()
             self._unfreeze_requests.clear()
             self._series.clear()
@@ -330,6 +342,37 @@ class MemoryRepository:
         with self._lock:
             return sorted((item for item in self._notifications.values() if item.recipient_id == recipient_id),
                           key=lambda item: (item.created_at, item.id), reverse=True)
+
+    def save_email_delivery(self, delivery: EmailDelivery) -> None:
+        with self._lock:
+            self._email_deliveries[delivery.notification_id] = delivery
+
+    def get_email_delivery(self, notification_id: str) -> EmailDelivery | None:
+        with self._lock:
+            return self._email_deliveries.get(notification_id)
+
+    def list_email_deliveries(self) -> list[EmailDelivery]:
+        with self._lock:
+            return sorted(self._email_deliveries.values(),
+                          key=lambda item: (item.created_at, item.notification_id))
+
+    def claim_email_deliveries(self, now, limit, worker_id, lease_until):
+        """Atomically lease due work; the memory adapter mirrors PostgreSQL worker semantics."""
+        with self._lock:
+            due = [item for item in self._email_deliveries.values()
+                   if ((item.status in ("PENDING", "RETRY")
+                        and (item.next_attempt_at is None or item.next_attempt_at <= now))
+                       or (item.status == "IN_PROGRESS"
+                           and (item.lease_until is None or item.lease_until <= now)))]
+            due.sort(key=lambda item: (item.next_attempt_at or item.created_at,
+                                       item.created_at, item.notification_id))
+            claimed = []
+            for item in due[:limit]:
+                item = replace(item, status="IN_PROGRESS", attempts=item.attempts + 1,
+                               updated_at=now, lease_until=lease_until, worker_id=worker_id)
+                self._email_deliveries[item.notification_id] = item
+                claimed.append(item)
+            return claimed
 
     # Sprint 3 (2026-10-25): notification category choices.
     def save_notification_preference(self, preference: NotificationPreference) -> None:

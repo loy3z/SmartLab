@@ -103,6 +103,8 @@ def get_service():
             if not settings.DEBUG and (isinstance(repo, MemoryRepository) or isinstance(storage, MemoryFileStorage)):
                 raise ImproperlyConfigured("Configure durable repository and private file-storage adapters outside DEBUG mode.")
             _service = BookingService(repo, storage, rules=import_string(settings.RULES_PROVIDER)())
+            from .email_channel import EmailDeliveryService
+            _service.email_delivery = EmailDeliveryService(_service, clock=lambda: _service.now())
             _service.calendar_sync = CalendarSyncService(repo, import_string(settings.OUTLOOK_PROVIDER_FACTORY)(),
                 enabled=settings.OUTLOOK_ENABLED, clock=lambda: _service.now())
             if settings.SEED_DEMO_DATA:

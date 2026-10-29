@@ -380,6 +380,34 @@ class Notification:
 
 
 @dataclass(frozen=True)
+class EmailDelivery:
+    """Durable SMTP outbox row for one notification; credentials are never stored here."""
+
+    notification_id: str
+    recipient_email: str
+    subject: str
+    body: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    attempts: int = 0
+    next_attempt_at: datetime | None = None
+    lease_until: datetime | None = None
+    worker_id: str | None = None
+    last_error: str | None = None
+    sent_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if self.status not in ("PENDING", "IN_PROGRESS", "RETRY", "SENT", "FAILED"):
+            raise ValueError("Unknown email delivery status.")
+        if self.attempts < 0:
+            raise ValueError("Email delivery attempts cannot be negative.")
+        _require_aware(created_at=self.created_at, updated_at=self.updated_at,
+                       next_attempt_at=self.next_attempt_at, lease_until=self.lease_until,
+                       sent_at=self.sent_at)
+
+
+@dataclass(frozen=True)
 class NotificationPreference:
     """Sprint 3 (2026-10-25): one person's choice for one notification category.
 

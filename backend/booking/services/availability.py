@@ -43,10 +43,14 @@ class AvailabilityMixin:
         frozen_person = self.repo.get_principal(person.id) or person  # Sprint 3: booking freeze
         own_requests = [item for item in self.repo.list_bookings(student_id=person.id, resource_id=resource.id)
                         if item.status in ACTIVE_REQUEST_STATUSES and item.id != exclude]
+        # 2026-10-29 (load test S6): one query for the whole opening day instead of one per slot (22 resources made
+        # the day overview run 500+ queries). Every slot lies inside the day, so filtering this list by the same
+        # strict overlap gives exactly what _overlaps would return for that slot.
+        day_blockers = self.repo.list_blocking_bookings(resource.id, cursor, closing, self.now(), exclude)
         slots = []
         while cursor + timedelta(minutes=duration_minutes) <= closing:
             end = cursor + timedelta(minutes=duration_minutes)
-            blockers = self._overlaps(resource.id, cursor, end, exclude)
+            blockers = [item for item in day_blockers if item.start < end and cursor < item.end]
             holds = [item for item in blockers if item.hold_is_active(self.now())]
             requested_by_me = any(cursor < item.end and item.start < end for item in own_requests)
             window = self._window_reason(resource, cursor)

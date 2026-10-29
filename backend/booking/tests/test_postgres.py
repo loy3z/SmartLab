@@ -484,3 +484,81 @@ class PostgresAdapterTests(TransactionTestCase):
         first = backend_pid()
         close_old_connections()  # what Django runs at the end of every request
         self.assertEqual(backend_pid(), first)
+
+    # 2026-10-29 (tasks-load-2026-10-29.md round 2: S2, S6).
+
+    def test_load_availability_reads_each_resource_once_for_the_whole_day(self):
+        short = Resource(str(uuid4()), "Short day", ResourceKind.ROOM, "Building A", "Test room",
+                         required_qualification_id=self.requirement.id, opening_time=time(8), closing_time=time(10))
+        self.repo.save_resource(short)
+        self.raw_booking(datetime(2030, 1, 10, 9, tzinfo=SYDNEY), BookingStatus.APPROVED, student=self.b)
+        day = self.start.date()
+
+        def queries(resource):
+            with CaptureQueriesContext(connection) as captured:
+                result = self.service.availability(self.a, resource.id, day, 30)
+            return len(captured.captured_queries), result["slots"]
+
+        few, _ = queries(short)       # 4 slots
+        many, slots = queries(self.room)  # 24 slots
+        self.assertEqual(many, few)
+        reasons = {slot["start"].astimezone(SYDNEY).strftime("%H:%M"): slot["reason_code"] for slot in slots}
+        self.assertEqual((reasons["08:30"], reasons["09:00"], reasons["09:30"], reasons["10:00"]), (None, "BOOKED", "BOOKED", None))
+
+    def runtime_service(self, outlook=False):
+        """Serve the API and booking_json from this test's service (the runtime one refuses to start outside DEBUG)."""
+        from booking import runtime
+        from booking.calendar_sync import CalendarSyncService
+        from booking.tests.test_outlook import FakeCalendar
+        self.service.calendar_sync = CalendarSyncService(self.repo, FakeCalendar(), enabled=outlook, clock=lambda: self.now)
+        return patch.object(runtime, "_service", self.service)
+
+    def staff_list_fixture(self):
+        """An on-behalf booking with an open change request, two overlapping waitlisted requests and a plain one."""
+        when = datetime(2030, 1, 11, 10, tzinfo=SYDNEY)
+        original = self.raw_booking(when, BookingStatus.APPROVED, created_by=self.admin.id)
+        change = self.raw_booking(when + timedelta(hours=2), BookingStatus.PENDING_APPROVAL, created_by=self.a.id,
+                                  replaces_id=original.id, review_due_at=when)
+        first = self.raw_booking(when + timedelta(hours=4), BookingStatus.WAITLISTED, student=self.b, created_by=self.b.id)
+        second = self.raw_booking(when + timedelta(hours=4), BookingStatus.WAITLISTED, student=self.person())
+        return original, change, first, second
+
+    def test_load_staff_list_json_is_the_same_with_shared_lookups(self):
+        from booking.views._common import BookingListLookups, booking_json
+        original, change, first, second = self.staff_list_fixture()
+        everything = self.repo.list_bookings(resource_id=self.room.id)
+        for outlook in (False, True):
+            with self.runtime_service(outlook):
+                for listed in (everything, [change, second]):  # the second list leaves the replaced booking out
+                    lookups = BookingListLookups(self.service, listed)
+                    for booking in listed:
+                        with self.subTest(status=booking.status.value, size=len(listed), outlook=outlook):
+                            self.assertEqual(booking_json(booking, lookups), booking_json(booking))
+        self.enterContext(self.runtime_service())
+        shared = BookingListLookups(self.service, everything)
+        self.assertEqual(booking_json(original, shared)["open_change"]["id"], change.id)
+        self.assertEqual(booking_json(change, shared)["replaces_booking"]["id"], original.id)
+        first_in_queue = (first.created_at, first.id) < (second.created_at, second.id)  # same created_at: id decides
+        self.assertEqual((booking_json(first, shared)["waitlist_position"], booking_json(second, shared)["waitlist_position"]),
+                         (1, 2) if first_in_queue else (2, 1))
+        self.assertEqual(booking_json(original, shared)["created_by_user"]["id"], self.admin.id)
+
+    def test_load_booking_records_queries_do_not_grow_with_the_list(self):
+        from rest_framework.test import APIClient
+        self.enterContext(self.runtime_service())
+        client = APIClient()
+        client.force_authenticate(user=self.admin)
+        url = f"/api/v1/admin/bookings/?status=ALL&resource_id={self.room.id}"
+
+        def queries():
+            with CaptureQueriesContext(connection) as captured:
+                response = client.get(url, HTTP_HOST="localhost")
+            self.assertEqual(response.status_code, 200, response.content[:300])
+            return len(captured.captured_queries), response.json()["count"]
+
+        self.staff_list_fixture()
+        small = queries()
+        for i in range(10):
+            self.staff_list_fixture()  # 40 more bookings with every kind of lookup
+        large = queries()
+        self.assertEqual((large[0], large[1]), (small[0], small[1] + 40))

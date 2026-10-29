@@ -299,7 +299,12 @@ class ResourcesMixin:
         self.process_due_requests()
         query = (query or "").strip().casefold()
         people = {item.id: f"{item.zid} {item.display_name}".casefold() for item in self.repo.list_principals()} if query else {}
-        records = [item for item in self.repo.list_bookings()
+        # 2026-10-29 (load test S2): the repository narrows the rows read (inclusive bounds); the checks below are unchanged.
+        stored = self.repo.list_bookings(str(student_id) if student_id is not None else None,
+                                         str(resource_id) if resource_id is not None else None,
+                                         statuses=[BookingStatus(value) for value in statuses] if statuses else None,
+                                         end_from=since, start_to=until)
+        records = [item for item in stored
                    if (not statuses or item.status.value in statuses)
                    and (resource_id is None or item.resource_id == str(resource_id))
                    and (student_id is None or item.student_id == str(student_id))

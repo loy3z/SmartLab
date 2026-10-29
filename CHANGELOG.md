@@ -2,6 +2,14 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.20.0 之后：压力测试性能修复第二轮（2026-10-29，接口和数据库结构不变）
+
+任务卡 `claude/tasks-load-2026-10-29.md` 的 S2 和 S6（S6 是第一轮压测时新发现的，Loy 定并入这一轮）。返回的数据不变。
+
+- **S2**：Booking Records 和审批队列不再逐条查库。之前每条预约还要单独查预约人、创建人、被替换的预约、改期申请和候补排位，5000 条时超过 9000 条 SQL。现在由 `BookingListLookups` 一次取齐（未决定的预约只有少数，一次读出）；`booking_json` 在单条预约和员工长列表里共用，输出相同。`booking_report` 的状态、资源、学生、日期筛选也交给数据库。5000 条历史预约时，Booking Records 9.1 秒 → 约 1 秒，审批队列 1.2 秒 → 81 毫秒。
+- **S6**：可用时间（Find a free time 和单个资源的日视图）每个资源只查一次当天的占用，再逐格判断；之前每个半小时格子都查一次，22 个资源一次请求 500 多条 SQL。
+- 测试：`test_postgres.py` 新增 3 个（可用时间的查询数不随格子数增长；员工列表共享查询和逐条查询输出相同，Outlook 开关两种情况；Booking Records 多 40 条预约时 SQL 条数不变），在 `ec5c4b1` 上都会失败。
+
 ## 1.20.0 之后：预约弹窗里显示提交失败的原因（2026-10-29，只改前端）
 
 依据 Loy 的截图反馈 `claude/reports/2026-10-29-weekly-limit-dialog.md`：达到每周上限时，报错只出现在弹窗背后的提示框里，弹窗里什么都没有。原因是提交失败后重新读取当天时间、清空选择时，把表单里的错误也清掉了；提示框在原生 `<dialog>` 的遮罩下面看不到。现在重新读取不再清掉错误，错误显示在提交按钮旁边（`Request not submitted: …`），直到重新选时间。e2e 新增 `a refused booking request is explained inside the booking dialog`。

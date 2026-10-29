@@ -1442,6 +1442,42 @@ test('Room Management shows a failed reschedule inside the dialog', async ({ pag
   await expect(dialog.getByRole('alert')).toContainText('Booking not moved: That time is already booked.')
 })
 
+// 2026-10-29 (Loy): the weekly-limit error only appeared as a toast behind the booking dialog; the dialog showed nothing,
+// because reloading the day after the failure cleared the error together with the selection.
+test('a refused booking request is explained inside the booking dialog', async ({ page }) => {
+  let availabilityLoads = 0
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname.replace('/api/v1/', '')
+    if (path === 'resources/' && request.method() === 'GET') return route.fulfill({ json: { count: 1, results: [reviewRoom] } })
+    if (path === 'resources/room-1/availability/') {
+      availabilityLoads += 1
+      return route.fulfill({ json: {
+        resource_id: 'room-1', date: '2030-01-10', timezone: 'Australia/Sydney', duration_minutes: 30, can_request: true, qualification_status: 'VERIFIED',
+        earliest_date: '2030-01-03', latest_date: '2030-02-02', min_advance_days: 7, max_advance_days: 30, resource_status: 'AVAILABLE', status_reason: null,
+        slots: [reviewSlot('2030-01-09T21:00:00Z', '2030-01-09T21:30:00Z'), reviewSlot('2030-01-09T21:30:00Z', '2030-01-09T22:00:00Z'),
+          reviewSlot('2030-01-09T22:00:00Z', '2030-01-09T22:30:00Z')],
+      } })
+    }
+    if (path === 'bookings/' && request.method() === 'POST') {
+      return route.fulfill({ status: 409, json: { error: { code: 'WEEKLY_LIMIT_REACHED',
+        message: 'At most 3 bookings per person in one week (Monday to Sunday).', details: { limit: 3, count: 3, week_start: '2030-01-07' } } } })
+    }
+    return route.fallback()
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'STUDENT')
+  await page.goto('/#/resources')
+  await page.getByRole('button', { name: 'View availability', exact: true }).first().click()
+  const dialog = page.getByRole('dialog', { name: 'Book Lab Room 1', exact: true })
+  await dialog.getByLabel('Start time').selectOption({ label: '8:00 am' })
+  await dialog.getByRole('textbox').last().fill('Thesis experiment')
+  await dialog.getByRole('button', { name: 'Request 1 h', exact: true }).click()
+  await expect.poll(() => availabilityLoads).toBeGreaterThan(1)   // the day reloads after the failure
+  await expect(dialog.getByRole('alert')).toContainText('Request not submitted: At most 3 bookings per person in one week')
+  await expect(dialog.getByText('Choose a time above.')).toHaveCount(0)
+})
+
 // Review D1 (2026-10-25): the day timeline appears only after the day has loaded; a vertical mouse wheel still scrolls it sideways.
 test('a mouse wheel scrolls the day timeline sideways once the day has loaded', async ({ page }) => {
   const halfHours = Array.from({ length: 40 }, (_, index) => {

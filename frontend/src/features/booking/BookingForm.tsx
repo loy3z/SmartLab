@@ -45,6 +45,13 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
     setError('')
     keyRef.current = newIdempotencyKey()
   }
+  // 2026-10-29 (Loy): after a failed request the day reloads and the picker clears its selection; that must not also
+  // clear the error, or the dialog shows nothing (the toast sits under the dialog's backdrop). Choosing a new time does.
+  const fromPicker = (r: SlotRange | null) => {
+    if (r) return pick(r)
+    setRange(null)
+    keyRef.current = newIdempotencyKey()
+  }
 
   function chooseBookFor(next: BookFor) {
     setBookFor(next)
@@ -156,7 +163,7 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
       )}
 
       {ready ? (
-        <SlotPicker resource={resource} onSelect={pick} refreshKey={refreshKey} onEligibility={setCanRequest}
+        <SlotPicker resource={resource} onSelect={fromPicker} refreshKey={refreshKey} onEligibility={setCanRequest}
           forZid={forZid} urgent={urgent} initialDate={initialDate} initialStart={initialStart} initialMinutes={initialMinutes}
           /* Sprint 3 (1.16.0): route someone who wants an earlier day to the urgent request */
           onAskEarlier={() => { setUrgent(true); pick(null) }} />
@@ -181,12 +188,13 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
           disabled={!range || busy || !bookingPurpose || !canRequest || !ready}>
           {busy ? 'Submitting…' : range ? `${testBypass ? 'Book' : 'Request'} ${fmtDuration(minutes)}${urgent ? ' (urgent)' : ''}` : 'Request booking'}
         </button>
-        {/* Sprint 3 (1.16.0): say what is still missing instead of leaving a grey button to guess at. */}
-        {missing ? <span className="bk-missing" role="status">{missing}</span> : canRequest && !urgent && (
-          <span className="bk-muted">{testBypass ? 'Test booking: approved immediately. Existing bookings cannot be displaced.' : 'An admin reviews every request. If nobody decides within the review period, the system decides automatically.'}</span>
-        )}
+        {/* Sprint 3 (1.16.0): say what is still missing instead of leaving a grey button to guess at.
+            2026-10-29 (Loy): a failed request is shown here first, next to the button, so it is seen in the dialog. */}
+        {error ? <span className="bk-error" role="alert">Request not submitted: {error}</span>
+          : missing ? <span className="bk-missing" role="status">{missing}</span> : canRequest && !urgent && (
+            <span className="bk-muted">{testBypass ? 'Test booking: approved immediately. Existing bookings cannot be displaced.' : 'An admin reviews every request. If nobody decides within the review period, the system decides automatically.'}</span>
+          )}
       </div>
-      {error && <p className="bk-error" role="alert">{error}</p>}
     </form>
   )
 }

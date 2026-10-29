@@ -28,7 +28,7 @@
 
 ### 以后用 Outlook 发通知
 
-站内通知先存在数据库里，再交给“发送渠道”。以后要用 Outlook 发邮件通知，只需写一个渠道类（例如用 Graph 的 `sendMail` 以系统邮箱发信），实现 `booking/notification_channels.py` 里的 `NotificationChannel`，再把类路径填进 `NOTIFICATION_CHANNELS`。业务代码不用改。
+站内通知先存在数据库里，再交给发送渠道。当前邮件通知使用 SMTP，并通过 PostgreSQL outbox 和 scheduler 重试；如果学校以后要求 Graph `sendMail`，可以新增渠道而不改预约规则。
 
 ## 2. 测试只用自己的邮箱（必须先看）
 
@@ -38,7 +38,7 @@
 - 想在收件箱里看到邀请：先注册一个演示学生，邮箱填你的另一个地址（不要填登录 Outlook 的那个，Outlook 不会给组织者本人发邀请），再把这个地址填进名单。
 - `none`：永远不邀请。`all`：邀请所有受益人，只在客户确认的正式环境里使用。
 
-系统本身不发邮件。批准、拒绝这类消息目前只在网站的通知铃铛里显示；用 Outlook 或邮件发送的接口已经留好（见第 1 节末尾）。
+系统可以通过配置的 SMTP 系统邮箱发送批准、拒绝等通知；默认关闭，配置和可靠重试见 `email-setup.md`。这与 Outlook 日历事件同步是两项独立集成。
 
 ## 3. 让后端能写你的日历
 

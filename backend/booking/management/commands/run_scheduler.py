@@ -16,7 +16,7 @@ logger = logging.getLogger("booking.scheduler")
 
 
 class Command(BaseCommand):
-    help = ("Run due booking decisions, reminders, attendance checks and Outlook retries "
+    help = ("Run due booking decisions, reminders, attendance checks, email delivery and Outlook retries "
             "at a fixed interval. PostgreSQL or another shared durable repository is required.")
 
     def add_arguments(self, parser):
@@ -33,6 +33,12 @@ class Command(BaseCommand):
             help="Maximum Outlook jobs processed per run; use 0 to disable (default: 10).",
         )
         parser.add_argument(
+            "--email-limit",
+            type=int,
+            default=50,
+            help="Maximum email jobs processed per run; use 0 to disable (default: 50).",
+        )
+        parser.add_argument(
             "--once",
             action="store_true",
             help="Run one cycle and exit. Useful for deployment smoke tests.",
@@ -41,11 +47,14 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         interval = options["interval_seconds"]
         outlook_limit = options["outlook_limit"]
+        email_limit = options["email_limit"]
         once = options["once"]
         if not 1 <= interval <= 3600:
             raise CommandError("Use --interval-seconds between 1 and 3600.")
         if not 0 <= outlook_limit <= 100:
             raise CommandError("Use --outlook-limit between 0 and 100.")
+        if not 0 <= email_limit <= 500:
+            raise CommandError("Use --email-limit between 0 and 500.")
 
         service = get_service()
         if isinstance(service.repo, MemoryRepository):
@@ -67,7 +76,8 @@ class Command(BaseCommand):
                 signal.signal(signum, request_stop)
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"Scheduler started: interval={interval:g}s, outlook_limit={outlook_limit}."
+                    f"Scheduler started: interval={interval:g}s, email_limit={email_limit}, "
+                    f"outlook_limit={outlook_limit}."
                 )
             )
 
@@ -77,6 +87,7 @@ class Command(BaseCommand):
                 try:
                     call_command(
                         "process_due",
+                        email_limit=email_limit,
                         outlook_limit=outlook_limit,
                         stdout=self.stdout,
                         stderr=self.stderr,

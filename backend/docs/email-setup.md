@@ -1,6 +1,6 @@
 # 邮件通知（Sprint 3）
 
-系统用一个 Gmail 系统邮箱（SMTP + 应用专用密码）给预约人发邮件。邮件和铃铛里的通知是同一条记录：先存为站内通知，请求结束后再由邮件渠道 `booking/email_channel.py` 发出去。业务代码不知道邮件的存在。
+系统用一个 Gmail 系统邮箱（SMTP + 应用专用密码）给预约人发邮件。通知和最终邮件内容会在同一个业务事务里写入 PostgreSQL；请求提交后由 `booking/email_channel.py` 发送，失败则由 scheduler 延迟重试。SMTP 网络调用不在数据库事务中，不会拖住预约锁或改变预约结果。
 
 ## 发哪些邮件
 
@@ -76,7 +76,10 @@ $env:EMAIL_REDIRECT_TO = "你自己的邮箱"
 | `EMAIL_HOST`／`EMAIL_PORT`／`EMAIL_USE_TLS` | `smtp.gmail.com`／`587`／`true` | 换成学校的邮件服务器时改这三个 |
 | `EMAIL_HOST_USER`／`EMAIL_HOST_PASSWORD` | 空 | 系统邮箱和应用专用密码 |
 | `DEFAULT_FROM_EMAIL` | `SmartLab <EMAIL_HOST_USER>` | 发件人显示名 |
-| `EMAIL_TIMEOUT` | `10` | 和邮件服务器的每一步（连接、登录、发送）最多等几秒；发信在后台，不影响网页。服务器正常关闭时，最多再等这么久把队列里的邮件发完 |
+| `EMAIL_TIMEOUT` | `10` | 和邮件服务器连接、登录、发送的超时秒数 |
+| `EMAIL_MAX_ATTEMPTS` | `6` | 一封邮件最多尝试次数；达到后保留为 `FAILED`，不再自动发送 |
+| `EMAIL_LEASE_SECONDS` | `300` | worker 领取任务后的租约；进程崩溃并过期后，其他 worker 可以接管 |
+| `EMAIL_BATCH_SIZE` | `50` | API 后台线程一次最多领取的到期邮件数 |
 | `LOG_LEVEL` | `INFO` | 后端 `booking` 日志的级别；`INFO` 时每封邮件发出、跳过都记一行（见下面「日志」） |
 | `EMAIL_MODE`、`EMAIL_ALLOWED_RECIPIENTS`、`EMAIL_REDIRECT_TO` | `allowlist`、空、空 | 见上一节 |
 | `EMAIL_NOTIFICATION_KINDS` | 上表所有类型 | 哪些通知发邮件 |
@@ -84,21 +87,24 @@ $env:EMAIL_REDIRECT_TO = "你自己的邮箱"
 
 ## 什么时候发出、怎么查（2026-10-27 起）
 
-- 请求结束时，网站只把写好的邮件放进队列，马上返回；每个后端进程有一个后台线程负责发送。所以开着邮件时，提交或审批不再多等连接 Gmail 的约 2 秒。
-- 后台线程把同时在排队的邮件用**同一条连接**发出（约 0.2 秒内进队列的算一批），不用每封都重新连接、登录。
+- 生成通知时，最终收件地址、主题和正文会作为 `email_delivery` 记录一并提交；SMTP 密码永远只在环境变量里。
+- 请求结束时，API 后台线程立即领取到期记录并批量发送，网页不用等待 Gmail。独立 scheduler 每分钟继续处理遗留记录和到期重试。
+- 一批邮件复用同一条 SMTP 连接；多个 worker 用数据库租约领取，避免正常并发下重复发送。worker 崩溃后租约到期，任务可以被接管。
+- 临时失败依次延迟约 1、5、15、60 分钟重试，之后保持 60 分钟间隔，达到 `EMAIL_MAX_ATTEMPTS` 后标为 `FAILED`。预约和站内通知不受影响。
 - 日志（`docker compose --env-file .env.docker logs api`；本机看运行后端的终端），每批和每封各一行：
 
   ```
-  INFO booking.email_channel: Mail server connection opened in 1907 ms for 2 email(s)
+  INFO booking.email_channel: Mail server connection opened in 1907 ms for 2 durable email(s)
   INFO booking.email_channel: Email sent for notification <通知编号> to @ad.unsw.edu.au: waited 2125 ms, sent in 360 ms
   ```
 
   `waited` 是从放进队列到开始发这一封（包括连接和登录），`sent in` 是发这一封本身。日志只写收件人的域名。失败时是 `ERROR` 行，带原因。
 - 邮件到得慢时，先看这一行：应用这边通常两三秒内就交给了 Gmail。2026-10-27 查过一封晚到约 4 分钟的邮件，时间几乎都花在 UNSW 那边（Proofpoint 扫描约 2 分 30 秒，Microsoft 365 投递约 1 分 20 秒），应用这边改不了。
-- `manage.py process_due` 会等后台的邮件发完（最多 60 秒）才退出。
+- `manage.py process_due --email-limit 50` 会处理到期邮件；Docker 的 `scheduler` 会持续调用它。
 
-## 局限
+## 可靠性边界
 
-- 后台队列在内存里：后端进程被强行杀掉（崩溃、`docker kill`、正常关闭超过等待时间）时，还没发出的邮件会丢，不会补发。铃铛里的通知不受影响。
-- 发不出去（网络、密码、Gmail 每天约 500 封的上限）只记日志，不影响预约本身，也不重试。铃铛里的通知照常有。
+- PostgreSQL 模式下待办和失败原因会持久保存，API 或 scheduler 重启后继续处理。内存仓储只用于本地测试，本身不具备跨进程持久性。
+- SMTP 没有幂等键：极端情况下，服务器已经接受邮件、但 worker 在写回 `SENT` 前崩溃，租约恢复后可能再次发送。系统保证任务不会静默丢失并尽量避免重复，但不能宣称严格 exactly-once。
+- 配置错误或永久拒收在达到最大次数后保留为 `FAILED`，需要修好配置后人工处理；不会无限重试。
 - 为什么不用 Outlook 邮箱：Outlook.com 从 2024 年 9 月起不再接受密码登录 SMTP，要用微软授权（Graph `Mail.Send`），Token 会过期。正式交付时，学校可以把 `EMAIL_HOST` 等换成自己的邮件服务器，代码不用改。

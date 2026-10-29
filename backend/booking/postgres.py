@@ -10,7 +10,7 @@ from psycopg.types.json import Jsonb
 
 from .domain import (
     Announcement,  # Sprint 3 (1.19.0)
-    AuditRecord, Booking, BookingSeries, BookingStatus, CalendarFeed, Notification, NotificationPreference,
+    AuditRecord, Booking, BookingSeries, BookingStatus, CalendarFeed, EmailDelivery, Notification, NotificationPreference,
     OutlookSyncRecord, Principal,
     QualificationRequirement, QualificationStatus, QualificationSubmission,
     Resource, ResourceKind, Role, StaffCredential, UnfreezeRequest, UnfreezeStatus,
@@ -30,6 +30,7 @@ _TABLES = {
     StoredFile: 'stored_file',
     StaffCredential: 'staff_credential',
     Notification: 'notification',
+    EmailDelivery: 'email_delivery',
     CalendarFeed: 'calendar_feed',
     UnfreezeRequest: 'unfreeze_request',
     BookingSeries: 'booking_series',
@@ -52,12 +53,14 @@ _ORDER = {
     AuditRecord: 'at, id', OutlookSyncRecord: 'updated_at, booking_id',
     StoredFile: 'id', StaffCredential: 'principal_id',
     Notification: 'created_at DESC, id DESC', CalendarFeed: 'principal_id',
+    EmailDelivery: 'created_at, notification_id',
     UnfreezeRequest: 'created_at, id', BookingSeries: 'created_at, id',
     SiteContact: 'id',
     Announcement: 'created_at DESC, id DESC',  # Sprint 3 (1.19.0)
     NotificationPreference: 'category',
 }
-_KEYS = {OutlookSyncRecord: 'booking_id', StaffCredential: 'principal_id', CalendarFeed: 'principal_id'}
+_KEYS = {OutlookSyncRecord: 'booking_id', StaffCredential: 'principal_id', CalendarFeed: 'principal_id',
+         EmailDelivery: 'notification_id'}
 _WRITE_LOCK = 0x534D4152544C4142
 
 
@@ -291,6 +294,46 @@ class PostgresRepository:
 
     def list_notifications(self, recipient_id):
         return _filtered(Notification, recipient_id=recipient_id)
+
+    def save_email_delivery(self, delivery):
+        _insert(delivery, upsert=True)
+
+    def get_email_delivery(self, notification_id):
+        return _get(EmailDelivery, notification_id)
+
+    def list_email_deliveries(self):
+        return _select(EmailDelivery)
+
+    def claim_email_deliveries(self, now, limit, worker_id, lease_until):
+        """Lease due rows without blocking another scheduler or API worker."""
+        names = _columns(EmailDelivery)
+        returned = ', '.join(f'e.{connection.ops.quote_name(name)}' for name in names)
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute(f'''
+                    WITH due AS (
+                        SELECT notification_id
+                        FROM public.email_delivery
+                        WHERE (
+                            status IN ('PENDING', 'RETRY')
+                            AND (next_attempt_at IS NULL OR next_attempt_at <= %s)
+                        ) OR (
+                            status = 'IN_PROGRESS'
+                            AND (lease_until IS NULL OR lease_until <= %s)
+                        )
+                        ORDER BY COALESCE(next_attempt_at, created_at), created_at, notification_id
+                        FOR UPDATE SKIP LOCKED
+                        LIMIT %s
+                    )
+                    UPDATE public.email_delivery AS e
+                    SET status = 'IN_PROGRESS', attempts = e.attempts + 1, updated_at = %s,
+                        lease_until = %s, worker_id = %s
+                    FROM due
+                    WHERE e.notification_id = due.notification_id
+                    RETURNING {returned}
+                ''', [now, now, limit, now, lease_until, worker_id])
+                claimed = [_decode(EmailDelivery, row) for row in cursor.fetchall()]
+        return sorted(claimed, key=lambda item: (item.created_at, item.notification_id))
 
     # Sprint 3 (2026-10-25): notification category choices.
     def save_notification_preference(self, preference):

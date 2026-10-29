@@ -22,7 +22,7 @@ from django.db import IntegrityError, connection, connections, transaction  # Sp
 from django.test import override_settings, TransactionTestCase
 
 from booking.domain import (
-    AuditRecord, BookingStatus, Principal, QualificationRequirement, QualificationStatus,
+    AuditRecord, BookingStatus, EmailDelivery, Principal, QualificationRequirement, QualificationStatus,
     Resource, ResourceKind, ResourceStatus, Role,
 )
 from booking.exceptions import DomainError
@@ -175,6 +175,14 @@ class PostgresAdapterTests(TransactionTestCase):
             cursor.execute(migration.read_text())
         self.assertEqual(self.repo.hidden_booking_ids(self.a.id), {booking.id})
 
+    def test_011_email_migration_can_run_twice(self):
+        migration = Path(settings.BASE_DIR) / 'database/migrations/011_durable_email_delivery.sql'
+        with connection.cursor() as cursor:
+            cursor.execute(migration.read_text())
+            cursor.execute(migration.read_text())
+            cursor.execute("SELECT to_regclass('public.email_delivery')")
+            self.assertEqual(cursor.fetchone()[0], "email_delivery")
+
     @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
     def test_staff_invite_activation_and_sign_in_are_persisted(self):
         staff = self.service.create_staff(self.manager, f"z{uuid4().int % 10_000_000:07d}", "New admin",
@@ -233,6 +241,13 @@ class PostgresAdapterTests(TransactionTestCase):
         self.repo.save_notification(newer)
         self.assertEqual(self.repo.list_notifications(self.a.id), [newer, older])
         self.assertEqual(self.repo.get_notification(older.id), older)
+        delivery = EmailDelivery(older.id, self.a.university_email, "Subject", "Body", "PENDING", self.now, self.now)
+        self.repo.save_email_delivery(delivery)
+        claimed = self.repo.claim_email_deliveries(self.now, 1, "postgres-test", self.now + timedelta(minutes=5))
+        self.assertEqual(len(claimed), 1)
+        self.assertEqual((claimed[0].notification_id, claimed[0].status, claimed[0].attempts),
+                         (older.id, "IN_PROGRESS", 1))
+        self.assertEqual(self.repo.get_email_delivery(older.id), claimed[0])
         request = UnfreezeRequest(str(uuid4()), self.a.id, "Sick", self.now)
         self.repo.save_unfreeze_request(request)
         stored = self.repo.get_unfreeze_request(request.id)
@@ -394,3 +409,31 @@ class PostgresAdapterTests(TransactionTestCase):
             t.join()
         self.assertEqual(errors, [])
         self.assertEqual(sorted(s.value for s in results), ["PENDING_APPROVAL", "WAITLISTED"])
+
+    def test_concurrent_email_workers_claim_a_job_once(self):
+        from booking.domain import Notification
+        from booking.postgres import PostgresRepository
+        notification = Notification(str(uuid4()), self.a.id, "BOOKING_APPROVED", "Approved", "Body", self.now)
+        self.repo.save_notification(notification)
+        self.repo.save_email_delivery(EmailDelivery(
+            notification.id, self.a.university_email, "Subject", "Body", "PENDING", self.now, self.now))
+        barrier, claims, errors = threading.Barrier(2), [], []
+
+        def claim(worker_id):
+            try:
+                barrier.wait()
+                claimed = PostgresRepository().claim_email_deliveries(
+                    self.now, 1, worker_id, self.now + timedelta(minutes=5))
+                claims.append([item.notification_id for item in claimed])
+            except Exception as error:  # pragma: no cover - reported below
+                errors.append(error)
+            finally:
+                connections.close_all()
+
+        threads = [threading.Thread(target=claim, args=(worker_id,)) for worker_id in ("worker-a", "worker-b")]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(errors, [])
+        self.assertEqual(sorted(len(items) for items in claims), [0, 1])

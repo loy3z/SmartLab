@@ -584,6 +584,33 @@ CREATE TABLE public.notification (
     read_at timestamp with time zone
 );
 
+-- Durable SMTP outbox. The message snapshot is committed with the notification and sent after commit.
+CREATE TABLE public.email_delivery (
+    notification_id uuid NOT NULL,
+    recipient_email text NOT NULL,
+    subject text NOT NULL,
+    body text NOT NULL,
+    status text DEFAULT 'PENDING'::text NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    attempts integer DEFAULT 0 NOT NULL,
+    next_attempt_at timestamp with time zone,
+    lease_until timestamp with time zone,
+    worker_id text,
+    last_error text,
+    sent_at timestamp with time zone,
+    CONSTRAINT email_delivery_attempts_check CHECK (attempts >= 0),
+    CONSTRAINT email_delivery_status_check CHECK (status = ANY
+        (ARRAY['PENDING'::text, 'IN_PROGRESS'::text, 'RETRY'::text, 'SENT'::text, 'FAILED'::text])),
+    CONSTRAINT email_delivery_state_check CHECK (
+        (status = 'PENDING' AND next_attempt_at IS NULL AND lease_until IS NULL AND worker_id IS NULL AND sent_at IS NULL) OR
+        (status = 'IN_PROGRESS' AND lease_until IS NOT NULL AND worker_id IS NOT NULL AND sent_at IS NULL) OR
+        (status = 'RETRY' AND next_attempt_at IS NOT NULL AND lease_until IS NULL AND worker_id IS NULL AND sent_at IS NULL) OR
+        (status = 'SENT' AND next_attempt_at IS NULL AND lease_until IS NULL AND worker_id IS NULL AND sent_at IS NOT NULL) OR
+        (status = 'FAILED' AND next_attempt_at IS NULL AND lease_until IS NULL AND worker_id IS NULL AND sent_at IS NULL)
+    )
+);
+
 -- Secret calendar subscription address, one per person.
 CREATE TABLE public.calendar_feed (
     principal_id uuid NOT NULL,
@@ -622,6 +649,12 @@ ALTER TABLE ONLY public.notification
 ALTER TABLE ONLY public.notification
     ADD CONSTRAINT notification_booking_fk FOREIGN KEY (booking_id) REFERENCES public.booking(id) ON DELETE CASCADE;
 CREATE INDEX notification_recipient_idx ON public.notification USING btree (recipient_id, created_at DESC);
+
+ALTER TABLE ONLY public.email_delivery ADD CONSTRAINT email_delivery_pkey PRIMARY KEY (notification_id);
+ALTER TABLE ONLY public.email_delivery
+    ADD CONSTRAINT email_delivery_notification_fk FOREIGN KEY (notification_id) REFERENCES public.notification(id) ON DELETE CASCADE;
+CREATE INDEX email_delivery_due_idx ON public.email_delivery USING btree (next_attempt_at, lease_until, created_at)
+    WHERE status IN ('PENDING', 'IN_PROGRESS', 'RETRY');
 
 ALTER TABLE ONLY public.calendar_feed ADD CONSTRAINT calendar_feed_pkey PRIMARY KEY (principal_id);
 ALTER TABLE ONLY public.calendar_feed ADD CONSTRAINT calendar_feed_token_unique UNIQUE (token);

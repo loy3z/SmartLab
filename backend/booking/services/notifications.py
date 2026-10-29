@@ -76,7 +76,13 @@ class NotificationsMixin:
         notification = Notification(str(uuid4()), str(recipient_id), kind, title, body, self.now(),
                                     link=link or ("/bookings" if booking else None),
                                     booking_id=booking.id if booking else None, in_app=in_app, email=email)
-        self.repo.save_notification(notification)
+        # This nested transaction is also needed for standalone reminders: the notification and SMTP outbox row
+        # either both commit or both roll back. Booking operations already have a wider outer transaction.
+        with self.repo.atomic(student_ids=[str(recipient_id)]):
+            self.repo.save_notification(notification)
+            email_delivery = getattr(self, "email_delivery", None)
+            if email_delivery is not None:
+                email_delivery.schedule(notification)
         ids = _new_notification_ids.get()
         if ids is None:
             ids = []

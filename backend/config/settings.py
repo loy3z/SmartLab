@@ -94,6 +94,15 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "true").lower() == "true"
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "").strip()
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "").replace(" ", "")  # Gmail shows app passwords in groups of 4
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "10"))
+EMAIL_MAX_ATTEMPTS = int(os.getenv("EMAIL_MAX_ATTEMPTS", "6"))
+EMAIL_LEASE_SECONDS = int(os.getenv("EMAIL_LEASE_SECONDS", "300"))
+EMAIL_BATCH_SIZE = int(os.getenv("EMAIL_BATCH_SIZE", "50"))
+if not 1 <= EMAIL_MAX_ATTEMPTS <= 20:
+    raise ValueError("Require 1 <= EMAIL_MAX_ATTEMPTS <= 20")
+if not 30 <= EMAIL_LEASE_SECONDS <= 3600:
+    raise ValueError("Require 30 <= EMAIL_LEASE_SECONDS <= 3600")
+if not 1 <= EMAIL_BATCH_SIZE <= 500:
+    raise ValueError("Require 1 <= EMAIL_BATCH_SIZE <= 500")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", f"SmartLab <{EMAIL_HOST_USER}>" if EMAIL_HOST_USER else "SmartLab <webmaster@localhost>")
 # Who receives emails: none, allowlist (default: only EMAIL_ALLOWED_RECIPIENTS), redirect (all to EMAIL_REDIRECT_TO), all.
 EMAIL_MODE = os.getenv("EMAIL_MODE", "allowlist").strip().lower()

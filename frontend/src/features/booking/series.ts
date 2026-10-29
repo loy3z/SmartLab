@@ -1,5 +1,5 @@
 // Sprint 3: weekly series helpers.
-import type { SeriesOccurrence } from './types.ts'
+import type { SeriesOccurrence } from '../../api/types/index.ts'
 
 export const WEEKDAYS: { value: number; short: string; long: string }[] = [
   { value: 1, short: 'Mon', long: 'Monday' },

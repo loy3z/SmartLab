@@ -37,6 +37,7 @@ urlpatterns = [
     path("bookings/<uuid:booking_id>/", views.BookingDetailView.as_view()),
     path("bookings/<uuid:booking_id>/check-in/", views.BookingCheckInView.as_view()),  # Sprint 3
     path("bookings/<uuid:booking_id>/cancel/", views.BookingCancelView.as_view()),
+    path("bookings/<uuid:booking_id>/remove-from-history/", views.BookingHistoryRemoveView.as_view()),  # Sprint 3 (1.20.0)
     path("bookings/<uuid:booking_id>/reschedule/", views.BookingRescheduleView.as_view()),
     path("bookings/<uuid:booking_id>/change/", views.BookingChangeView.as_view()),  # Sprint 3 (1.16.0)
     path("dashboard/", views.DashboardView.as_view()),

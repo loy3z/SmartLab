@@ -3,14 +3,14 @@ import { Link } from 'react-router'
 import { useAuth } from '../auth/auth-context'
 import { BookingForm } from './BookingForm'
 import { FindTime } from './FindTime'
-import { listQualifications, listRequirements, listResources } from './api'
+import { listQualifications, listRequirements, listResources } from '../../api/index.ts'
 import { errorMessage, SEPARATE_BOOKING_TEXT } from './format' // Sprint 3 (1.16.0): SEPARATE_BOOKING_TEXT
 import { AlertIcon, CheckIcon, SearchIcon, UploadIcon } from './icons'
 import { FreezeNotice } from './FreezeNotice' // Sprint 3
 import { Modal } from './Modal'
 import { RecurringBookingForm } from './RecurringBookingForm' // Sprint 3
 import { ResourceCard, type InductionState } from './ResourceCard'
-import type { Qualification, Requirement, Resource } from './types'
+import type { Qualification, Requirement, Resource } from '../../api/types/index.ts'
 
 function latestStatus(requirementId: string, quals: Qualification[]) {
   const latest = quals
@@ -143,7 +143,7 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
       {mode === 'find' && <FindTime resources={resources} onPick={(resource, start, minutes, date) => setPicked({ resource, start, minutes, date })} />}
 
       {mode === 'browse' && <>
-      {/* Sprint 3 (workspace UI): search and the type/room filters share one toolbar row. */}
+      {/* Sprint 3 (fluency V2): only tabs scroll; resource filters have their own row. */}
       <div className="bk-browse-toolbar">
       <form
         className="bk-search"
@@ -164,6 +164,9 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
             {label} <span className="bk-pill-count">{count}</span>
           </button>
         ))}
+      </div>
+      </div>
+      {(view === 'ROOM' && anyCapacity || view === 'EQUIPMENT') && <div className="bk-resource-filters">
         {view === 'ROOM' && anyCapacity && (
           <label className="bk-people-filter">Fits at least{/* Sprint 3 (1.16.0) */}
             <input type="number" min={1} max={1000} inputMode="numeric" aria-label="Fits at least this many people" value={people}
@@ -176,8 +179,7 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
             {rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}
           </select>
         )}
-      </div>
-      </div>
+      </div>}
 
       <h2 className="bk-h2">
         {view === 'ROOM' ? 'Rooms' : roomFilter ? `Equipment in ${roomName(roomFilter)}` : 'Equipment'}

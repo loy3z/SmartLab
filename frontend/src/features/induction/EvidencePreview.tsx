@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { downloadQualification } from '../booking/api'
+import { downloadQualification } from '../../api/index.ts'
 import { errorMessage } from '../booking/format'
 
 type State =

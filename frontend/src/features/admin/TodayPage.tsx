@@ -1,15 +1,17 @@
 import { AnnouncementBoard } from '../announcements/AnnouncementBoard' // Sprint 3 (1.19.0)
+import { useAnnouncements } from '../announcements/use-announcements' // Sprint 3 (fluency V5)
 // Sprint 3 (1.16.0): "Today" — the Admin and Manager home page: what needs doing first, each card linking to its page.
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { PageHeader, RefreshStamp } from '../../ui/components'
-import { getStaffOverview, listResources } from '../booking/api'
+import { getStaffOverview, listResources } from '../../api/index.ts'
 import { errorMessage, fmtRelative, fmtTime } from '../booking/format'
-import type { Booking, Resource, StaffOverview } from '../booking/types'
+import type { Booking, Resource, StaffOverview } from '../../api/types/index.ts'
 import { attendanceLabel, todoCards } from './today'
 import { CheckIcon } from '../booking/icons'
 
 export function TodayPage() {
+  const announcements = useAnnouncements()
   const [data, setData] = useState<StaffOverview | null>(null)
   const [names, setNames] = useState<Record<string, string>>({})
   const [error, setError] = useState('')
@@ -39,21 +41,25 @@ export function TodayPage() {
   const now = loadedAt ?? 0
   const who = (b: Booking) => b.booked_for?.display_name ?? 'Someone'
   const today = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Sydney', weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())
+  // Sprint 3 (fluency V5): gate only the first paint; retain the existing refresh behavior once data exists.
+  const homeReady = announcements.settled && (data !== null || !loading)
+  const waiting = data !== null && todoCards(data).some(card => card.count > 0)
 
   return (
     <section className="today">
       <PageHeader title="Today" description={today}
-        actions={<RefreshStamp at={loadedAt} onRefresh={() => void load()} busy={loading && loadedAt !== null} />} />
+        actions={<RefreshStamp at={loadedAt} onRefresh={() => void load()} busy={(loading || !announcements.settled) && loadedAt !== null} />} />
       {/* Sprint 3 (1.19.0): public notices are independent of personal notifications. */}
-      <AnnouncementBoard />
+      {homeReady && <AnnouncementBoard announcements={announcements} />}
       {error && <p className="bk-error" role="alert">{error}</p>}
-      {!data && loading && <p role="status">Loading…</p>}
-      {data && (
+      {(!data && loading || !announcements.settled) && <p role="status">Loading…</p>}
+      {homeReady && data && (
         <>
           {/* Sprint 3 (internal-tool UI, AI-2): a plain status line instead of a slogan. */}
           <div className="today-brief">
-            <div><h2>{todoCards(data).some(card => card.count > 0) ? 'Waiting for review' : 'Nothing waiting for review'}</h2></div>
-            <span className="today-brief-mark"><CheckIcon size={23} /></span>
+            <div><h2>{waiting ? 'Waiting for review' : 'Nothing waiting for review'}</h2></div>
+            {/* Sprint 3 (2026-10-28 feedback L2): the check only means "all clear". */}
+            {!waiting && <span className="today-brief-mark"><CheckIcon size={23} /></span>}
           </div>
           <div className="today-cards">
             {todoCards(data).filter(card => card.count > 0).map((card) => (
@@ -66,7 +72,8 @@ export function TodayPage() {
           </div>
 
           <div className="today-grid">
-            {data.due_soon.length > 0 && <article className="today-panel">
+            {/* Sprint 3 (2026-10-28 feedback L2): a panel without its neighbour takes the whole row. */}
+            {data.due_soon.length > 0 && <article className={`today-panel${data.out_of_service.length ? '' : ' is-wide'}`}>
               <h2>Decide soon</h2>
               <p className="bk-muted">Requests whose review window ends within {data.due_soon_hours} hours; otherwise the system decides.</p>
               {data.due_soon.length === 0 ? <p className="today-empty">Nothing is close to its deadline.</p> : (
@@ -84,7 +91,7 @@ export function TodayPage() {
               )}
             </article>}
 
-            {data.out_of_service.length > 0 && <article className="today-panel">
+            {data.out_of_service.length > 0 && <article className={`today-panel${data.due_soon.length ? '' : ' is-wide'}`}>
               <h2>Out of service</h2>
               <p className="bk-muted">Rooms and equipment under maintenance or closed. People with bookings were notified; decide what happens to them.</p>
               {data.out_of_service.length === 0 ? <p className="today-empty">Everything is open.</p> : (

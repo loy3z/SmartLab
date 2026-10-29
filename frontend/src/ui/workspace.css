@@ -52,8 +52,7 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .app-content h2 { font-weight: 700; letter-spacing: -.65px; }
 .app-workspace-footer { margin-inline: 38px; padding-block: 20px; color: var(--muted); font-size: 12px; }
 .app-workspace-footer a { color: var(--muted); }
-.app-page { animation: workspace-enter 240ms ease-out; }
-@keyframes workspace-enter { from { opacity: 0; } to { opacity: 1; } }
+/* Sprint 3 (fluency V8): work pages appear immediately; state-specific motion is kept. */
 .app-content .bk-sub, .app-content h1 + p:not([class]), .ui-page-desc, .app-page-description { color: var(--muted); font-size: 12px; line-height: 1.7; margin-top: 10px; max-width: 82ch; }
 .ui-page-head { align-items: center; margin-bottom: 28px; gap: 20px; }
 .ui-page-actions { gap: 10px; }
@@ -78,12 +77,12 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .app-shell :is(.ui-pill.is-grey,.st-CANCELLED,.st-EXPIRED) { color: var(--muted); background: var(--grey-bg); }
 .app-shell :is(.ui-pill.is-red,.st-REJECTED) { color: var(--red); background: var(--red-bg); }
 .app-shell :is(.ui-pill.is-blue) { color: var(--blue); background: var(--blue-bg); }
-.app-shell :is(.ui-tabs,.bk-pills,.bk-mode-tabs) { background: transparent; gap: 5px; padding: 0; border-radius: 0; }
+.app-shell :is(.ui-tabs, .bk-pills) { background: transparent; gap: 5px; padding: 0; border-radius: 0; }
 .app-shell :is(.ui-tab,.bk-pill) { min-height: 40px; padding: 9px 15px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 600; }
 .app-shell :is(.ui-tab.is-on,.bk-pill.is-on) { background: var(--ink); color: #fff; border-color: var(--ink); box-shadow: none; }
 .app-shell :is(.ui-count,.bk-pill-count) { min-width: 18px; padding: 1px 5px; border-radius: 8px; color: inherit; background: #86908022; font-size: 12px; }
 .app-shell :is(.ui-tab.is-on .ui-count,.bk-pill.is-on .bk-pill-count) { background: #ffffff26; color: #fff; }
-.app-shell :is(.ui-field input,.ui-field select,.ui-field textarea,.ui-filters input,.ui-filters select,.bk-find-filters input,.bk-find-filters select,.bk-find-query input,.bk-find-query select,.bk-row input,.bk-row select,.bk-room-filter,.bk-block textarea,.ui-tl-head input,.ui-tl-controls select) { min-height: 42px; border: 1px solid var(--line); border-radius: var(--radius-control); padding: 10px 12px; background: #fff; color: var(--ink); font-size: 12px; box-shadow: none; }
+.app-shell :is(.ui-field input, .ui-field select, .ui-field textarea, .ui-filters input, .ui-filters select, .bk-find-query input, .bk-find-query select, .bk-room-filter, .bk-block textarea, .ui-tl-head input) { min-height: 42px; border: 1px solid var(--line); border-radius: var(--radius-control); padding: 10px 12px; background: #fff; color: var(--ink); font-size: 12px; box-shadow: none; }
 .app-shell .bk-bcard :is(input:not([type=checkbox]):not([type=radio]),select,textarea) { border-color: var(--line); border-radius: 8px; font-size: 12px; min-height: 42px; }
 .app-shell input[type=checkbox], .app-shell input[type=radio] { width: 15px; height: 15px; min-height: 0; flex-shrink: 0; }
 .app-shell :is(.ui-field,.bk-block) { font-size: 12px; }
@@ -112,8 +111,6 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .app-shell .bk-required { padding: 0; border-radius: 0; margin-left: 5px; color: var(--muted); background: transparent; font-size: 12px; font-weight: 600; text-transform: none; }
 .app-shell .bk-required::before { content: '* '; color: var(--red); }
 .app-shell .bk-missing { color: var(--muted); font-size: 12px; }
-.app-shell .bk-ind-banner { background: #f0f3eb; border: 1px solid #dce3d5; border-radius: 8px; font-size: 12px; padding: 11px 14px; gap: 10px 16px; }
-.app-shell .bk-ind-banner a { color: var(--ink); }
 .app-shell .bk-search { background: #fff; border-color: var(--line); border-radius: 8px; padding: 6px; gap: 8px; margin-block: 20px; }
 .app-shell .bk-search input { min-width: 0; font-size: 12px; padding-inline: 12px; }
 .app-shell .bk-search svg { width: 18px; height: 18px; margin-left: 8px; color: var(--muted); flex-shrink: 0; }
@@ -162,19 +159,21 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .bookings-filters { margin: 0 0 20px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
 .bookings-list .bk-bcard { margin-bottom: 13px; }
 .bookings-list .bk-bhead { align-items: center; }
-.app-shell .app-utility-page > .app-eyebrow { display: none; }
 .app-shell .app-help-grid { gap: 16px; }
 .app-shell .app-help-grid p { font-size: 12px; color: var(--muted); }
 .app-shell .app-help-grid .app-card { border-color: var(--line); box-shadow: none; }
 .app-shell .app-help-grid h2 { font-size: 16px; }
-.today-brief { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 24px 26px; margin-bottom: 22px; border-radius: 12px; background: var(--ink); color: #fff; }
-.today-brief h2 { font-size: 20px; font-weight: 700; letter-spacing: 0; }
-.today-brief p { color: #c2cec5; font-size: 12px; margin-top: 5px; }
-.today-brief-mark { display: grid; place-items: center; width: 48px; height: 48px; border: 1px solid #69796d; color: var(--yellow); border-radius: 50%; flex-shrink: 0; }
-.app-shell .today-cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); gap: 12px; margin-bottom: 24px; }
+.today-brief { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 8px 0; margin-bottom: 12px; color: var(--ink); }
+.today-brief h2 { font-size: 16px; font-weight: 700; letter-spacing: 0; }
+.today-brief-mark { display: grid; place-items: center; width: 28px; height: 28px; color: var(--green); flex-shrink: 0; }
+/* Sprint 3 (2026-10-28 feedback L2): three fixed columns, so one card does not stretch across the page. */
+.app-shell .today-cards { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-bottom: 24px; }
 .app-shell .today-card { border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; background: #fff; box-shadow: none; color: var(--ink); min-height: auto; }
 .app-shell .today-card:hover { transform: none; border-color: var(--ink); background: #fcfdf8; }
 .app-shell .today-card.is-amber { border-top: 3px solid var(--yellow); }
+/* Sprint 3 (2026-10-28 feedback L5): urgent requests stand out from the yellow cards. */
+.app-shell .today-card.is-red { border-top: 3px solid var(--red); }
+.app-shell .today-card.is-red .today-count { color: var(--red); }
 .app-shell .today-count { font-size: 28px; line-height: 1; letter-spacing: -.5px; }
 .app-shell .today-label { font-size: 12px; margin-top: 10px; }
 .app-shell .today-card small { color: var(--muted); font-size: 12px; }
@@ -182,8 +181,6 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .app-shell .today-panel { padding: 22px; }
 .app-shell .today-panel h2 { font-size: 16px; }
 .app-shell .today-empty { font-size: 12px; margin-top: 10px; color: var(--muted); }
-.today-quiet { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 12px; margin-bottom: 22px; }
-.today-quiet svg { color: var(--green); flex-shrink: 0; }
 .bk-find-query { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 22px; }
 .bk-find-primary-fields { display: grid; grid-template-columns: 1.25fr 1fr .8fr 1.2fr auto; align-items: end; gap: 12px; }
 .bk-find-query label { display: flex; flex-direction: column; gap: 7px; font-size: 12px; font-weight: 600; }
@@ -209,6 +206,10 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .bk-access-summary .bk-induction-strip { margin-block: 12px; }
 .bk-browse-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin-top: 18px; }
 .app-shell .bk-browse-toolbar .bk-search { flex: 1 1 300px; margin: 0; }
+/* Sprint 3 (fluency V2/V4): keep filters reachable and mark retained results while updating. */
+.bk-resource-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 14px; min-width: 0; }
+.bk-resource-filters .bk-room-filter { margin-left: 0; max-width: 100%; }
+.ui-table[aria-busy="true"] { opacity: .55; }
 .bk-resource-details { font-size: 12px; color: var(--muted); margin: 12px 0 18px; }
 .bk-resource-details summary { cursor: pointer; width: fit-content; }
 .bk-resource-details[open] { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
@@ -238,8 +239,8 @@ input::placeholder, textarea::placeholder { color: #78837d; }
   .ui-page-actions { flex-wrap: wrap; width: 100%; }
   .app-shell .ui-table { min-width: 620px; }
   /* Sprint 3 (UI review #1): a row of tabs wider than the phone scrolls sideways inside itself instead of widening the page. */
-  .app-shell :is(.ui-tabs,.bk-pills,.bk-mode-tabs) { max-width: 100%; overflow-x: auto; flex-wrap: nowrap; }
-  .app-shell :is(.ui-tabs,.bk-pills,.bk-mode-tabs) > * { flex-shrink: 0; white-space: nowrap; }
+  .app-shell :is(.ui-tabs, .bk-pills) { max-width: 100%; overflow-x: auto; flex-wrap: nowrap; }
+  .app-shell :is(.ui-tabs, .bk-pills) > * { flex-shrink: 0; white-space: nowrap; }
   .app-shell .ui-btn-sm { min-height: 40px; }
   .app-shell .bk-grid { grid-template-columns: 1fr; gap: 13px; }
   .bk-browse-toolbar { flex-direction: column; align-items: stretch; }
@@ -248,7 +249,6 @@ input::placeholder, textarea::placeholder { color: #78837d; }
   .app-shell .bk-search input { width: 100%; flex: 1; }
   .app-shell .bk-rbody { padding: 17px 19px 19px; }
   .resource-card-head { padding-inline: 19px; }
-  .app-shell .bk-ind-banner { font-size: 12px; }
   .app-shell .bk-modal { width: 100%; max-height: calc(100dvh - 24px); padding: 22px 18px; border-radius: 12px; }
   .bk-native-dialog { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); border-radius: 12px; }
   .app-shell .bk-native-dialog .bk-modal { max-height: calc(100dvh - 24px); }
@@ -259,7 +259,7 @@ input::placeholder, textarea::placeholder { color: #78837d; }
   .app-shell .bk-bcard { padding: 18px; }
   .app-shell .bk-bcard h3 { font-size: 16px; }
   .app-shell .today-cards { grid-template-columns: repeat(2,minmax(0,1fr)); }
-  .today-brief { padding: 21px; }
+  .today-brief { padding: 8px 0; }
   .app-shell .today-grid { grid-template-columns: 1fr; }
   .app-shell .today-panel { padding: 19px; }
   .bk-find-query { padding: 18px; }
@@ -274,9 +274,6 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after,::backdrop { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 
 /* Sprint 3 (2026-10-25): notification switches on the Account page. */
-.app-pref-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
-.app-pref-list li label { display: flex; align-items: center; gap: 10px; font-size: 14px; }
-.app-pref-list input { width: 18px; height: 18px; }
 
 /* Sprint 3 (1.19.0): notification matrix and announcements; all new UI styles live here. */
 .notification-settings, .announcements-page { min-width: 0; }
@@ -307,6 +304,9 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .announcement-history { margin-top: 28px; min-width: 0; }
 .announcement-history article { padding: 20px; margin-bottom: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); min-width: 0; overflow-wrap: anywhere; }
 .announcement-history .ui-pill { margin-right: 8px; font-size: 12px; }
+/* Sprint 3 (2026-10-28 feedback L3) */
+.announcement-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.announcement-card-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .announcement-error { padding: 12px; margin-bottom: 16px; font-size: 14px; }
 @media (max-width: 600px) {
   .notification-matrix-head { display: none; }
@@ -315,4 +315,13 @@ input::placeholder, textarea::placeholder { color: #78837d; }
   .notification-matrix-row label { justify-content: flex-start; }
   .notification-matrix-row label span { display: inline; }
   .announcement-board, .announcement-history article { padding: 16px; }
+}
+
+/* Sprint 3 (1.20.0): resource filter stays on its own wrapping row below status tabs. */
+.bookings-resource-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 14px 0 20px; }
+.bookings-resource-filter label { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 12px; }
+.bookings-resource-filter select { min-width: 0; max-width: 100%; width: 260px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); font: inherit; }
+@media (max-width:600px) {
+  .bookings-resource-filter label { width: 100%; }
+  .bookings-resource-filter select { flex: 1; width: 0; }
 }

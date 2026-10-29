@@ -1,6 +1,6 @@
 // Sprint 3: Booking Records page (Admin and Manager): filters -> API query, and the text shown in each column.
 import { ATTENDANCE_TEXT } from '../booking/attendance.ts'
-import type { Booking } from '../booking/types.ts'
+import type { Booking } from '../../api/types/index.ts'
 
 const SYDNEY = 'Australia/Sydney'
 

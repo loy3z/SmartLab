@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react'
+import { Link, useLocation } from 'react-router'
 import './auth.css'
 
 /** Shared UNSW-style frame for the student and staff sign-in pages. */
 export function AuthShell({ crumb, children }: { crumb: string; children: ReactNode }) {
+  const location = useLocation()
   return (
     <div className="auth-page">
       <a className="auth-skip-link" href="#/login" onClick={(event) => {
@@ -27,7 +29,7 @@ export function AuthShell({ crumb, children }: { crumb: string; children: ReactN
         </div>
       </div>
       <main className="auth-container auth-main">
-        <div className="auth-breadcrumb" aria-label="Page location"><span>UNSW Sydney</span><span aria-hidden="true">/</span><span>SmartLab</span><span aria-hidden="true">/</span><strong>{crumb}</strong></div>
+        <div className="auth-breadcrumb" aria-label="Page location"><span>UNSW Sydney</span><span aria-hidden="true">/</span>{/* Sprint 3 (2026-10-28 feedback L4): a way back to the sign-in choices. */}<Link to="/login" state={location.state}>SmartLab</Link><span aria-hidden="true">/</span><strong>{crumb}</strong></div>
         <div className="auth-content-grid">
           {/* Sprint 3 (internal-tool UI, AI-2 / D7): the service name and one plain line; no slogan, eyebrow or feature list. */}
           <section className="auth-introduction" aria-labelledby="auth-introduction-title">

@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import type { User } from '../features/booking/types'
+import type { User } from '../api/types/index.ts'
 import { homePath } from './routes'
 import { ChangePassword } from '../features/auth/ChangePassword' // Sprint 3
 import { LabContactCard } from '../features/contact/LabContact' // Sprint 3 (1.16.0)

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
-import { getAuthConfig, setToken, testLogin } from '../booking/api'
+import { getAuthConfig, setToken, testLogin } from '../../api/index.ts'
 import { errorMessage } from '../booking/format'
 import { AuthShell } from './AuthShell'
 

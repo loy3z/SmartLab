@@ -1,5 +1,5 @@
 // Sprint 3: display helpers for the Manager's usage report.
-import type { UsageRow } from '../booking/types.ts'
+import type { UsageRow } from '../../api/types/index.ts'
 
 /** 0.256 -> "26%"; null -> "—". */
 export function percent(value: number | null): string {

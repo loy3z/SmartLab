@@ -1,9 +1,9 @@
 // Sprint 3 (1.19.0): dedicated settings with separate website/email channels.
 import { useEffect, useState } from 'react'
 import { useFeedback } from '../../ui/feedback-context'
-import { getNotificationPreferences, saveNotificationPreferences } from '../booking/api'
+import { getNotificationPreferences, saveNotificationPreferences } from '../../api/index.ts'
 import { errorMessage } from '../booking/format'
-import type { NotificationPreference } from '../booking/types'
+import type { NotificationPreference } from '../../api/types/index.ts'
 
 const CATEGORIES: Record<string, { label: string; description: string }> = {
   bookings: { label: 'Booking updates', description: 'Requests received, approved, rejected, moved, cancelled, waitlisted and expired; weekly series.' },

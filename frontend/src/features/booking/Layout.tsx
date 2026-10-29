@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { CalendarIcon, CapIcon, ChevronIcon, ClockIcon, FileIcon, HelpIcon, LogoutIcon, UserIcon } from './icons'
-import type { User } from './types'
+import type { User } from '../../api/types/index.ts'
 
 
 export type Page = 'browse' | 'mine' | 'induction' | 'qualification-review' | 'manager-bookings' | 'booking-review'

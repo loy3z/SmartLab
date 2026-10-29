@@ -171,12 +171,12 @@
   - `EMAIL_MODE` 决定谁真的收到：`none`、`allowlist`（默认）、`redirect`（演示：全部改发给一个地址）、`all`。
   - 发送失败只记日志，不影响预约。
 - **后端**：
-  - `booking/email_channel.py`：`EmailChannel.deliver`（选不选发）、`choose_recipient`（按模式选收件人）、`compose`（主题和正文）、`booking_label`、`site_link`。
+  - `booking/email_channel.py`：`EmailChannel.deliver`（选不选发，写好后放进队列）、`choose_recipient`（按模式选收件人）、`compose`（主题和正文）、`booking_label`、`site_link`；`EmailOutbox`（2026-10-27：后台线程发送，同一批共用一条连接，每封记日志）；`notification_channels.wait_for_deliveries`（命令和测试等后台发完）。日志设置在 `config/settings.py` 的 `LOGGING`。
   - 配置：`config/settings.py` 的 `EMAIL_*`、`SITE_URL`；`EMAIL_ENABLED=true` 时把邮件渠道加进 `NOTIFICATION_CHANNELS`。
   - 命令：`booking/management/commands/send_test_email.py`。
   - “申请已收到”：`services/bookings.py` `_created_notices`（`BOOKING_SUBMITTED`）；员工自己的重复预约：`services/series.py` `create_series`（`SERIES_CREATED`）；时间文字 `services/notifications.py` `describe_moment`。
 - **文档**：`backend/docs/email-setup.md`。
-- **测试**：`test_email_channel.py`；`test_sprint3.py` 里关于 `BOOKING_SUBMITTED`、`SERIES_CREATED` 的断言。
+- **测试**：`test_email_channel.py`（2026-10-27 新增：`test_the_response_does_not_wait_for_the_mail_server`、`test_emails_waiting_together_share_one_connection`、`test_each_sent_email_is_logged_with_its_notification_and_recipient_domain`、`test_a_mail_server_that_cannot_be_reached_is_logged_and_later_emails_still_go`）；`test_sprint3.py` 里关于 `BOOKING_SUBMITTED`、`SERIES_CREATED` 的断言。
 
 ## 12. Booking Records
 
@@ -391,3 +391,47 @@ No API, schema or booking-rule change. Review: project docs `claude/reports/2026
 | D1 文档 | `openapi.json` 1.19.0（72 路由）；`frontend-api.md`；`database/README.md`；CHANGELOG；本节；ARCHITECTURE 第 10 节；`frontend/README.md`、`PROJECT_GUIDE.md` 使用说明 | OpenAPI 校验及路由覆盖；任务卡记录完整检查的实际结果行 |
 
 实现前的失败日志和完整检查结果放在项目外 `9900/output/1.19.0-checks/`；最终验收和截图索引见 `claude/tasks-1.19.0.md` 及本轮交付报告。通知邮件的实际外部送达、线上 EC2 页面未在本轮验证。
+
+## 25. 结构整理 S1 + S3（2026-10-27，接口仍为 1.19.0）
+
+只搬移和删除，不改行为。报告：项目文档 `reports/2026-10-27-code-structure-review.md` 4.3、4.4 节。
+
+| 项 | 内容 | 证据 |
+| --- | --- | --- |
+| S1 | 删 31 个没用过的 CSS 类名：booking.css 21、workspace.css 8、shell.css 3、auth.css 2（审查清单里的 `ttf` 是字体扩展名，不是类名） | 每个类名在 src/tests 里搜不到（任务卡）；删除前后的 CSS 用 PostCSS 逐条比对：被删的选择器都含清单里的类，留下的规则声明一条没变（审查报告）；`check-local.sh` 全通过；截图比对见下 |
+| S3 | `features/booking/api.ts`、`types.ts` → `src/api/`：函数 7 个领域文件 + `client.ts`，类型 8 个文件，`index.ts` 统一导出；旧文件删除，不留转发 | 对照表（任务卡）；用 TypeScript 语法树逐条比对 128 条顶层语句：126 条一字不差，`post` 只多了 `export`，`ApiError` 的转发只改了相对路径；说明注释全部在原来的声明上方（审查修复 R1）；`grep "features/booking/(api\|types)"` 无结果；`check-local.sh` 全通过；截图比对：44 张改动后的截图都能和 `8ae931f` 的某一次截图逐像素相同（审查修复 R2） |
+| 文档 | `ARCHITECTURE.md` 第 7 节、`frontend/README.md` 的路径说明 | review |
+
+## 26. 页面流畅度 B 卡（2026-10-27，接口仍为 1.19.0）
+
+只改前端，任务卡：项目文档 `claude/tasks-fluency-2026-10-27.md`；不做卡 A 维修链路。
+
+| 项 | 文件和行为 | 验证 |
+| --- | --- | --- |
+| V2 | `frontend/src/features/booking/BookingApp.tsx`、`ui/workspace.css`：人数和设备房间筛选独立于标签区 | `tests/fluency.spec.ts` V2（320/390/1440px，完整标签、仅 tab、设备筛选、无水平溢出） |
+| V4 | `features/records/BookingRecordsPage.tsx`、`ui/workspace.css`：保留结果及对应筛选；更新中变淡/aria-busy/禁用输出；失败恢复，CSV 使用可见结果的筛选 | 同文件 V4（延迟、成功、失败、旧结果导出查询） |
+| V5 | 新 `features/announcements/use-announcements.ts`；`AnnouncementBoard.tsx` 改为接收状态；`dashboard/DashboardPage.tsx`、`admin/TodayPage.tsx` 协调首页首次显示 | 同文件 V5（三角色、公告延迟1.6秒、首帧位移0、失败/重试/空公告、首页数据晚到、刷新时公告不收起） |
+| V6 | `features/manager/ManagerBookingsPage.tsx`：仅首次加载错误显示与文字重试 | 同文件 V6（错误后无 Loading，重试恢复）；现有 routing 用例验证其他页面 |
+| V8 | `ui/workspace.css`：移除整页入场，不影响状态动效 | 同文件 V8（计算样式无入场、reduced-motion 仍有效） |
+
+红灯日志、前后截图和全套检查结果：项目外 `9900/output/fluency-2026-10-27/`，索引与验收状态见任务卡。
+
+## 27. 维修链路 A 卡（2026-10-28，接口仍为 1.19.0）
+
+只改前端，任务卡：项目文档 `claude/tasks-maintenance-2026-10-27.md`。
+
+| 项 | 文件和行为 | 验证 |
+| --- | --- | --- |
+| M1① | `frontend/src/api/admin.ts` `listUnfinishedBookings(since)`（替换 `listApprovedBookings`）；`features/manager/ManagerBookingsPage.tsx` 只请求还没结束的预约和申请 | `tests/maintenance.spec.ts` M1（请求的四个状态和 `since`） |
+| B1 | `ManagerBookingsPage.tsx` 的预约表和 Upcoming 列只用已批准的（`confirmed`）；`manager/ResourceStatusDialog.tsx` 显示预约加申请的合计 | 同文件 B1（弹窗 3 条含待审批、候补；表格只有已批准的） |
+| V3 | `ResourceStatusDialog.tsx` `onSaved(resource)` 交出接口返回的房间；`ManagerBookingsPage.tsx` 立即更新这一行，刷新中状态按钮禁用 | 同文件 V3（刷新延迟时这一行已是 Maintenance，Reopen 禁用；刷新后恢复） |
+
+## 28. Booking 筛选、个人历史与首页（2026-10-28，1.20.0，迁移 010）
+
+| 项 | 文件与入口 | 验证 |
+| --- | --- | --- |
+| F1 | `features/booking/MyBookings.tsx`、`ui/workspace.css`：资源／状态交集与 URL、数量、Clear filters | `tests/routing.spec.ts` booking history resource（三角色、刷新、空结果与手机） |
+| H1 后端 | `services/bookings.py` `remove_booking_history`；`views/bookings.py` `BookingHistoryRemoveView`、`my_bookings`；`urls.py`；`repository.py` / `postgres.py` 的 `hide_booking`、`hidden_booking_ids`；迁移 010 / schema.sql | `test_booking_history.py`：权限、状态、幂等、代约双方、回滚、原记录／缺席／日历保留、API 与 Dashboard；`test_postgres.py` 持久化与迁移连跑两遍 |
+| H1 前端 | `api/bookings.ts` `removeBookingHistory`；`MyBookings.tsx`、`SeriesCard.tsx`；`my-bookings.ts` `canRemoveBookingHistory` | routing booking history removal（三角色、取消确认、503 保留、成功与刷新）、逐日期移除 |
+| D1 | `DashboardPage.tsx`、`dashboard.css`、`workspace.css`：独立统计卡、紧凑 Next session 与预约列表、员工 Today 横幅 | routing booking dashboard（真实列表形状、桌面与320/390px）；既有 fluency 用例回归公告 |
+| 文档 | OpenAPI 1.20.0 / frontend-api.md、数据库 README、ARCHITECTURE 第10节、CHANGELOG | check-local 的 openapi 和 schema；具体输出见任务卡 |

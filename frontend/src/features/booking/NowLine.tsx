@@ -1,7 +1,7 @@
 // Sprint 3 (1.15.0): red "now" line drawn over a day's time cells (slot picker and Find a free time).
 import { useEffect, useState } from 'react'
 import { nowLineFraction } from './slot-cells'
-import type { Slot } from './types'
+import type { Slot } from '../../api/types/index.ts'
 
 type Cells = Pick<Slot, 'start' | 'end'>[]
 

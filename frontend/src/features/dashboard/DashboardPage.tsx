@@ -1,10 +1,11 @@
 import { AnnouncementBoard } from '../announcements/AnnouncementBoard' // Sprint 3 (1.19.0)
+import { useAnnouncements } from '../announcements/use-announcements' // Sprint 3 (fluency V5)
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
-import { getDashboard, listRequirements, listResources } from '../booking/api'
+import { getDashboard, listRequirements, listResources } from '../../api/index.ts'
 import { errorMessage, fmtDateTime, fmtRange, fmtTime, STATUS_TEXT, TZ } from '../booking/format'
 import { AlertIcon, CalendarIcon, CapIcon, CheckIcon, ClockIcon } from '../booking/icons'
-import type { Dashboard, Qualification, Requirement, Resource, User } from '../booking/types'
+import type { Dashboard, Qualification, Requirement, Resource, User } from '../../api/types/index.ts'
 import { InductionRow } from '../induction/InductionRow'
 import { blockingPrerequisite } from '../induction/status'
 import './dashboard.css'
@@ -42,6 +43,7 @@ export function DashboardPage({ user }: { user: User }) {
 }
 
 function DashboardSession({ user }: { user: User }) {
+  const announcements = useAnnouncements()
   const [state, setState] = useState<DashboardState>({ status: 'loading' })
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -80,6 +82,10 @@ function DashboardSession({ user }: { user: User }) {
     setState({ status: 'loading' })
     setRefreshKey((value) => value + 1)
   }
+  // Sprint 3 (fluency V5): publish the first home and announcement result together; errors also settle.
+  const loading = state.status === 'loading' || !announcements.settled
+  // Only the first paint waits; "Refresh overview" reloads the overview and the announcements stay in place.
+  const showAnnouncements = announcements.settled && (refreshKey > 0 || state.status !== 'loading')
   return (
     <div className="dash-page">
       {/* Sprint 3 (internal-tool UI, AI-2 / D5): the page is named like its menu item; no greeting, dateline or slogan. */}
@@ -91,21 +97,21 @@ function DashboardSession({ user }: { user: User }) {
       </header>
 
       {/* Sprint 3 (1.19.0): the same active announcements as the staff home page. */}
-      <AnnouncementBoard />
+      {showAnnouncements && <AnnouncementBoard announcements={announcements} />}
       <div className="dash-toolbar">
-        <span>{state.status === 'ready' ? `Updated ${fmtTime(new Date(state.loadedAt).toISOString())} · Sydney time` : 'Your booking overview'}</span>
-        <button className="dash-text-button" onClick={refresh} disabled={state.status === 'loading'}>
-          {state.status === 'loading' ? 'Refreshing…' : 'Refresh overview'}
+        <span>{state.status === 'ready' && !loading ? `Updated ${fmtTime(new Date(state.loadedAt).toISOString())} · Sydney time` : 'Your booking overview'}</span>
+        <button className="dash-text-button" onClick={refresh} disabled={loading}>
+          {loading ? 'Refreshing…' : 'Refresh overview'}
         </button>
       </div>
 
-      {state.status === 'loading' && (
+      {loading && (
         <div className="dash-loading" role="status">
           <span className="dash-loading-dot" aria-hidden="true" /> Loading your dashboard…
         </div>
       )}
 
-      {state.status === 'error' && (
+      {!loading && state.status === 'error' && (
         <div className="dash-error" role="alert">
           <AlertIcon size={28} />
           <div><h2>We couldn’t load your dashboard</h2><p>{state.message}</p></div>
@@ -113,7 +119,7 @@ function DashboardSession({ user }: { user: User }) {
         </div>
       )}
 
-      {state.status === 'ready' && <DashboardContent state={state} />}
+      {!loading && state.status === 'ready' && <DashboardContent state={state} />}
     </div>
   )
 }
@@ -172,20 +178,34 @@ function DashboardContent({ state }: { state: Extract<DashboardState, { status: 
         </Link>
       </section>
 
+      {/* Sprint 3 (1.20.0): keep the compact next session and booking list together, beside training. */}
       <div className="dash-columns">
-        <section className="dash-session" aria-labelledby="dash-bookings-title">
-          <div className="dash-session-top"><span>Next session</span>{nextBooking && <span className="dash-session-dot">Confirmed</span>}</div>
-          <svg className="dash-session-drawing" viewBox="0 0 230 180" fill="none" aria-hidden="true"><path d="M10 20h190v140H10zM10 100h80V20M90 100h110M145 100v60M40 20v30h50M10 125h45v35" stroke="currentColor" strokeWidth="1"/><path d="M90 20h110v80H90z" fill="currentColor" fillOpacity=".08"/><path d="M90 70a30 30 0 0 1 30 30M145 130a30 30 0 0 1 30-30" stroke="currentColor" strokeDasharray="3 4"/><path d="M90 70v30h30M145 130v-30h30" stroke="currentColor"/><path d="M115 42h60v32h-60zM128 38v-6m14 6v-6m14 6v-6m14 6v-6M128 80v6m14-6v6m14-6v6m14-6v6" stroke="currentColor"/><circle cx="210" cy="20" r="4" fill="currentColor"/><path d="M210 38v104M200 170H10" stroke="currentColor" strokeDasharray="2 5"/></svg>
-          {nextBooking ? <>
-            <h2 id="dash-bookings-title">{nextResource?.name ?? 'Your next booking'}</h2>
-            <p className="dash-session-time"><CalendarIcon size={17} />{fmtRange(nextBooking.start, nextBooking.end)}</p>
-            {nextResource?.location && <p className="dash-session-location">{nextResource.location}</p>}
-            <footer className="dash-session-footer"><span>Times in Sydney</span><Link className="dash-session-link" to="/bookings">Manage booking <span aria-hidden="true">↗</span></Link></footer>
-          </> : <>
-            <h2 id="dash-bookings-title">No upcoming bookings</h2>{/* Sprint 3 (internal-tool UI, AI-2) */}
-            <footer className="dash-session-footer"><span>Rooms &amp; equipment</span><Link className="dash-session-link" to="/resources">Browse resources <span aria-hidden="true">↗</span></Link></footer>
-          </>}
-        </section>
+        <div className="dash-booking-column">
+          <section className="dash-session" aria-labelledby="dash-bookings-title">
+            <div className="dash-session-top"><span>Next session</span>{nextBooking && <span className="dash-session-dot">Confirmed</span>}</div>
+            {nextBooking ? <>
+              <h2 id="dash-bookings-title">{nextResource?.name ?? 'Your next booking'}</h2>
+              <p className="dash-session-time"><CalendarIcon size={17} />{fmtRange(nextBooking.start, nextBooking.end)}</p>
+              {nextResource?.location && <p className="dash-session-location">{nextResource.location}</p>}
+              <footer className="dash-session-footer"><span>Times in Sydney</span><Link className="dash-session-link" to="/bookings">Manage booking <span aria-hidden="true">↗</span></Link></footer>
+            </> : <>
+              <h2 id="dash-bookings-title">No upcoming bookings</h2>{/* Sprint 3 (internal-tool UI, AI-2) */}
+              <footer className="dash-session-footer"><span>Rooms &amp; equipment</span><Link className="dash-session-link" to="/resources">Browse resources <span aria-hidden="true">↗</span></Link></footer>
+            </>}
+          </section>
+
+          {displayedBookings.length > 0 && <section className="dash-recent" aria-labelledby="dash-recent-title">
+            <header className="dash-panel-header"><h2 id="dash-recent-title">{upcoming.length ? 'More upcoming' : 'Recent requests'}</h2><Link className="dash-link" to="/bookings">View all bookings <span aria-hidden="true">↗</span></Link></header>
+            <ul className="dash-booking-list">{displayedBookings.map(booking => {
+              const start = new Date(booking.start)
+              return <li className="dash-booking" key={booking.id}>
+                <div className="dash-date" aria-hidden="true"><span>{monthFormat.format(start)}</span><strong>{dayFormat.format(start)}</strong></div>
+                <div className="dash-booking-info"><h3>{resourceById.get(booking.resource_id)?.name ?? 'Resource'}</h3><p>{fmtDateTime(booking.start)} – {fmtTime(booking.end)}</p></div>
+                <span className={`dash-badge dash-booking-status-${booking.status}`}>{STATUS_TEXT[booking.status]}</span>
+              </li>
+            })}</ul>
+          </section>}
+        </div>
 
         <section className="dash-panel" aria-labelledby="dash-induction-title">
           <header className="dash-panel-header">
@@ -215,18 +235,6 @@ function DashboardContent({ state }: { state: Extract<DashboardState, { status: 
           <footer className="dash-panel-footer"><Link className="dash-link" to="/induction">Manage induction & training <span aria-hidden="true">→</span></Link></footer>
         </section>
       </div>
-
-      {displayedBookings.length > 0 && <section className="dash-recent" aria-labelledby="dash-recent-title">
-        <header className="dash-panel-header"><h2 id="dash-recent-title">{upcoming.length ? 'More upcoming' : 'Recent requests'}</h2><Link className="dash-link" to="/bookings">View all bookings <span aria-hidden="true">↗</span></Link></header>
-        <ul className="dash-booking-list">{displayedBookings.map(booking => {
-          const start = new Date(booking.start)
-          return <li className="dash-booking" key={booking.id}>
-            <div className="dash-date" aria-hidden="true"><span>{monthFormat.format(start)}</span><strong>{dayFormat.format(start)}</strong></div>
-            <div className="dash-booking-info"><h3>{resourceById.get(booking.resource_id)?.name ?? 'Resource'}</h3><p>{fmtDateTime(booking.start)} – {fmtTime(booking.end)}</p></div>
-            <span className={`dash-badge dash-booking-status-${booking.status}`}>{STATUS_TEXT[booking.status]}</span>
-          </li>
-        })}</ul>
-      </section>}
     </>
   )
 }

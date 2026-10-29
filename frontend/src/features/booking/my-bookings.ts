@@ -1,8 +1,13 @@
 // Sprint 3: My Bookings shows a weekly series as one card instead of one card per date.
-import type { Booking } from './types.ts'
+import type { Booking } from '../../api/types/index.ts'
 
 /** Approval states that still count as live on My Bookings cards (shared by the page and SeriesCard). */
 export const ACTIVE = ['WAITING_QUALIFICATION', 'WAITLISTED', 'PENDING_APPROVAL', 'APPROVED']
+
+/** Sprint 3 (1.20.0): mirror the server's terminal-or-ended rule for each single/series date. */
+export function canRemoveBookingHistory(booking: Booking, now: number): boolean {
+  return ['CANCELLED', 'REJECTED', 'EXPIRED'].includes(booking.status) || Date.parse(booking.end) <= now
+}
 
 const SYDNEY = 'Australia/Sydney'
 const WEEKDAY_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']

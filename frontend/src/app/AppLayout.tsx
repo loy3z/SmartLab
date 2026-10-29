@@ -10,7 +10,7 @@ import {
   UserIcon,
   SlidersIcon, // Sprint 3 (1.16.0)
 } from '../features/booking/icons'
-import type { User } from '../features/booking/types'
+import type { User } from '../api/types/index.ts'
 import { NotificationBell } from '../features/notifications/NotificationBell' // Sprint 3
 import { homePath } from './routes'
 import { TestConsoleBar } from '../features/auth/TestConsoleBar'

@@ -1,6 +1,6 @@
 // Sprint 3: form rules for the Manager's resource setup page. The backend applies the same rules
 // (backend/booking/services/resources.py, _check_resource_fields); these only give quicker messages.
-import type { Resource, ResourceInput, ResourceKind } from '../booking/types.ts'
+import type { Resource, ResourceInput, ResourceKind } from '../../api/types/index.ts'
 
 export const SLOT_CHOICES = [15, 30, 60] as const
 export const MAX_DETAILS = 12 // Sprint 3 (1.16.0): "label: value" lines per resource (backend: resources.py MAX_DETAILS)

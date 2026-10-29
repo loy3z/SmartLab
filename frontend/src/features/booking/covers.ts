@@ -1,5 +1,5 @@
 // Sprint 3 (1.15.0): which picture a resource card shows until real photos are added.
-import type { Resource } from './types.ts'
+import type { Resource } from '../../api/types/index.ts'
 
 /** Cover groups. Each has its own colour and line icon (see ResourceCover in ResourceCard.tsx and booking.css). */
 export type CoverKey = 'room' | 'microscopy' | 'imaging' | 'electronics' | 'soldering' | 'fabrication' | 'analysis' | 'equipment'

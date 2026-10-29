@@ -1,7 +1,7 @@
 // Sprint 3: calendar subscription link on My Bookings.
 import { useState } from 'react'
 import { useFeedback } from '../../ui/feedback-context'
-import { getCalendarLink, resetCalendarLink } from './api'
+import { getCalendarLink, resetCalendarLink } from '../../api/index.ts'
 import { calendarUrl } from './attendance'
 import { errorMessage } from './format'
 

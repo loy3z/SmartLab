@@ -6,7 +6,7 @@ from several machines: each decision happens in a locked transaction and is made
 """
 from django.core.management.base import BaseCommand, CommandError
 
-from booking.notification_channels import deliver_new_notifications
+from booking.notification_channels import deliver_new_notifications, wait_for_deliveries
 from booking.repository import MemoryRepository
 from booking.runtime import get_service
 
@@ -29,6 +29,8 @@ class Command(BaseCommand):
         changed = service.process_due_requests()
         service.take_promoted_ids()
         deliver_new_notifications(service)
+        if not wait_for_deliveries(60):  # emails go out on a background thread; the command must not exit first
+            self.stderr.write("Some emails were still being sent after 60 seconds; see the log.")
         self.stdout.write(f"Decided or expired {len(changed)} request(s).")
         sync = getattr(service, "calendar_sync", None)
         if options["outlook_limit"] and sync is not None and sync.enabled:

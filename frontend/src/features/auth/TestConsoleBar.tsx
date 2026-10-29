@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
-import { changeTestSession } from '../booking/api'
+import { changeTestSession } from '../../api/index.ts'
 import { errorMessage } from '../booking/format'
-import type { Role, User } from '../booking/types'
+import type { Role, User } from '../../api/types/index.ts'
 import { getToken, setToken } from '../../lib/api-client'
 import { canAccess, homePath } from '../../app/routes'
 

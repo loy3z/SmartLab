@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router'
-import { demoLogin, demoRegister, getAuthConfig, setToken } from '../booking/api'
+import { demoLogin, demoRegister, getAuthConfig, setToken } from '../../api/index.ts'
 import { errorMessage } from '../booking/format'
-import type { AuthConfig } from '../booking/types'
+import type { AuthConfig } from '../../api/types/index.ts'
 import './mock-sso.css'
 
 // University sign-in is for students. Admins and Managers use the staff sign-in page.
@@ -23,7 +23,7 @@ export function MockSsoPage({ notice = '' }: { notice?: string }) {
   const [newName, setNewName] = useState('')
   const [newEmail, setNewEmail] = useState('')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<ReactNode>('')
   const mounted = useRef(false)
   const pending = useRef(false)
   const requestId = useRef(0)
@@ -75,7 +75,10 @@ export function MockSsoPage({ notice = '' }: { notice?: string }) {
       if (!mounted.current || currentRequest !== requestId.current) return
       pending.current = false
       setBusy(false)
-      setError(errorMessage(err))
+      // Sprint 3 (2026-10-28 feedback L1): staff accounts get a direct link instead of plain text.
+      setError((err as { code?: string })?.code === 'USE_STAFF_SIGN_IN'
+        ? <>Admins and Managers sign in on the <Link to="/staff/login" state={location.state}>Staff sign-in page</Link>.</>
+        : errorMessage(err))
     }
   }
 

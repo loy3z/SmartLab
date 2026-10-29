@@ -3,10 +3,10 @@ import { useCallback, useEffect, useState } from 'react'
 import { EmptyState, PageHeader, RefreshStamp } from '../../ui/components'
 import { useFeedback } from '../../ui/feedback-context'
 import { useAuth } from '../auth/auth-context'
-import { listFrozenUsers, listUnfreezeRequests, reviewUnfreeze, unfreezeUser } from '../booking/api'
+import { listFrozenUsers, listUnfreezeRequests, reviewUnfreeze, unfreezeUser } from '../../api/index.ts'
 import { frozenUntilText } from '../booking/attendance'
 import { errorMessage, fmtDateTime } from '../booking/format'
-import type { FrozenUser, UnfreezeRequest } from '../booking/types'
+import type { FrozenUser, UnfreezeRequest } from '../../api/types/index.ts'
 
 /**
  * Admin/Manager: people whose booking is frozen after missed check-ins, and their unfreeze requests.

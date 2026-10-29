@@ -119,7 +119,7 @@ Induction prerequisites come from each requirement's `prerequisite_ids` (for exa
 
 `AppLayout.tsx` owns responsive navigation and the account menu. `NavLink` highlights the current menu item, `Link` handles internal links, and `Outlet` displays the matching child page. Booking completion uses `useNavigate` to open My bookings. When adding a protected page, add its `Route`, its role permissions in `routes.ts`, and its navigation entry if needed.
 
-`src/features/auth/` owns authentication state and the login screen. `src/lib/api-client.ts` owns JSON/file transport and session invalidation. `src/features/booking/api.ts` holds the business API calls used by the booking and admin pages.
+`src/features/auth/` owns authentication state and the login screen. `src/lib/api-client.ts` owns JSON/file transport and session invalidation. `src/api/` holds the business API calls used by every page, split by area (auth, bookings, resources, admin, notifications, announcements, site) and re-exported from `src/api/index.ts`; shared types live in `src/api/types/`.
 
 Dashboard data comes from `dashboard/`, `resources/` and `qualification-requirements/`. Upcoming bookings count only approved bookings whose start is in the future. Qualification summaries use each requirement's latest submission. Errors and empty states are distinct; users can refresh the overview. Dates are shown in Australia/Sydney. No mock totals are displayed.
 

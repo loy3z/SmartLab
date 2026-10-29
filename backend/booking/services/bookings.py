@@ -191,6 +191,21 @@ class BookingsMixin:
                 self._promote_waitlist(revised.resource_id)
             return revised
 
+    # Sprint 3 (1.20.0): a person clears history without altering the shared booking or its consequences.
+    def remove_booking_history(self, actor, booking_id):
+        """Hide only my own/created terminal or ended booking; repeat calls have no further effects."""
+        source = self.repo.get_booking(str(booking_id))
+        if source is None or actor.id not in (source.student_id, source.created_by):
+            raise DomainError("NOT_FOUND", "Booking not found.", 404)
+        with self.repo.atomic(resource_ids=[source.resource_id], student_ids=[source.student_id, actor.id]):
+            source = self.repo.get_booking(source.id)
+            terminal = (BookingStatus.CANCELLED, BookingStatus.REJECTED, BookingStatus.EXPIRED)
+            if source.status not in terminal and source.end > self.now():
+                raise DomainError("BOOKING_NOT_HISTORY", "Cancel or withdraw an active booking before removing it from history.", 409)
+            if source.id not in self.repo.hidden_booking_ids(actor.id):
+                self.repo.hide_booking(actor.id, source.id, self.now())
+                self._audit(actor.id, "BOOKING_HISTORY_REMOVED", "booking", source.id)
+
     def cancel_booking(self, actor, booking_id):
         self.process_due_requests()
         source = self.booking_for(actor, booking_id)

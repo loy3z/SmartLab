@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { EmptyState, PageHeader, RefreshStamp, Tabs } from '../../ui/components'
 import { useFeedback } from '../../ui/feedback-context'
-import { archiveResource, createResource, listAllResources, listRequirements, restoreResource, updateResource } from '../booking/api'
+import { archiveResource, createResource, listAllResources, listRequirements, restoreResource, updateResource } from '../../api/index.ts'
 import { errorMessage, fmtDuration, fmtHours, fmtRange } from '../booking/format'
-import type { BookingOutsideRules, Requirement, Resource, ResourceDetail, ResourceInput, ResourceKind } from '../booking/types' // Sprint 3 (1.16.0): ResourceDetail
+import type { BookingOutsideRules, Requirement, Resource, ResourceDetail, ResourceInput, ResourceKind } from '../../api/types/index.ts' // Sprint 3 (1.16.0): ResourceDetail
 import { changedFields, checkResource, describeHours, emptyResource, hoursFromMinutes, MAX_DETAILS, minutesFromHours, PROBLEM_TEXT, resourceToInput, SLOT_CHOICES } from './resource-form' // Sprint 3 (1.16.0): hours helpers, MAX_DETAILS
 
 type View = 'ROOM' | 'EQUIPMENT' | 'ARCHIVED'

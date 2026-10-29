@@ -2,6 +2,70 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.20.0 之后：线上试用反馈 L1–L5（2026-10-28，接口不变）
+
+依据 Loy 部署后的试用反馈 `claude/reports/2026-10-28-live-feedback.md`。只改前端。
+
+- L1：用员工账号在大学登录页登录时，提示里的“Staff sign-in page”改成链接，直接打开员工登录页。
+- L2：Today 页的待办卡在电脑上固定每行 3 张，只有一张时不再拉满整行；“Decide soon”和“Out of service”只出现一个时占满整行。右边的绿勾只在没有待审事项时显示。
+- L3：公告卡片的 Edit／Remove 挪到右上角。真删除和 7 天折叠区不做，作为提议问客户。
+- L4：登录页面包屑里的“SmartLab”改成链接，可以回到登录首页；员工登录页不再是死胡同。
+- L5：Today 页的 Urgent 卡片顶部加红线，数字改成红色，和黄线的普通待办区分开。
+- 顺带删掉一条死规则 `.today-brief p`：页面上已经没有这个元素。
+
+## 1.20.0：Booking 筛选、个人历史与首页（2026-10-28，迁移 010）
+
+依据 Loy 对 eDoc 的分析及随后“直接动手改”的授权，任务卡 `claude/tasks-booking-history-2026-10-28.md`。
+
+- My bookings 在现有分类下增加 Resource 筛选、匹配数量和 Clear filters；URL 同时记住分类和资源，切换本地筛选不重取预约。
+- 学生、Admin、Manager 可逐条移除自己的已结束／取消／拒绝／过期历史；重复预约逐日期处理。服务端按用户保存隐藏记录，代约双方独立。原预约、员工报表、缺席、通知和日历保留，未来或进行中的有效预约须先取消／撤回。
+- 学生 Dashboard 独立统计卡、缩小 Next session，后续预约与它同栏；员工 Today 缩小状态横幅。保留公告、培训、审批与维修信息，不加图表或日期筛选。
+
+## 维修链路 A 卡（2026-10-28，接口仍为 1.19.0）
+
+依据项目任务卡 `claude/tasks-maintenance-2026-10-27.md`（Loy 2026-10-27 定 B1 只显示合计数，并把卡 A 收窄为只改前端的最简版本）。来源：Codex 维修流程审查 M1、B1、V3 和 Claude Code 的复查。
+
+- **M1①**：Room management 不再取回全部历史已批准预约，改为只请求还没结束的预约和申请（`status=APPROVED,PENDING_APPROVAL,WAITLISTED,WAITING_QUALIFICATION&since=<现在>`，现有接口参数）。本机 5000 条合成预约时，保存后的刷新从约 3.7 秒降到约 0.76 秒（线上预约很少，没有线上实测）。`listApprovedBookings` 换成 `listUnfinishedBookings`。
+- **B1**：维修、关闭、重开弹窗的人数改为已批准预约加待审批、候补申请的合计，和后端实际通知的范围一致；之前只算已批准的，只有申请时会显示 0。页面上的预约表和 Upcoming 列仍只算已批准的。弹窗文案：`N upcoming bookings and requests affected.`
+- **V3**：保存成功后立即用接口返回的房间状态更新这一行，再照旧刷新（重开会推进候补）；刷新完成前，房间的状态按钮不能点，避免在旧状态上再点一次又发一轮通知。
+- 先不做（Loy：系统已有点臃肿）：M1② 序列化批量查询、M3、M4；按类型分开显示人数等细节作为和客户提的想法。
+- 验证入口：`frontend/tests/maintenance.spec.ts`（拦截全部 API）。
+
+## 页面流畅度 B 卡（2026-10-27，接口仍为 1.19.0）
+
+依据项目任务卡 `claude/tasks-fluency-2026-10-27.md` 中 Loy 已确认的 V2、V4、V5、V6、V8。仅改前端，不改接口、后端或维修业务链路。
+
+- **V2**：人数筛选和 Equipment 的房间下拉移到资源标签下方独立一行，标签滚动区只包含标签；320px、390px 下不必横向滚动才能看完整个筛选。
+- **V4**：Booking records 切换条件时保留旧结果并变淡，表格标记 `aria-busy`，显示 `Updating…`，暂时禁用 Print/Export。成功后更新数量、行和对应条件；失败后保留旧结果、显示错误并恢复按钮，CSV 按这张表原本对应的条件导出，避免与可见结果不一致。
+- **V5**：学生 Dashboard 和员工 Today 都等首页数据与公告请求结束后再显示首屏内容；公告失败仍显示首页及原来的错误/重试，没有公告时不留空白。共用 `useAnnouncements` 管理首次公告结果，重试不卸载已有首页。只等首次显示：之后点 Refresh overview / Refresh now，公告保持不动（复查修复：学生 Dashboard 原先刷新时会把公告一起收起）。
+- **V6**：Room management 首次加载失败时不再显示 Loading，错误下方提供 `Try again`；其他页面的 RefreshStamp、维修弹窗及其刷新方式不变。
+- **V8**：删除整页装饰性淡入及其无用关键帧，保留控件反馈和减少动画设置。
+- 验证入口：`frontend/tests/fluency.spec.ts`（拦截全部 API；延迟、失败、重试、筛选结果/CSV 一致性、公告首次位置和 reduced-motion）。改动前失败和前后截图放在项目外 `9900/output/fluency-2026-10-27/`；验收结果见任务卡。
+
+## 邮件改为后台发送、到期处理不再逐条加锁（2026-10-27，接口仍为 1.19.0）
+
+依据 `claude/tasks-performance-2026-10-27.md` P1–P4（Loy 2026-10-27 说“开始”）。线上开了邮件之后，提交预约要卡 2–3 秒。原因是请求返回前同步发邮件，而从 EC2 连接、加密、登录 Gmail 的中位数是 1875 ms（只连不发，连测 5 次），每封邮件都新建一次连接。
+
+- **P1 后台发送**：`booking/email_channel.py` 的 `EmailOutbox`。请求里只把写好的邮件放进队列，每个后端进程一个后台线程负责发送，接口响应不再等邮件服务器。发送失败照旧只记日志。代价：进程被强行杀掉时，队列里还没发出的邮件会丢；正常关闭时最多等 `EMAIL_TIMEOUT` 秒发完。`manage.py process_due` 退出前等邮件发完（最多 60 秒）。
+- **P2 共用连接**：同时在排队的邮件（约 0.2 秒内进来的）用一条 SMTP 连接发出。
+- **P3 发送日志**：每批记连接耗时；每封记通知编号、收件人域名、排队时间和发送耗时。`config/settings.py` 新增 `LOGGING`，把 `booking` 的 INFO 日志打到控制台（可用 `LOG_LEVEL` 调）。以前没有日志配置，Python 默认只显示 WARNING 以上，INFO 级别的“邮件跳过”在服务器日志里看不到。
+- **P4**：`EMAIL_TIMEOUT` 保持 10 秒；`backend/docs/email-setup.md` 写了它现在的作用、日志格式和局限。
+- 本机效果（PostgreSQL 临时库 5000 条预约；用假邮件后端模拟 Gmail：连接 1.9 秒，每封 0.3 秒）：提交预约的中位数从 2729 ms 降到 491 ms；5 封邮件都发出，用了 3 条连接（改前是 5 条）。剩下的约 0.5 秒是 `process_due_requests`（见任务卡，本轮没改）。
+- 邮件晚到约 4 分钟不是应用的原因：看邮件头，时间花在 UNSW 那边（Proofpoint 2 分 30 秒、Microsoft 365 1 分 19 秒，`claude/reports/2026-10-27-email-headers.md`），这次的改动不会让邮件更早到。
+- 测试：`test_email_channel.py` 新增 4 个，改动前都失败；原有的邮件测试改为等后台发完再检查。
+- **P5 到期处理先判断再加锁**（Loy 2026-10-27 说“开始”）：每个 API 请求都会跑 `process_due_requests`（`services/waitlist.py`），它以前对每条还没决定的申请都开事务、加锁、重读，哪怕还没到期。本机 200 条待审批时，每个请求要多跑约 1200 条 SQL、多花约 0.2 秒，并且每次都锁住这些资源和学生行。现在先用读到的数据判断（`_due_for_processing`：开始时间已过，或审批期已到），没到期就跳过；加锁后照旧再判断一次，规则不变。本机 `process_due_requests` 从 1204 条 SQL、521 ms 降到 4 条 SQL、329 ms；各接口从约 530 ms 降到约 335 ms。测试 `test_approval_flow.py` `test_requests_that_are_not_due_yet_are_not_locked`（改前失败：2 != 0）。
+- 剩下的约 330 ms（本机 5000 条预约）：`process_due_requests`、`_process_attendance`、`_booking_reminders` 每次请求各把**全部**预约读出来再在 Python 里筛，一次约 110 ms，随历史预约总数线性增长。本轮没改。
+
+## 结构整理 S1 + S3（2026-10-27，接口仍为 1.19.0）
+
+按 `reports/2026-10-27-code-structure-review.md` 的 4.3、4.4 节，只做搬移和删除，不改任何行为：没有接口、数据库、预约规则、界面文案或样式效果的变化。
+
+- **S1：删掉 31 个没用过的 CSS 类名**：`features/booking/booking.css` 21 个、`ui/workspace.css` 8 个、`app/shell.css` 3 个、`features/auth/auth.css` 2 个（有 3 个类名在两个文件里都有规则）。审查清单原来写 32 个，其中 `ttf` 是字体地址 `manrope-regular.ttf` 被误认成类名，实际没有这个类，也没有删任何东西。删前对每个类名在 `frontend/src` 和 `frontend/tests` 里搜过 `.ts`、`.tsx`、`.mjs`，全部只出现在 CSS 里。含 `:is()` 的选择器只移除它里面的目标成员（例如手机断点的 `.app-shell :is(.ui-tabs, .bk-pills, .bk-mode-tabs)` 保留前两个）。
+- **S3：接口层搬到 `src/api/`**：`features/booking/api.ts`（73 个函数）和 `types.ts`（52 个类型）按领域拆成 `src/api/{auth,bookings,resources,admin,notifications,announcements,site}.ts`、`src/api/client.ts` 和 `src/api/types/<领域>.ts`，`src/api/index.ts` 和 `src/api/types/index.ts` 统一导出。函数体和类型定义一个字没改；旧文件删除，不留转发。原文件里局部定义的 `BookingRequest` 一并移到 `types/bookings.ts`。审查时发现拆分把 19 条说明注释挂到了别的声明上（例如 `lookupPerson` 的说明跑到了 `listBookings` 上面），已全部放回原位（Claude Code，`claude/reports/2026-10-27-review-structure.md` R1）。
+- 所有使用方改成从 `src/api`（`index.ts`）导入；Node 单元测试导入的文件仍写完整 `.ts` 扩展名、类型用 `import type`。
+- 行为不变的证据：`check-local.sh` 全通过（backend 379、pg 26、openapi 1.19.0 / 72 路由、unit 72、lint、build、e2e 75）；截图比对：22 个页面 × 桌面 1440×900 / 手机 390×844 = 44 张，每张改动后的截图都能和改动前（`8ae931f`）的某一次截图逐像素相同（有 5 个页面同一版本连截两次也会有几十到上千像素的随机差异，对这些页面多截了几次）。交付时写的“44 张全部一致”不成立：当时的比较脚本只看透明通道、不看颜色，且其中 8 张是白屏，已修正脚本并重新截图（审查报告 R2）。
+- 文档：`ARCHITECTURE.md` 第 7 节、`frontend/README.md` 的路径说明；`SPRINT3.md` 第 25 节列了搬移和删除。旧的 SPRINT3 小节是历史记录，没有改。
+
 ## 1.19.0：通知设置页和署名公告（2026-10-26，Sprint 3）
 
 依据 Loy 确认的 `claude/tasks-1.19.0.md`（N1、N2、A1–A4、D1）。通知设置原来藏在 Account 页，且一个开关同时控制站内和邮件；现在侧栏 **Notifications** 独立显示五个类别，两列 **In the bell / By email** 分别即时保存。Account 只保留设置链接。网站关闭邮件时，邮件列禁用并说明原因。

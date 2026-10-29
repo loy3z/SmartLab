@@ -1,5 +1,5 @@
 // Sprint 3: notification helpers (badge, link, tone).
-import type { AppNotification } from '../booking/types.ts'
+import type { AppNotification } from '../../api/types/index.ts'
 
 /** Text for the bell badge: nothing at 0, "99+" above 99. */
 export function badgeText(unread: number): string {

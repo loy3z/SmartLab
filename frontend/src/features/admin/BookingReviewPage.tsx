@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { Drawer, EmptyState, Facts, InfoDisclosure, PageHeader, RefreshStamp, Tabs } from '../../ui/components'
 import { useFeedback } from '../../ui/feedback-context'
 import { useAuth } from '../auth/auth-context'
-import { listAdminBookings, listAdminQualifications, listResources, listStudentBookings, reviewBooking } from '../booking/api'
+import { listAdminBookings, listAdminQualifications, listResources, listStudentBookings, reviewBooking } from '../../api/index.ts'
 import { errorMessage, fmtDateTime, fmtDuration, fmtRange, fmtRelative, minutesBetween, STATUS_TEXT } from '../booking/format'
-import type { Booking, Qualification, Resource } from '../booking/types'
+import type { Booking, Qualification, Resource } from '../../api/types/index.ts'
 
 type ReviewTab = 'PENDING_APPROVAL' | 'WAITLISTED'
 const URGENT_MS = 2 * 60 * 60 * 1000

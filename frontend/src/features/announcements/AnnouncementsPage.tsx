@@ -1,10 +1,10 @@
 // Sprint 3 (1.19.0): staff manual announcements with server-enforced ownership.
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import { useAuth } from '../auth/auth-context'
-import { createAnnouncement, listAnnouncements, removeAnnouncement, updateAnnouncement } from '../booking/api'
+import { createAnnouncement, listAnnouncements, removeAnnouncement, updateAnnouncement } from '../../api/index.ts'
 import { errorMessage } from '../booking/format'
 import { Modal } from '../booking/Modal'
-import type { Announcement } from '../booking/types'
+import type { Announcement } from '../../api/types/index.ts'
 import { AnnouncementText } from './AnnouncementBoard'
 import { dateTimeInput, dateTimeISO } from './dates'
 
@@ -70,15 +70,20 @@ export function AnnouncementsPage() {
       {loading && <p role="status">Loading announcements…</p>}
       {!loading && !items.length && <p>No announcements have been published.</p>}
       {items.map(item => <article key={item.id}>
-        <span className="ui-pill">{item.removed_at ? 'Removed' : item.active ? 'Active' : 'Expired'}</span>
-        {item.kind === 'RESOURCE_STATUS' && <span className="ui-pill">From room status</span>}
+        {/* Sprint 3 (2026-10-28 feedback L3): status on the left, Edit/Remove in the top-right corner. */}
+        <div className="announcement-card-head">
+          <div>
+            <span className="ui-pill">{item.removed_at ? 'Removed' : item.active ? 'Active' : 'Expired'}</span>
+            {item.kind === 'RESOURCE_STATUS' && <span className="ui-pill">From room status</span>}
+          </div>
+          {item.kind === 'MANUAL' && !item.removed_at && <div className="announcement-card-actions">
+            {item.created_by === user?.id && <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} aria-label={`Edit ${item.title}`} onClick={() => {
+              setEditing(item.id); setTitle(item.title); setBody(item.body); setExpires(dateTimeInput(item.expires_at)); setError('')
+            }}>Edit</button>}
+            {(item.created_by === user?.id || user?.role === 'MANAGER') && <button className="ui-btn ui-btn-reject ui-btn-sm" disabled={busy} aria-label={`Remove ${item.title}`} onClick={() => { setRemoveError(''); setRemoving(item) }}>Remove</button>}
+          </div>}
+        </div>
         <AnnouncementText item={item} />
-        {item.kind === 'MANUAL' && !item.removed_at && <div className="announcement-actions">
-          {item.created_by === user?.id && <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} aria-label={`Edit ${item.title}`} onClick={() => {
-            setEditing(item.id); setTitle(item.title); setBody(item.body); setExpires(dateTimeInput(item.expires_at)); setError('')
-          }}>Edit</button>}
-          {(item.created_by === user?.id || user?.role === 'MANAGER') && <button className="ui-btn ui-btn-reject ui-btn-sm" disabled={busy} aria-label={`Remove ${item.title}`} onClick={() => { setRemoveError(''); setRemoving(item) }}>Remove</button>}
-        </div>}
       </article>)}
     </section>
     {removing && <Modal label="Remove announcement" onClose={() => { if (!busy) setRemoving(null) }}>

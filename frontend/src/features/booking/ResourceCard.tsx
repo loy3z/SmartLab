@@ -1,6 +1,6 @@
 import { fmtHours } from './format' // Sprint 3 (internal-tool UI, AI-6)
 import { AlertIcon, CheckIcon, ClockIcon, PinIcon } from './icons'
-import type { Resource } from './types'
+import type { Resource } from '../../api/types/index.ts'
 
 export type InductionState = 'VERIFIED' | 'PENDING' | 'NOT_SUBMITTED' | 'REJECTED' | 'EXPIRED' | 'NOT_CONFIGURED' | 'PREREQUISITE_REQUIRED'
 

@@ -1,5 +1,5 @@
 import { fmtDateTime, fmtTime } from './format.ts'
-import type { Slot } from './types.ts'
+import type { Slot } from '../../api/types/index.ts'
 
 /** How one time cell is shown in the slot picker and the day grid. */
 export type CellKind = 'free' | 'taken' | 'held' | 'mine' | 'closed'

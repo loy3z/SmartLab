@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { getMe } from '../booking/api'
+import { getMe } from '../../api/index.ts'
 import { errorMessage } from '../booking/format'
 import { AUTH_CHANGE_EVENT, AUTH_REFRESH_EVENT, getToken, setToken, TOKEN_KEY } from '../../lib/api-client'
 import { AuthContext, type AuthState } from './auth-context'

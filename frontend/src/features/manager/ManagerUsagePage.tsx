@@ -1,9 +1,9 @@
 // Sprint 3: Manager usage report. The figures are worked out by the backend (booking/services/reports.py).
 import { useEffect, useMemo, useState } from 'react'
 import { EmptyState, PageHeader } from '../../ui/components'
-import { getUsageReport } from '../booking/api'
+import { getUsageReport } from '../../api/index.ts'
 import { errorMessage, todaySydney } from '../booking/format'
-import type { UsageReport } from '../booking/types'
+import type { UsageReport } from '../../api/types/index.ts'
 import { lastFourWeeks, percent, sortUsage } from './usage'
 
 export function ManagerUsagePage() {

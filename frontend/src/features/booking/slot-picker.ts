@@ -1,6 +1,6 @@
 // Sprint 3 (2026-10-25 cleanup): date helpers moved out of SlotPicker.tsx.
 import { todaySydney } from './format'
-import type { Availability } from './types'
+import type { Availability } from '../../api/types/index.ts'
 
 /** Shift a YYYY-MM-DD date by whole days. */
 export function addDays(ymd: string, days: number): string {

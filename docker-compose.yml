@@ -47,7 +47,13 @@ services:
       # Address people open in the browser; used for links in emails.
       SITE_URL: ${SITE_URL:-http://localhost}
       OUTLOOK_ENABLED: "false"
+      # Sprint 3 (2026-10-27): the API reads the email settings from its own environment, so every value
+      # that lives in .env.docker has to be passed through here (otherwise EMAIL_HOST_USER is empty).
       EMAIL_ENABLED: ${EMAIL_ENABLED:-false}
+      EMAIL_MODE: ${EMAIL_MODE:-allowlist}
+      EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
+      EMAIL_REDIRECT_TO: ${EMAIL_REDIRECT_TO:-}
       GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/api/v1/health/ >/dev/null || exit 1"]

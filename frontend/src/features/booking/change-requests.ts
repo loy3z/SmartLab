@@ -1,6 +1,6 @@
 // Sprint 3 (1.16.0): wording and rules for change requests on My Bookings (backend: services/changes.py).
 import { fmtDateTime, fmtRange, STATUS_TEXT } from './format.ts'
-import type { Booking } from './types.ts'
+import type { Booking } from '../../api/types/index.ts'
 
 /** Whether to offer "Change time": the person's own approved booking that has not started and has no change waiting. */
 export function canAskForChange(booking: Booking, userId: string | undefined, now: number): boolean {

@@ -1,11 +1,11 @@
 import { useRef, useState } from 'react'
 import { useAuth } from '../auth/auth-context'
 import { useFeedback } from '../../ui/feedback-context'
-import { createBooking, lookupPerson } from './api'
+import { createBooking, lookupPerson } from '../../api/index.ts'
 import { errorMessage, fmtDuration, fmtHours, fmtRange, newIdempotencyKey, SEPARATE_BOOKING_TEXT, submitBlocker, submittedMessage } from './format'
 import { ResourceFacts } from './ResourceCard' // Sprint 3 (1.16.0)
 import { SlotPicker, type SlotRange } from './SlotPicker'
-import type { PersonBrief, Resource } from './types'
+import type { PersonBrief, Resource } from '../../api/types/index.ts'
 
 type BookFor = 'self' | 'other'
 

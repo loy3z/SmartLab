@@ -4,10 +4,10 @@
 
 ## 包含的文件和数据
 
-- `database/schema.sql`：16 张表（含 `site_contact`、`notification_preference`、1.19.0 的 `announcement`）、约束、索引、序列和审计保护触发器。
+- `database/schema.sql`：17 张表（含 `site_contact`、`notification_preference`、1.19.0 的 `announcement`、1.20.0 的 `booking_history_removal`）、约束、索引、序列和审计保护触发器。
 - `database/seed_resources.sql`：2 条培训要求（Advanced 要求先通过 General）、2 个房间、20 台设备（记录所在房间）。
 - `database/seed_users.sql`：6 个演示账号（与内存版演示数据相同的假 zID 和 id），以及 z1000001 一条已通过的 induction。全部是编造的数据，不要把真实学生的 zID 提交进 Git。
-- `database/migrations/`：已有数据库的升级脚本 001–009，按编号顺序执行，都可以重复执行（见第 2 节）。
+- `database/migrations/`：已有数据库的升级脚本 001–010，按编号顺序执行，都可以重复执行（见第 2 节）。
 - `booking/tests/test_postgres.py`：用真实 PostgreSQL 跑的适配器集成测试（见第 6 节）。
 - `booking/postgres.py`：数据库及上传文件存储适配器。
 - `requirements-postgres.txt`：后端依赖及 PostgreSQL 驱动。
@@ -68,6 +68,18 @@ Get-ChildItem .\database\migrations\*.sql | Sort-Object Name | ForEach-Object {
 | `007_change_requests_guidance_details_contact.sql` | 1.16.0：`booking` 加 `replaces_id`（申请改期，外键指向原预约，加部分唯一索引：一个预约同时只有一个未决定的改期）；`qualification_requirement` 加 `how_to_complete`、`accepted_evidence`、`reviewer`、`contact`（默认空）；`bookable_resource` 加 `capacity`（只有房间，1–1000）和 `details`（`jsonb` 数组，默认 `[]`）；新表 `site_contact`（实验室联系方式，只有一行）。不改已有数据 |
 | `008_notification_preferences.sql` | 每人每类别的通知站内开关 `notification_preference.enabled` |
 | `009_announcements_notification_channels.sql` | Sprint 3（1.19.0）：偏好加 `email_enabled DEFAULT true NOT NULL`，保留旧 `enabled`；通知记录加 `in_app`、`email` 渠道快照（默认 true）；新表 `announcement`、每资源一条未下架状态公告的部分唯一索引及时间索引 |
+| `010_booking_history_removal.sql` | 1.20.0：每用户／预约一条个人历史移除记录；复合主键保证幂等，外键保留原预约和用户；不删除或修改任何预约 |
+
+### 1.20.0 已有数据库升级（Sprint 3）
+
+已有库到 009 时，执行 `010_booking_history_removal.sql` 即可；脚本可重复执行、不修改已有预约。新建库已在 schema.sql 包含相同表。旧后端代码不受新增表影响，新后端在接流量前必须先迁移。
+
+```powershell
+& "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\010_booking_history_removal.sql'
+if ($LASTEXITCODE -ne 0) { throw '010 升级失败，事务已回滚。' }
+```
+
+`booking_history_removal(principal_id, booking_id, removed_at)` 只控制个人列表可见性，不用于报表、缺席或日历。新建／升级结构一致性用 `bash claude-tools/check-local.sh schema` 验证；本轮不部署。
 
 ### 1.19.0 已有数据库升级（Sprint 3）
 

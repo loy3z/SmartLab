@@ -32,7 +32,8 @@ class NotificationDeliveryMiddleware:
     """Sprint 3: after each API request, send its new notifications through extra channels (booking/notification_channels.py).
 
     Runs after the view, so the database transaction that stored the notifications has finished. Always clears the
-    per-request list, even when no channel is configured.
+    per-request list, even when no channel is configured. Email only queues the message here and sends it on a
+    background thread (booking/email_channel.py), so the response does not wait for the mail server.
     """
     def __init__(self, get_response):
         self.get_response = get_response

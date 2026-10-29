@@ -1,6 +1,6 @@
 import { Link } from 'react-router'
 import { CapIcon, CheckIcon, AlertIcon, ClockIcon } from '../booking/icons'
-import type { Qualification, Requirement, Resource } from '../booking/types'
+import type { Qualification, Requirement, Resource } from '../../api/types/index.ts'
 import { describeInduction, unlocksText } from './status'
 import { InductionGuide } from './InductionGuide' // Sprint 3 (1.16.0)
 

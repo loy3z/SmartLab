@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { User } from '../booking/types'
+import type { User } from '../../api/types/index.ts'
 
 export interface AuthState {
   status: 'loading' | 'authenticated' | 'anonymous' | 'error'

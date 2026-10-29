@@ -145,6 +145,36 @@ class PostgresAdapterTests(TransactionTestCase):
             self.service.submit_qualification(self.a, advanced.id, "Advanced", "", b"x", "a.pdf", "application/pdf")
         self.assertEqual(denied.exception.code, "PREREQUISITE_REQUIRED")
 
+    # Sprint 3 (1.20.0): persisted personal visibility and atomic rollback, on a real database.
+    def test_history_removal_persists_per_person_without_deleting_the_booking(self):
+        from booking.postgres import PostgresRepository
+        self.verified(self.a)
+        booking = self.service.create_booking(self.manager, self.room.id, self.start, self.end, 'History',
+                                               on_behalf_of_zid=self.a.zid)[0]
+        booking = self.service.cancel_booking(self.manager, booking.id)
+        self.service.remove_booking_history(self.manager, booking.id)
+        self.service.remove_booking_history(self.manager, booking.id)
+        reloaded = PostgresRepository()
+        self.assertEqual(reloaded.hidden_booking_ids(self.manager.id), {booking.id})
+        self.assertEqual(reloaded.hidden_booking_ids(self.a.id), set())
+        self.assertEqual(reloaded.get_booking(booking.id), booking)
+        self.assertIn(booking, self.service.booking_report(self.manager))
+        with self.assertRaises(RuntimeError):
+            with self.repo.atomic(student_ids=[self.a.id]):
+                self.repo.hide_booking(self.a.id, booking.id, self.now)
+                raise RuntimeError('rollback')
+        self.assertEqual(reloaded.hidden_booking_ids(self.a.id), set())
+
+    def test_010_history_migration_can_run_twice_without_losing_removals(self):
+        self.verified(self.a)
+        booking = self.service.create_booking(self.a, self.room.id, self.start, self.end, 'History')[0]
+        self.repo.hide_booking(self.a.id, booking.id, self.now)
+        migration = Path(settings.BASE_DIR) / 'database/migrations/010_booking_history_removal.sql'
+        with connection.cursor() as cursor:
+            cursor.execute(migration.read_text())
+            cursor.execute(migration.read_text())
+        self.assertEqual(self.repo.hidden_booking_ids(self.a.id), {booking.id})
+
     @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
     def test_staff_invite_activation_and_sign_in_are_persisted(self):
         staff = self.service.create_staff(self.manager, f"z{uuid4().int % 10_000_000:07d}", "New admin",

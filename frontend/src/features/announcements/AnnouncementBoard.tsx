@@ -1,9 +1,8 @@
 // Sprint 3 (1.19.0): shared active announcements on student and staff home pages.
-import { useEffect, useState } from 'react'
-import { listAnnouncements } from '../booking/api'
-import { errorMessage, fmtDate, fmtDateTime } from '../booking/format'
-import type { Announcement } from '../booking/types'
+import { fmtDate, fmtDateTime } from '../booking/format'
+import type { Announcement } from '../../api/types/index.ts'
 import { dateTimeInput } from './dates'
+import type { useAnnouncements } from './use-announcements'
 
 export function AnnouncementText({ item }: { item: Announcement }) {
   return <>
@@ -14,17 +13,10 @@ export function AnnouncementText({ item }: { item: Announcement }) {
   </>
 }
 
-export function AnnouncementBoard() {
-  const [items, setItems] = useState<Announcement[]>([])
-  const [error, setError] = useState('')
-  const [retry, setRetry] = useState(0)
-  useEffect(() => {
-    let active = true
-    listAnnouncements().then(data => { if (active) { setItems(data.results); setError('') } })
-      .catch(reason => { if (active) setError(errorMessage(reason)) })
-    return () => { active = false }
-  }, [retry])
-  if (error) return <div className="announcement-error" role="alert">Announcements could not be loaded: {error} <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setRetry(value => value + 1)}>Retry announcements</button></div>
+// Sprint 3 (fluency V5): the home owns loading, so the board cannot insert itself after home content.
+export function AnnouncementBoard({ announcements }: { announcements: ReturnType<typeof useAnnouncements> }) {
+  const { items, error, retry } = announcements
+  if (error) return <div className="announcement-error" role="alert">Announcements could not be loaded: {error} <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={retry}>Retry announcements</button></div>
   if (!items.length) return null
   return <section className="announcement-board" aria-label="Announcements">
     <h2>Announcements</h2>

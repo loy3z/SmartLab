@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router'
 import { EmptyState, Tabs } from '../../ui/components'
 import { useAuth } from '../auth/auth-context'
 import { useFeedback } from '../../ui/feedback-context'
-import { cancelBooking, cancelSeries, checkIn, listBookings, listResources } from './api'
+import { cancelBooking, cancelSeries, checkIn, listBookings, listResources, removeBookingHistory } from '../../api/index.ts'
 import { ATTENDANCE_TEXT, canCheckIn, checkInHint } from './attendance'
 import { CalendarSubscribe } from './CalendarSubscribe'
 import { ChangeTimeBox } from './ChangeTimeBox' // Sprint 3 (1.16.0)
@@ -11,10 +11,10 @@ import { canAskForChange, openChangeText, replacesText } from './change-requests
 import { ContactLink } from '../contact/LabContact' // Sprint 3 (1.16.0)
 import { FreezeNotice } from './FreezeNotice'
 import { bookingDetail, errorMessage, fmtDuration, fmtRange, fmtTime, minutesBetween, STATUS_TEXT } from './format'
-import { ACTIVE, groupBookings } from './my-bookings'
+import { ACTIVE, canRemoveBookingHistory, groupBookings } from './my-bookings'
 import { RescheduleBox } from './RescheduleBox'
 import { SeriesCard } from './SeriesCard'
-import type { Booking, Resource } from './types'
+import type { Booking, Resource } from '../../api/types/index.ts'
 
 
 const BOOKING_VIEWS = [
@@ -38,6 +38,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
   const { user } = useAuth()
   const [params, setParams] = useSearchParams()
   const view = BOOKING_VIEWS.find(item => item.key === params.get('view'))?.key ?? 'all'
+  const resourceId = params.get('resource') ?? '' // Sprint 3 (1.20.0): keep both filters on navigation/reload.
   const isManager = user?.role === 'MANAGER'
   const isStaff = user?.role === 'MANAGER' || user?.role === 'ADMIN'
   const [bookings, setBookings] = useState<Booking[]>([])
@@ -47,6 +48,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
   const [now, setNow] = useState(0)
   const [rescheduling, setRescheduling] = useState<string | null>(null)
   const [changing, setChanging] = useState<string | null>(null) // Sprint 3 (1.16.0): booking whose change box is open
+  const [removing, setRemoving] = useState<string | null>(null) // Sprint 3 (1.20.0)
 
   const load = useCallback(async () => {
     setError('')
@@ -85,6 +87,28 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
       feedback.error(errorMessage(e), 'Could not cancel')
     }
     await load()
+  }
+
+  // Sprint 3 (1.20.0): confirm the personal scope; only remove the visible row after server success.
+  async function removeHistory(b: Booking) {
+    const ok = await feedback.confirm({
+      title: 'Remove from your history?',
+      details: [{ label: 'Resource', value: resources[b.resource_id]?.name ?? b.resource_name ?? 'Resource' },
+        { label: 'Time', value: fmtRange(b.start, b.end) }],
+      message: 'This removes the booking from your personal history. Staff records and reports are kept. Other people keep their own copy.',
+      confirmLabel: 'Remove from my history', cancelLabel: 'Keep it', danger: true,
+    })
+    if (!ok.confirmed) return
+    setRemoving(b.id)
+    try {
+      await removeBookingHistory(b.id)
+      setBookings(current => current.filter(item => item.id !== b.id))
+      feedback.success('Staff records and reports are kept.', 'Removed from your history')
+    } catch (e) {
+      feedback.error(errorMessage(e), 'Could not remove from history')
+    } finally {
+      setRemoving(null)
+    }
   }
 
   // Sprint 3: check-in and cancelling a weekly series
@@ -127,7 +151,20 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
 
   const future = (b: Booking) => new Date(b.start).getTime() > now
   const cancellable = (b: Booking) => future(b) && ACTIVE.includes(b.status)
-  const shown = bookings.filter(booking => inView(booking, view, now))
+  // Sprint 3 (1.20.0): include historical/archived resources even if the catalogue omits them.
+  const resourceOptions = new Map(Object.values(resources).map(resource => [resource.id, resource.name]))
+  for (const booking of bookings) {
+    if (!resourceOptions.has(booking.resource_id)) resourceOptions.set(booking.resource_id, booking.resource_name ?? 'Unavailable resource')
+  }
+  if (resourceId && !resourceOptions.has(resourceId)) resourceOptions.set(resourceId, 'Selected resource (unavailable)')
+  const matchingResource = bookings.filter(booking => !resourceId || booking.resource_id === resourceId)
+  const shown = matchingResource.filter(booking => inView(booking, view, now))
+  const setFilter = (key: string, value: string) => setParams(current => {
+    const next = new URLSearchParams(current)
+    if (value) next.set(key, value)
+    else next.delete(key)
+    return next
+  })
 
   return (
     <div className="bookings-list">
@@ -135,15 +172,28 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
       {/* Sprint 3 */}
       <FreezeNotice />
       <CalendarSubscribe />
-      {!loading && !error && <div className="bookings-filters"><Tabs value={view} onChange={next => setParams({ view: next })} label="Booking status" items={BOOKING_VIEWS.map(item => ({ ...item, count: bookings.filter(booking => inView(booking, item.key, now)).length }))} /></div>}
+      {!loading && !error && <div className="bookings-filters">
+        <Tabs value={view} onChange={next => setFilter('view', next)} label="Booking status"
+          items={BOOKING_VIEWS.map(item => ({ ...item, count: matchingResource.filter(booking => inView(booking, item.key, now)).length }))} />
+        <div className="bookings-resource-filter">
+          <label>Resource
+            <select value={resourceId} onChange={event => setFilter('resource', event.target.value)}>
+              <option value="">All rooms and equipment</option>
+              {[...resourceOptions].sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+            </select>
+          </label>
+          {(resourceId || view !== 'all') && <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setParams({})}>Clear filters</button>}
+          <span className="bk-muted" role="status">{shown.length} booking{shown.length === 1 ? '' : 's'}</span>
+        </div>
+      </div>}
       {loading && <p role="status">Loading…</p>}
       {error && <p className="bk-error" role="alert">{error}</p>}
       {!loading && !error && bookings.length === 0 && (
-        <EmptyState icon="+" title="No bookings yet">
-          <Link to="/resources">Browse rooms and equipment</Link> to make your first request.
+        <EmptyState icon="+" title="No bookings to show">
+          <Link to="/resources">Browse rooms and equipment</Link> to make a booking.
         </EmptyState>
       )}
-      {!loading && !error && bookings.length > 0 && shown.length === 0 && <EmptyState title="Nothing here right now">No bookings match this view. Your other bookings are in All bookings.</EmptyState>}
+      {!loading && !error && bookings.length > 0 && shown.length === 0 && <EmptyState title="Nothing here right now">No bookings match these filters.</EmptyState>}
       {groupBookings(shown).map((group) => {
         if (group.kind === 'series') {
           const moving = group.bookings.find((item) => item.id === rescheduling)
@@ -152,7 +202,8 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
             <div key={group.seriesId}>
               <SeriesCard bookings={group.bookings} resource={seriesResource} userId={user?.id} now={now}
                 isStaff={isStaff} isManager={isManager} onCancel={(b) => void cancel(b)} onCancelRest={(b) => void cancelWholeSeries(b)}
-                onCheckIn={(b) => void arrived(b)} onReschedule={(b) => setRescheduling(b.id)} />
+                onCheckIn={(b) => void arrived(b)} onReschedule={(b) => setRescheduling(b.id)}
+                onRemoveHistory={(b) => void removeHistory(b)} removing={removing} />
               {moving && seriesResource && (
                 <RescheduleBox booking={moving} resource={seriesResource} onDone={rescheduled} onClose={() => setRescheduling(null)} />
               )}
@@ -226,6 +277,11 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
             {changing === b.id && res && (
               <ChangeTimeBox booking={b} resource={res} onDone={() => { setChanging(null); void load() }} onClose={() => setChanging(null)} />
             )}
+            {canRemoveBookingHistory(b, now) && <div className="bk-card-actions">
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={removing !== null} onClick={() => void removeHistory(b)}>
+                {removing === b.id ? 'Removing…' : 'Remove from my history'}
+              </button>
+            </div>}
           </div>
         )
       })}

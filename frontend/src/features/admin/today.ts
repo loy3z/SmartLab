@@ -1,5 +1,5 @@
 // Sprint 3 (1.16.0): cards and labels of the staff "Today" page (TodayPage.tsx), kept here so they can be tested.
-import type { Booking, StaffOverview } from '../booking/types.ts'
+import type { Booking, StaffOverview } from '../../api/types/index.ts'
 
 export interface TodoCard {
   key: string

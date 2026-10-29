@@ -125,7 +125,7 @@ $env:OUTLOOK_ALLOWED_ATTENDEES = ''
 
 ## 6. 定时处理
 
-使用 PostgreSQL 时，可以用 Windows 任务计划每几分钟运行一次 `manage.py process_due`。它会处理到期的审批申请，并推送等待中的 Outlook 更新（`--outlook-limit`，默认 10）。只处理 Outlook 时用 `manage.py process_outlook --limit 10`。内存模式下这两个命令会拒绝运行，请改用页面上的 Sync now 或 `POST admin/outlook/process/`。
+Docker Compose 的 `scheduler` 服务会定期处理到期审批，并推送等待中的 Outlook 更新。其他 PostgreSQL 部署可持续运行 `manage.py run_scheduler`，或用 Windows 任务计划／cron 每几分钟运行一次 `manage.py process_due`（`--outlook-limit` 默认 10）。只处理 Outlook 时用 `manage.py process_outlook --limit 10`。内存模式下这些命令会拒绝运行，请改用页面上的 Sync now 或 `POST admin/outlook/process/`。
 
 ## 7. 状态与失败重试
 

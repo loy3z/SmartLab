@@ -4,6 +4,39 @@
 # PostgreSQL data lives in the pgdata volume. Uploaded induction evidence is stored inside
 # PostgreSQL (stored_file table), so no separate file volume is needed.
 
+x-backend-environment: &backend-environment
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY in .env.docker}
+  DEBUG: ${DEBUG:-false}
+  # 127.0.0.1 is always allowed so the API health check works for every deployment host.
+  ALLOWED_HOSTS: 127.0.0.1,${ALLOWED_HOSTS:-localhost}
+  ENABLE_DEMO_AUTH: ${ENABLE_DEMO_AUTH:-true}
+  ENABLE_TEST_CONSOLE: "false"
+  # PostgreSQL is the shared source of truth for both the API and the scheduler.
+  SEED_DEMO_DATA: "false"
+  LOAD_DEMO_DATA: ${LOAD_DEMO_DATA:-false}
+  REPOSITORY_FACTORY: booking.postgres.PostgresRepository
+  FILE_STORAGE_FACTORY: booking.postgres.PostgresFileStorage
+  DB_NAME: ${DB_NAME:-smartlab}
+  DB_USER: ${DB_USER:-smartlab}
+  DB_PASSWORD: ${DB_PASSWORD}
+  DB_HOST: db
+  DB_PORT: "5432"
+  SITE_URL: ${SITE_URL:-http://localhost}
+  EMAIL_ENABLED: ${EMAIL_ENABLED:-false}
+  EMAIL_MODE: ${EMAIL_MODE:-allowlist}
+  EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
+  EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
+  EMAIL_REDIRECT_TO: ${EMAIL_REDIRECT_TO:-}
+  # Calendar synchronisation remains off by default. Server deployments use application credentials.
+  OUTLOOK_ENABLED: ${OUTLOOK_ENABLED:-false}
+  OUTLOOK_TENANT_ID: ${OUTLOOK_TENANT_ID:-}
+  OUTLOOK_CLIENT_ID: ${OUTLOOK_CLIENT_ID:-}
+  OUTLOOK_CLIENT_SECRET: ${OUTLOOK_CLIENT_SECRET:-}
+  OUTLOOK_MAILBOX: ${OUTLOOK_MAILBOX:-}
+  OUTLOOK_CALENDAR_ID: ${OUTLOOK_CALENDAR_ID:-}
+  OUTLOOK_INVITE_MODE: ${OUTLOOK_INVITE_MODE:-allowlist}
+  OUTLOOK_ALLOWED_ATTENDEES: ${OUTLOOK_ALLOWED_ATTENDEES:-}
+
 services:
   db:
     image: postgres:16-alpine
@@ -26,40 +59,30 @@ services:
       db:
         condition: service_healthy
     environment:
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY in .env.docker}
-      DEBUG: ${DEBUG:-false}
-      # 127.0.0.1 is always allowed so the health check below keeps working whatever host names are set.
-      ALLOWED_HOSTS: 127.0.0.1,${ALLOWED_HOSTS:-localhost}
-      ENABLE_DEMO_AUTH: ${ENABLE_DEMO_AUTH:-true}
-      ENABLE_TEST_CONSOLE: "false"
-      # Never inject the in-code demo data into PostgreSQL (database/README.md): it would run in every worker on
-      # every start and overwrite the rooms, equipment and staff passwords. The demo data is loaded once instead,
-      # when the database is created (LOAD_DEMO_DATA, see entrypoint.sh).
-      SEED_DEMO_DATA: "false"
-      LOAD_DEMO_DATA: ${LOAD_DEMO_DATA:-false}
-      REPOSITORY_FACTORY: booking.postgres.PostgresRepository
-      FILE_STORAGE_FACTORY: booking.postgres.PostgresFileStorage
-      DB_NAME: ${DB_NAME:-smartlab}
-      DB_USER: ${DB_USER:-smartlab}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_HOST: db
-      DB_PORT: "5432"
-      # Address people open in the browser; used for links in emails.
-      SITE_URL: ${SITE_URL:-http://localhost}
-      OUTLOOK_ENABLED: "false"
-      # Sprint 3 (2026-10-27): the API reads the email settings from its own environment, so every value
-      # that lives in .env.docker has to be passed through here (otherwise EMAIL_HOST_USER is empty).
-      EMAIL_ENABLED: ${EMAIL_ENABLED:-false}
-      EMAIL_MODE: ${EMAIL_MODE:-allowlist}
-      EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
-      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
-      EMAIL_REDIRECT_TO: ${EMAIL_REDIRECT_TO:-}
+      <<: *backend-environment
       GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/api/v1/health/ >/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
+
+  # The API also processes due work during requests, but this service guarantees that deadlines,
+  # reminders, attendance checks and Outlook retries run while the website is idle.
+  scheduler:
+    build: ./backend
+    depends_on:
+      api:
+        condition: service_healthy
+    command:
+      - manage
+      - run_scheduler
+      - --interval-seconds
+      - ${SCHEDULER_INTERVAL_SECONDS:-60}
+      - --outlook-limit
+      - ${SCHEDULER_OUTLOOK_LIMIT:-10}
+    environment: *backend-environment
     restart: unless-stopped
 
   web:

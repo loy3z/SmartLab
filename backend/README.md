@@ -179,7 +179,7 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
 
 `AUTH_PROVIDER` 是真实认证适配器的配置入口：配置可无参数实例化的 provider 类，实现 `resolve_bearer(token: str) -> Principal`。provider 应验证凭证签名、有效期和受众，并将可信身份映射为数据库中的用户记录。当前演示 Bearer 认证不能代替学校 SSO。完成接入后，前端保留相同 `/auth/me/` 和业务接口，登录跳转／token 获取方式根据学校方案调整。
 
-审批期限保存在每张申请的 `review_due_at`（进入待审批时按资源的 `pending_hold_minutes` 计算）。预约查询及操作会推进到期的状态（超时自动处理、开始时间已过则过期），Admin 也可调用 `POST /api/v1/admin/process-due/`。这保证 API 再次访问时可看到正确状态；如果需要在无人访问系统时准时处理，正式部署应增加定时任务，调用同一个时间处理服务。
+审批期限保存在每张申请的 `review_due_at`（进入待审批时按资源的 `pending_hold_minutes` 计算）。预约查询及操作会推进到期的状态（超时自动处理、开始时间已过则过期），Admin 也可调用 `POST /api/v1/admin/process-due/`。Docker 部署中的 `scheduler` 服务每分钟调用同一个时间处理逻辑，因此即使无人访问网站也会准时处理。
 
 资料仅本人和 Admin／Manager 能通过受保护下载接口读取。正式文件存储必须保持私有权限；同时补齐部署配置、SSO、数据库、后台任务与文件服务后，才能作为真实校园服务使用。
 
@@ -201,7 +201,13 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
 
 ## 定时处理到期申请
 
-审批期限到了的申请需要有人触发自动处理，开始后没确认到场的预约也要按时记为缺席。网页请求会顺带处理，但没人访问时不会执行。使用 PostgreSQL 时请定时运行（例如每分钟一次，Windows 任务计划或 cron）：
+审批期限到了的申请需要有人触发自动处理，开始后没确认到场的预约也要按时记为缺席。网页请求会顺带处理，但没人访问时不会执行。Docker Compose 已包含常驻的 `scheduler` 服务；非 Docker 数据库部署可持续运行：
+
+```powershell
+.\.venv\Scripts\python.exe manage.py run_scheduler
+```
+
+也可以继续用 Windows 任务计划或 cron 每分钟执行一次：
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py process_due

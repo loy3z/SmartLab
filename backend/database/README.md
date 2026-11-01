@@ -73,7 +73,7 @@ Get-ChildItem .\database\migrations\*.sql | Sort-Object Name | ForEach-Object {
 
 ### 已有数据库升级到持久化邮件队列
 
-部署包含可靠邮件重试的后端前，对已有库执行 011。脚本只新增表和索引，不修改已有预约或通知，可以重复执行：
+部署包含可靠邮件重试的后端前，对已有库执行 011。脚本新增表和索引；已经跑过原版 011 的库会把自动生成的外键名改为 `email_delivery_notification_fk`，保留约束和邮件记录。不修改已有预约或通知，可以重复执行：
 
 ```powershell
 & "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\011_durable_email_delivery.sql'
@@ -129,6 +129,8 @@ $env:OUTLOOK_ENABLED = 'false'
 ```
 
 这些环境变量只对当前终端及其启动的程序生效。新开后端终端时需要重新设置；项目不会自动加载 `.env`。两个工厂变量必须设置，否则默认使用内存存储（`REPOSITORY_FACTORY` 指向 PostgreSQL 适配器时，后端才会连接数据库；不设置时不需要安装 PostgreSQL，使用内存演示数据）。`SEED_DEMO_DATA=false` 必须保留，避免运行时再次注入默认演示数据。想让登录在重启后端后仍然有效，可以再设置一个固定的本地 `$env:DJANGO_SECRET_KEY`（只用于本机，不要提交）。
+
+可选：`DB_CONN_MAX_AGE`（秒，默认 60）。同一个后端进程在这段时间内复用数据库连接，不再每个请求新建一次（每次约 12 ms）；设为 0 恢复每个请求新建。Docker 部署用默认值，不需要设置（2026-10-29，压测任务卡 S3）。
 
 确认适配器能读取数据：
 

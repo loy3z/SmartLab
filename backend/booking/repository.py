@@ -21,6 +21,7 @@ from .domain import (
     AuditRecord,
     Booking,
     BookingSeries,
+    BookingStatus,
     CalendarFeed,
     EmailDelivery,
     Notification,
@@ -28,10 +29,42 @@ from .domain import (
     UnfreezeRequest,
     OutlookSyncRecord,
     QualificationRequirement,
+    QualificationStatus,
     QualificationSubmission,
     Resource,
     StaffCredential,
 )
+
+
+def booking_matches(booking: Booking, *, statuses: Sequence[BookingStatus] | None = None,
+                    start_from: datetime | None = None, start_to: datetime | None = None,
+                    end_from: datetime | None = None, due_by: datetime | None = None,
+                    created_by: str | None = None, unmarked: bool = False) -> bool:
+    """The list_bookings keyword filters (2026-10-29, load test R1); PostgresRepository applies the same ones in SQL.
+
+    Every bound is inclusive, so a filter only narrows what is read: callers still apply their own exact checks.
+    due_by keeps bookings whose start or review deadline is at or before it (time processing);
+    unmarked keeps bookings with no attendance recorded.
+    """
+    return ((statuses is None or booking.status in statuses)
+            and (start_from is None or booking.start >= start_from)
+            and (start_to is None or booking.start <= start_to)
+            and (end_from is None or booking.end >= end_from)
+            and (due_by is None or booking.start <= due_by
+                 or (booking.review_due_at is not None and booking.review_due_at <= due_by))
+            and (created_by is None or booking.created_by == created_by)
+            and (not unmarked or booking.attendance is None))
+
+
+def submission_matches(submission: QualificationSubmission, *, student_ids: Sequence[str] | None = None,
+                       statuses: Sequence[QualificationStatus] | None = None,
+                       valid_from: datetime | None = None, valid_to: datetime | None = None) -> bool:
+    """The list_submissions keyword filters (2026-10-29, load test S8); PostgresRepository applies them in SQL.
+    valid_from / valid_to bound valid_until (inclusive) and skip submissions without one."""
+    return ((student_ids is None or submission.student_id in student_ids)
+            and (statuses is None or submission.status in statuses)
+            and (valid_from is None or (submission.valid_until is not None and submission.valid_until >= valid_from))
+            and (valid_to is None or (submission.valid_until is not None and submission.valid_until <= valid_to)))
 
 
 class Repository(Protocol):
@@ -51,17 +84,33 @@ class Repository(Protocol):
     def list_requirements(self) -> list[QualificationRequirement]: ...
     def save_requirement(self, requirement: QualificationRequirement) -> None: ...
     def get_submission(self, submission_id: str) -> QualificationSubmission | None: ...
+    # 2026-10-29 (load test S8): keyword filters as for list_bookings (inclusive bounds; see submission_matches).
     def list_submissions(
         self,
         student_id: str | None = None,
         requirement_id: str | None = None,
+        *,
+        student_ids: Sequence[str] | None = None,
+        statuses: Sequence[QualificationStatus] | None = None,
+        valid_from: datetime | None = None,
+        valid_to: datetime | None = None,
     ) -> list[QualificationSubmission]: ...
     def save_submission(self, submission: QualificationSubmission) -> None: ...
     def get_booking(self, booking_id: str) -> Booking | None: ...
+    # 2026-10-29 (load test R1): the keyword filters let callers read only the rows they may need instead of every
+    # booking ever made. Time bounds are inclusive; callers keep their exact checks (see booking_matches above).
     def list_bookings(
         self,
         student_id: str | None = None,
         resource_id: str | None = None,
+        *,
+        statuses: Sequence[BookingStatus] | None = None,
+        start_from: datetime | None = None,
+        start_to: datetime | None = None,
+        end_from: datetime | None = None,
+        due_by: datetime | None = None,
+        created_by: str | None = None,
+        unmarked: bool = False,
     ) -> list[Booking]: ...
     def save_booking(self, booking: Booking) -> None: ...
     # Sprint 3 (1.20.0): per-person visibility, separate from the shared booking.
@@ -82,6 +131,10 @@ class Repository(Protocol):
     def save_notification(self, notification: Notification) -> None: ...
     def get_notification(self, notification_id: str) -> Notification | None: ...
     def list_notifications(self, recipient_id: str) -> list[Notification]: ...
+    # 2026-10-29 (load test S1): notifications of one kind about any of these bookings, for reminder de-duplication.
+    def list_booking_notifications(self, kind: str, booking_ids: Sequence[str]) -> list[Notification]: ...
+    # 2026-10-29 (load test S8): notifications of one kind to any of these people (induction reminder de-duplication).
+    def list_kind_notifications(self, kind: str, recipient_ids: Sequence[str]) -> list[Notification]: ...
     def save_email_delivery(self, delivery: EmailDelivery) -> None: ...
     def get_email_delivery(self, notification_id: str) -> EmailDelivery | None: ...
     def list_email_deliveries(self) -> list[EmailDelivery]: ...
@@ -231,6 +284,7 @@ class MemoryRepository:
         self,
         student_id: str | None = None,
         requirement_id: str | None = None,
+        **filters,
     ) -> list[QualificationSubmission]:
         with self._lock:
             return [
@@ -238,6 +292,7 @@ class MemoryRepository:
                 for submission in self._submissions.values()
                 if (student_id is None or submission.student_id == student_id)
                 and (requirement_id is None or submission.requirement_id == requirement_id)
+                and submission_matches(submission, **filters)
             ]
 
     def save_submission(self, submission: QualificationSubmission) -> None:
@@ -252,6 +307,7 @@ class MemoryRepository:
         self,
         student_id: str | None = None,
         resource_id: str | None = None,
+        **filters,
     ) -> list[Booking]:
         with self._lock:
             return [
@@ -259,6 +315,7 @@ class MemoryRepository:
                 for booking in self._bookings.values()
                 if (student_id is None or booking.student_id == student_id)
                 and (resource_id is None or booking.resource_id == resource_id)
+                and booking_matches(booking, **filters)
             ]
 
     def save_booking(self, booking: Booking) -> None:
@@ -341,6 +398,20 @@ class MemoryRepository:
     def list_notifications(self, recipient_id: str) -> list[Notification]:
         with self._lock:
             return sorted((item for item in self._notifications.values() if item.recipient_id == recipient_id),
+                          key=lambda item: (item.created_at, item.id), reverse=True)
+
+    def list_booking_notifications(self, kind: str, booking_ids: Sequence[str]) -> list[Notification]:
+        wanted = set(booking_ids)
+        with self._lock:
+            return sorted((item for item in self._notifications.values()
+                           if item.kind == kind and item.booking_id in wanted),
+                          key=lambda item: (item.created_at, item.id), reverse=True)
+
+    def list_kind_notifications(self, kind: str, recipient_ids: Sequence[str]) -> list[Notification]:
+        wanted = set(recipient_ids)
+        with self._lock:
+            return sorted((item for item in self._notifications.values()
+                           if item.kind == kind and item.recipient_id in wanted),
                           key=lambda item: (item.created_at, item.id), reverse=True)
 
     def save_email_delivery(self, delivery: EmailDelivery) -> None:

@@ -25,7 +25,8 @@ def my_bookings(service, user):
     """Bookings for me plus those I created for other people, oldest first."""
     mine = {item.id: item for item in service.repo.list_bookings(student_id=user.id)}
     if user.role in (Role.ADMIN, Role.MANAGER):
-        mine.update({item.id: item for item in service.repo.list_bookings() if item.created_by == user.id})
+        # 2026-10-29 (load test S5): filter in the repository instead of reading every booking.
+        mine.update({item.id: item for item in service.repo.list_bookings(created_by=user.id) if item.created_by == user.id})
     # Sprint 3 (1.20.0): personal lists and Dashboard share visibility; reports keep the original rows.
     hidden = service.repo.hidden_booking_ids(user.id)
     return sorted((item for item in mine.values() if item.id not in hidden), key=lambda item: (item.created_at, item.id))

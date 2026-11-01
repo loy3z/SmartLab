@@ -16,6 +16,7 @@ from uuid import uuid4
 
 from django.conf import settings
 from django.core.mail import EmailMessage, get_connection
+from django.db import close_old_connections
 
 from .domain import EmailDelivery, Notification, Principal
 
@@ -242,6 +243,8 @@ class EmailOutbox:
                 self._active_wakeups += wakeups
             try:
                 from .runtime import get_service
+                # 2026-11-01: this thread sees no web requests, so it must clear its own dead or expired connection.
+                close_old_connections()
                 get_service().email_delivery.process_pending(max(settings.EMAIL_BATCH_SIZE, wakeups))
             except Exception:
                 logger.exception("Durable email worker failed; the scheduler will recover leased work")

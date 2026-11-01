@@ -30,6 +30,11 @@ DATABASES = {
         "PASSWORD": os.getenv("DB_PASSWORD", ""),
         "HOST": os.getenv("DB_HOST", "localhost"),
         "PORT": os.getenv("DB_PORT", "5432"),
+        # 2026-10-29 (load test S3): keep a worker's connection for this many seconds instead of opening one per
+        # request (about 12 ms each); 0 turns reuse off. Health checks drop a connection the server has closed.
+        # Safe with the write lock: pg_advisory_xact_lock ends with its transaction.
+        "CONN_MAX_AGE": int(os.getenv("DB_CONN_MAX_AGE", "60")),
+        "CONN_HEALTH_CHECKS": True,
     }
 } if USE_POSTGRES else {"default": {"ENGINE": "django.db.backends.dummy"}}
 USE_TZ = True

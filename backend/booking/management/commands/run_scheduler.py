@@ -7,6 +7,7 @@ from time import monotonic
 
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
+from django.db import close_old_connections
 
 from booking.repository import MemoryRepository
 from booking.runtime import get_service
@@ -84,6 +85,9 @@ class Command(BaseCommand):
         try:
             while True:
                 started_at = monotonic()
+                # 2026-11-01: Django only clears a dead or expired connection around web requests. Without this, one
+                # database restart makes every later cycle fail until the container restarts.
+                close_old_connections()
                 try:
                     call_command(
                         "process_due",

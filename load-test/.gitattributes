@@ -1,0 +1,2 @@
+# Sprint 3: bash cannot run a script with CRLF line endings.
+*.sh text eol=lf

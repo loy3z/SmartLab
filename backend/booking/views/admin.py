@@ -41,9 +41,12 @@ def staff_booking_rows(service, user, params):
     resources = {item.id: item for item in service.repo.list_resources()}
     return records, people, resources
 
-def staff_booking_json(booking, people, resources):
-    """Booking plus who booked it and what, for Admin/Manager lists and printouts."""
-    result = json_value(booking)
+def staff_booking_json(booking, people, resources, lookups=None):
+    """Booking plus who booked it and what, for Admin/Manager lists and printouts.
+
+    lookups (2026-10-29, load test S2): a BookingListLookups shared by the whole list, so each row adds no queries.
+    """
+    result = booking_json(booking, lookups)
     person, resource = people.get(booking.student_id), resources.get(booking.resource_id)
     result["student"] = ({"id": person.id, "zid": person.zid, "display_name": person.display_name,
                           "university_email": person.university_email} if person else None)
@@ -57,7 +60,8 @@ class AdminBookingListView(APIView):
         service = get_service()
         service.require_staff(request.user)
         records, people, resources = staff_booking_rows(service, request.user, request.query_params)
-        return Response(collection(records, lambda item: staff_booking_json(item, people, resources)))
+        lookups = BookingListLookups(service, records, people)
+        return Response(collection(records, lambda item: staff_booking_json(item, people, resources, lookups)))
 
 class AdminBookingExportView(APIView):
     """Admin/Manager (Sprint 3: Admins too, for Booking Records): the same filters as the list (default status=ALL),

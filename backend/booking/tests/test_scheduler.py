@@ -94,6 +94,22 @@ class SchedulerCommandTests(SimpleTestCase):
         self.assertIn("database unavailable", str(failed.exception))
 
 
+class EmailWorkerConnectionTests(SimpleTestCase):
+    def test_worker_clears_old_database_connections_before_each_batch(self):
+        # 2026-11-01: this thread has no requests, so nothing else clears a connection the server has closed.
+        from booking.email_channel import EmailOutbox
+
+        calls = mock.Mock()
+        service = SimpleNamespace(email_delivery=SimpleNamespace(process_pending=calls.process_pending))
+        outbox = EmailOutbox()
+        outbox.BATCH_WINDOW_SECONDS = 0
+        with mock.patch("booking.runtime.get_service", return_value=service), \
+                mock.patch("booking.email_channel.close_old_connections", calls.close_old_connections):
+            outbox.put("notification")
+            self.assertTrue(outbox.wait(5))
+        self.assertEqual([call[0] for call in calls.mock_calls], ["close_old_connections", "process_pending"])
+
+
 def signal_default_handler():
     """Return a stable sentinel that can be restored as a signal handler in the test."""
     return mock.sentinel.default_signal_handler

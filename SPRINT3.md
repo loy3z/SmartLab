@@ -138,9 +138,10 @@
   - 每条只发一次。
 - **后端**：
   - `booking/services/reminders.py`：`_send_reminders`、`_booking_reminders`、`_induction_reminders`，在 `waitlist.py` 的 `process_due_requests` 最后调用。
+  - 2026-11-01：提醒调用 `notifications.py` 的 `_notify(..., once=True)`，在写锁内按收件人和预约／induction 链接复查，避免网页请求和 scheduler 同时生成重复通知及邮件。
   - “已过期”通知在 `notifications.py` `_booking_changed` 里。
   - 规则数字：`rules.py` 的 `reminder_hours_before`、`induction_reminder_days`。
-- **测试**：`test_reminders.py`。
+- **测试**：`test_reminders.py`；`test_postgres.py` 的两个 `test_concurrent_*_reminders_create_one_notification_and_email` 在真实数据库上验证并发去重。
 
 ## 8. 使用情况报表
 
@@ -435,3 +436,7 @@ No API, schema or booking-rule change. Review: project docs `claude/reports/2026
 | H1 前端 | `api/bookings.ts` `removeBookingHistory`；`MyBookings.tsx`、`SeriesCard.tsx`；`my-bookings.ts` `canRemoveBookingHistory` | routing booking history removal（三角色、取消确认、503 保留、成功与刷新）、逐日期移除 |
 | D1 | `DashboardPage.tsx`、`dashboard.css`、`workspace.css`：独立统计卡、紧凑 Next session 与预约列表、员工 Today 横幅 | routing booking dashboard（真实列表形状、桌面与320/390px）；既有 fluency 用例回归公告 |
 | 文档 | OpenAPI 1.20.0 / frontend-api.md、数据库 README、ARCHITECTURE 第10节、CHANGELOG | check-local 的 openapi 和 schema；具体输出见任务卡 |
+
+## 29. 压力测试（2026-10-29）
+
+脚本和结果都在 [load-test/README.md](load-test/README.md)。性能修复的代码改动见 CHANGELOG 的压力测试三轮。

@@ -56,13 +56,17 @@ class CalendarSyncService:
                 revision=current.revision + 1, updated_at=self.now(), next_attempt_at=None,
                 lease_until=current.lease_until if running else None, last_error=None))
 
-    def describe(self, booking):
+    def describe(self, booking, records=None):
+        """records (2026-10-29, load test S2): sync records by booking id, read once for a whole list of bookings."""
+        def stored():
+            return records.get(booking.id) if records is not None else self.repo.get_outlook_sync(booking.id)
+
         empty = {"status": "NOT_REQUIRED", "action": None, "web_link": None, "last_error": None}
-        if booking.status != BookingStatus.APPROVED and not (self.enabled and self.repo.get_outlook_sync(booking.id)):
+        if booking.status != BookingStatus.APPROVED and not (self.enabled and stored()):
             return empty
         if not self.enabled:
             return {**empty, "status": "DISABLED"}
-        record = self.repo.get_outlook_sync(booking.id)
+        record = stored()
         if record is None:
             return {**empty, "status": "PENDING", "action": "CREATE"}
         return {"status": record.status, "action": record.action,

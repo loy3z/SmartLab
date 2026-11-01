@@ -17,14 +17,20 @@ from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+from unittest.mock import patch
+
 from django.conf import settings
 from django.db import IntegrityError, connection, connections, transaction  # Sprint 3 (1.16.0): IntegrityError, transaction
+from django.db import close_old_connections  # 2026-10-29 (load test S3)
 from django.test import override_settings, TransactionTestCase
+from django.test.utils import CaptureQueriesContext
 
 from booking.domain import (
-    AuditRecord, BookingStatus, EmailDelivery, Principal, QualificationRequirement, QualificationStatus,
+    AuditRecord, Booking, BookingStatus, EmailDelivery, Principal, QualificationRequirement, QualificationStatus,
+    QualificationSubmission,  # 2026-10-29 (load test S8)
     Resource, ResourceKind, ResourceStatus, Role,
 )
+from booking.repository import MemoryRepository  # 2026-10-29 (load test R1)
 from booking.exceptions import DomainError
 from booking.services import BookingService
 
@@ -90,6 +96,9 @@ class PostgresAdapterTests(TransactionTestCase):
         # Each test uses its own people and resources, so tests never see each other's rows
         # (audit records are append-only and cannot be truncated between tests).
         from booking.postgres import PostgresFileStorage, PostgresRepository
+        # Sprint 3 (2026-11-01): email claiming reads the global queue, unlike person/resource-scoped fixtures.
+        with connection.cursor() as cursor:
+            cursor.execute('DELETE FROM public.email_delivery')
         self.now = datetime(2030, 1, 7, 0, tzinfo=timezone.utc)
         self.repo, self.storage = PostgresRepository(), PostgresFileStorage()
         self.service = BookingService(self.repo, self.storage, clock=lambda: self.now, min_advance_days=0, max_advance_days=7)
@@ -182,6 +191,35 @@ class PostgresAdapterTests(TransactionTestCase):
             cursor.execute(migration.read_text())
             cursor.execute("SELECT to_regclass('public.email_delivery')")
             self.assertEqual(cursor.fetchone()[0], "email_delivery")
+
+    # Sprint 3 (2026-11-01): an existing table from main's original 011 must also converge.
+    def test_011_normalizes_the_legacy_foreign_key_without_losing_email(self):
+        from booking.domain import Notification
+        notice = Notification(str(uuid4()), self.a.id, "BOOKING_REMINDER", "Title", "Body", self.now)
+        self.repo.save_notification(notice)
+        delivery = EmailDelivery(notice.id, self.a.university_email, "Subject", "Body", "PENDING", self.now, self.now)
+        self.repo.save_email_delivery(delivery)
+        migration = Path(settings.BASE_DIR) / 'database/migrations/011_durable_email_delivery.sql'
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute('ALTER TABLE public.email_delivery RENAME CONSTRAINT email_delivery_notification_fk TO email_delivery_notification_id_fkey')
+                cursor.execute(migration.read_text())
+                cursor.execute(migration.read_text())
+                cursor.execute("SELECT conname FROM pg_constraint WHERE conrelid='public.email_delivery'::regclass AND contype='f'")
+                self.assertEqual(cursor.fetchall(), [("email_delivery_notification_fk",)])
+            self.assertEqual(self.repo.get_email_delivery(notice.id), delivery)
+            transaction.set_rollback(True)
+
+    def test_concurrent_booking_reminders_create_one_notification_and_email(self):
+        from booking.tests.test_reminders import concurrent_reminder_check
+        self.raw_booking(self.now + timedelta(hours=3), BookingStatus.APPROVED)
+        concurrent_reminder_check(self, self.service, self.a, "BOOKING_REMINDER", self.service._booking_reminders)
+
+    def test_concurrent_induction_reminders_create_one_notification_and_email(self):
+        from booking.tests.test_reminders import concurrent_reminder_check
+        self.verified(self.a)
+        self.now += timedelta(days=110)
+        concurrent_reminder_check(self, self.service, self.a, "INDUCTION_EXPIRING", self.service._induction_reminders)
 
     @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
     def test_staff_invite_activation_and_sign_in_are_persisted(self):
@@ -410,6 +448,256 @@ class PostgresAdapterTests(TransactionTestCase):
         self.assertEqual(errors, [])
         self.assertEqual(sorted(s.value for s in results), ["PENDING_APPROVAL", "WAITLISTED"])
 
+    # 2026-10-29 (tasks-load-2026-10-29.md R1, S1, S5, S3): per-request work must not grow with past bookings.
+
+    def raw_booking(self, start, status, student=None, **fields):
+        """Save a booking directly (no rules), as history or a fixture for time processing."""
+        student = student or self.a
+        booking = Booking(str(uuid4()), student.id, self.room.id, start, start + timedelta(hours=1), "History",
+                          start - timedelta(days=10), status, None, **fields)
+        self.repo.save_booking(booking)
+        return booking
+
+    def decoded_bookings(self, wanted=Booking):
+        """Ids of every booking (or ``wanted``) row read from PostgreSQL inside the with-block."""
+        from booking import postgres
+        original, seen = postgres._decode, []
+
+        def spy(record_type, row):
+            record = original(record_type, row)
+            if record_type is wanted:
+                seen.append(record.id)
+            return record
+        return patch.object(postgres, "_decode", spy), seen
+
+    def test_load_list_booking_filters_match_the_memory_repository(self):
+        memory = MemoryRepository()
+        base = self.now + timedelta(hours=1)
+        statuses = list(BookingStatus)
+        for i in range(21):
+            booking = Booking(str(uuid4()), self.a.id, self.room.id, base + timedelta(hours=i), base + timedelta(hours=i, minutes=30),
+                              "Filters", self.now + timedelta(seconds=i), statuses[i % len(statuses)], None,
+                              review_due_at=base + timedelta(hours=i % 3) if i % 2 else None,
+                              created_by=self.admin.id if i % 3 == 0 else None,
+                              attendance="NO_SHOW" if i % 4 == 0 else None)
+            self.repo.save_booking(booking)
+            memory.save_booking(booking)
+        undecided = [BookingStatus.WAITING_QUALIFICATION, BookingStatus.PENDING_APPROVAL, BookingStatus.WAITLISTED]
+        cases = [{}, {"statuses": [BookingStatus.APPROVED]}, {"statuses": undecided}, {"statuses": []},
+                 {"start_from": base + timedelta(hours=3)}, {"start_to": base + timedelta(hours=5)},
+                 {"end_from": base + timedelta(hours=6, minutes=30)}, {"due_by": base + timedelta(hours=2)},
+                 {"created_by": self.admin.id}, {"unmarked": True},
+                 {"created_by": "not-a-uuid"},
+                 {"statuses": [BookingStatus.APPROVED], "unmarked": True, "start_from": base, "start_to": base + timedelta(hours=14)}]
+        for filters in cases:
+            with self.subTest(filters=filters):
+                ids = [item.id for item in self.repo.list_bookings(resource_id=self.room.id, **filters)]
+                self.assertEqual(ids, [item.id for item in memory.list_bookings(resource_id=self.room.id, **filters)])
+
+    def test_load_time_processing_and_staff_pages_do_not_read_past_bookings(self):
+        from booking.views.bookings import my_bookings
+        history = [self.raw_booking(self.now - timedelta(days=1 + i), status, student=self.b,
+                                    attendance="NO_SHOW" if status == BookingStatus.APPROVED else None).id
+                   for i in range(50)
+                   for status in (BookingStatus.APPROVED, BookingStatus.REJECTED, BookingStatus.CANCELLED, BookingStatus.EXPIRED)]
+        spy, seen = self.decoded_bookings()
+        with spy:
+            self.service.process_due_requests()
+            self.service.staff_overview(self.admin)
+            my_bookings(self.service, self.admin)
+        self.assertEqual(set(seen) & set(history), set())
+
+    def test_load_reminder_check_uses_the_same_queries_for_1_or_20_bookings(self):
+        def queries_after_reminders():
+            self.service.process_due_requests()  # sends any new reminder
+            with CaptureQueriesContext(connection) as captured:
+                self.service.process_due_requests()  # nothing new to send: this is the per-request cost
+            return len(captured.captured_queries)
+
+        soon = self.now + timedelta(hours=3)
+        self.raw_booking(soon, BookingStatus.APPROVED)
+        one = queries_after_reminders()
+        for _ in range(19):
+            self.raw_booking(soon, BookingStatus.APPROVED, student=self.person())
+        twenty = queries_after_reminders()
+        self.assertEqual(len([item for item in self.repo.list_notifications(self.a.id) if item.kind == "BOOKING_REMINDER"]), 1)
+        self.assertEqual(twenty, one)
+
+    def test_load_database_connection_is_reused_between_requests(self):
+        def backend_pid():
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_backend_pid()")
+                return cursor.fetchone()[0]
+
+        connection.close()
+        first = backend_pid()
+        close_old_connections()  # what Django runs at the end of every request
+        self.assertEqual(backend_pid(), first)
+
+    # 2026-10-29 (tasks-load-2026-10-29.md round 2: S2, S6).
+
+    def test_load_availability_reads_each_resource_once_for_the_whole_day(self):
+        short = Resource(str(uuid4()), "Short day", ResourceKind.ROOM, "Building A", "Test room",
+                         required_qualification_id=self.requirement.id, opening_time=time(8), closing_time=time(10))
+        self.repo.save_resource(short)
+        self.raw_booking(datetime(2030, 1, 10, 9, tzinfo=SYDNEY), BookingStatus.APPROVED, student=self.b)
+        day = self.start.date()
+
+        def queries(resource):
+            with CaptureQueriesContext(connection) as captured:
+                result = self.service.availability(self.a, resource.id, day, 30)
+            return len(captured.captured_queries), result["slots"]
+
+        few, _ = queries(short)       # 4 slots
+        many, slots = queries(self.room)  # 24 slots
+        self.assertEqual(many, few)
+        reasons = {slot["start"].astimezone(SYDNEY).strftime("%H:%M"): slot["reason_code"] for slot in slots}
+        self.assertEqual((reasons["08:30"], reasons["09:00"], reasons["09:30"], reasons["10:00"]), (None, "BOOKED", "BOOKED", None))
+
+    def runtime_service(self, outlook=False):
+        """Serve the API and booking_json from this test's service (the runtime one refuses to start outside DEBUG)."""
+        from booking import runtime
+        from booking.calendar_sync import CalendarSyncService
+        from booking.tests.test_outlook import FakeCalendar
+        self.service.calendar_sync = CalendarSyncService(self.repo, FakeCalendar(), enabled=outlook, clock=lambda: self.now)
+        return patch.object(runtime, "_service", self.service)
+
+    def staff_list_fixture(self):
+        """An on-behalf booking with an open change request, two overlapping waitlisted requests and a plain one."""
+        when = datetime(2030, 1, 11, 10, tzinfo=SYDNEY)
+        original = self.raw_booking(when, BookingStatus.APPROVED, created_by=self.admin.id)
+        change = self.raw_booking(when + timedelta(hours=2), BookingStatus.PENDING_APPROVAL, created_by=self.a.id,
+                                  replaces_id=original.id, review_due_at=when)
+        first = self.raw_booking(when + timedelta(hours=4), BookingStatus.WAITLISTED, student=self.b, created_by=self.b.id)
+        second = self.raw_booking(when + timedelta(hours=4), BookingStatus.WAITLISTED, student=self.person())
+        return original, change, first, second
+
+    def test_load_staff_list_json_is_the_same_with_shared_lookups(self):
+        from booking.views._common import BookingListLookups, booking_json
+        original, change, first, second = self.staff_list_fixture()
+        everything = self.repo.list_bookings(resource_id=self.room.id)
+        for outlook in (False, True):
+            with self.runtime_service(outlook):
+                for listed in (everything, [change, second]):  # the second list leaves the replaced booking out
+                    lookups = BookingListLookups(self.service, listed)
+                    for booking in listed:
+                        with self.subTest(status=booking.status.value, size=len(listed), outlook=outlook):
+                            self.assertEqual(booking_json(booking, lookups), booking_json(booking))
+        self.enterContext(self.runtime_service())
+        shared = BookingListLookups(self.service, everything)
+        self.assertEqual(booking_json(original, shared)["open_change"]["id"], change.id)
+        self.assertEqual(booking_json(change, shared)["replaces_booking"]["id"], original.id)
+        first_in_queue = (first.created_at, first.id) < (second.created_at, second.id)  # same created_at: id decides
+        self.assertEqual((booking_json(first, shared)["waitlist_position"], booking_json(second, shared)["waitlist_position"]),
+                         (1, 2) if first_in_queue else (2, 1))
+        self.assertEqual(booking_json(original, shared)["created_by_user"]["id"], self.admin.id)
+
+    def test_load_booking_records_queries_do_not_grow_with_the_list(self):
+        from rest_framework.test import APIClient
+        self.enterContext(self.runtime_service())
+        client = APIClient()
+        client.force_authenticate(user=self.admin)
+        url = f"/api/v1/admin/bookings/?status=ALL&resource_id={self.room.id}"
+
+        def queries():
+            with CaptureQueriesContext(connection) as captured:
+                response = client.get(url, HTTP_HOST="localhost")
+            self.assertEqual(response.status_code, 200, response.content[:300])
+            return len(captured.captured_queries), response.json()["count"]
+
+        self.staff_list_fixture()
+        small = queries()
+        for i in range(10):
+            self.staff_list_fixture()  # 40 more bookings with every kind of lookup
+        large = queries()
+        self.assertEqual((large[0], large[1]), (small[0], small[1] + 40))
+
+    # 2026-10-29 (tasks-load-2026-10-29.md round 3: S7, S8).
+
+    def extra_room(self, name, requirement_id):
+        room = Resource(str(uuid4()), name, ResourceKind.ROOM, "Building A", "Test room",
+                        required_qualification_id=requirement_id, opening_time=time(8), closing_time=time(20))
+        self.repo.save_resource(room)
+        return room
+
+    def test_load_day_overview_reads_the_person_once_and_matches_each_resource(self):
+        advanced = QualificationRequirement(str(uuid4()), "Advanced", "Needs the lab induction", prerequisite_ids=(self.requirement.id,))
+        self.repo.save_requirement(advanced)
+        advanced_room = self.extra_room("Advanced room", advanced.id)
+        self.verified(self.a)
+        when = datetime(2030, 1, 10, 9, tzinfo=SYDNEY)
+        self.raw_booking(when, BookingStatus.APPROVED, student=self.b)  # taken
+        self.raw_booking(when + timedelta(hours=2), BookingStatus.PENDING_APPROVAL, hold_until=self.now + timedelta(days=1))  # a's own, held
+        day = self.start.date()
+        fields = ("can_request", "qualification_status", "resource_status", "status_reason", "slots")
+
+        def overview(person):
+            with CaptureQueriesContext(connection) as captured:
+                result = self.service.day_overview(person, day, 60)
+            return len(captured.captured_queries), {row["resource"].id: row for row in result["results"]}
+
+        before, _ = overview(self.a)
+        for i in range(5):
+            self.extra_room(f"Extra room {i}", self.requirement.id)
+        after, rows = overview(self.a)
+        self.assertEqual(after, before)
+        for person in (self.a, self.b):  # b has no induction: the advanced room needs its prerequisite first
+            _, rows = overview(person)
+            for resource in self.repo.list_resources():
+                if resource.id in rows:
+                    single = self.service._availability(person, resource, day, 60)
+                    with self.subTest(person=person.zid, resource=resource.name):
+                        self.assertEqual({key: rows[resource.id][key] for key in fields}, {key: single[key] for key in fields})
+            if person is self.b:
+                self.assertEqual((rows[self.room.id]["qualification_status"], rows[advanced_room.id]["qualification_status"]),
+                                 ("NOT_SUBMITTED", "PREREQUISITE_REQUIRED"))
+
+    def test_load_induction_reminders_read_only_people_with_inductions_expiring_soon(self):
+        settled = [self.verified(self.person()) for _ in range(30)]  # valid for 120 days: nothing is due yet
+        spy, seen = self.decoded_bookings(QualificationSubmission)
+        with spy:
+            self.service.process_due_requests()
+        self.assertEqual(set(seen) & {item.id for item in settled}, set())
+
+        # The latest submission still decides: c's verified induction is about to expire, d already uploaded new evidence.
+        c, d = self.person(), self.person()
+        self.verified(c)
+        self.verified(d)
+        self.now += timedelta(days=110)
+        stored = self.storage.save(b"%PDF-1.4 renewal", "renewal.pdf", "application/pdf", d.id)
+        self.repo.save_submission(QualificationSubmission(str(uuid4()), d.id, self.requirement.id, "Renewal", "", stored.id, self.now))
+        self.service.process_due_requests()
+        self.service.process_due_requests()  # sent once only
+
+        def reminders(person):
+            return len([item for item in self.repo.list_notifications(person.id) if item.kind == "INDUCTION_EXPIRING"])
+        self.assertEqual((reminders(c), reminders(d)), (1, 0))
+
+    def test_load_submission_filters_match_the_memory_repository(self):
+        # Sprint 3 (2026-11-01): NULL validity, inclusive bounds, empty filters and invalid UUID list members.
+        memory = MemoryRepository()
+        self.verified(self.a)
+        record = self.repo.list_submissions(student_id=self.a.id)[0]
+        records = [replace(record, id=str(uuid4()), submitted_at=self.now + timedelta(seconds=i),
+                           status=status, valid_until=valid)
+                   for i, (status, valid) in enumerate([
+                       (QualificationStatus.PENDING, None),
+                       (QualificationStatus.VERIFIED, self.now),
+                       (QualificationStatus.VERIFIED, self.now + timedelta(days=1)),
+                       (QualificationStatus.REJECTED, None)])]
+        for item in records:
+            self.repo.save_submission(item)
+        for item in self.repo.list_submissions(student_id=self.a.id):
+            memory.save_submission(item)
+        cases = [{}, {"student_ids": []}, {"student_ids": ["bad-uuid"]},
+                 {"student_ids": ["bad-uuid", self.a.id]}, {"statuses": []},
+                 {"statuses": [QualificationStatus.VERIFIED]}, {"valid_from": self.now},
+                 {"valid_to": self.now}, {"valid_from": self.now, "valid_to": self.now + timedelta(days=1)}]
+        for filters in cases:
+            with self.subTest(filters=filters):
+                self.assertEqual(self.repo.list_submissions(student_id=self.a.id, **filters),
+                                 memory.list_submissions(student_id=self.a.id, **filters))
+
     def test_concurrent_email_workers_claim_a_job_once(self):
         from booking.domain import Notification
         from booking.postgres import PostgresRepository
@@ -437,3 +725,80 @@ class PostgresAdapterTests(TransactionTestCase):
             thread.join()
         self.assertEqual(errors, [])
         self.assertEqual(sorted(len(items) for items in claims), [0, 1])
+
+    def test_scheduler_recovers_when_the_database_connection_is_lost(self):
+        # 2026-11-01: the scheduler has no requests, so nothing else clears a connection the server has closed.
+        from io import StringIO
+        from types import SimpleNamespace
+        from django.core.management import call_command
+        cycles = []
+
+        def lose_connection():
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_backend_pid()")
+                pid = cursor.fetchone()[0]
+
+            def terminate():
+                try:
+                    with connection.cursor() as cursor:
+                        cursor.execute("SELECT pg_terminate_backend(%s)", [pid])
+                finally:
+                    connections.close_all()
+            thread = threading.Thread(target=terminate)
+            thread.start()
+            thread.join()
+
+        def one_cycle(*_args, **_kwargs):
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+            cycles.append("ok")
+            if len(cycles) == 1:
+                lose_connection()
+
+        stop = unittest.mock.Mock()
+        stop.wait.side_effect = [False, False, True]
+        module = "booking.management.commands.run_scheduler"
+        with patch(f"{module}.get_service", return_value=SimpleNamespace(repo=object())), \
+                patch(f"{module}.Event", return_value=stop), \
+                patch(f"{module}.call_command", side_effect=one_cycle), \
+                patch(f"{module}.signal.signal"), patch(f"{module}.signal.getsignal"), \
+                patch(f"{module}.logger.exception"):
+            call_command("run_scheduler", "--interval-seconds", "1", stdout=StringIO(), stderr=StringIO())
+        self.assertEqual(cycles, ["ok", "ok", "ok"])
+
+    def test_email_worker_recovers_without_closing_the_request_transaction(self):
+        # Sprint 3 (2026-11-01): real background connection, expired lifetime and server disconnect.
+        from types import SimpleNamespace
+        from booking.email_channel import EmailOutbox
+        pids, wrappers = [], []
+
+        def batch(_limit):
+            with connection.cursor() as cursor:
+                cursor.execute('SELECT pg_backend_pid()')
+                pids.append(cursor.fetchone()[0])
+            wrappers.append(connections['default'])
+
+        outbox = EmailOutbox()
+        outbox.BATCH_WINDOW_SECONDS = 0
+        service = SimpleNamespace(email_delivery=SimpleNamespace(process_pending=batch))
+        with patch('booking.runtime.get_service', return_value=service), self.repo.atomic():
+            request_connection = connection.connection
+            for cycle in range(3):
+                outbox.put('wake')
+                self.assertTrue(outbox.wait(5))
+                self.assertEqual(len(pids), cycle + 1)
+                self.assertIs(connection.connection, request_connection)
+                self.assertTrue(connection.in_atomic_block)
+                with connection.cursor() as cursor:
+                    cursor.execute('SELECT 1')
+                    self.assertEqual(cursor.fetchone(), (1,))
+                    if cycle == 0:
+                        cursor.execute('SELECT pg_terminate_backend(%s)', [pids[-1]])
+                        self.assertTrue(cursor.fetchone()[0])
+                if cycle == 1:
+                    wrappers[-1].close_at = 0  # expire this worker's connection before the next batch
+            self.assertEqual(len(set(pids)), 3)
+            # Close on the owning worker thread; its production lifetime normally lasts until process exit.
+            service.email_delivery.process_pending = lambda _limit: connections.close_all()
+            outbox.put('cleanup')
+            self.assertTrue(outbox.wait(5))

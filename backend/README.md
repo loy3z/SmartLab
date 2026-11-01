@@ -24,7 +24,7 @@ Django 5.2 + Django REST Framework 3.16。提供学生时段查询、房间／�
 - Admin／Manager 可通过 `GET /api/v1/admin/audit/` 按资源、学生、操作类型和时间查看审计记录（申请、审批、改期、取消、资格审核等），满足客户对操作轨迹的要求。
 - **日历订阅链接**：每人一条私密地址（`GET /api/v1/calendar/link/`，地址里是系统生成的随机码，和微软 Token 无关）。用户在 Outlook 里“从 Internet 订阅”粘贴即可，Outlook 自己定期读取 `GET /api/v1/calendar/{token}.ics`，里面是本人作为预约人的已批准预约；改期是更新同一条，取消后消失。可以重新生成（`POST calendar/link/reset/`），旧链接立即失效。更新频率由 Outlook 决定，可能要几个小时。
 - **站内通知**（顶部铃铛，`GET /api/v1/notifications/`）：自己提交的申请已收到、预约被批准／拒绝（含系统自动决定）、候补转为待审批、被 Manager 改期、被员工取消、员工替你建了预约、induction 审核结果、缺席记录、冻结与解冻；Manager 还会收到紧急申请。普通新申请不通知管理员。通知和状态变化写在同一个事务里；其他发送渠道写在 `booking/notification_channels.py`，用 `NOTIFICATION_CHANNELS` 配置。
-- **邮件通知**：`booking/email_channel.py` 通过系统 Gmail 邮箱（SMTP + 应用专用密码）把申请已收到、批准或拒绝、过期、候补转正、改期、被员工取消、提醒、替你预约、改期申请的结果和维修／重新开放（1.16.0）这些通知发到预约人的大学邮箱。默认关闭（`EMAIL_ENABLED`）；打开后 `EMAIL_MODE` 默认 `allowlist`，只发给名单里的地址，演示时用 `redirect` 把所有邮件改发给自己。发送失败只记日志。测试命令 `manage.py send_test_email --to 你的邮箱`。配置见 [email-setup.md](docs/email-setup.md)。
+- **邮件通知**：`booking/email_channel.py` 通过系统 Gmail 邮箱（SMTP + 应用专用密码）把申请已收到、批准或拒绝、过期、候补转正、改期、被员工取消、提醒、替你预约、改期申请的结果和维修／重新开放（1.16.0）这些通知发到预约人的大学邮箱。默认关闭（`EMAIL_ENABLED`）；打开后 `EMAIL_MODE` 默认 `allowlist`，只发给名单里的地址，演示时用 `redirect` 把所有邮件改发给自己。邮件先与通知一起写入 PostgreSQL，scheduler 对临时 SMTP 故障做退避重试，进程重启不会丢待办。测试命令 `manage.py send_test_email --to 你的邮箱`。配置见 [email-setup.md](docs/email-setup.md)。
 - **到场确认与冻结**：已批准的预约在开始前 15 分钟到开始后 30 分钟之间，由预约人自己在“我的预约”点 I'm here（`POST bookings/{id}/check-in/`）。窗口结束仍未确认就记一次缺席（`attendance=NO_SHOW`；资源当时维修或关闭的记为 `EXCUSED`，不算）。**第 4 次缺席时冻结 30 天**：冻结期间不能提交新申请（员工也不能替他建），并**立即取消他之后所有的预约和申请**，空出的时段交给候补。冻结只看受益人（zID）：员工被冻结只影响预约，不影响审批别人。被冻结的人可以提交解冻申请（`POST account/unfreeze-requests/`），Admin／Manager 在 Booking freezes 页面同意或拒绝，也可以直接解冻；不能处理自己的申请。网站按钮在哪里都能点，所以它防的是“忘了取消”，防不住故意作弊。
 - **每人每周最多 3 次预约**：同一受益人在同一周（悉尼时间周一到周日）里待审批、候补、已批准的预约达到 3 个时，新申请返回 409 `WEEKLY_LIMIT_REACHED`；Manager 改期到满额的那一周也会被拒。取消、被拒、过期后名额自动空出；候补递补和超时自动处理不受影响。员工代建算在受益人头上；重复预约不算。
 - **重复预约（只有员工）**：员工在资源卡片上点 Repeat weekly，选每周几、时间、时长、起止日期（最长 14 周），先预览每个日期（`POST bookings/series/preview/`），有问题的日期跳过（不进候补），再创建（`POST bookings/series/`）。可以突破“最多提前 30 天”，其余规则（最少提前天数、开放时间、受益人每个日期的 induction、冲突）照常检查；员工自己创建，所以**直接批准**。每一次都是一条普通预约（带 `series_id`），可以取消单次或整组剩下的（`POST bookings/series/{id}/cancel/`）；到场确认照常要求。
@@ -179,7 +179,7 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
 
 `AUTH_PROVIDER` 是真实认证适配器的配置入口：配置可无参数实例化的 provider 类，实现 `resolve_bearer(token: str) -> Principal`。provider 应验证凭证签名、有效期和受众，并将可信身份映射为数据库中的用户记录。当前演示 Bearer 认证不能代替学校 SSO。完成接入后，前端保留相同 `/auth/me/` 和业务接口，登录跳转／token 获取方式根据学校方案调整。
 
-审批期限保存在每张申请的 `review_due_at`（进入待审批时按资源的 `pending_hold_minutes` 计算）。预约查询及操作会推进到期的状态（超时自动处理、开始时间已过则过期），Admin 也可调用 `POST /api/v1/admin/process-due/`。这保证 API 再次访问时可看到正确状态；如果需要在无人访问系统时准时处理，正式部署应增加定时任务，调用同一个时间处理服务。
+审批期限保存在每张申请的 `review_due_at`（进入待审批时按资源的 `pending_hold_minutes` 计算）。预约查询及操作会推进到期的状态（超时自动处理、开始时间已过则过期），Admin 也可调用 `POST /api/v1/admin/process-due/`。Docker 部署中的 `scheduler` 服务每分钟调用同一个时间处理逻辑，因此即使无人访问网站也会准时处理。
 
 资料仅本人和 Admin／Manager 能通过受保护下载接口读取。正式文件存储必须保持私有权限；同时补齐部署配置、SSO、数据库、后台任务与文件服务后，才能作为真实校园服务使用。
 
@@ -201,13 +201,19 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
 
 ## 定时处理到期申请
 
-审批期限到了的申请需要有人触发自动处理，开始后没确认到场的预约也要按时记为缺席。网页请求会顺带处理，但没人访问时不会执行。使用 PostgreSQL 时请定时运行（例如每分钟一次，Windows 任务计划或 cron）：
+审批期限到了的申请需要有人触发自动处理，开始后没确认到场的预约也要按时记为缺席。网页请求会顺带处理，但没人访问时不会执行。Docker Compose 已包含常驻的 `scheduler` 服务；非 Docker 数据库部署可持续运行：
+
+```powershell
+.\.venv\Scripts\python.exe manage.py run_scheduler
+```
+
+也可以继续用 Windows 任务计划或 cron 每分钟执行一次：
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py process_due
 ```
 
-输出 `Decided or expired N request(s).`。启用 Outlook 时还会处理等待中的同步（`--outlook-limit`，默认 10）。该命令同样拒绝内存适配器。
+输出到期申请、邮件任务和 Outlook 任务的处理数量。邮件参数是 `--email-limit`（默认 50），启用 Outlook 时还会处理等待中的同步（`--outlook-limit`，默认 10）。该命令同样拒绝内存适配器。
 
 ## Local test console (1.17.0)
 

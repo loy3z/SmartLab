@@ -4,10 +4,10 @@
 
 ## 包含的文件和数据
 
-- `database/schema.sql`：17 张表（含 `site_contact`、`notification_preference`、1.19.0 的 `announcement`、1.20.0 的 `booking_history_removal`）、约束、索引、序列和审计保护触发器。
+- `database/schema.sql`：18 张表（含 `site_contact`、`notification_preference`、`announcement`、`booking_history_removal` 和持久化邮件队列 `email_delivery`）、约束、索引、序列和审计保护触发器。
 - `database/seed_resources.sql`：2 条培训要求（Advanced 要求先通过 General）、2 个房间、20 台设备（记录所在房间）。
 - `database/seed_users.sql`：6 个演示账号（与内存版演示数据相同的假 zID 和 id），以及 z1000001 一条已通过的 induction。全部是编造的数据，不要把真实学生的 zID 提交进 Git。
-- `database/migrations/`：已有数据库的升级脚本 001–010，按编号顺序执行，都可以重复执行（见第 2 节）。
+- `database/migrations/`：已有数据库的升级脚本 001–011，按编号顺序执行，都可以重复执行（见第 2 节）。
 - `booking/tests/test_postgres.py`：用真实 PostgreSQL 跑的适配器集成测试（见第 6 节）。
 - `booking/postgres.py`：数据库及上传文件存储适配器。
 - `requirements-postgres.txt`：后端依赖及 PostgreSQL 驱动。
@@ -69,6 +69,16 @@ Get-ChildItem .\database\migrations\*.sql | Sort-Object Name | ForEach-Object {
 | `008_notification_preferences.sql` | 每人每类别的通知站内开关 `notification_preference.enabled` |
 | `009_announcements_notification_channels.sql` | Sprint 3（1.19.0）：偏好加 `email_enabled DEFAULT true NOT NULL`，保留旧 `enabled`；通知记录加 `in_app`、`email` 渠道快照（默认 true）；新表 `announcement`、每资源一条未下架状态公告的部分唯一索引及时间索引 |
 | `010_booking_history_removal.sql` | 1.20.0：每用户／预约一条个人历史移除记录；复合主键保证幂等，外键保留原预约和用户；不删除或修改任何预约 |
+| `011_durable_email_delivery.sql` | 邮件通知的最终收件地址和内容、发送状态、尝试次数、重试时间及 worker 租约；通知删除时级联清理 |
+
+### 已有数据库升级到持久化邮件队列
+
+部署包含可靠邮件重试的后端前，对已有库执行 011。脚本只新增表和索引，不修改已有预约或通知，可以重复执行：
+
+```powershell
+& "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\011_durable_email_delivery.sql'
+if ($LASTEXITCODE -ne 0) { throw '011 升级失败，事务已回滚。' }
+```
 
 ### 1.20.0 已有数据库升级（Sprint 3）
 
@@ -177,7 +187,13 @@ python manage.py create_manager --zid z9000003 --name "Lab Manager" --email z900
 
 ### 定时处理到期申请
 
-审批期限到了的申请会在有人访问网页时顺带处理。为了没人访问时也能按时自动批准／拒绝，在设置了同样环境变量的终端里定时运行（例如每分钟一次，用 Windows 任务计划程序或服务器的 cron）：
+审批期限到了的申请会在有人访问网页时顺带处理。Docker Compose 使用独立的 `scheduler` 服务；本地数据库开发可以在设置了同样环境变量的终端里持续运行：
+
+```powershell
+python manage.py run_scheduler
+```
+
+也可以通过 Windows 任务计划程序或服务器的 cron 每分钟运行一次：
 
 ```powershell
 python manage.py process_due

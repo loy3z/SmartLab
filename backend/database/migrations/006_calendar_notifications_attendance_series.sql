@@ -93,8 +93,13 @@ ALTER TABLE public.booking_series DROP CONSTRAINT IF EXISTS booking_series_resou
 ALTER TABLE ONLY public.booking_series
     ADD CONSTRAINT booking_series_resource_fk FOREIGN KEY (resource_id) REFERENCES public.bookable_resource(id) ON DELETE RESTRICT;
 
-ALTER TABLE public.notification DROP CONSTRAINT IF EXISTS notification_pkey;
-ALTER TABLE ONLY public.notification ADD CONSTRAINT notification_pkey PRIMARY KEY (id);
+-- 2026-11-01: add only when missing; migration 011's foreign key depends on this key, so it cannot be dropped on a re-run.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'notification_pkey' AND conrelid = 'public.notification'::regclass) THEN
+        ALTER TABLE ONLY public.notification ADD CONSTRAINT notification_pkey PRIMARY KEY (id);
+    END IF;
+END $$;
 ALTER TABLE public.notification DROP CONSTRAINT IF EXISTS notification_recipient_fk;
 ALTER TABLE ONLY public.notification
     ADD CONSTRAINT notification_recipient_fk FOREIGN KEY (recipient_id) REFERENCES public.app_users(id) ON DELETE CASCADE;

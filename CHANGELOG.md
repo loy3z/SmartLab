@@ -2,6 +2,14 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.20.0 之后：合并 main 的后台定时任务和邮件可靠发送（2026-11-01，迁移 011）
+
+把 Alaric Nan 合进 `main` 的两项功能（`13bac3d` 后台定时任务，`a39bf59` 邮件可靠发送和重试）合进 `backend/week5-fixes`。冲突只在 `postgres.py`、`repository.py`、`test_postgres.py`，都是两边各自新增，两边都保留。合并时修了 3 个缺陷：
+
+- **断连后不恢复**：Django 只在网页请求前后清理失效的数据库连接。`run_scheduler` 和后台发邮件线程没有请求，数据库重启后会一直失败，直到容器重启。现在每轮开始前调用 `close_old_connections()`。新测试 `test_scheduler_recovers_when_the_database_connection_is_lost` 真的断开连接来验证，修复前只有第一轮成功。
+- **迁移不能重复执行**：有了 011 的外键后，重跑 006 会因为要删除 `notification_pkey` 而失败。006 改成主键不存在时才添加。
+- **新建库和升级库结构不一致**：011 的外键没有写名字，和 `schema.sql` 的 `email_delivery_notification_fk` 不同。011 改成写明名字。已经跑过旧版 011 的库，外键名字还是自动生成的，不影响功能。
+
 ## 1.20.0 之后：压力测试脚本进入仓库（2026-11-01，不改网站）
 
 Loy 要求把压力测试放进 Git，新建 `load-test/`（说明和三轮结果见其中的 README）。之前脚本只在团队成员本地。服务器地址不写进仓库，运行时用 `EC2_HOST` 传入。同时修复 `report.py` 把 `-history-worktree` 目录标成“不带历史数据”的问题。

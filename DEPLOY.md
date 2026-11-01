@@ -1,12 +1,13 @@
 <!-- Sprint 3 (2026-10-25) -->
 # 部署（Docker Compose）
 
-一台装了 Docker 的 Linux 服务器（例如 AWS EC2 Ubuntu）上用三个容器运行整个网站：
+一台装了 Docker 的 Linux 服务器（例如 AWS EC2 Ubuntu）上用四个容器运行整个网站：
 
 | 容器 | 内容 |
 | --- | --- |
 | `db` | PostgreSQL 16，数据在 `pgdata` 卷里（induction 证明文件也存在数据库里） |
 | `api` | Django + gunicorn（`backend/Dockerfile`），启动脚本 `backend/entrypoint.sh` |
+| `scheduler` | 每分钟处理到期审批、提醒、缺席记录、邮件重试和 Outlook 同步，使用与 API 相同的后端代码和 PostgreSQL |
 | `web` | nginx（`frontend/Dockerfile`）：提供前端页面，并把 `/api/` 转给 `api`，同一个地址，不需要 CORS |
 
 只开放 `web` 的 80 端口；数据库和 API 不对外。
@@ -36,9 +37,17 @@ cp .env.docker.example .env.docker
 docker compose --env-file .env.docker up -d --build
 docker compose --env-file .env.docker ps
 docker compose --env-file .env.docker logs -f api
+docker compose --env-file .env.docker logs -f scheduler
 ```
 
-浏览器打开 `http://<服务器地址>`。三个容器都是 `running`、`api` 是 `healthy` 就好了。
+浏览器打开 `http://<服务器地址>`。四个容器都是 `running`、`api` 是 `healthy` 就好了。`scheduler` 日志应显示
+`Scheduler started`，之后每轮输出处理了多少到期申请、邮件和 Outlook 任务。它只能使用 PostgreSQL，不能使用进程内存仓储。
+
+需要手动验证一次定时处理但不想启动永久循环时，可以运行：
+
+```bash
+docker compose --env-file .env.docker run --rm scheduler manage run_scheduler --once
+```
 
 **第一次启动**（数据库是空的）时，`entrypoint.sh` 用 `backend/database/schema.sql` 建表；`LOAD_DEMO_DATA=true` 时再导入 `seed_resources.sql`、`seed_users.sql`（2 个房间、20 台设备、2 项培训要求、6 个演示账号）。这些在同一个事务里，要么全部成功，要么什么都不写。之后的启动不会再建表或导入演示数据，网页上改过的内容和密码都会保留。
 
@@ -54,7 +63,7 @@ docker compose --env-file .env.docker exec -T db pg_dump -U smartlab smartlab > 
 # 2. 只构建新镜像，旧容器继续服务
 docker compose --env-file .env.docker build
 # 3. 用新镜像临时跑一次新迁移（旧容器里没有新迁移文件，所以不能用 exec）；没有新迁移就跳过
-docker compose --env-file .env.docker run --rm api migrate database/migrations/009_example.sql
+docker compose --env-file .env.docker run --rm api migrate database/migrations/011_durable_email_delivery.sql
 # 4. 换上新容器
 docker compose --env-file .env.docker up -d
 ```

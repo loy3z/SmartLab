@@ -48,6 +48,14 @@ if [ "$($PSQL -tAc "SELECT 1 FROM information_schema.tables WHERE table_schema='
   fi
 fi
 
+# Run a Django management command after the database is ready. The scheduler service uses this
+# path so it shares the same image and database configuration as the API service.
+if [ "$1" = "manage" ]; then
+  shift
+  [ "$#" -gt 0 ] || { echo "Usage: ./entrypoint.sh manage <command> [arguments...]"; exit 2; }
+  exec python manage.py "$@"
+fi
+
 exec gunicorn config.wsgi:application \
   --bind 0.0.0.0:8000 \
   --workers "${GUNICORN_WORKERS:-3}" \

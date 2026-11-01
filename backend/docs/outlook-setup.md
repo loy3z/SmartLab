@@ -28,7 +28,7 @@
 
 ### 以后用 Outlook 发通知
 
-站内通知先存在数据库里，再交给“发送渠道”。以后要用 Outlook 发邮件通知，只需写一个渠道类（例如用 Graph 的 `sendMail` 以系统邮箱发信），实现 `booking/notification_channels.py` 里的 `NotificationChannel`，再把类路径填进 `NOTIFICATION_CHANNELS`。业务代码不用改。
+站内通知先存在数据库里，再交给发送渠道。当前邮件通知使用 SMTP，并通过 PostgreSQL outbox 和 scheduler 重试；如果学校以后要求 Graph `sendMail`，可以新增渠道而不改预约规则。
 
 ## 2. 测试只用自己的邮箱（必须先看）
 
@@ -38,7 +38,7 @@
 - 想在收件箱里看到邀请：先注册一个演示学生，邮箱填你的另一个地址（不要填登录 Outlook 的那个，Outlook 不会给组织者本人发邀请），再把这个地址填进名单。
 - `none`：永远不邀请。`all`：邀请所有受益人，只在客户确认的正式环境里使用。
 
-系统本身不发邮件。批准、拒绝这类消息目前只在网站的通知铃铛里显示；用 Outlook 或邮件发送的接口已经留好（见第 1 节末尾）。
+系统可以通过配置的 SMTP 系统邮箱发送批准、拒绝等通知；默认关闭，配置和可靠重试见 `email-setup.md`。这与 Outlook 日历事件同步是两项独立集成。
 
 ## 3. 让后端能写你的日历
 
@@ -125,7 +125,7 @@ $env:OUTLOOK_ALLOWED_ATTENDEES = ''
 
 ## 6. 定时处理
 
-使用 PostgreSQL 时，可以用 Windows 任务计划每几分钟运行一次 `manage.py process_due`。它会处理到期的审批申请，并推送等待中的 Outlook 更新（`--outlook-limit`，默认 10）。只处理 Outlook 时用 `manage.py process_outlook --limit 10`。内存模式下这两个命令会拒绝运行，请改用页面上的 Sync now 或 `POST admin/outlook/process/`。
+Docker Compose 的 `scheduler` 服务会定期处理到期审批，并推送等待中的 Outlook 更新。其他 PostgreSQL 部署可持续运行 `manage.py run_scheduler`，或用 Windows 任务计划／cron 每几分钟运行一次 `manage.py process_due`（`--outlook-limit` 默认 10）。只处理 Outlook 时用 `manage.py process_outlook --limit 10`。内存模式下这些命令会拒绝运行，请改用页面上的 Sync now 或 `POST admin/outlook/process/`。
 
 ## 7. 状态与失败重试
 

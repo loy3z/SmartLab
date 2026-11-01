@@ -104,16 +104,16 @@ WHERE resource_id = :resource_id
 
 ## 通知、订阅、到场确认和重复预约
 
-仓储新增方法：`save_notification`、`get_notification`、`list_notifications(recipient_id)`（最新在前）；`get_calendar_feed(principal_id)`、`get_calendar_feed_by_token(token)`、`save_calendar_feed`；`save_unfreeze_request`、`get_unfreeze_request`、`list_unfreeze_requests(principal_id=None)`（最早在前）；`save_series`、`get_series`；1.16.0：`get_site_contact()`（没有时返回 `None`）、`save_site_contact(contact)`。
+仓储新增方法：`save_notification`、`get_notification`、`list_notifications(recipient_id)`（最新在前）；邮件队列的 `save_email_delivery`、`get_email_delivery`、`list_email_deliveries`、`claim_email_deliveries`；`get_calendar_feed(principal_id)`、`get_calendar_feed_by_token(token)`、`save_calendar_feed`；`save_unfreeze_request`、`get_unfreeze_request`、`list_unfreeze_requests(principal_id=None)`（最早在前）；`save_series`、`get_series`；1.16.0：`get_site_contact()`（没有时返回 `None`）、`save_site_contact(contact)`。
 
-- **通知**在保存预约的同一个事务里写入（`_save_booking` 比较新旧状态后决定发什么），失败时一起回滚。其他发送渠道（以后的 Outlook 邮件）在请求结束、事务提交之后才发。
+- **通知和邮件 outbox** 在保存预约的同一个事务里写入，失败时一起回滚。SMTP 网络调用在提交后进行；`claim_email_deliveries` 必须用行锁／`SKIP LOCKED` 等原子方式设置租约，防止多个 worker 同时领取。
 - **缺席处理**在 `process_due_requests` 的最后一步（`attendance.py` 的 `_process_attendance`）：已批准、`attendance` 为空、到场窗口已结束的预约，在资源＋受益人锁内重读后标记。达到冻结次数时，在同一事务里更新这个人、取消他之后所有的有效预约（每个资源再加资源锁）并递补候补。PostgreSQL 适配器的全局 advisory lock 保证这些嵌套事务不会死锁。
 - **重复预约**在资源＋受益人锁内重新检查每个日期，然后一次写入系列和全部预约；任何一步失败都整体回滚。
 - **每周上限**在创建申请的资源＋受益人锁内统计这个人同一周的有效预约（`series_id` 为空的）。
 
 ## 接入和升级
 
-- 已有数据库按顺序运行 `database/migrations/` 里的全部脚本（001–007，都可重复执行），步骤见 `database/README.md` 第 2 节。
+- 已有数据库按顺序运行 `database/migrations/` 里的全部脚本（001–011，都可重复执行），步骤见 `database/README.md` 第 2 节。
 - 用户邮箱应从可信身份数据补齐；不要编造正式用户邮箱。
 - 环境变量 `DEFAULT_PENDING_HOLD_MINUTES` 仅用于创建演示种子数据，不能覆盖数据库中的 Manager 配置。
 - 时间字段使用带时区存储；API 输出 UTC，开放时间规则使用资源时区。

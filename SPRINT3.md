@@ -435,3 +435,7 @@ No API, schema or booking-rule change. Review: project docs `claude/reports/2026
 | H1 前端 | `api/bookings.ts` `removeBookingHistory`；`MyBookings.tsx`、`SeriesCard.tsx`；`my-bookings.ts` `canRemoveBookingHistory` | routing booking history removal（三角色、取消确认、503 保留、成功与刷新）、逐日期移除 |
 | D1 | `DashboardPage.tsx`、`dashboard.css`、`workspace.css`：独立统计卡、紧凑 Next session 与预约列表、员工 Today 横幅 | routing booking dashboard（真实列表形状、桌面与320/390px）；既有 fluency 用例回归公告 |
 | 文档 | OpenAPI 1.20.0 / frontend-api.md、数据库 README、ARCHITECTURE 第10节、CHANGELOG | check-local 的 openapi 和 schema；具体输出见任务卡 |
+
+## 29. 压力测试（2026-10-29）
+
+脚本和结果都在 [load-test/README.md](load-test/README.md)。性能修复的代码改动见 CHANGELOG 的压力测试三轮。

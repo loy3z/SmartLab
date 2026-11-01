@@ -2,6 +2,12 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.20.0 之后：性能三轮与合并复查修复（2026-11-01）
+
+- 修复并发提醒重复：保留性能三轮的批量去重查询，发送前在 `_notify` 的写锁内再次核对收件人和预约／induction 链接，通知与邮件队列仍在同一事务内写入。内存与 PostgreSQL 都有并发回归测试，修复前各生成两条通知和两条邮件记录，修复后各一条。
+- 011 重跑时兼容原版自动生成的外键名，改为与 `schema.sql` 相同的 `email_delivery_notification_fk`，保留外键与已有邮件。增加旧库记录保留测试，并验证 010 和原版 011 两条升级路径的结构一致。
+- 补充邮件后台线程断连、连接过期恢复及主线程事务不受影响的 PostgreSQL 实测；补齐 submission 筛选的双仓库边界对照，并隔离 PostgreSQL 测试的全局邮件队列。
+
 ## 1.20.0 之后：合并 main 的后台定时任务和邮件可靠发送（2026-11-01，迁移 011）
 
 把 Alaric Nan 合进 `main` 的两项功能（`13bac3d` 后台定时任务，`a39bf59` 邮件可靠发送和重试）合进 `backend/week5-fixes`。冲突只在 `postgres.py`、`repository.py`、`test_postgres.py`，都是两边各自新增，两边都保留。合并时修了 3 个缺陷：

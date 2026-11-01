@@ -73,7 +73,7 @@ Get-ChildItem .\database\migrations\*.sql | Sort-Object Name | ForEach-Object {
 
 ### 已有数据库升级到持久化邮件队列
 
-部署包含可靠邮件重试的后端前，对已有库执行 011。脚本只新增表和索引，不修改已有预约或通知，可以重复执行：
+部署包含可靠邮件重试的后端前，对已有库执行 011。脚本新增表和索引；已经跑过原版 011 的库会把自动生成的外键名改为 `email_delivery_notification_fk`，保留约束和邮件记录。不修改已有预约或通知，可以重复执行：
 
 ```powershell
 & "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\011_durable_email_delivery.sql'

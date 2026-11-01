@@ -96,6 +96,9 @@ class PostgresAdapterTests(TransactionTestCase):
         # Each test uses its own people and resources, so tests never see each other's rows
         # (audit records are append-only and cannot be truncated between tests).
         from booking.postgres import PostgresFileStorage, PostgresRepository
+        # Sprint 3 (2026-11-01): email claiming reads the global queue, unlike person/resource-scoped fixtures.
+        with connection.cursor() as cursor:
+            cursor.execute('DELETE FROM public.email_delivery')
         self.now = datetime(2030, 1, 7, 0, tzinfo=timezone.utc)
         self.repo, self.storage = PostgresRepository(), PostgresFileStorage()
         self.service = BookingService(self.repo, self.storage, clock=lambda: self.now, min_advance_days=0, max_advance_days=7)
@@ -188,6 +191,35 @@ class PostgresAdapterTests(TransactionTestCase):
             cursor.execute(migration.read_text())
             cursor.execute("SELECT to_regclass('public.email_delivery')")
             self.assertEqual(cursor.fetchone()[0], "email_delivery")
+
+    # Sprint 3 (2026-11-01): an existing table from main's original 011 must also converge.
+    def test_011_normalizes_the_legacy_foreign_key_without_losing_email(self):
+        from booking.domain import Notification
+        notice = Notification(str(uuid4()), self.a.id, "BOOKING_REMINDER", "Title", "Body", self.now)
+        self.repo.save_notification(notice)
+        delivery = EmailDelivery(notice.id, self.a.university_email, "Subject", "Body", "PENDING", self.now, self.now)
+        self.repo.save_email_delivery(delivery)
+        migration = Path(settings.BASE_DIR) / 'database/migrations/011_durable_email_delivery.sql'
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute('ALTER TABLE public.email_delivery RENAME CONSTRAINT email_delivery_notification_fk TO email_delivery_notification_id_fkey')
+                cursor.execute(migration.read_text())
+                cursor.execute(migration.read_text())
+                cursor.execute("SELECT conname FROM pg_constraint WHERE conrelid='public.email_delivery'::regclass AND contype='f'")
+                self.assertEqual(cursor.fetchall(), [("email_delivery_notification_fk",)])
+            self.assertEqual(self.repo.get_email_delivery(notice.id), delivery)
+            transaction.set_rollback(True)
+
+    def test_concurrent_booking_reminders_create_one_notification_and_email(self):
+        from booking.tests.test_reminders import concurrent_reminder_check
+        self.raw_booking(self.now + timedelta(hours=3), BookingStatus.APPROVED)
+        concurrent_reminder_check(self, self.service, self.a, "BOOKING_REMINDER", self.service._booking_reminders)
+
+    def test_concurrent_induction_reminders_create_one_notification_and_email(self):
+        from booking.tests.test_reminders import concurrent_reminder_check
+        self.verified(self.a)
+        self.now += timedelta(days=110)
+        concurrent_reminder_check(self, self.service, self.a, "INDUCTION_EXPIRING", self.service._induction_reminders)
 
     @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
     def test_staff_invite_activation_and_sign_in_are_persisted(self):
@@ -455,6 +487,7 @@ class PostgresAdapterTests(TransactionTestCase):
                  {"start_from": base + timedelta(hours=3)}, {"start_to": base + timedelta(hours=5)},
                  {"end_from": base + timedelta(hours=6, minutes=30)}, {"due_by": base + timedelta(hours=2)},
                  {"created_by": self.admin.id}, {"unmarked": True},
+                 {"created_by": "not-a-uuid"},
                  {"statuses": [BookingStatus.APPROVED], "unmarked": True, "start_from": base, "start_to": base + timedelta(hours=14)}]
         for filters in cases:
             with self.subTest(filters=filters):
@@ -640,6 +673,31 @@ class PostgresAdapterTests(TransactionTestCase):
             return len([item for item in self.repo.list_notifications(person.id) if item.kind == "INDUCTION_EXPIRING"])
         self.assertEqual((reminders(c), reminders(d)), (1, 0))
 
+    def test_load_submission_filters_match_the_memory_repository(self):
+        # Sprint 3 (2026-11-01): NULL validity, inclusive bounds, empty filters and invalid UUID list members.
+        memory = MemoryRepository()
+        self.verified(self.a)
+        record = self.repo.list_submissions(student_id=self.a.id)[0]
+        records = [replace(record, id=str(uuid4()), submitted_at=self.now + timedelta(seconds=i),
+                           status=status, valid_until=valid)
+                   for i, (status, valid) in enumerate([
+                       (QualificationStatus.PENDING, None),
+                       (QualificationStatus.VERIFIED, self.now),
+                       (QualificationStatus.VERIFIED, self.now + timedelta(days=1)),
+                       (QualificationStatus.REJECTED, None)])]
+        for item in records:
+            self.repo.save_submission(item)
+        for item in self.repo.list_submissions(student_id=self.a.id):
+            memory.save_submission(item)
+        cases = [{}, {"student_ids": []}, {"student_ids": ["bad-uuid"]},
+                 {"student_ids": ["bad-uuid", self.a.id]}, {"statuses": []},
+                 {"statuses": [QualificationStatus.VERIFIED]}, {"valid_from": self.now},
+                 {"valid_to": self.now}, {"valid_from": self.now, "valid_to": self.now + timedelta(days=1)}]
+        for filters in cases:
+            with self.subTest(filters=filters):
+                self.assertEqual(self.repo.list_submissions(student_id=self.a.id, **filters),
+                                 memory.list_submissions(student_id=self.a.id, **filters))
+
     def test_concurrent_email_workers_claim_a_job_once(self):
         from booking.domain import Notification
         from booking.postgres import PostgresRepository
@@ -707,3 +765,40 @@ class PostgresAdapterTests(TransactionTestCase):
                 patch(f"{module}.logger.exception"):
             call_command("run_scheduler", "--interval-seconds", "1", stdout=StringIO(), stderr=StringIO())
         self.assertEqual(cycles, ["ok", "ok", "ok"])
+
+    def test_email_worker_recovers_without_closing_the_request_transaction(self):
+        # Sprint 3 (2026-11-01): real background connection, expired lifetime and server disconnect.
+        from types import SimpleNamespace
+        from booking.email_channel import EmailOutbox
+        pids, wrappers = [], []
+
+        def batch(_limit):
+            with connection.cursor() as cursor:
+                cursor.execute('SELECT pg_backend_pid()')
+                pids.append(cursor.fetchone()[0])
+            wrappers.append(connections['default'])
+
+        outbox = EmailOutbox()
+        outbox.BATCH_WINDOW_SECONDS = 0
+        service = SimpleNamespace(email_delivery=SimpleNamespace(process_pending=batch))
+        with patch('booking.runtime.get_service', return_value=service), self.repo.atomic():
+            request_connection = connection.connection
+            for cycle in range(3):
+                outbox.put('wake')
+                self.assertTrue(outbox.wait(5))
+                self.assertEqual(len(pids), cycle + 1)
+                self.assertIs(connection.connection, request_connection)
+                self.assertTrue(connection.in_atomic_block)
+                with connection.cursor() as cursor:
+                    cursor.execute('SELECT 1')
+                    self.assertEqual(cursor.fetchone(), (1,))
+                    if cycle == 0:
+                        cursor.execute('SELECT pg_terminate_backend(%s)', [pids[-1]])
+                        self.assertTrue(cursor.fetchone()[0])
+                if cycle == 1:
+                    wrappers[-1].close_at = 0  # expire this worker's connection before the next batch
+            self.assertEqual(len(set(pids)), 3)
+            # Close on the owning worker thread; its production lifetime normally lasts until process exit.
+            service.email_delivery.process_pending = lambda _limit: connections.close_all()
+            outbox.put('cleanup')
+            self.assertTrue(outbox.wait(5))

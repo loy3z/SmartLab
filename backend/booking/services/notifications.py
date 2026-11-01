@@ -65,7 +65,8 @@ class NotificationsMixin:
         resource = self.repo.get_resource(booking.resource_id)
         return f"{resource.name if resource else 'Resource'} on {self.describe_time(booking, resource)}"
 
-    def _notify(self, recipient_id, kind, title, body, booking=None, link=None):
+    def _notify(self, recipient_id, kind, title, body, booking=None, link=None, *, once=False):
+        """Store a notice and its email atomically; once rechecks a reminder's identity under the write lock."""
         if not recipient_id:
             return None
         # Sprint 3 (1.19.0): keep email-only messages out of the bell permanently.
@@ -79,6 +80,14 @@ class NotificationsMixin:
         # This nested transaction is also needed for standalone reminders: the notification and SMTP outbox row
         # either both commit or both roll back. Booking operations already have a wider outer transaction.
         with self.repo.atomic(student_ids=[str(recipient_id)]):
+            # Sprint 3 (2026-11-01): the bulk reminder read is only a fast path. Another request or the
+            # scheduler may have sent it since then; check again while holding the same lock as the write.
+            if once:
+                previous = (self.repo.list_booking_notifications(kind, [booking.id]) if booking
+                            else self.repo.list_kind_notifications(kind, [str(recipient_id)]))
+                if any(item.recipient_id == str(recipient_id)
+                       and (booking is not None or item.link == notification.link) for item in previous):
+                    return None
             self.repo.save_notification(notification)
             email_delivery = getattr(self, "email_delivery", None)
             if email_delivery is not None:

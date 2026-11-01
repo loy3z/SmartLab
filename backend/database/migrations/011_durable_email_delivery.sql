@@ -24,6 +24,19 @@ CREATE TABLE IF NOT EXISTS public.email_delivery (
     )
 );
 
+-- Sprint 3 (2026-11-01): original 011 used PostgreSQL's automatic FK name. CREATE TABLE IF NOT EXISTS
+-- leaves that table untouched, so normalize existing installations too, without dropping the FK or any rows.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.email_delivery'::regclass
+               AND conname = 'email_delivery_notification_id_fkey' AND contype = 'f')
+       AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.email_delivery'::regclass
+                       AND conname = 'email_delivery_notification_fk') THEN
+        ALTER TABLE public.email_delivery RENAME CONSTRAINT email_delivery_notification_id_fkey
+            TO email_delivery_notification_fk;
+    END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS email_delivery_due_idx
     ON public.email_delivery(next_attempt_at, lease_until, created_at)
     WHERE status IN ('PENDING', 'IN_PROGRESS', 'RETRY');

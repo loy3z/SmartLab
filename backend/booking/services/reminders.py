@@ -37,7 +37,7 @@ class RemindersMixin:
             window = f"{opens.astimezone(ZoneInfo(zone)):%H:%M} and {closes.astimezone(ZoneInfo(zone)):%H:%M}"
             self._notify(booking.student_id, BOOKING_REMINDER, "Booking coming up",
                          f"{self._booking_label(booking)}. Press I'm here in My Bookings between {window}, "
-                         "or it counts as a missed booking. Cancel it if you no longer need it.", booking)
+                         "or it counts as a missed booking. Cancel it if you no longer need it.", booking, once=True)
             sent += 1
         return sent
 
@@ -68,6 +68,6 @@ class RemindersMixin:
             days = max(1, (submission.valid_until - now).days)
             self._notify(submission.student_id, INDUCTION_EXPIRING, "Induction expires soon",
                          f"Your {name} expires in {days} day(s). Bookings after that date need new evidence: "
-                         "upload it now so staff can review it in time.", link=link)
+                         "upload it now so staff can review it in time.", link=link, once=True)
             sent += 1
         return sent

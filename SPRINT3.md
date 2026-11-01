@@ -138,9 +138,10 @@
   - 每条只发一次。
 - **后端**：
   - `booking/services/reminders.py`：`_send_reminders`、`_booking_reminders`、`_induction_reminders`，在 `waitlist.py` 的 `process_due_requests` 最后调用。
+  - 2026-11-01：提醒调用 `notifications.py` 的 `_notify(..., once=True)`，在写锁内按收件人和预约／induction 链接复查，避免网页请求和 scheduler 同时生成重复通知及邮件。
   - “已过期”通知在 `notifications.py` `_booking_changed` 里。
   - 规则数字：`rules.py` 的 `reminder_hours_before`、`induction_reminder_days`。
-- **测试**：`test_reminders.py`。
+- **测试**：`test_reminders.py`；`test_postgres.py` 的两个 `test_concurrent_*_reminders_create_one_notification_and_email` 在真实数据库上验证并发去重。
 
 ## 8. 使用情况报表
 

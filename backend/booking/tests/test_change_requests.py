@@ -97,10 +97,18 @@ class ChangeRequestTests(Sprint3Fixture, SimpleTestCase):
         self.refused("REQUEST_NOT_CHANGEABLE", self.service.request_time_change, self.student, old.id, *self.at(6, 14))
 
     def test_the_old_booking_does_not_count_twice_in_the_weekly_limit(self):
-        limit = self.service.rules().max_bookings_per_week
-        week = [self.approved(days=1, hour=8 + 2 * index) for index in range(limit)]
-        change = self.change(week[0], days=1, hour=16)  # same week, would be one too many without the exclusion
+        week = [self.approved(days=day, hour=8, minutes=180) for day in (1, 2, 3, 4)]
+        change = self.change(week[0], days=1, hour=14, minutes=180)
         self.assertEqual(change.status, BookingStatus.PENDING_APPROVAL)
+
+    def test_the_old_booking_and_its_open_change_count_as_one_future_booking(self):
+        self.service._override_rule(max_active_future_bookings=2)
+        old = self.approved(days=2, hour=8, minutes=30)
+        change = self.change(old, days=3, hour=8, minutes=30)
+        self.assertEqual(change.status, BookingStatus.PENDING_APPROVAL)
+        self.assertEqual(self.request(days=4, hour=8, minutes=30).status, BookingStatus.PENDING_APPROVAL)
+        self.refused("FUTURE_BOOKING_LIMIT_REACHED", self.request, self.student,
+                     days=5, hour=8, minutes=30)
 
 
 class MaintenanceNoticeTests(Sprint3Fixture, SimpleTestCase):
@@ -150,12 +158,12 @@ class ChangeRequestAPITests(BookingAPIFixtureMixin, SimpleTestCase):
 
 
 class DayOverviewCountTests(Sprint3Fixture, SimpleTestCase):
-    def test_lengths_longer_than_a_resource_allows_are_counted_not_an_error(self):
+    def test_lengths_longer_than_the_effective_slot_limit_are_counted_not_an_error(self):
         short = replace(self.room, id=str(uuid4()), name="Short room", max_booking_minutes=120)
         self.repo.save_resource(short)
         day = self.today + timedelta(days=3)
-        overview = self.service.day_overview(self.student, day, duration_minutes=360)
-        self.assertEqual([row["resource"].id for row in overview["results"]], [self.room.id])  # 8 h maximum
+        overview = self.service.day_overview(self.student, day, duration_minutes=180)
+        self.assertEqual([row["resource"].id for row in overview["results"]], [self.room.id])  # six 30-minute slots
         self.assertEqual(overview["too_long"], 1)
 
     def test_rows_hidden_as_not_bookable_are_counted_by_reason(self):

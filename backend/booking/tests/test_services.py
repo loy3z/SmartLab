@@ -72,6 +72,42 @@ class BookingFixtureMixin:
         return self.service.review_booking(self.admin, booking.id, "APPROVED")
 
 class BookingWorkflowTests(BookingFixtureMixin, SimpleTestCase):
+    def test_normal_booking_uses_whole_half_hour_slots_and_stops_at_six(self):
+        self.qualification()
+        six_slots = self.book(end=self.start + timedelta(hours=3))
+        self.assertEqual(six_slots.status, BookingStatus.PENDING_APPROVAL)
+
+        with self.assertRaises(DomainError) as too_long:
+            self.book(start=self.start + timedelta(hours=4), end=self.start + timedelta(hours=7, minutes=30))
+        self.assertEqual(too_long.exception.code, "DURATION_LIMIT")
+        self.assertEqual(too_long.exception.details, {
+            "max_slots": 6, "slot_minutes": 30, "resource_max_minutes": 480,
+        })
+
+        with self.assertRaises(DomainError) as partial_slot:
+            self.book(start=self.start + timedelta(hours=4), end=self.start + timedelta(hours=4, minutes=15))
+        self.assertEqual(partial_slot.exception.code, "INVALID_SLOT_COUNT")
+
+    def test_resource_may_keep_a_shorter_normal_booking_limit(self):
+        self.qualification()
+        self.room = replace(self.room, max_booking_minutes=120)
+        self.repo.save_resource(self.room)
+        self.assertEqual(self.book(end=self.start + timedelta(hours=2)).status, BookingStatus.PENDING_APPROVAL)
+        with self.assertRaises(DomainError) as denied:
+            self.book(start=self.start + timedelta(hours=3), end=self.start + timedelta(hours=5, minutes=30))
+        self.assertEqual((denied.exception.code, denied.exception.details["max_slots"]), ("DURATION_LIMIT", 4))
+
+    def test_availability_reports_the_effective_normal_slot_limit(self):
+        self.qualification()
+        result = self.service.availability(self.student, self.room.id, self.start.date(), 180)
+        self.assertEqual(
+            (result["booking_slot_minutes"], result["max_booking_slots"], result["max_booking_minutes"]),
+            (30, 6, 180),
+        )
+        with self.assertRaises(DomainError) as denied:
+            self.service.availability(self.student, self.room.id, self.start.date(), 210)
+        self.assertEqual(denied.exception.code, "INVALID_DURATION")
+
     def test_parallel_submissions_cannot_double_book_a_resource(self):
         self.qualification(self.student)
         self.qualification(self.other)
@@ -102,6 +138,35 @@ class BookingWorkflowTests(BookingFixtureMixin, SimpleTestCase):
 
         self.assertEqual(results[0].id, results[1].id)
         self.assertEqual(len(self.repo.list_bookings()), 1)
+
+    def test_parallel_submissions_cannot_exceed_the_future_booking_limit(self):
+        self.qualification()
+        self.service._override_rule(max_active_future_bookings=8)
+        for index in range(7):
+            start = self.start + timedelta(hours=index)
+            self.book(start=start, end=start + timedelta(minutes=30))
+        barrier = Barrier(2)
+
+        def submit(index):
+            start = self.start + timedelta(days=1, hours=index)
+            barrier.wait(timeout=5)
+            try:
+                return self.book(start=start, end=start + timedelta(minutes=30)).status
+            except DomainError as error:
+                return error.code
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(submit, range(2)))
+
+        self.assertCountEqual(results, [BookingStatus.PENDING_APPROVAL, "FUTURE_BOOKING_LIMIT_REACHED"])
+        active = [item for item in self.repo.list_bookings()
+                  if item.student_id == self.student.id and item.status in (
+                      BookingStatus.WAITING_QUALIFICATION,
+                      BookingStatus.PENDING_APPROVAL,
+                      BookingStatus.WAITLISTED,
+                      BookingStatus.APPROVED,
+                  )]
+        self.assertEqual(len(active), 8)
 
     def test_qualification_must_cover_booking_end_but_exact_end_is_valid(self):
         submission = self.qualification(valid_until=self.end - timedelta(seconds=1))

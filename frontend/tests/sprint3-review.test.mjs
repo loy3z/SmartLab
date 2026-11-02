@@ -33,8 +33,8 @@ test('change requests: offered on the person\'s own future approved booking with
   assert.match(changeSentMessage(booking()).message, /old time has been released/)
 })
 
-test('Find a free time: lengths up to 8 h, and why rows are hidden', () => {
-  assert.equal(FIND_DURATIONS.at(-1), 480)
+test('Find a free time: normal lengths stop at three hours, and why rows are hidden', () => {
+  assert.deepEqual(FIND_DURATIONS, [30, 60, 90, 120, 150, 180])
   assert.deepEqual(hiddenSummary(undefined), { text: '', needsInduction: false })
   assert.deepEqual(hiddenSummary({ MAINTENANCE: 1, NOT_SUBMITTED: 18 }),
     { text: '19 hidden: 18 induction not submitted, 1 under maintenance', needsInduction: true })

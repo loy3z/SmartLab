@@ -87,8 +87,8 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
     return () => el.removeEventListener('wheel', onWheel)
   }, [showTimeline, data])
 
-  const step = resource.slot_minutes
-  const maximumMinutes = data?.max_booking_minutes ?? resource.max_booking_minutes
+  const step = data?.selection_step_minutes ?? resource.selection_step_minutes ?? resource.slot_minutes
+  const maximumMinutes = data?.max_booking_minutes ?? resource.effective_max_booking_minutes ?? resource.max_booking_minutes
   const maxCells = Math.max(1, Math.floor((fixedMinutes ?? maximumMinutes) / step))
   const fixedCells = fixedMinutes ? Math.max(1, Math.round(fixedMinutes / step)) : null
 
@@ -181,7 +181,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
     // Click a start, then click an end. Clicking before or inside the selection starts again.
     if (range && index > range.to) {
       if (index - range.from + 1 > maxCells) {
-        return setProblem(`Bookings can be at most ${fmtDuration(maximumMinutes)} for this resource.`)
+        return setProblem(`Normal bookings can be up to ${fmtDuration(maximumMinutes)}.`)
       }
       const why = blockedBetween(range.from, index)
       if (why) return setProblem(why)

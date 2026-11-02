@@ -3,10 +3,9 @@
 Staff choose the weekdays, start time, length and first/last date (at most BookingRules.max_series_weeks). A
 preview shows every date and whether it can be booked; dates with a problem are skipped by choice, never queued.
 The series may reach past the normal "at most N days ahead" window, but every other rule applies to each date:
-the minimum advance days, opening hours, length, the person's induction (valid on that date) and conflicts.
-Because staff create it, every kept date is approved at once (no review). Series bookings do not count towards
-the weekly limit, but check-in applies. Each date is an ordinary booking with series_id, so cancelling one date,
-rescheduling it, Outlook and the calendar link work as for any booking.
+the minimum advance days, opening hours, length, the person's induction (valid on that date), weekly allowance,
+active-future-booking limit and conflicts. Because staff create it, every kept date is approved at once. Each date is an ordinary
+booking with series_id, so cancelling one date, rescheduling it, Outlook and the calendar link work as for any booking.
 """
 from datetime import UTC, date, datetime, time, timedelta
 from uuid import uuid4
@@ -20,7 +19,7 @@ from ..test_console import booking_rules_bypassed, test_period_violation
 
 class SeriesMixin:
     def _series_plan(self, actor, resource_id, weekdays, start_time, duration_minutes, first_date, last_date,
-                     on_behalf_of_zid=None):
+                     on_behalf_of_zid=None, skip_dates=()):
         """Validate the pattern and check every date. Returns (resource, person, [occurrence dict])."""
         self.require_staff(actor)
         person = self._beneficiary(actor, on_behalf_of_zid)
@@ -50,6 +49,28 @@ class SeriesMixin:
             day += timedelta(days=1)
         if not occurrences:
             raise DomainError("SERIES_EMPTY", "No date in this range falls on the chosen weekdays.")
+        if not booking_rules_bypassed(actor, person.id):
+            skip = {item.isoformat() if isinstance(item, date) else str(item) for item in skip_dates}
+            planned_by_week = {}
+            planned_future = 0
+            zone = ZoneInfo(resource.timezone)
+            for item in occurrences:
+                if not item["available"] or item["date"] in skip:
+                    continue
+                local_day = item["start"].astimezone(zone).date()
+                week_start = local_day - timedelta(days=local_day.weekday())
+                planned = planned_by_week.get(week_start, 0)
+                error = self._weekly_limit_violation(person.id, resource, item["start"], item["end"],
+                                                     additional_slots=planned)
+                if error:
+                    item.update(available=False, reason_code=error.code, message=error.message)
+                    continue
+                error = self._future_booking_limit_violation(person.id, additional_count=planned_future)
+                if error:
+                    item.update(available=False, reason_code=error.code, message=error.message)
+                    continue
+                planned_by_week[week_start] = planned + self._duration_slots(item["start"], item["end"])
+                planned_future += 1
         return resource, person, days, occurrences
 
     def _series_check(self, actor, person, resource, day, start, end, earliest):
@@ -87,8 +108,9 @@ class SeriesMixin:
         person = self._beneficiary(actor, on_behalf_of_zid)
         skip = {item.isoformat() if isinstance(item, date) else str(item) for item in skip_dates}
         with self.repo.atomic(resource_ids=[str(resource_id)], student_ids=[person.id]):
-            resource, person, days, occurrences = self._series_plan(actor, resource_id, weekdays, start_time, duration_minutes,
-                                                                    first_date, last_date, on_behalf_of_zid)
+            resource, person, days, occurrences = self._series_plan(
+                actor, resource_id, weekdays, start_time, duration_minutes, first_date, last_date,
+                on_behalf_of_zid, skip_dates=skip)
             kept = [item for item in occurrences if item["date"] not in skip]
             problems = [item for item in kept if not item["available"]]
             if problems:

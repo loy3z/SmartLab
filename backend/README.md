@@ -26,7 +26,8 @@ Django 5.2 + Django REST Framework 3.16。提供学生时段查询、房间／�
 - **站内通知**（顶部铃铛，`GET /api/v1/notifications/`）：自己提交的申请已收到、预约被批准／拒绝（含系统自动决定）、候补转为待审批、被 Manager 改期、被员工取消、员工替你建了预约、induction 审核结果、缺席记录、冻结与解冻；Manager 还会收到紧急申请。普通新申请不通知管理员。通知和状态变化写在同一个事务里；其他发送渠道写在 `booking/notification_channels.py`，用 `NOTIFICATION_CHANNELS` 配置。
 - **邮件通知**：`booking/email_channel.py` 通过系统 Gmail 邮箱（SMTP + 应用专用密码）把申请已收到、批准或拒绝、过期、候补转正、改期、被员工取消、提醒、替你预约、改期申请的结果和维修／重新开放（1.16.0）这些通知发到预约人的大学邮箱。默认关闭（`EMAIL_ENABLED`）；打开后 `EMAIL_MODE` 默认 `allowlist`，只发给名单里的地址，演示时用 `redirect` 把所有邮件改发给自己。邮件先与通知一起写入 PostgreSQL，scheduler 对临时 SMTP 故障做退避重试，进程重启不会丢待办。测试命令 `manage.py send_test_email --to 你的邮箱`。配置见 [email-setup.md](docs/email-setup.md)。
 - **到场确认与冻结**：已批准的预约在开始前 15 分钟到开始后 30 分钟之间，由预约人自己在“我的预约”点 I'm here（`POST bookings/{id}/check-in/`）。窗口结束仍未确认就记一次缺席（`attendance=NO_SHOW`；资源当时维修或关闭的记为 `EXCUSED`，不算）。**第 4 次缺席时冻结 30 天**：冻结期间不能提交新申请（员工也不能替他建），并**立即取消他之后所有的预约和申请**，空出的时段交给候补。冻结只看受益人（zID）：员工被冻结只影响预约，不影响审批别人。被冻结的人可以提交解冻申请（`POST account/unfreeze-requests/`），Admin／Manager 在 Booking freezes 页面同意或拒绝，也可以直接解冻；不能处理自己的申请。网站按钮在哪里都能点，所以它防的是“忘了取消”，防不住故意作弊。
-- **每人每周最多 3 次预约**：同一受益人在同一周（悉尼时间周一到周日）里待审批、候补、已批准的预约达到 3 个时，新申请返回 409 `WEEKLY_LIMIT_REACHED`；Manager 改期到满额的那一周也会被拒。取消、被拒、过期后名额自动空出；候补递补和超时自动处理不受影响。员工代建算在受益人头上；重复预约不算。
+- **每人每周最多 24 个半小时 slots（12 小时）**：同一受益人在同一周（资源当地时间周一到周日）里待审批、候补、已批准和循环预约的实际时长都计入；新申请会连同已占用额度一起计算，超过 24 slots 返回 409 `WEEKLY_LIMIT_REACHED`，Manager 改期也一样。取消、被拒、过期后 slots 自动释放；员工代建算在受益人头上。
+- **每人最多 8 个有效未来预约**：待审批、候补、已批准和循环预约都计入，超过时返回 409 `FUTURE_BOOKING_LIMIT_REACHED`。取消、被拒、过期或预约开始后自动释放名额；员工代建算在受益人头上；一个已批准预约及其待处理改期申请合计只算一个。
 - **重复预约（只有员工）**：员工在资源卡片上点 Repeat weekly，选每周几、时间、时长、起止日期（最长 14 周），先预览每个日期（`POST bookings/series/preview/`），有问题的日期跳过（不进候补），再创建（`POST bookings/series/`）。可以突破“最多提前 30 天”，其余规则（最少提前天数、开放时间、受益人每个日期的 induction、冲突）照常检查；员工自己创建，所以**直接批准**。每一次都是一条普通预约（带 `series_id`），可以取消单次或整组剩下的（`POST bookings/series/{id}/cancel/`）；到场确认照常要求。
 - **Manager 在网页上管理房间和设备**（Resources 页面，`GET/POST /api/v1/admin/resources/`、`PATCH admin/resources/{id}/`）：
   - 新增时必须填名称、地点和所需 induction；设备可以选所在房间、填类别；开放时间、时间步长（15／30／60 分钟）、最长时长、审批期限有默认值。
@@ -55,7 +56,10 @@ Manager 可通过 `GET /api/v1/admin/resources/{id}/booking-policy/` 查看审�
 | 最多提前天数 | `max_advance_days` | 30 | `MAX_ADVANCE_DAYS` |
 | induction 有效天数 | `qualification_validity_days` | 120 | `QUALIFICATION_VALIDITY_DAYS` |
 | 新资源默认审批期限（分钟） | `default_review_window_minutes` | 1440 | `DEFAULT_PENDING_HOLD_MINUTES` |
-| 每人每周最多预约数 | `max_bookings_per_week` | 3 | `MAX_BOOKINGS_PER_WEEK` |
+| 公平使用 slot 长度（分钟） | `booking_slot_minutes` | 30 | `BOOKING_SLOT_MINUTES` |
+| 普通单次预约最多 slots | `max_slots_per_booking` | 6 | `MAX_SLOTS_PER_BOOKING` |
+| 每人每周最多 slots | `max_slots_per_week` | 24 | `MAX_SLOTS_PER_WEEK` |
+| 每人最多有效未来预约数 | `max_active_future_bookings` | 8 | `MAX_ACTIVE_FUTURE_BOOKINGS` |
 | 到场确认：开始前多少分钟开放 | `check_in_opens_minutes` | 15 | `CHECK_IN_OPENS_MINUTES` |
 | 到场确认：开始后多少分钟截止 | `check_in_closes_minutes` | 30 | `CHECK_IN_CLOSES_MINUTES` |
 | 第几次缺席时冻结 | `freeze_after_no_shows` | 4 | `FREEZE_AFTER_NO_SHOWS` |

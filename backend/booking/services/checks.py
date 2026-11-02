@@ -2,6 +2,7 @@
 -> resource status -> time -> booking window -> induction and prerequisites), plus conflict lookups.
 """
 from datetime import datetime, timedelta
+from math import ceil, lcm
 from zoneinfo import ZoneInfo
 
 from ..errors import DomainError
@@ -9,6 +10,17 @@ from .base import ACTIVE_REQUEST_STATUSES
 
 
 class ChecksMixin:
+    def _selection_step_minutes(self, resource):
+        """Smallest selectable step that satisfies both resource and fair-use slots."""
+        return lcm(resource.slot_minutes, self.rules().booking_slot_minutes)
+
+    def _normal_booking_limit(self, resource):
+        """Return (maximum slots, slot size, effective duration cap) for a normal request."""
+        rules = self.rules()
+        resource_slots = resource.max_booking_minutes // rules.booking_slot_minutes
+        maximum_slots = min(rules.max_slots_per_booking, resource_slots)
+        return maximum_slots, rules.booking_slot_minutes, maximum_slots * rules.booking_slot_minutes
+
     def _overlaps(self, resource_id, start, end, exclude_id=None, also_exclude=None):
         """Bookings and active holds that block this period.
 
@@ -56,8 +68,22 @@ class ChecksMixin:
         if start >= end or start <= self.now():
             return DomainError("INVALID_TIME", "Use a future start time and an end later than start.")
         duration = (end - start).total_seconds() / 60
-        if duration > resource.max_booking_minutes:
-            return DomainError("DURATION_LIMIT", "The booking exceeds this resource's maximum duration.")
+        max_slots, slot_minutes, maximum = self._normal_booking_limit(resource)
+        if duration % slot_minutes:
+            return DomainError(
+                "INVALID_SLOT_COUNT",
+                f"Booking length must use {slot_minutes}-minute increments.",
+                400,
+                {"slot_minutes": slot_minutes},
+            )
+        if duration > maximum:
+            return DomainError(
+                "DURATION_LIMIT",
+                f"A normal booking may be up to {maximum / 60:g} h.",
+                400,
+                {"max_slots": max_slots, "slot_minutes": slot_minutes,
+                 "resource_max_minutes": resource.max_booking_minutes},
+            )
         local_start = start.astimezone(ZoneInfo(resource.timezone))
         local_end = end.astimezone(ZoneInfo(resource.timezone))
         if (local_start.date() != local_end.date() or local_start.time().replace(tzinfo=None) < resource.opening_time
@@ -65,8 +91,9 @@ class ChecksMixin:
             return DomainError("OUTSIDE_OPENING_HOURS", "Book within one local day and the resource's opening hours.")
         opening = datetime.combine(local_start.date(), resource.opening_time, ZoneInfo(resource.timezone))
         offset = (local_start - opening).total_seconds() / 60
-        if start.second or start.microsecond or end.second or end.microsecond or offset % resource.slot_minutes or duration % resource.slot_minutes:
-            return DomainError("INVALID_TIME_INCREMENT", f"Use {resource.slot_minutes}-minute time increments.")
+        step = self._selection_step_minutes(resource)
+        if start.second or start.microsecond or end.second or end.microsecond or offset % step or duration % step:
+            return DomainError("INVALID_TIME_INCREMENT", f"Use {step}-minute time increments.")
         return None
 
     def _validate_period(self, resource, start, end):
@@ -143,22 +170,73 @@ class ChecksMixin:
         if error:
             raise error
 
-    def _weekly_limit_violation(self, student_id, resource, start, exclude_id=None):
-        """Sprint 3: at most max_bookings_per_week pending, waitlisted or approved bookings per person per local week
-        (Monday to Sunday). Weekly series made by staff do not count. Checked when a request is created and when a
-        Manager moves a booking; promotion and automatic decisions do not change the count."""
-        limit = self.rules().max_bookings_per_week
+    def _duration_slots(self, start, end):
+        """Quota slots occupied by a period; round legacy partial slots up conservatively."""
+        minutes = (end - start).total_seconds() / 60
+        return ceil(minutes / self.rules().booking_slot_minutes)
+
+    def _weekly_limit_violation(self, student_id, resource, start, end, exclude_id=None, additional_slots=0):
+        """Enforce the per-person slot allowance for the resource's local Monday-Sunday week.
+
+        Pending, waitlisted, approved and staff-created series dates all count. ``additional_slots``
+        reserves earlier occurrences while a new series is being validated before it is saved.
+        """
+        rules = self.rules()
+        limit = rules.max_slots_per_week
         zone = ZoneInfo(resource.timezone)
         day = start.astimezone(zone).date()
         week_start = day - timedelta(days=day.weekday())
         week_end = week_start + timedelta(days=7)
-        count = sum(1 for item in self.repo.list_bookings(student_id=str(student_id))
-                    if item.id != exclude_id and item.series_id is None and item.status in ACTIVE_REQUEST_STATUSES
-                    and week_start <= item.start.astimezone(zone).date() < week_end)
-        if count >= limit:
+        used = sum(self._duration_slots(item.start, item.end)
+                   for item in self.repo.list_bookings(student_id=str(student_id))
+                   if item.id != exclude_id and item.status in ACTIVE_REQUEST_STATUSES
+                   and week_start <= item.start.astimezone(zone).date() < week_end)
+        requested = self._duration_slots(start, end) + additional_slots
+        if used + requested > limit:
+            weekly_hours = limit * rules.booking_slot_minutes / 60
             return DomainError("WEEKLY_LIMIT_REACHED",
-                               f"At most {limit} bookings per person in one week (Monday to Sunday).", 409,
-                               {"limit": limit, "count": count, "week_start": week_start.isoformat()})
+                               f"A person may book up to {weekly_hours:g} h in one week (Monday to Sunday).",
+                               409,
+                               {"limit_slots": limit, "used_slots": used,
+                                "requested_slots": requested, "remaining_slots": max(0, limit - used),
+                                "slot_minutes": rules.booking_slot_minutes,
+                                "week_start": week_start.isoformat()})
+        return None
+
+    def _future_booking_limit_violation(self, student_id, exclude_id=None, additional_count=0):
+        """Enforce the per-person cap on active bookings that have not started yet.
+
+        ``additional_count`` reserves earlier occurrences while a new series is
+        being checked before any of its bookings are saved. A change request or
+        reschedule excludes the booking it replaces, so changing time does not
+        temporarily consume two places.
+        """
+        limit = self.rules().max_active_future_bookings
+        now = self.now()
+        active = [
+            item
+            for item in self.repo.list_bookings(student_id=str(student_id))
+            if item.id != exclude_id
+            and item.status in ACTIVE_REQUEST_STATUSES
+            and item.start > now
+        ]
+        # An open change request represents the same future booking as the
+        # approved record it will replace, so the pair consumes one place.
+        replaced_ids = {item.replaces_id for item in active if item.replaces_id}
+        used = sum(1 for item in active if item.id not in replaced_ids)
+        requested = 1 + additional_count
+        if used + requested > limit:
+            return DomainError(
+                "FUTURE_BOOKING_LIMIT_REACHED",
+                f"A person may hold up to {limit} active future bookings at a time.",
+                409,
+                {
+                    "limit": limit,
+                    "used": used,
+                    "requested": requested,
+                    "remaining": max(0, limit - used),
+                },
+            )
         return None
 
     def _review_deadline(self, resource, start):

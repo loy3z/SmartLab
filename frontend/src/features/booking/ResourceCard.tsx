@@ -80,7 +80,7 @@ export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEq
             </button>
           )}
         </div>
-        <div className="resource-hours"><ClockIcon size={13} /><span>{fmtHours(resource.opening_time, resource.closing_time)}</span><span>Up to {resource.max_booking_minutes / 60} h</span></div>
+        <div className="resource-hours"><ClockIcon size={13} /><span>{fmtHours(resource.opening_time, resource.closing_time)}</span><span>Up to {(resource.effective_max_booking_minutes ?? resource.max_booking_minutes) / 60} h</span></div>
         <div className="bk-rcard-actions">
           <button type="button" className="bk-btn-outline bk-rcard-primary" disabled={blocked} onClick={onOpen}>View availability</button>
           {onRepeat && (

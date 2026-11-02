@@ -254,7 +254,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 
 `POST bookings/` 可带 `Idempotency-Key`，同一用户重试同一请求时复用同一 key；提交不同预约时生成新 key。key 最多 128 个字符，仅可使用字母、数字、点、下划线、冒号、连字符。禁止只依赖禁用按钮防止重复请求。字段 `start`、`end` 表示区间 `[start,end)`。取消仅允许尚未开始的有效请求；重复取消已取消记录返回原记录。改期只允许 Manager 操作未来 `APPROVED` 预约；后端重新检查时间规则、资格有效期与冲突。成功后 `revision` 增加，并更新原 Outlook 事件。
 
-时段查询默认时长为 30 分钟。前端应依据资源返回的 `slot_minutes` 和 `max_booking_minutes` 限制选择；当前种子规则是 30 分钟粒度、08:00–20:00、最长 480 分钟，同一预约不能跨当地日期。这些是演示配置，客户确认规则后可通过资源数据调整。
+时段查询默认时长为 30 分钟。普通预约按 30 分钟一个公平使用 slot 计算，最多选择 6 个 slots（3 小时）；资源本身可以设置更短的技术上限。资源和 availability 响应返回 `booking_slot_minutes`、`max_booking_slots`、`selection_step_minutes` 与 `effective_max_booking_minutes`，前端必须使用这些服务端值限制选择。同一预约不能跨当地日期。
 
 Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{"pending_hold_minutes":1440}`（字段名沿用数据库列名，含义是 Admin 审批期限，单位分钟）；GET／PATCH 均返回 `{"resource_id":"<uuid>","pending_hold_minutes":1440}`。范围为整数 1–20160，默认 1440（24 小时）。期限到了仍无人处理时，系统按规则自动批准或拒绝（见上文“审批流程”）。修改只影响之后进入待审批的申请；已有截止时间不变。资源详情包含 `pending_hold_minutes`，时段查询响应包含同值的 `review_window_minutes`。请求必须带 `pending_hold_minutes`，带 `auto_approve_max_minutes` 返回 400。
 
@@ -320,11 +320,12 @@ Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{
 | `REQUEST_NOT_REVIEWABLE`／`ALREADY_REVIEWED` | 409 | 队列状态已改变，刷新列表 |
 | `REQUEST_NOT_CANCELLABLE` | 409 | 预约已开始或请求已结束，刷新预约 |
 | `REQUEST_NOT_RESCHEDULABLE` | 409 | 只有未来且已批准的预约可以改期，刷新预约 |
-| `INVALID_TIME`／`INVALID_TIME_INCREMENT`／`OUTSIDE_OPENING_HOURS`／`DURATION_LIMIT` | 400 | 根据资源规则修正时间 |
+| `INVALID_TIME`／`INVALID_TIME_INCREMENT`／`INVALID_SLOT_COUNT`／`OUTSIDE_OPENING_HOURS`／`DURATION_LIMIT` | 400 | 根据资源与普通预约 slot 规则修正时间 |
 | `VALIDATION_ERROR` | 400 | 在对应字段展示 `details` 错误，包括附件格式／大小问题 |
 | `TOKEN_EXPIRED`／`INVALID_TOKEN` | 401 | 重新登录 |
 | `ACCOUNT_FROZEN` | 403 | 这个人因多次缺席被冻结，`details.frozen_until`；引导去“我的预约”提交解冻申请 |
-| `WEEKLY_LIMIT_REACHED` | 409 | 这个人这一周（周一到周日）已有 3 个预约；`details.limit`、`count`、`week_start` |
+| `WEEKLY_LIMIT_REACHED` | 409 | 本周有效申请加上本次申请会超过 24 个半小时 slots；读取 `limit_slots`、`used_slots`、`requested_slots`、`remaining_slots`、`slot_minutes`、`week_start` |
+| `FUTURE_BOOKING_LIMIT_REACHED` | 409 | 这个人已有 8 个有效未来预约；读取 `limit`、`used`、`requested`、`remaining`，引导用户取消一个不再需要的预约 |
 | `RESOURCE_NAME_TAKEN` | 409 | 资源管理：另一个未下架的资源已经用了这个名称 |
 | `KIND_IS_FIXED` | 409 | 资源管理：房间和设备之间不能互改，新建一个再下架旧的 |
 | `RESOURCE_HAS_BOOKINGS`／`ROOM_HAS_EQUIPMENT` | 409 | 下架被拒：还有未来预约（`details.booking_count`）／房间里还有设备（`details.equipment`） |
@@ -376,15 +377,21 @@ API 输出时间为 ISO 8601 UTC `Z`。前端用 `Australia/Sydney` 显示，支
 
 ## 每周上限
 
-- 同一受益人在同一周（悉尼时间周一到周日）里待审批、候补、已批准的预约最多 3 个。超过时 `POST bookings/` 返回 409 `WEEKLY_LIMIT_REACHED`（`details.limit`、`count`、`week_start`）；Manager 改期到满额的那一周也一样。
-- 候补也算；取消、被拒、过期后名额自动空出。员工代建算在受益人头上；重复预约不算。
+- 同一受益人在同一周（资源当地时间周一到周日）里最多占用 24 个半小时 slots（12 小时）。待审批、候补、已批准和员工创建的循环预约都按实际时长计入；超过时 `POST bookings/` 返回 409 `WEEKLY_LIMIT_REACHED`，details 包含 `limit_slots`、`used_slots`、`requested_slots`、`remaining_slots`、`slot_minutes`、`week_start`。Manager 改期到超额周也一样。
+- 取消、被拒、过期后 slots 自动释放；员工代建算在受益人头上。服务端在同一个数据库事务内重新计算额度，不能通过并发提交绕过。
+
+## 有效未来预约数上限
+
+- 同一受益人最多同时持有 8 个尚未开始的有效预约。`PENDING_APPROVAL`、`WAITLISTED`、`APPROVED` 和循环预约的每个日期都计入；第 9 个申请返回 409 `FUTURE_BOOKING_LIMIT_REACHED`。
+- 取消、拒绝、过期或到达开始时间后名额自动释放；员工代建和紧急申请都算在受益人头上。一个已批准预约及其待处理改期申请合计只算一个，Manager 原地改期也不会额外占名额。
+- 服务端在锁定受益人记录的数据库事务中重新计数；默认 8 来自 `MAX_ACTIVE_FUTURE_BOOKINGS`，可随客户政策调整。
 
 ## 重复预约（只有员工）
 
 - 资源卡片上的 **Repeat weekly** 按钮（只有 Admin／Manager 看得到）打开表单：预约给谁（自己／输入 zID 替别人）、每周几（1=周一 … 7=周日）、开始时间、时长、起止日期（最长 14 周）、用途。
 - 先 `POST bookings/series/preview/`（`resource_id`、`weekdays`、`start_time` 如 `"09:00"`、`duration_minutes`、`first_date`、`last_date`、可选 `on_behalf_of_zid`），返回每个日期的 `available` 和 `reason_code`。
 - 再 `POST bookings/series/`（同样的字段加 `purpose`、`skip_dates`）。预览里不可用的日期必须放进 `skip_dates`，否则 409 `SERIES_CONFLICT`（重新预览）。冲突的日期不进候补。
-- 创建后每个日期直接是 `APPROVED`（`reason_code=SERIES_CREATED_BY_STAFF`，带 `series_id`），不走审批。可以突破“最多提前 30 天”，其余规则照常检查；不受每周上限限制；到场确认照常要求。
+- 创建后每个日期直接是 `APPROVED`（`reason_code=SERIES_CREATED_BY_STAFF`，带 `series_id`），不走审批。可以突破“最多提前 30 天”，其余规则照常检查；每个保留日期计入对应周的 24-slot 上限和 8 个有效未来预约上限，超额日期在预览中分别显示 `WEEKLY_LIMIT_REACHED` 或 `FUTURE_BOOKING_LIMIT_REACHED`；到场确认照常要求。
 - 取消单次用 `POST bookings/{id}/cancel/`；取消整组剩下的用 `POST bookings/series/{id}/cancel/`（员工）。`GET bookings/series/{id}/` 返回这组的所有日期。
 
 ## 资源管理（只有 Manager）

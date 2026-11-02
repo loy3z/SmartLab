@@ -45,7 +45,7 @@ class TestConsoleAPITests(BookingAPIFixtureMixin, SimpleTestCase):
     def test_bypasses_training_windows_duration_opening_hours_freeze_and_weekly_limit(self):
         base = self.service.repo.get_principal(TEST_ACCOUNT_ID)
         self.service.repo.save_principal(replace(base, frozen_until=NOW + timedelta(days=365)))
-        self.service._override_rule(max_bookings_per_week=1)
+        self.service._override_rule(max_slots_per_week=1)
         for offset, hour, minutes in [(1, 1, 540), (2, 2, 60), (3, 3, 60), (60, 4, 60)]:
             result = self.tester.post('/api/v1/bookings/', self.payload(day_offset=offset, hour=hour, minutes=minutes), format='json')
             self.assertEqual(result.status_code, 201, result.data)

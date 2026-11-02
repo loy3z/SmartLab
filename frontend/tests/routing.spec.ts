@@ -717,6 +717,446 @@ const approvedBooking = (overrides: Record<string, unknown> = {}) => ({
   series_id: null, ...overrides,
 })
 
+const additionalRoom = { id: 'room-1', name: 'Lab Room 1', kind: 'ROOM', location: 'Demo laboratory', description: '', active: true,
+  required_qualification_id: 'req-1', slot_minutes: 30, max_booking_minutes: 480, effective_max_booking_minutes: 180,
+  selection_step_minutes: 30, opening_time: '08:00:00', closing_time: '20:00:00', timezone: 'Australia/Sydney',
+  pending_hold_minutes: 1440, status: 'AVAILABLE', status_reason: null, room_id: null }
+
+const additionalReview = (overrides: Record<string, unknown> = {}) => ({
+  approval_opens_at: '2030-01-07T22:00:00Z', approval_window_hours: 48, priority_group: 'PRIORITY',
+  priority_reasons: ['NO_USE_THIS_WEEK'], queue_position: 1, can_approve: true, blocker_code: null, blocker_message: null, ...overrides,
+})
+const additionalBooking = (overrides: Record<string, unknown> = {}) => approvedBooking({
+  id: 'extra-1', status: 'PENDING_APPROVAL', start: '2030-01-09T22:00:00Z', end: '2030-01-10T01:00:00Z',
+  student: { id: users.STUDENT.id, zid: users.STUDENT.zid, display_name: users.STUDENT.display_name, university_email: users.STUDENT.university_email },
+  additional_hours: true, additional_hours_reason: 'Finish the experiment', active_data_collection: false, data_collection_reason: null,
+  hold_active: false, blocks_slot: false, check_in_open: false, additional_hours_review: additionalReview(), ...overrides,
+})
+
+const longBooking = (overrides: Record<string, unknown> = {}) => approvedBooking({
+  id: 'long-1', status: 'PENDING_APPROVAL', start: '2030-01-09T22:00:00Z', end: '2030-01-10T02:00:00Z',
+  student: { id: users.STUDENT.id, zid: users.STUDENT.zid, display_name: users.STUDENT.display_name, university_email: users.STUDENT.university_email },
+  long_booking: true, long_booking_reason: 'Keep the experiment running continuously', review_due_at: '2030-01-02T00:00:00Z',
+  hold_until: '2030-01-02T00:00:00Z', hold_active: true, blocks_slot: true, check_in_open: false, ...overrides,
+})
+
+for (const outcome of ['PENDING_APPROVAL', 'WAITLISTED'] as const) {
+  test(`long-booking form enforces the server duration range and submits ${outcome}`, async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2030-01-01T00:00:00Z'))
+    const room = { ...additionalRoom, max_booking_minutes: 300 }
+    let created: ReturnType<typeof longBooking> | null = null
+    const sent: { body: Record<string, unknown>; key: string | undefined }[] = []
+    await page.route('**/api/v1/**', async route => {
+      const request = route.request()
+      const url = new URL(request.url())
+      const path = url.pathname.replace('/api/v1/', '')
+      if (path === 'resources/') return route.fulfill({ json: { count: 2, results: [room,
+        { ...room, id: 'short-room', name: 'Short room', max_booking_minutes: 180 }] } })
+      if (path === 'resources/room-1/availability/') {
+        const long = url.searchParams.get('long_booking') === 'true'
+        expect(url.searchParams.has('additional_hours')).toBe(false)
+        expect(url.searchParams.has('urgent')).toBe(false)
+        const date = url.searchParams.get('date')!
+        const start = Date.parse(`${date}T00:00:00Z`) - 2 * 60 * 60 * 1000
+        return route.fulfill({ json: { resource_id: room.id, date, timezone: 'Australia/Sydney', duration_minutes: 30,
+          long_booking: long, normal_max_booking_minutes: 180, min_booking_minutes: long ? 210 : 30,
+          max_booking_minutes: long ? 300 : 180, selection_step_minutes: 30, earliest_date: '2030-01-08', latest_date: '2030-01-29',
+          min_advance_days: 7, max_advance_days: 28, can_request: true, qualification_status: 'VERIFIED',
+          slots: Array.from({ length: 16 }, (_, i) => ({ start: new Date(start + i * 1800000).toISOString(), end: new Date(start + (i + 1) * 1800000).toISOString(),
+            available: outcome !== 'WAITLISTED' || i > 0, reason_code: outcome === 'WAITLISTED' && i === 0 ? 'BOOKED' : null,
+            hold_until: null, held_by_me: false, requested_by_me: false })) } })
+      }
+      if (path === 'bookings/long-bookings/' && request.method() === 'POST') {
+        sent.push({ body: request.postDataJSON(), key: request.headers()['idempotency-key'] })
+        created = longBooking({ ...request.postDataJSON(), status: outcome, waitlist_position: outcome === 'WAITLISTED' ? 2 : null })
+        return route.fulfill({ status: 201, json: created })
+      }
+      if (path === 'bookings/') return route.fulfill({ json: { count: created ? 1 : 0, results: created ? [created] : [] } })
+      return route.fallback()
+    })
+    await page.goto('/#/login')
+    await signIn(page)
+    await page.goto('/#/resources')
+    await expect(page.getByRole('button', { name: 'Request a longer booking', exact: true })).toHaveCount(1)
+    await page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Lab Room 1', exact: true }) }).getByRole('button', { name: 'View availability' }).click()
+    const normal = page.getByRole('dialog', { name: 'Book Lab Room 1', exact: true })
+    await expect(normal.getByRole('combobox', { name: 'Length' }).locator('option').last()).toHaveText('3 h')
+    await normal.getByRole('button', { name: 'Close', exact: true }).click()
+    await page.getByRole('button', { name: 'Request a longer booking', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'Request a longer booking: Lab Room 1' })
+    await expect(dialog.getByLabel('Date', { exact: true })).toHaveValue('2030-01-08')
+    await expect(dialog.getByLabel('Date', { exact: true })).toHaveAttribute('max', '2030-01-29')
+    await expect(dialog.getByRole('combobox', { name: 'Length' }).locator('option').first()).toHaveText('3.5 h')
+    await expect(dialog.getByRole('combobox', { name: 'Length' }).locator('option').last()).toHaveText('5 h')
+    await dialog.getByLabel('Date', { exact: true }).fill('2030-01-10')
+    await dialog.getByLabel('Purpose', { exact: false }).fill('Long experiment')
+    await dialog.locator('.ui-tl-cell').nth(0).click()
+    await expect(dialog.getByRole('alert')).toContainText('at least 3.5 h')
+    await expect(dialog.getByRole('button', { name: 'Submit long-booking request' })).toBeDisabled()
+    await dialog.getByRole('combobox', { name: 'Length' }).selectOption('8')
+    await dialog.getByRole('combobox', { name: 'Start time' }).selectOption('0')
+    await expect(dialog.getByRole('button', { name: 'Submit long-booking request' })).toBeDisabled()
+    await dialog.getByLabel('Why a longer session is needed', { exact: false }).fill('Keep the experiment running continuously')
+    if (outcome === 'WAITLISTED') await expect(dialog).toContainText('a Manager must approve the longer session before its review deadline')
+    await dialog.getByRole('button', { name: 'Submit long-booking request' }).click()
+    await expect(page.getByRole('heading', { name: 'My bookings', exact: true })).toBeVisible()
+    await expect(page.locator('.bk-bcard')).toContainText('Manager')
+    await expect(page.locator('.bk-bcard')).toContainText('never approved automatically')
+    if (outcome === 'PENDING_APPROVAL') await expect(page.locator('.bk-bcard')).toContainText('expires if nobody decides')
+    else await expect(page.locator('.bk-bcard')).toContainText('#2')
+    expect(sent).toHaveLength(1)
+    expect(sent[0].key).toBeTruthy()
+    expect(sent[0].body).toEqual({ resource_id: room.id, start: '2030-01-09T22:00:00.000Z', end: '2030-01-10T02:00:00.000Z',
+      purpose: 'Long experiment', long_booking_reason: 'Keep the experiment running continuously' })
+  })
+}
+
+for (const role of ['ADMIN', 'MANAGER'] as const) {
+  test(`long-booking review restricts decisions for ${role}`, async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2030-01-01T00:00:00Z'))
+    let requests = [longBooking(), longBooking({ id: 'own-long', created_by: users[role].id })]
+    const decisions: Record<string, unknown>[] = []
+    await page.route('**/api/v1/**', async route => {
+      const request = route.request()
+      const url = new URL(request.url())
+      const path = url.pathname.replace('/api/v1/', '')
+      if (path === 'resources/') return route.fulfill({ json: { count: 1, results: [additionalRoom] } })
+      if (path === 'admin/bookings/') return route.fulfill({ json: { count: requests.length, results: url.searchParams.get('status') === 'PENDING_APPROVAL' ? requests : [] } })
+      if (path === 'admin/bookings/long-1/review/') {
+        decisions.push(request.postDataJSON())
+        requests = requests.filter(item => item.id !== 'long-1')
+        return route.fulfill({ json: longBooking({ status: 'APPROVED' }) })
+      }
+      return route.fallback()
+    })
+    await page.goto('/#/login')
+    await signIn(page, role)
+    await page.goto('/#/admin/bookings?type=long-bookings')
+    await expect(page.getByRole('tab', { name: /Long bookings/ })).toHaveAttribute('aria-selected', 'true')
+    const rows = page.locator('tbody tr')
+    await expect(rows).toHaveCount(2)
+    const own = rows.filter({ hasText: 'You created this request' })
+    await expect(own).toHaveCount(1)
+    await expect(own.getByRole('button', { name: /Approve|Reject/ })).toHaveCount(0)
+    if (role === 'ADMIN') {
+      await expect(page.getByText('Longer booking: a Manager decides', { exact: true })).toBeVisible()
+      await expect(rows.getByRole('button', { name: /Approve|Reject/ })).toHaveCount(0)
+    } else {
+      await rows.getByRole('button', { name: '✓ Approve', exact: true }).click()
+      await expect(rows).toHaveCount(1)
+      expect(decisions).toEqual([{ decision: 'APPROVED', reason: '' }])
+    }
+  })
+}
+
+test('approved longer bookings require cancellation and a new request to change time', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2030-01-01T00:00:00Z'))
+  await page.route('**/api/v1/**', async route => {
+    const path = new URL(route.request().url()).pathname.replace('/api/v1/', '')
+    if (path === 'resources/') return route.fulfill({ json: { count: 1, results: [additionalRoom] } })
+    if (path === 'bookings/') return route.fulfill({ json: { count: 1, results: [longBooking({ status: 'APPROVED', student_id: users.MANAGER.id })] } })
+    return route.fallback()
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'MANAGER')
+  await page.goto('/#/bookings')
+  await expect(page.locator('.bk-bcard')).toContainText('cancel and submit a new long-booking request')
+  await expect(page.getByRole('button', { name: /^(Change time|Reschedule)$/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Cancel booking', exact: true })).toBeVisible()
+})
+
+test('additional hours can be requested in advance with a reason, normal duration cap and retry-safe submission', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2030-01-01T00:00:00Z'))
+  const sent: { body: Record<string, unknown>; key: string | undefined }[] = []
+  const availabilityModes: boolean[] = []
+  let created: ReturnType<typeof additionalBooking> | null = null
+  await page.route('**/api/v1/**', async route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const path = url.pathname.replace('/api/v1/', '')
+    if (path === 'resources/') return route.fulfill({ json: { count: 1, results: [additionalRoom] } })
+    if (path === 'resources/room-1/availability/') {
+      const additional = url.searchParams.get('additional_hours') === 'true'
+      availabilityModes.push(additional)
+      const date = url.searchParams.get('date')!
+      const start = Date.parse(`${date}T00:00:00Z`) - 2 * 60 * 60 * 1000
+      return route.fulfill({ json: { resource_id: 'room-1', date, timezone: 'Australia/Sydney', duration_minutes: 30,
+        max_booking_minutes: 180, selection_step_minutes: 30, earliest_date: additional ? '2030-01-01' : '2030-01-08',
+        latest_date: '2030-01-29', min_advance_days: additional ? 0 : 7, max_advance_days: 28,
+        can_request: true, qualification_status: 'VERIFIED', additional_hours: additional, additional_hours_approval_window_hours: 72,
+        slots: Array.from({ length: 16 }, (_, i) => ({ start: new Date(start + i * 1800000).toISOString(), end: new Date(start + (i + 1) * 1800000).toISOString(),
+          available: !additional || i > 0, reason_code: additional && i === 0 ? 'BOOKED' : null, hold_until: null, held_by_me: false, requested_by_me: false })) } })
+    }
+    if (path === 'bookings/additional-hours/' && request.method() === 'POST') {
+      const body = request.postDataJSON()
+      sent.push({ body, key: request.headers()['idempotency-key'] })
+      if (sent.length === 1) return route.fulfill({ status: 503, json: { error: { code: 'TEMPORARILY_UNAVAILABLE', message: 'Temporary interruption. Try again.' } } })
+      created = additionalBooking({ ...body, additional_hours_review: additionalReview({ approval_opens_at: '2030-01-06T22:00:00Z', approval_window_hours: 72,
+        can_approve: false, blocker_code: 'ADDITIONAL_HOURS_TOO_EARLY', blocker_message: 'Approval has not opened yet.' }) })
+      return route.fulfill({ status: 201, json: created })
+    }
+    if (path === 'bookings/') return route.fulfill({ json: { count: created ? 1 : 0, results: created ? [created] : [] } })
+    return route.fallback()
+  })
+  await page.goto('/#/login')
+  await signIn(page)
+  await page.goto('/#/resources')
+  await page.getByRole('button', { name: 'View availability', exact: true }).click()
+  const normal = page.getByRole('dialog', { name: 'Book Lab Room 1', exact: true })
+  await expect(normal.getByRole('combobox', { name: 'Length', exact: true }).locator('option').last()).toHaveText('3 h')
+  await normal.getByRole('button', { name: 'Close', exact: true }).click()
+  await page.getByRole('button', { name: 'Request additional hours', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Request additional hours: Lab Room 1' })
+  await expect(dialog).toContainText('Approval opens 72 hours before the requested start.')
+  await expect(dialog).toContainText('Pending requests do not reserve or hold the time')
+  await dialog.getByLabel('Date', { exact: true }).fill('2030-01-10')
+  await expect(dialog.getByRole('combobox', { name: 'Length', exact: true }).locator('option').last()).toHaveText('3 h')
+  await dialog.getByRole('combobox', { name: 'Length', exact: true }).selectOption('6')
+  await dialog.getByRole('combobox', { name: 'Start time', exact: true }).selectOption('0')
+  await expect(dialog).toContainText('A Manager can approve only if capacity becomes available')
+  await dialog.getByLabel('Purpose', { exact: false }).fill('Data collection')
+  const submit = dialog.getByRole('button', { name: 'Submit additional-hours request', exact: true })
+  await expect(submit).toBeDisabled()
+  await dialog.getByLabel('Why additional hours are needed', { exact: false }).fill('Finish the experiment')
+  await dialog.getByRole('checkbox', { name: 'I am currently collecting data' }).check()
+  await expect(submit).toBeDisabled()
+  await dialog.getByLabel('Describe the active data collection', { exact: false }).fill('Recording the same sample continuously')
+  await submit.click()
+  await expect(dialog.getByRole('alert')).toContainText('Temporary interruption')
+  await submit.click()
+  await expect(page.getByRole('heading', { name: 'My bookings', exact: true })).toBeVisible()
+  await expect(page.locator('.bk-bcard')).toContainText('Waiting for Manager approval')
+  await expect(page.locator('.bk-bcard')).toContainText('does not hold the time and is never approved automatically')
+  expect(sent).toHaveLength(2)
+  expect(sent[0].key).toBeTruthy()
+  expect(sent[1]).toEqual(sent[0])
+  expect(sent[1].body).toMatchObject({ purpose: 'Data collection', additional_hours_reason: 'Finish the experiment', active_data_collection: true,
+    data_collection_reason: 'Recording the same sample continuously', start: '2030-01-09T22:00:00.000Z', end: '2030-01-10T01:00:00.000Z' })
+  expect(availabilityModes).toContain(false)
+  expect(availabilityModes).toContain(true)
+})
+
+test('additional hours on behalf uses the checked researcher and retains the approval rules', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2030-01-01T00:00:00Z'))
+  const sent: Record<string, unknown>[] = []
+  const recipients: (string | null)[] = []
+  await page.route('**/api/v1/**', async route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const path = url.pathname.replace('/api/v1/', '')
+    if (path === 'resources/') return route.fulfill({ json: { count: 1, results: [additionalRoom] } })
+    if (path === 'people/lookup/') return route.fulfill({ json: users.STUDENT })
+    if (path === 'resources/room-1/availability/') {
+      recipients.push(url.searchParams.get('for_zid'))
+      expect(url.searchParams.get('additional_hours')).toBe('true')
+      return route.fulfill({ json: { resource_id: 'room-1', date: '2030-01-01', timezone: 'Australia/Sydney', duration_minutes: 30,
+        max_booking_minutes: 180, selection_step_minutes: 30, earliest_date: '2030-01-01', latest_date: '2030-01-29', min_advance_days: 0, max_advance_days: 28,
+        can_request: true, qualification_status: 'VERIFIED', additional_hours: true, additional_hours_approval_window_hours: 48,
+        slots: [{ start: '2030-01-01T01:00:00Z', end: '2030-01-01T01:30:00Z', available: true, reason_code: null,
+          hold_until: null, held_by_me: false, requested_by_me: false }] } })
+    }
+    if (path === 'bookings/additional-hours/' && request.method() === 'POST') {
+      sent.push(request.postDataJSON())
+      return route.fulfill({ status: 201, json: additionalBooking({ ...request.postDataJSON(), on_behalf: true, created_by: users.ADMIN.id }) })
+    }
+    return route.fallback()
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'ADMIN')
+  await page.goto('/#/resources')
+  await page.getByRole('button', { name: 'Request additional hours', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Request additional hours: Lab Room 1' })
+  await dialog.getByRole('radio', { name: 'Someone else', exact: true }).check()
+  await expect(dialog.getByRole('button', { name: 'Submit additional-hours request' })).toBeDisabled()
+  await dialog.getByLabel('zID of the person to book for').fill(users.STUDENT.zid)
+  await dialog.getByRole('button', { name: 'Check zID', exact: true }).click()
+  await expect(dialog).toContainText('Requesting for Test Student')
+  await expect(dialog.getByLabel('Date', { exact: true })).toHaveAttribute('max', '2030-01-29')
+  await dialog.getByRole('combobox', { name: 'Length', exact: true }).selectOption('1')
+  await dialog.getByRole('combobox', { name: 'Start time', exact: true }).selectOption('0')
+  await dialog.getByLabel('Purpose', { exact: false }).fill('Supervised experiment')
+  await dialog.getByLabel('Why additional hours are needed', { exact: false }).fill('Extra sample to measure')
+  await dialog.getByRole('button', { name: 'Submit additional-hours request' }).click()
+  await expect(page.getByRole('heading', { name: 'My bookings', exact: true })).toBeVisible()
+  expect(recipients.at(-1)).toBe(users.STUDENT.zid)
+  expect(sent).toEqual([expect.objectContaining({ on_behalf_of_zid: users.STUDENT.zid, active_data_collection: false,
+    additional_hours_reason: 'Extra sample to measure', purpose: 'Supervised experiment' })])
+  expect(sent[0]).not.toHaveProperty('data_collection_reason')
+})
+
+for (const kind of ['additional-hours', 'long-booking'] as const) {
+test(`${kind} lookup ignores an old researcher response after the zID changes`, async ({ page }) => {
+  const isLong = kind === 'long-booking'
+  const entry = isLong ? 'Request a longer booking' : 'Request additional hours'
+  const endpoint = isLong ? 'bookings/long-bookings/' : 'bookings/additional-hours/'
+  await page.clock.setFixedTime(new Date('2030-01-01T00:00:00Z'))
+  let releaseA!: () => void
+  let releaseB!: () => void
+  const gateA = new Promise<void>(resolve => { releaseA = resolve })
+  const gateB = new Promise<void>(resolve => { releaseB = resolve })
+  const lookups: string[] = []
+  const recipients: (string | null)[] = []
+  const sent: Record<string, unknown>[] = []
+  await page.route('**/api/v1/**', async route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const path = url.pathname.replace('/api/v1/', '')
+    if (path === 'resources/') return route.fulfill({ json: { count: 1, results: [additionalRoom] } })
+    if (path === 'people/lookup/') {
+      const zid = url.searchParams.get('zid')!
+      lookups.push(zid)
+      await (zid === users.STUDENT.zid ? gateA : gateB)
+      return route.fulfill({ json: zid === users.STUDENT.zid ? users.STUDENT : unqualifiedStudent })
+    }
+    if (path === 'resources/room-1/availability/') {
+      recipients.push(url.searchParams.get('for_zid'))
+      return route.fulfill({ json: { resource_id: 'room-1', date: '2030-01-01', timezone: 'Australia/Sydney', duration_minutes: 30,
+        max_booking_minutes: isLong ? 480 : 180, min_booking_minutes: isLong ? 210 : 30, selection_step_minutes: 30, earliest_date: '2030-01-01', latest_date: '2030-01-29', min_advance_days: 0, max_advance_days: 28,
+        can_request: true, qualification_status: 'VERIFIED', additional_hours: !isLong, long_booking: isLong, additional_hours_approval_window_hours: 48,
+        slots: Array.from({ length: 16 }, (_, i) => ({ start: new Date(Date.parse('2030-01-01T01:00:00Z') + i * 1800000).toISOString(),
+          end: new Date(Date.parse('2030-01-01T01:00:00Z') + (i + 1) * 1800000).toISOString(), available: true, reason_code: null,
+          hold_until: null, held_by_me: false, requested_by_me: false })) } })
+    }
+    if (path === endpoint && request.method() === 'POST') {
+      sent.push(request.postDataJSON())
+      return route.fulfill({ status: 201, json: (isLong ? longBooking : additionalBooking)({ ...request.postDataJSON(), on_behalf: true }) })
+    }
+    return route.fallback()
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'ADMIN')
+  await page.goto('/#/resources')
+  await page.getByRole('button', { name: entry, exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: `${entry}: Lab Room 1` })
+  await dialog.getByRole('radio', { name: 'Someone else', exact: true }).check()
+  const input = dialog.getByLabel('zID of the person to book for')
+  await input.fill(users.STUDENT.zid)
+  await dialog.getByRole('button', { name: 'Check zID', exact: true }).click()
+  await expect.poll(() => lookups).toEqual([users.STUDENT.zid])
+  await input.fill(unqualifiedStudent.zid)
+  await dialog.getByRole('button', { name: 'Check zID', exact: true }).click()
+  await expect.poll(() => lookups).toEqual([users.STUDENT.zid, unqualifiedStudent.zid])
+  const staleResponse = page.waitForResponse(response => response.url().includes(`people/lookup/?zid=${users.STUDENT.zid}`))
+  releaseA()
+  await (await staleResponse).finished()
+  // Fill unrelated fields after the stale response so React has rendered it before checking identity.
+  await dialog.getByLabel('Purpose', { exact: false }).fill('Supervised experiment')
+  await dialog.getByLabel(isLong ? 'Why a longer session is needed' : 'Why additional hours are needed', { exact: false }).fill('Extra sample to measure')
+  await expect(input).toHaveValue(unqualifiedStudent.zid)
+  await expect(dialog.getByRole('button', { name: 'Checking…', exact: true })).toBeDisabled()
+  await expect(dialog.getByText(`Requesting for ${users.STUDENT.display_name}`, { exact: false })).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: `Submit ${kind} request` })).toBeDisabled()
+  expect(recipients).not.toContain(users.STUDENT.zid)
+  expect(sent).toHaveLength(0)
+  releaseB()
+  await expect(dialog.getByText(`Requesting for ${unqualifiedStudent.display_name} (${unqualifiedStudent.zid})`, { exact: true })).toBeVisible()
+  await dialog.getByRole('combobox', { name: 'Length', exact: true }).selectOption(isLong ? '7' : '1')
+  await dialog.getByRole('combobox', { name: 'Start time', exact: true }).selectOption('0')
+  await dialog.getByRole('button', { name: `Submit ${kind} request` }).click()
+  await expect(page.getByRole('heading', { name: 'My bookings', exact: true })).toBeVisible()
+  expect(sent).toEqual([expect.objectContaining({ on_behalf_of_zid: unqualifiedStudent.zid })])
+})
+}
+
+test('additional-hours requests are visible to Admins but only Managers can decide', async ({ page }) => {
+  const booking = additionalBooking({ active_data_collection: true, data_collection_reason: 'Continuous sample recording', additional_hours_review: additionalReview({ priority_reasons: ['ACTIVE_DATA_COLLECTION'] }) })
+  await page.route('**/api/v1/**', async route => {
+    const url = new URL(route.request().url())
+    const path = url.pathname.replace('/api/v1/', '')
+    if (path === 'resources/') return route.fulfill({ json: { count: 1, results: [additionalRoom] } })
+    if (path === 'admin/bookings/') return route.fulfill({ json: { count: url.searchParams.get('status') === 'PENDING_APPROVAL' ? 1 : 0,
+      results: url.searchParams.get('status') === 'PENDING_APPROVAL' ? [booking] : [] } })
+    return route.fallback()
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'ADMIN')
+  await page.goto('/#/admin/bookings?type=additional-hours')
+  await expect(page.getByRole('tab', { name: /Additional hours/ })).toHaveAttribute('aria-selected', 'true')
+  const row = page.locator('tbody tr').filter({ hasText: 'Additional hours' })
+  await expect(row).toContainText('Additional hours: a Manager decides')
+  await expect(row.getByRole('button', { name: /Approve|Reject/ })).toHaveCount(0)
+  await row.getByRole('button', { name: 'Details' }).click()
+  await expect(page.getByText('Continuous sample recording', { exact: true })).toBeVisible()
+  await expect(page.getByText('No time is held. Never approved automatically; expires at the requested start.', { exact: true })).toBeVisible()
+})
+
+test('additional-hours Manager review shows queue blockers and explicitly confirms active data collection', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2030-01-08T00:00:00Z'))
+  let requests = [
+    additionalBooking({ id: 'standard', created_at: '2030-01-01T00:00:00Z', additional_hours_review: additionalReview({ priority_group: 'STANDARD', priority_reasons: [], queue_position: 3, can_approve: false,
+      blocker_code: 'ADDITIONAL_HOURS_TOO_EARLY', blocker_message: 'Approval has not opened yet.' }) }),
+    additionalBooking({ id: 'unused', created_at: '2030-01-01T02:00:00Z', additional_hours_review: additionalReview({ queue_position: 2, can_approve: false,
+      blocker_code: 'ADDITIONAL_HOURS_QUEUE_PRIORITY', blocker_message: 'An earlier priority request must be decided first.' }) }),
+    additionalBooking({ id: 'collecting', created_at: '2030-01-01T01:00:00Z', active_data_collection: true, data_collection_reason: 'Continuous sample recording',
+      additional_hours_review: additionalReview({ priority_reasons: ['ACTIVE_DATA_COLLECTION'] }) }),
+    additionalBooking({ id: 'capacity', created_at: '2030-01-01T03:00:00Z', additional_hours_review: additionalReview({ priority_group: 'STANDARD', priority_reasons: [], queue_position: 4, can_approve: false,
+      blocker_code: 'ADDITIONAL_HOURS_NO_CAPACITY', blocker_message: 'No spare capacity is available for this time.' }) }),
+    additionalBooking({ id: 'own', created_at: '2030-01-01T04:00:00Z', created_by: users.MANAGER.id,
+      additional_hours_review: additionalReview({ priority_group: 'STANDARD', priority_reasons: [], queue_position: 5 }) }),
+  ]
+  const decisions: { id: string; body: Record<string, unknown> }[] = []
+  await page.route('**/api/v1/**', async route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const path = url.pathname.replace('/api/v1/', '')
+    if (path === 'resources/') return route.fulfill({ json: { count: 1, results: [additionalRoom] } })
+    if (path === 'admin/bookings/') return route.fulfill({ json: { count: requests.length, results: url.searchParams.get('status') === 'PENDING_APPROVAL' ? requests : [] } })
+    if (/^admin\/bookings\/[^/]+\/review\/$/.test(path)) {
+      const id = path.split('/')[2]
+      decisions.push({ id, body: request.postDataJSON() })
+      requests = requests.filter(item => item.id !== id)
+      return route.fulfill({ json: additionalBooking({ id, status: request.postDataJSON().decision }) })
+    }
+    return route.fallback()
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'MANAGER')
+  await page.goto('/#/admin/bookings?type=additional-hours')
+  const rows = page.locator('tbody tr')
+  await expect(rows).toHaveCount(5)
+  await expect(rows.nth(0)).toContainText('Active data collection (Manager confirmation required)')
+  await expect(rows.nth(1)).toContainText('No recorded lab use this week')
+  await expect(rows.nth(1).getByRole('button', { name: '✓ Approve' })).toBeDisabled()
+  await expect(rows.nth(2)).toContainText('Approval has not opened yet.')
+  await expect(rows.nth(2).getByRole('button', { name: '✓ Approve' })).toBeDisabled()
+  await expect(rows.nth(3)).toContainText('No spare capacity')
+  await expect(rows.nth(3).getByRole('button', { name: '✓ Approve' })).toBeDisabled()
+  await expect(rows.nth(4)).toContainText('You created this request')
+  await expect(rows.nth(4).getByRole('button', { name: /Approve|Reject/ })).toHaveCount(0)
+  await rows.nth(0).getByRole('button', { name: '✓ Approve' }).click()
+  const approval = page.getByRole('dialog', { name: 'Approve additional hours?', exact: true })
+  await expect(approval).toContainText('Continuous sample recording')
+  await expect(approval).toContainText('you confirm this researcher is currently collecting data')
+  expect(decisions).toHaveLength(0)
+  await approval.getByRole('button', { name: 'Confirm data collection and approve' }).click()
+  await expect(rows).toHaveCount(4)
+  expect(decisions[0]).toEqual({ id: 'collecting', body: { decision: 'APPROVED', reason: '', confirm_active_data_collection: true } })
+  await rows.filter({ hasText: 'Approval has not opened yet.' }).getByRole('button', { name: '✕ Reject' }).click()
+  const rejection = page.getByRole('dialog', { name: 'Reject this request?', exact: true })
+  await rejection.getByLabel('Reason (shown to the student)').fill('Please choose a different session')
+  await rejection.getByRole('button', { name: 'Reject request' }).click()
+  await expect(rows).toHaveCount(3)
+  expect(decisions[1]).toEqual({ id: 'standard', body: { decision: 'REJECTED', reason: 'Please choose a different session' } })
+})
+
+for (const role of ['STUDENT', 'MANAGER'] as const) {
+  test(`approved additional hours cannot be moved by ${role}`, async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2030-01-01T00:00:00Z'))
+    await page.route('**/api/v1/**', async route => {
+      const path = new URL(route.request().url()).pathname.replace('/api/v1/', '')
+      if (path === 'resources/') return route.fulfill({ json: { count: 1, results: [additionalRoom] } })
+      if (path === 'bookings/') return route.fulfill({ json: { count: 1, results: [additionalBooking({ status: 'APPROVED', student_id: users[role].id })] } })
+      return route.fallback()
+    })
+    await page.goto('/#/login')
+    await signIn(page, role)
+    await page.goto('/#/bookings')
+    await expect(page.locator('.bk-bcard')).toContainText('cancel and submit a new request')
+    await expect(page.getByRole('button', { name: /^(Change time|Reschedule)$/ })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Cancel booking', exact: true })).toBeVisible()
+  })
+}
+
 test('test account 1 has verified inductions without an evidence upload form', async ({ page }) => {
   const requirements = [
     { id: 'general', name: 'General induction', description: '', prerequisite_ids: [] },

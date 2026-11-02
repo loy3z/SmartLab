@@ -17,6 +17,10 @@ export function todoCards(data: StaffOverview): TodoCard[] {
   return [
     { key: 'urgent', count: data.urgent_requests, label: 'Urgent requests', to: '/admin/bookings', tone: tone(data.urgent_requests, true),
       hint: data.can_decide_urgent ? 'Only a Manager decides these' : 'A Manager decides these' },
+    { key: 'additional-hours', count: data.additional_hours_requests ?? 0, label: 'Additional-hours requests', to: '/admin/bookings?type=additional-hours', tone: tone(data.additional_hours_requests ?? 0),
+      hint: data.can_decide_additional_hours ? `${data.additional_hours_ready ?? 0} ready for Manager approval` : 'A Manager decides these; pending requests do not hold time' },
+    { key: 'long-bookings', count: data.long_booking_requests ?? 0, label: 'Long-booking requests', to: '/admin/bookings?type=long-bookings', tone: tone(data.long_booking_requests ?? 0),
+      hint: data.can_decide_long_bookings ? 'Decide before the review deadline; never automatic' : 'Only a Manager can decide these' },
     { key: 'bookings', count: data.pending_bookings, label: 'Booking requests to decide', to: '/admin/bookings', tone: tone(data.pending_bookings, data.due_soon.length > 0),
       hint: data.due_soon.length ? `${data.due_soon.length} close to the deadline` : undefined },
     { key: 'changes', count: data.changes_waiting, label: 'Change requests', to: '/admin/bookings', tone: tone(data.changes_waiting),

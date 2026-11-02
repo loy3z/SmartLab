@@ -196,7 +196,7 @@ class ResourcesMixin:
         for booking in self.repo.list_bookings(resource_id=resource.id):
             if booking.status not in ACTIVE_REQUEST_STATUSES or booking.start <= self.now():
                 continue
-            problem = (self._period_violation(resource, booking.start, booking.end)
+            problem = (self._period_violation(resource, booking.start, booking.end, allow_long_booking=booking.long_booking)
                        or self._qualification_violation(booking.student_id, resource, booking.end))
             if problem:
                 result.append((booking, problem.code))

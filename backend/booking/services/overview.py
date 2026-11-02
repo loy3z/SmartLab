@@ -40,6 +40,7 @@ class OverviewMixin:
             self.repo.list_bookings(statuses=[BookingStatus.APPROVED], start_from=day_start, start_to=day_end),
         ) for item in query}.values())
         undecided = [item for item in bookings if item.status == BookingStatus.PENDING_APPROVAL]
+        additional_hours_context = {}
         due_limit = now + timedelta(hours=DUE_SOON_HOURS)
         due_soon = sorted((item for item in undecided if item.review_due_at and item.review_due_at <= due_limit),
                           key=lambda item: (item.review_due_at, item.id))
@@ -55,7 +56,11 @@ class OverviewMixin:
         return {
             "role": actor.role.value,
             "pending_inductions": sum(1 for item in self.repo.list_submissions() if item.status == QualificationStatus.PENDING),
-            "pending_bookings": sum(1 for item in undecided if not item.urgent),
+            "pending_bookings": sum(1 for item in undecided if not item.urgent and not item.additional_hours and not item.long_booking),
+            "long_booking_requests": sum(1 for item in undecided if item.long_booking),
+            "additional_hours_requests": sum(1 for item in undecided if item.additional_hours),
+            "additional_hours_ready": sum(1 for item in undecided if item.additional_hours
+                                          and self.additional_hours_review(item, context=additional_hours_context)["can_approve"]),
             "urgent_requests": sum(1 for item in undecided if item.urgent),
             "waitlisted": sum(1 for item in bookings if item.status == BookingStatus.WAITLISTED),
             "changes_waiting": sum(1 for item in bookings if item.replaces_id and item.status in (
@@ -68,4 +73,6 @@ class OverviewMixin:
             "today_count": len(today),
             "missed_today": sum(1 for item in today if item.attendance == "NO_SHOW"),
             "can_decide_urgent": actor.role == Role.MANAGER,
+            "can_decide_additional_hours": actor.role == Role.MANAGER,
+            "can_decide_long_bookings": actor.role == Role.MANAGER,
         }

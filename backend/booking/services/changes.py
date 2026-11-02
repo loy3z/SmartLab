@@ -29,6 +29,12 @@ class ChangesMixin:
         source = self.booking_for(actor, booking_id)
         if source.student_id != actor.id:
             raise DomainError("FORBIDDEN", "Only the person a booking is for can ask to change its time.", 403)
+        if source.additional_hours:
+            raise DomainError("ADDITIONAL_HOURS_NEW_REQUEST_REQUIRED",
+                              "Additional hours are approved for one exact time. Cancel this booking and submit a new additional-hours request.", 409)
+        if source.long_booking:
+            raise DomainError("LONG_BOOKING_NEW_REQUEST_REQUIRED",
+                              "A longer booking is approved for one exact time. Cancel this booking and submit a new longer-booking request.", 409)
         if source.status != BookingStatus.APPROVED or source.start <= self.now():
             raise DomainError("REQUEST_NOT_CHANGEABLE", "Only a future approved booking can be changed.", 409)
         if start.tzinfo is None or start.utcoffset() is None or end.tzinfo is None or end.utcoffset() is None:

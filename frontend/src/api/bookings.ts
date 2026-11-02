@@ -1,13 +1,19 @@
 // Sprint 3 (2026-10-27): moved from the booking feature folder; function bodies unchanged.
 import { request } from '../lib/api-client'
 import { post } from './client'
-import type { Booking, BookingRequest, BookingSeries, Dashboard, SeriesPlan, SeriesPreview } from './types/bookings'
+import type { AdditionalHoursRequest, Booking, BookingRequest, BookingSeries, Dashboard, LongBookingRequest, SeriesPlan, SeriesPreview } from './types/bookings'
 import type { ListResponse } from './types/common'
 
 export const getDashboard = () => request<Dashboard>('dashboard/')
 
 export const createBooking = (data: BookingRequest, idempotencyKey: string) =>
   post<Booking>('bookings/', data, { 'Idempotency-Key': idempotencyKey })
+
+export const requestAdditionalHours = (data: AdditionalHoursRequest, idempotencyKey: string) =>
+  post<Booking>('bookings/additional-hours/', data, { 'Idempotency-Key': idempotencyKey })
+
+export const requestLongBooking = (data: LongBookingRequest, idempotencyKey: string) =>
+  post<Booking>('bookings/long-bookings/', data, { 'Idempotency-Key': idempotencyKey })
 
 
 export const listBookings = () => request<ListResponse<Booking>>('bookings/')

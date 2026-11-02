@@ -29,6 +29,8 @@ urlpatterns = [
     path("qualifications/<uuid:submission_id>/", views.QualificationDetailView.as_view()),
     path("qualifications/<uuid:submission_id>/file/", views.QualificationFileView.as_view()),
     path("bookings/", views.BookingListView.as_view()),
+    path("bookings/additional-hours/", views.AdditionalHoursBookingView.as_view()),
+    path("bookings/long-bookings/", views.LongBookingView.as_view()),
     path("people/lookup/", views.PersonLookupView.as_view()),
     path("bookings/series/preview/", views.SeriesPreviewView.as_view()),  # Sprint 3
     path("bookings/series/", views.SeriesCreateView.as_view()),  # Sprint 3

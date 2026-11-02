@@ -29,7 +29,7 @@ from ..serializers import (AvailabilityQuerySerializer, DayOverviewQuerySerializ
 from ..ics import render_calendar
 from ..test_console import (TestPrincipal, get_test_account, require_test_console,
                            test_console_enabled, test_identity, TEST_ACCOUNT_ID, booking_rules_bypassed)
-from ..serializers import TestLoginSerializer, TestSessionSerializer
+from ..serializers import TestLoginSerializer, TestSessionSerializer, AdditionalHoursCreateSerializer, LongBookingCreateSerializer
 from ..services.base import UNDECIDED_STATUSES  # 2026-10-29 (load test S2)
 
 _UNSET = object()
@@ -74,6 +74,7 @@ def booking_json(value, lookups=None):
     result["booked_for"] = person_brief(service, value.student_id, lookups.person(value.student_id))
     result["created_by_user"] = person_brief(service, value.created_by, lookups.person(value.created_by)) if value.created_by else None
     result["on_behalf"] = bool(value.created_by and value.created_by != value.student_id)
+    result["additional_hours_review"] = json_value(lookups.additional_hours_review(value)) if value.additional_hours else None
     result.update(json_value(service.check_in_state(value)))  # Sprint 3: check-in button state
     # Sprint 3 (1.16.0): change requests. On a change request: the booking it would replace. On an approved
     # booking: its open change request (pending or waitlisted), if any.
@@ -89,6 +90,10 @@ class _SingleLookups:
     """What booking_json needs, one query at a time (a single booking or a person's own short list)."""
     def __init__(self, service):
         self.service = service
+        self.additional_hours_context = {}
+
+    def additional_hours_review(self, booking):
+        return self.service.additional_hours_review(booking, context=self.additional_hours_context)
 
     def person(self, principal_id):
         return self.service.repo.get_principal(str(principal_id))

@@ -93,9 +93,17 @@ export function bookingDetail(b: Booking): string {
             : b.reason_code === 'TEMPORARY_HOLD_CONFLICT'
               ? 'This time is held for an earlier request. '
               : ''
-      return `${why}${pos}If the time frees up, your request moves up in submission order and goes to an admin for approval.`
+      return `${why}${pos}If the time frees up, your request moves up in submission order and goes to ${b.long_booking ? 'a Manager' : 'an admin'} for approval.${b.long_booking ? ' Longer bookings are never approved automatically.' : ''}`
     }
     case 'PENDING_APPROVAL': {
+      if (b.long_booking) {
+        const deadline = b.review_due_at ? ` by ${fmtDateTime(b.review_due_at)}` : ' before the review deadline'
+        return `Longer booking: waiting for a Manager to approve it${deadline}. The time is held during review; the request expires if nobody decides. It is never approved automatically.`
+      }
+      if (b.additional_hours) {
+        const opens = b.additional_hours_review?.approval_opens_at
+        return `Additional hours: waiting for a Manager. ${opens ? `Approval opens ${fmtDateTime(opens)}. ` : ''}This request does not hold the time and is never approved automatically. It expires if not approved before the start.`
+      }
       if (b.urgent) {
         return `Urgent request: waiting for a Manager to approve it. The time is held until it starts; it is never approved automatically.`
       }
@@ -116,6 +124,7 @@ export function bookingDetail(b: Booking): string {
           ? 'This booking was cancelled by staff.'
           : 'This request was cancelled.'
     case 'EXPIRED':
+      if (b.long_booking) return 'The review deadline or requested start passed before a Manager approved this longer booking.'
       return 'The start time passed before this request was approved.'
   }
 }
@@ -241,11 +250,17 @@ export function submittedMessage(b: Booking): { title: string; message: string }
   if (b.status === 'WAITLISTED') {
     return {
       title: `Added to the waitlist${b.waitlist_position ? ` (#${b.waitlist_position})` : ''}`,
-      message: `${when}. That time is already taken; if it frees up, your request moves to an admin for approval.`,
+      message: `${when}. That time is already taken; if it frees up, your request moves to ${b.long_booking ? 'a Manager' : 'an admin'} for approval.${b.long_booking ? ' It is never approved automatically.' : ''}`,
     }
   }
   if (b.status === 'APPROVED') return { title: 'Booking confirmed', message: when }
   const forWhom = b.on_behalf && b.booked_for ? ` for ${b.booked_for.display_name} (${b.booked_for.zid})` : ''
+  if (b.additional_hours) {
+    const opens = b.additional_hours_review?.approval_opens_at
+    return { title: `Additional-hours request submitted${forWhom}`, message: `${when}. ${opens ? `Approval opens ${fmtDateTime(opens)}. ` : ''}A Manager must approve it; the time is not reserved.` }
+  }
+  if (b.long_booking) return { title: `Long-booking request submitted${forWhom}`,
+    message: `${when}. A Manager must approve${b.review_due_at ? ` by ${fmtDateTime(b.review_due_at)}` : ' before the review deadline'}; otherwise it expires. It is never approved automatically.` }
   if (b.urgent) {
     return { title: `Urgent request submitted${forWhom}`, message: `${when}. A Manager must approve it before it starts.` }
   }

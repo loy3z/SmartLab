@@ -75,13 +75,14 @@ export function TodayPage() {
             {/* Sprint 3 (2026-10-28 feedback L2): a panel without its neighbour takes the whole row. */}
             {data.due_soon.length > 0 && <article className={`today-panel${data.out_of_service.length ? '' : ' is-wide'}`}>
               <h2>Decide soon</h2>
-              <p className="bk-muted">Requests whose review window ends within {data.due_soon_hours} hours; otherwise the system decides.</p>
+              <p className="bk-muted">Review deadlines within {data.due_soon_hours} hours. Long bookings expire without a Manager's decision; ordinary requests follow the automatic review rules.</p>
               {data.due_soon.length === 0 ? <p className="today-empty">Nothing is close to its deadline.</p> : (
                 <ul className="today-list">
                   {data.due_soon.map((b) => (
                     <li key={b.id}>
                       <Link to="/admin/bookings">
                         <strong>{names[b.resource_id] ?? 'Resource'}</strong> · {who(b)}
+                        {b.long_booking && <span className="ui-pill is-amber">Longer booking · Manager approval</span>}
                         <span className="today-meta">{fmtTime(b.start)}, {new Date(b.start).toLocaleDateString('en-AU', { timeZone: 'Australia/Sydney', day: 'numeric', month: 'short' })}</span>
                         {b.review_due_at && <span className="today-due">decide {fmtRelative(b.review_due_at, now)}</span>}
                       </Link>

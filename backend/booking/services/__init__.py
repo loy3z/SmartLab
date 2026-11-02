@@ -9,6 +9,8 @@ each file holds one part (all methods share ``self``: repo, storage, clock, rule
   qualifications.py  induction upload, review, validity and prerequisites
   checks.py          the one shared rule check and conflict lookups
   bookings.py        create (incl. on behalf, urgent), review, cancel, Manager reschedule
+  additional_hours.py non-reserving spare-capacity requests and Manager-only allocation
+  long_bookings.py    longer single-booking requests requiring a Manager's explicit decision
   waitlist.py        expiry, automatic decisions, waitlist promotion
   availability.py    one resource's slots for a day, and the booking page day overview
   audit.py           audit trail query
@@ -27,6 +29,8 @@ To add a feature, put its methods in the file for its topic (or a new mixin list
 the existing ones; import ``BookingService`` from ``booking.services`` as before.
 """
 from .announcements import AnnouncementsMixin  # Sprint 3 (1.19.0)
+from .additional_hours import AdditionalHoursMixin
+from .long_bookings import LongBookingsMixin
 from .accounts import AccountsMixin, new_invite_code, normalize_invite_code
 from .attendance import AttendanceMixin
 from .audit import AuditMixin
@@ -47,7 +51,7 @@ from .series import SeriesMixin
 from .waitlist import WaitlistMixin
 
 
-class BookingService(AnnouncementsMixin, AccountsMixin, ResourcesMixin, QualificationsMixin, BookingsMixin, ChangesMixin, SeriesMixin, WaitlistMixin,
+class BookingService(AnnouncementsMixin, AdditionalHoursMixin, LongBookingsMixin, AccountsMixin, ResourcesMixin, QualificationsMixin, BookingsMixin, ChangesMixin, SeriesMixin, WaitlistMixin,
                      AttendanceMixin, RemindersMixin, ReportsMixin, OverviewMixin, SiteContactMixin, AvailabilityMixin, CalendarFeedMixin, NotificationsMixin, AuditMixin,
                      ChecksMixin,
                      ServiceBase):

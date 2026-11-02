@@ -22,6 +22,7 @@ interface Props {
   hideQualification?: boolean
   /** Reports whether the signed-in user may submit a request (verified induction, resource open). */
   onEligibility?: (canRequest: boolean) => void
+  onAvailability?: (data: Availability) => void
   /** Rescheduling: every selection has exactly this length. */
   fixedMinutes?: number
   /** Rescheduling: show this booking's own time as free. */
@@ -30,6 +31,10 @@ interface Props {
   forZid?: string
   /** Urgent request: only the days before the normal booking window (today up to earliest_date - 1). */
   urgent?: boolean
+  /** Request unused capacity; uses its own approval queue without holding time. */
+  additionalHours?: boolean
+  /** Separate Manager-reviewed request above the normal single-session cap. */
+  longBooking?: boolean
   /** Manager reschedule: from today up to the latest date (the minimum advance window does not apply). */
   allowEarly?: boolean
   /** Day to open on (YYYY-MM-DD, Sydney), e.g. the booking being rescheduled. */
@@ -45,7 +50,7 @@ interface Props {
 
 
 
-export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualification, onEligibility, fixedMinutes, excludeBookingId, forZid, urgent = false, allowEarly = false, initialDate, initialStart, initialMinutes, onAskEarlier, takenNote }: Props) {
+export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualification, onEligibility, onAvailability, fixedMinutes, excludeBookingId, forZid, urgent = false, additionalHours = false, longBooking = false, allowEarly = false, initialDate, initialStart, initialMinutes, onAskEarlier, takenNote }: Props) {
   const [date, setDate] = useState(initialDate ?? todaySydney())
   const [data, setData] = useState<Availability | null>(null)
   const [error, setError] = useState('')
@@ -63,9 +68,11 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
   const pendingInitial = useRef(initialStart && initialMinutes ? { start: initialStart, minutes: initialMinutes } : null)
   const onSelectRef = useRef(onSelect)
   const onEligibilityRef = useRef(onEligibility)
+  const onAvailabilityRef = useRef(onAvailability)
   useEffect(() => {
     onSelectRef.current = onSelect
     onEligibilityRef.current = onEligibility
+    onAvailabilityRef.current = onAvailability
   })
 
   // Sprint 3 (2026-10-25): a mouse wheel over the day timeline scrolls it sideways (Windows wheels have no
@@ -89,12 +96,14 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
 
   const step = data?.selection_step_minutes ?? resource.selection_step_minutes ?? resource.slot_minutes
   const maximumMinutes = data?.max_booking_minutes ?? resource.effective_max_booking_minutes ?? resource.max_booking_minutes
+  const minimumMinutes = longBooking ? data?.min_booking_minutes ?? (Math.floor((resource.effective_max_booking_minutes ?? resource.max_booking_minutes) / step) + 1) * step : step
+  const minCells = Math.max(1, Math.ceil(minimumMinutes / step))
   const maxCells = Math.max(1, Math.floor((fixedMinutes ?? maximumMinutes) / step))
   const fixedCells = fixedMinutes ? Math.max(1, Math.round(fixedMinutes / step)) : null
 
   useEffect(() => {
     let cancelled = false
-    getAvailability(resource.id, date, step, excludeBookingId, { forZid, urgent: urgent || allowEarly })
+    getAvailability(resource.id, date, step, excludeBookingId, { forZid, urgent: urgent || allowEarly, additionalHours, longBooking })
       .then((d) => {
         if (cancelled) return
         // Keep the picker inside the booking window the backend reports.
@@ -103,6 +112,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
         if (earliest && date < earliest) return setDate(earliest)
         if (latest && date > latest && latest >= (earliest ?? latest)) return setDate(latest)
         setData(d)
+        onAvailabilityRef.current?.(d)
         onEligibilityRef.current?.(d.can_request)
         setError('')
         setRange(null)
@@ -129,7 +139,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
         onEligibilityRef.current?.(false)
       })
     return () => { cancelled = true }
-  }, [resource.id, date, step, excludeBookingId, refreshKey, forZid, urgent, allowEarly])
+  }, [resource.id, date, step, excludeBookingId, refreshKey, forZid, urgent, additionalHours, longBooking, allowEarly])
 
   /** Changing the day drops the current selection and pauses submitting until the new day has loaded. */
   function changeDate(next: string) {
@@ -147,6 +157,11 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
 
   function commit(from: number, to: number) {
     setRange({ from, to })
+    if (to - from + 1 < minCells) {
+      setProblem(`Choose an end time for at least ${fmtDuration(minimumMinutes)}. Shorter sessions use the normal booking form.`)
+      onSelectRef.current(null)
+      return
+    }
     setProblem('')
     const overlapsTaken = kinds.slice(from, to + 1).some((k) => k === 'taken' || k === 'held')
     onSelectRef.current({ start: slots[from].start, end: slots[to].end, overlapsTaken })
@@ -181,7 +196,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
     // Click a start, then click an end. Clicking before or inside the selection starts again.
     if (range && index > range.to) {
       if (index - range.from + 1 > maxCells) {
-        return setProblem(`Normal bookings can be up to ${fmtDuration(maximumMinutes)}.`)
+        return setProblem(`${longBooking ? 'Long-booking requests' : 'Normal bookings'} can be up to ${fmtDuration(maximumMinutes)}.`)
       }
       const why = blockedBetween(range.from, index)
       if (why) return setProblem(why)
@@ -194,8 +209,8 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
   }
 
   // Sprint 3 (1.16.0): choose by "Start" and "Length" instead of tapping narrow cells (phones). Same checks as clicking.
-  const defaultCells = fixedCells ?? Math.max(1, Math.min(maxCells, Math.round(60 / step)))
-  const lengthCells = fixedCells ?? wantedCells ?? (range ? range.to - range.from + 1 : defaultCells)
+  const defaultCells = fixedCells ?? Math.max(minCells, Math.min(maxCells, Math.round(60 / step)))
+  const lengthCells = fixedCells ?? Math.max(minCells, wantedCells ?? (range ? range.to - range.from + 1 : defaultCells))
   function chooseByInputs(from: number, cells: number) {
     const to = from + cells - 1
     if (to >= slots.length) return setProblem(`A ${fmtDuration(cells * step)} booking starting then would run past closing time.`)
@@ -207,7 +222,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
   const startOptions = slots
     .map((slot, index) => ({ index, label: fmtTime(slot.start), kind: kinds[index] }))
     .filter((item) => item.kind !== 'closed' && item.kind !== 'mine' && !(strictInputs && (item.kind === 'taken' || item.kind === 'held')))
-  const lengthOptions = Array.from({ length: maxCells }, (_, i) => i + 1)
+  const lengthOptions = Array.from({ length: Math.max(0, maxCells - minCells + 1) }, (_, i) => i + minCells)
 
   const inPreview = (i: number) =>
     !fixedCells && range && range.from === range.to && hover != null && hover > range.from &&
@@ -263,6 +278,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
         {noUrgentDays && <> You can already book from today, so an urgent request is not needed.</>}
         {allowEarly && earliestDate && latestDate && <> Manager reschedule: {fmtDate(earliestDate)} to {fmtDate(latestDate)}. Only free times can be chosen.</>}
         {!urgent && !allowEarly && data?.earliest_date && data.latest_date && <> Bookable from {fmtDate(data.earliest_date)} to {fmtDate(data.latest_date)} ({data.min_advance_days}–{data.max_advance_days} days ahead).</>}
+        {longBooking && <> Long-booking requests: {fmtDuration(minimumMinutes)} to {fmtDuration(maximumMinutes)}. A Manager must decide before the review deadline.</>}
       </p>
       {/* Sprint 3 (1.16.0): someone who wants an earlier day used to see only a disabled "previous day" button. */}
       {onAskEarlier && !urgent && !allowEarly && atStart && data?.earliest_date && data.earliest_date > todaySydney() && (
@@ -333,7 +349,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
           <label>Start
             <select aria-label="Start time" value={range ? range.from : ''} onChange={(e) => e.target.value !== '' && chooseByInputs(Number(e.target.value), lengthCells)}>
               <option value="" disabled>Choose</option>
-              {startOptions.map((item) => <option key={item.index} value={item.index}>{item.label}{item.kind === 'free' ? '' : ' (waitlist)'}</option>)}
+              {startOptions.map((item) => <option key={item.index} value={item.index}>{item.label}{item.kind === 'free' ? '' : additionalHours ? ' (currently taken)' : ' (waitlist)'}</option>)}
             </select>
           </label>
           {!fixedCells && (

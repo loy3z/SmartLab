@@ -2,6 +2,27 @@
 
 API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 [openapi.json](openapi.json)，启动后的 `GET /api/schema/` 返回相同定义。
 
+## 1.22.0：超长预约申请（迁移 013）
+
+- **独立提交**：`POST bookings/long-bookings/`，请求为 `{resource_id,start,end,purpose,long_booking_reason,on_behalf_of_zid?}`。用途和超长理由必填，理由最多 1000 字。支持 `Idempotency-Key`：相同请求重试为 `200`，首次创建为 `201`；理由、受益人、时段或申请类型改变须换 key。客户端不能传审批状态、`urgent`、`additional_hours`、`series_id` 等字段。
+- **豁免范围**：仅放宽普通单次时长上限（默认 3 小时），时长必须大于该上限，并且不超过资源自身最长时长。每周 12 小时、最多 8 个未来预约、正常提前 7–28 天、开放时间、时间步长、资格和冻结规则仍适用，包括员工代约。额外时数、紧急和循环预约不能合并到此流程；数字均沿用可配置规则。
+- **占位与审批**：空闲时返回 `PENDING_APPROVAL`，`hold_until=review_due_at`，按资源现有审批期限占位；冲突时返回 `WAITLISTED`，沿用普通 FIFO 候补。递补后产生新的审批期限。只有 Manager 可通过原 `POST admin/bookings/{id}/review/` 批准或拒绝，不能自审或审自己创建的申请；批准时再次核对资格、周额度、未来预约数、资源限制和冲突。到期未批准变为 `EXPIRED`，`reason_code=LONG_BOOKING_REVIEW_EXPIRED`，释放时段并递补，绝不自动批准。
+- **日期和时长选择**：`GET resources/{id}/availability/?date=YYYY-MM-DD&long_booking=true`，不能与 `urgent=true` 或 `additional_hours=true` 同用。返回普通日期窗口、`normal_max_booking_minutes`、严格大于普通上限的首个有效 `min_booking_minutes`、资源技术上限对齐后的 `max_booking_minutes` 和 `selection_step_minutes`。小网格查询仍可传 `duration_minutes=30`；提交的完整时段须满足超长要求。资源没有可选超长时段时 `can_request=false`，入口不提供超长申请。
+- **界面与待办**：Booking 增加 `long_booking` 和 `long_booking_reason`；资源页有独立申请入口，My bookings 展示人工审批期限／候补／过期原因。审批页有 Longer bookings 标签，Admin 只读。`GET admin/overview/` 增加 `long_booking_requests` 和 `can_decide_long_bookings`；普通 `pending_bookings` 不含超长申请。Manager 收到 `LONG_BOOKING_REQUEST` 通知。
+- **错误与改期**：未超过普通上限为 `400 LONG_BOOKING_NOT_NEEDED`；超过资源技术上限为 `400 DURATION_LIMIT`。获批豁免固定到原资源和时段，change/reschedule 返回 `409 LONG_BOOKING_NEW_REQUEST_REQUIRED`，需取消并重新申请。普通预约、额外时数和循环预约入口仍不能创建超长预约。
+
+## 1.21.0：额外时数申请（迁移 012）
+
+- **独立提交**：`POST bookings/additional-hours/`，请求为 `{resource_id,start,end,purpose,additional_hours_reason,active_data_collection?,data_collection_reason?,on_behalf_of_zid?}`。用途和申请理由必填；理由最多 1000 字。声明正在采集数据时须填写说明（最多 1000 字），未声明时说明应为空。员工可以代约，身份和权限由后端检查。支持 `Idempotency-Key`；更换理由、声明、申请类型或受益人后不能复用旧 key。
+- **不占位**：成功为 `201`，幂等重放为 `200`，返回完整 Booking。标记 `additional_hours=true`，状态 `PENDING_APPROVAL`，`hold_until` 和 `review_due_at` 都为 null。即使当前时段被占用也可提交，待审批期间不阻挡普通预约；批准前必须重新确认空闲。不会自动批准，也不进入普通候补递补，开始时尚未处理则过期。
+- **独立额度**：可以在普通额度尚未用完时申请；额外申请及已批准额外预约不占普通每周 12 小时额度，但仍计入 8 个有效未来预约。单次 3 小时、开放时间、资格、账号冻结、最多提前 28 天的规则不变。额外流程允许短通知申请，所以最少提前 7 天不适用。
+- **可用时段**：`GET resources/{id}/availability/?date=YYYY-MM-DD&additional_hours=true`。日期范围从资源当地今天开始，`min_advance_days=0`，最大提前天数照常；时长上限仍为普通上限。返回 `additional_hours_approval_window_hours`（默认 48，可配置），页面据此显示批准窗口。不能同时传 `urgent=true`。
+- **审批信息**：Booking 新增 `additional_hours_reason`、`active_data_collection`、`data_collection_reason` 和 `additional_hours_review`；普通预约的 review 字段为 null。额外预约的 review 包括 `approval_opens_at,approval_window_hours,priority_group,priority_reasons,queue_position,can_approve,blocker_code,blocker_message`。`can_approve` 只代表实时业务条件；页面还须检查 Manager 角色、不能自审及采集声明确认。
+- **公平顺序**：在同一资源、时段重叠且当前可批准的申请中，`NO_USE_THIS_WEEK` 与 `ACTIVE_DATA_COLLECTION` 属于同一 `PRIORITY` 组，其后为 `STANDARD` 组。前者指目标预约的当地周一至周日内，跨资源没有已开始且 `CHECKED_IN` 的使用记录；页面应写“No recorded lab use this week”。采集声明暂按优先处理，Manager 必须核验；无效声明应拒绝。各组内部按 `created_at,id` 排序。已预约时段和普通有效占位不因额外申请而被挤占。
+- **Manager 决定**：沿用 `POST admin/bookings/{id}/review/`。只有 Manager 能批准或拒绝，且不能审批本人或本人创建的申请。批准须处于 `start - approval_window_hours` 至开始前；有采集声明时必须提交 `confirm_active_data_collection=true`。拒绝须提供 `reason`，可在批准窗口开放前进行。批准在事务内重新检查资格、容量和队列，审计保存当时的依据、窗口、确认结果及授权时段。
+- **错误与范围**：`ADDITIONAL_HOURS_TOO_EARLY`、`ADDITIONAL_HOURS_NO_CAPACITY`、`ADDITIONAL_HOURS_QUEUE_PRIORITY` 均为 409；未确认采集声明为 400 `DATA_COLLECTION_CONFIRMATION_REQUIRED`。批准仅授权原资源及原起止时间，普通 change/reschedule 接口返回 409 `ADDITIONAL_HOURS_NEW_REQUEST_REQUIRED`，页面提示取消后重新申请。
+- **前端入口和待办**：资源卡片新增 Request additional hours；My bookings 区分“等待 Manager、未占位”和普通待审。员工审批页有 Additional hours 标签，展示优先依据、可批准时间和阻塞原因，Admin 只读。`GET admin/overview/` 增加 `additional_hours_requests`、`additional_hours_ready`、`can_decide_additional_hours`；普通 pending 计数不含额外申请。Manager 收到 `ADDITIONAL_HOURS_REQUEST` 通知，结果和过期沿用原有预约通知。
+
 ## 前端需要完成的功能
 
 | 页面／交互 | 前端职责 | 后端负责 |
@@ -113,7 +134,9 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 
 `slots[]` 的 `reason_code` 为 `START_TIME_PASSED`、`RESOURCE_UNAVAILABLE`（维修／关闭）、`TOO_SOON`（不足 7 天）、`TOO_FAR_AHEAD`（超过默认 28 天／4 周）、`BOOKED`、`TEMPORARILY_HELD` 或 `null`。响应顶层另有 `earliest_date`、`latest_date`、`min_advance_days`、`max_advance_days`，供日期选择器限制范围。临时占位时返回 `hold_until`（UTC 截止时间）和 `held_by_me`（是否为当前学生自己的占位）；`requested_by_me` 表示当前学生已经对同一资源提交了与该时段重叠的有效申请，前端应禁用再次提交。接口不返回其他学生身份。可显示占位倒计时，到期刷新查询，最终以服务端响应为准；`can_request` 只有在当前用户是学生、账号启用、对应 induction（及其前置）已通过且有效、资源开放时才为 `true`，不代表所选时段会获批；为 `false` 时应禁用提交按钮并提示先完成 induction。`review_window_minutes` 是该资源的审批期限（默认 1440 分钟）。
 
-### 审批流程
+### 普通预约审批流程
+
+以下自动决定和直接改期规则用于普通预约。超长预约必须由 Manager 人工决定，到审批期限未处理则过期；额外时数不占位、开始时未处理则过期。两种特殊授权均不能直接改期，详见文首独立流程。
 
 - **只有 induction 已通过且有效的人才能申请**（员工同样适用）。资料还在审核（`PENDING`）、被拒或已过期时，`POST bookings/` 返回 403 `QUALIFICATION_REQUIRED`，`details.qualification_status` 说明原因；有效期必须覆盖整个预约，否则为 `EXPIRES_BEFORE_END`。induction 只能由 Admin／Manager 人工审核，审核通过不会自动批准任何预约。
 - **每个申请都先进入 `PENDING_APPROVAL`**（`reason_code=AWAITING_REVIEW`）：不算确认、不写 Outlook，但在审批期限内为申请人占住时段。`review_due_at`（与 `hold_until` 相同）是审批截止时间：进入待审批时加上资源的 `pending_hold_minutes`（默认 24 小时），不晚于预约开始。
@@ -256,7 +279,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 
 时段查询默认时长为 30 分钟。普通预约按 30 分钟一个公平使用 slot 计算，最多选择 6 个 slots（3 小时）；资源本身可以设置更短的技术上限。资源和 availability 响应返回 `booking_slot_minutes`、`max_booking_slots`、`selection_step_minutes` 与 `effective_max_booking_minutes`，前端必须使用这些服务端值限制选择。同一预约不能跨当地日期。
 
-Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{"pending_hold_minutes":1440}`（字段名沿用数据库列名，含义是 Admin 审批期限，单位分钟）；GET／PATCH 均返回 `{"resource_id":"<uuid>","pending_hold_minutes":1440}`。范围为整数 1–20160，默认 1440（24 小时）。期限到了仍无人处理时，系统按规则自动批准或拒绝（见上文“审批流程”）。修改只影响之后进入待审批的申请；已有截止时间不变。资源详情包含 `pending_hold_minutes`，时段查询响应包含同值的 `review_window_minutes`。请求必须带 `pending_hold_minutes`，带 `auto_approve_max_minutes` 返回 400。
+Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{"pending_hold_minutes":1440}`（字段名沿用数据库列名，含义是审批期限，单位分钟）；GET／PATCH 均返回 `{"resource_id":"<uuid>","pending_hold_minutes":1440}`。范围为整数 1–20160，默认 1440（24 小时）。期限到了仍无人处理时，普通预约按规则自动批准或拒绝，超长预约则过期释放时段。修改只影响之后进入待审批的申请；已有截止时间不变。资源详情包含 `pending_hold_minutes`，时段查询响应包含同值的 `review_window_minutes`。请求必须带 `pending_hold_minutes`，带 `auto_approve_max_minutes` 返回 400。
 
 附件支持 PDF、PNG、JPEG，最大 5 MiB。后端检查大小、扩展名、MIME 和文件格式特征。资料中的 `file_url` 是受保护的 API 路径，下载仍需带 Authorization；前端可请求为 Blob 后显示／下载，不能假设 `<img src>` 或普通链接会自动附带 Bearer token。附件没有公开地址。
 

@@ -60,7 +60,8 @@ class AvailabilityView(APIView):
     def get(self, request, resource_id):
         data = validated(AvailabilityQuerySerializer, request.query_params)
         result = get_service().availability(request.user, str(resource_id), data["date"], data["duration_minutes"],
-                                            data.get("exclude_booking_id"), data.get("for_zid") or None, data["urgent"])
+                                            data.get("exclude_booking_id"), data.get("for_zid") or None, data["urgent"],
+                                            additional_hours=data["additional_hours"], long_booking=data["long_booking"])
         return Response(json_value(result))
 
 class QualificationListView(APIView):

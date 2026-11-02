@@ -117,6 +117,11 @@ export type QualificationStatus =
   | 'PREREQUISITE_REQUIRED'
 
 export interface Availability {
+  long_booking?: boolean
+  normal_max_booking_minutes?: number
+  min_booking_minutes?: number
+  additional_hours?: boolean
+  additional_hours_approval_window_hours?: number
   test_bypass?: boolean
   max_booking_minutes?: number
   booking_slot_minutes?: number

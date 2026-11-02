@@ -186,17 +186,21 @@ export function ManagerBookingsPage() {
                           <span className="ui-primary-text">{who(booking)}</span><span className="ui-sub-text">{booking.student?.zid}</span>
                           {booking.on_behalf && booking.created_by_user && <span className="ui-sub-text">Booked by {booking.created_by_user.zid}</span>}
                           {booking.urgent && <span className="ui-badge-urgent">URGENT</span>}
+                          {booking.additional_hours && <span className="ui-pill is-amber">Additional hours</span>}
+                          {booking.long_booking && <span className="ui-pill is-amber">Longer booking</span>}
                         </td>
                         <td className="ui-hide-sm">{booking.purpose}</td>
                         <td>
                           <div className="ui-actions">
-                            <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy !== null || started || !room} title={started ? 'Already started' : undefined} onClick={() => setMoving(booking)}>
+                            {!booking.additional_hours && !booking.long_booking && <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy !== null || started || !room} title={started ? 'Already started' : undefined} onClick={() => setMoving(booking)}>
                               Reschedule
-                            </button>
+                            </button>}
                             <button type="button" className="ui-btn ui-btn-reject ui-btn-sm" disabled={busy !== null || started} title={started ? 'Already started' : undefined} onClick={() => void handleCancel(booking)}>
                               {busy === booking.id ? 'Cancelling…' : 'Cancel'}
                             </button>
                           </div>
+                          {booking.additional_hours && <span className="ui-sub-text">To change this time, cancel and request additional hours again.</span>}
+                          {booking.long_booking && <span className="ui-sub-text">To change this time, cancel and request a longer booking again.</span>}
                         </td>
                       </tr>
                     )

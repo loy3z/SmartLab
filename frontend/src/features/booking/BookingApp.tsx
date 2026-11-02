@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { useAuth } from '../auth/auth-context'
 import { BookingForm } from './BookingForm'
+import { AdditionalHoursForm } from './AdditionalHoursForm'
+import { LongBookingForm } from './LongBookingForm'
 import { FindTime } from './FindTime'
 import { listQualifications, listRequirements, listResources } from '../../api/index.ts'
 import { errorMessage, SEPARATE_BOOKING_TEXT } from './format' // Sprint 3 (1.16.0): SEPARATE_BOOKING_TEXT
@@ -42,6 +44,8 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
   const { user } = useAuth()
   const isStaff = user?.role === 'ADMIN' || user?.role === 'MANAGER'
   const [repeat, setRepeat] = useState<Resource | null>(null) // Sprint 3: weekly series dialog
+  const [additional, setAdditional] = useState<Resource | null>(null)
+  const [longBooking, setLongBooking] = useState<Resource | null>(null)
   const [view, setView] = useState<View>('ROOM')
   const [roomFilter, setRoomFilter] = useState('')
   const [q, setQ] = useState('')
@@ -197,6 +201,8 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
             state={stateFor(r, quals, reqs)}
             prerequisiteName={prerequisiteName(r, quals, reqs)}
             onOpen={() => setOpen(r)}
+            onAdditionalHours={() => setAdditional(r)}
+            onLongBooking={() => setLongBooking(r)}
             roomName={r.kind === 'EQUIPMENT' ? roomName(r.room_id) : undefined}
             equipmentCount={r.kind === 'ROOM' ? equipment.filter((item) => item.room_id === r.id).length : undefined}
             onShowEquipment={r.kind === 'ROOM' ? () => { setView('EQUIPMENT'); setRoomFilter(r.id) } : undefined}
@@ -217,6 +223,12 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
           <RecurringBookingForm resource={repeat} onBooked={() => { setRepeat(null); onBooked() }} />
         </Modal>
       )}
+      {additional && <Modal label={`Request additional hours: ${additional.name}`} onClose={() => setAdditional(null)}>
+        <AdditionalHoursForm resource={additional} onBooked={() => { setAdditional(null); onBooked() }} />
+      </Modal>}
+      {longBooking && <Modal label={`Request a longer booking: ${longBooking.name}`} onClose={() => setLongBooking(null)}>
+        <LongBookingForm resource={longBooking} onBooked={() => { setLongBooking(null); onBooked() }} />
+      </Modal>}
       {picked && (
         <Modal label={`Book ${picked.resource.name}`} onClose={() => setPicked(null)}>
           <BookingForm resource={picked.resource} onBooked={onBooked} initialDate={picked.date}

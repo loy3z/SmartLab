@@ -117,7 +117,7 @@ $env:OUTLOOK_ALLOWED_ATTENDEES = ''
 ### 5.2 端到端手工清单（演示、截图用）
 
 1. **检查连接**：前端用 Staff sign-in 登录 z9000001（演示密码 `123`），打开 Calendar Sync，点 Check connection，应该显示 Connected 和你的邮箱。
-2. **批准后写入**：用 z1000001 申请一个 7～30 天后的 Lab Room 1 时段，Admin 批准。Outlook 里出现 `SmartLab booking: Lab Room 1`，Calendar Sync 中这一行显示 Synced。
+2. **批准后写入**：用 z1000001 申请一个 7～28 天后的 Lab Room 1 时段，Admin 批准。Outlook 里出现 `SmartLab booking: Lab Room 1`，Calendar Sync 中这一行显示 Synced。
 3. **在 Outlook 里改或删**：在 Outlook 里拖动或删除这个事件。网站上的预约不受影响，系统也不会把事件改回去。
 4. **改期**：Manager（z9000002）给这个预约改期。Outlook 事件移到新时间；如果第 3 步已经删了，就按新时间重新建一个。
 5. **取消**：取消预约后，Outlook 里的事件被删除，这一行显示 Removed (cancelled)。

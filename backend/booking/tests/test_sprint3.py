@@ -351,7 +351,7 @@ class SeriesTests(Sprint3Fixture, SimpleTestCase):
     def setUp(self):
         super().setUp()
         self.qualification(self.admin)
-        self.service.max_advance_days = 14  # one-off bookings; a series may go further
+        self.service.max_advance_days = 60  # These tests isolate series rules; window boundaries have their own tests.
         self.service._override_rule(max_active_future_bookings=100)  # Most tests here isolate other series rules.
         self.monday = self.today + timedelta(days=(7 - self.today.weekday()) % 7 or 7)
 
@@ -371,7 +371,7 @@ class SeriesTests(Sprint3Fixture, SimpleTestCase):
             self.other, self.room.id, start, start + timedelta(hours=1), "Other")[0].id, "APPROVED")
         actor, arguments = self.plan(on_behalf_of_zid=self.student.zid)
         preview = self.service.preview_series(actor, **arguments)
-        self.assertEqual(len(preview["occurrences"]), 12)  # 6 weeks x Mon/Wed, beyond the 7-day window
+        self.assertEqual(len(preview["occurrences"]), 12)  # 6 weeks x Mon/Wed, within the configured 60-day window
         problems = [item for item in preview["occurrences"] if not item["available"]]
         self.assertEqual([(item["date"], item["reason_code"]) for item in problems],
                          [((self.monday + timedelta(days=2)).isoformat(), "BOOKING_CONFLICT")])
@@ -550,6 +550,7 @@ class Sprint3APITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual((lifted.status_code, lifted.data["booking_frozen"]), (200, False))
 
     def test_series_api(self):
+        self.service.max_advance_days = 28  # This workflow exercises three weeks of dates.
         today = NOW.astimezone(SYDNEY).date()
         first = today + timedelta(days=7 - today.weekday())
         body = {"resource_id": self.room["id"], "weekdays": [2, 4], "start_time": "09:00", "duration_minutes": 60,

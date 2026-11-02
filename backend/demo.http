@@ -79,7 +79,7 @@ Content-Type: application/pdf
 GET {{baseUrl}}/resources/{{resourceId}}/availability/?date=2026-10-07&duration_minutes=60
 Authorization: Bearer {{studentToken}}
 
-### Create a booking. Needs a verified induction. Start must be 7 to 30 days from today (MIN/MAX_ADVANCE_DAYS); update timestamps before replaying.
+### Create a booking. Needs a verified induction. Start must be 7 to 28 days (4 weeks) from today (MIN/MAX_ADVANCE_DAYS); update timestamps before replaying.
 ### Result is PENDING_APPROVAL (an admin decides within 24 hours, otherwise the system approves if the rules still hold) or WAITLISTED if the time is taken.
 POST {{baseUrl}}/bookings/
 Authorization: Bearer {{studentToken}}

@@ -68,9 +68,10 @@ if not 1 <= DEFAULT_PENDING_HOLD_MINUTES <= 20160:
 # Where booking rules are read from (booking/rules.py). Swap for a provider that reads Manager-edited
 # values from the database without changing booking code.
 RULES_PROVIDER = os.getenv("RULES_PROVIDER", "booking.rules.SettingsRulesProvider")
-# Team proposal (not client-confirmed): earliest and latest bookable start date, in days from today.
+# Booking start dates use the resource's local calendar. The client maximum is four weeks;
+# the existing seven-day minimum remains configurable pending client confirmation.
 MIN_ADVANCE_DAYS = int(os.getenv("MIN_ADVANCE_DAYS", "7"))
-MAX_ADVANCE_DAYS = int(os.getenv("MAX_ADVANCE_DAYS", "30"))
+MAX_ADVANCE_DAYS = int(os.getenv("MAX_ADVANCE_DAYS", "28"))
 if not 0 <= MIN_ADVANCE_DAYS <= MAX_ADVANCE_DAYS <= 365 or MAX_ADVANCE_DAYS < 1:
     raise ValueError("Require 0 <= MIN_ADVANCE_DAYS <= MAX_ADVANCE_DAYS <= 365 and MAX_ADVANCE_DAYS >= 1")
 # Fair-use rules confirmed by the client, validated by booking.rules.BookingRules. One quota slot is

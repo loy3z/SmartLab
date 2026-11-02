@@ -97,7 +97,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
     getAvailability(resource.id, date, step, excludeBookingId, { forZid, urgent: urgent || allowEarly })
       .then((d) => {
         if (cancelled) return
-        // Keep the picker inside the booking window the backend reports (e.g. today + 7 to today + 30 days).
+        // Keep the picker inside the booking window the backend reports.
         // Urgent: only the days before that window. Manager reschedule: from today.
         const { earliest, latest } = dateRange(d, urgent, allowEarly)
         if (earliest && date < earliest) return setDate(earliest)

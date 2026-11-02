@@ -11,6 +11,9 @@ x-backend-environment: &backend-environment
   ALLOWED_HOSTS: 127.0.0.1,${ALLOWED_HOSTS:-localhost}
   ENABLE_DEMO_AUTH: ${ENABLE_DEMO_AUTH:-true}
   ENABLE_TEST_CONSOLE: "false"
+  # All booking paths share the same configurable local-calendar window (four weeks by default).
+  MIN_ADVANCE_DAYS: ${MIN_ADVANCE_DAYS:-7}
+  MAX_ADVANCE_DAYS: ${MAX_ADVANCE_DAYS:-28}
   # PostgreSQL is the shared source of truth for both the API and the scheduler.
   SEED_DEMO_DATA: "false"
   LOAD_DEMO_DATA: ${LOAD_DEMO_DATA:-false}

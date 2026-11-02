@@ -28,9 +28,10 @@ def _bounded_int(name, value, low, high):
 @dataclass(frozen=True)
 class BookingRules:
     # A new or rescheduled booking must start between these many local calendar days from today.
+    # The client maximum is four weeks, including every occurrence of a staff-created series.
     # Checked when a request is submitted or rescheduled, not again when it is approved.
     min_advance_days: int = 7
-    max_advance_days: int = 30
+    max_advance_days: int = 28
     # A verified induction stays valid this many days after it is approved.
     qualification_validity_days: int = 120
     # Review window given to new resources (each resource can then have its own value).
@@ -53,7 +54,7 @@ class BookingRules:
     # Booking is frozen for freeze_days when the missed-booking count reaches freeze_after_no_shows.
     freeze_after_no_shows: int = 4
     freeze_days: int = 30
-    # Longest weekly series a staff member may create.
+    # Longest weekly series pattern; every kept date must also fit the booking window.
     max_series_weeks: int = 14
     # Sprint 3 reminders: this many hours before an approved booking, and days before a verified induction expires.
     reminder_hours_before: int = 24

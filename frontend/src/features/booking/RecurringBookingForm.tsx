@@ -1,11 +1,11 @@
 // Sprint 3: weekly series form (staff only).
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../auth/auth-context'
 import { useFeedback } from '../../ui/feedback-context'
-import { createSeries, lookupPerson, previewSeries } from '../../api/index.ts'
-import { errorMessage, fmtDuration, fmtRange, todaySydney } from './format'
+import { createSeries, getAvailability, lookupPerson, previewSeries } from '../../api/index.ts'
+import { errorMessage, fmtDate, fmtDuration, fmtRange, todaySydney } from './format'
 import { addDaysIso, isoWeekday, problemDates, SERIES_REASON_TEXT, startTimes, WEEKDAYS } from './series'
-import type { PersonBrief, Resource, SeriesPlan, SeriesPreview } from '../../api/types/index.ts'
+import type { Availability, PersonBrief, Resource, SeriesPlan, SeriesPreview } from '../../api/types/index.ts'
 
 /**
  * Staff only: book the same time every week. Check the dates first; dates with a problem are skipped (never queued).
@@ -15,24 +15,53 @@ export function RecurringBookingForm({ resource, onBooked }: { resource: Resourc
   const { user } = useAuth()
   const testBypass = Boolean(user?.bypass_booking_rules)
   const feedback = useFeedback()
-  const firstDefault = addDaysIso(todaySydney(), testBypass ? 0 : 7)
   const [forOther, setForOther] = useState(false)
   const ownOverride = testBypass && !forOther
   const MAX_WEEKS = ownOverride ? 52 : 14
   const normalMaximum = resource.effective_max_booking_minutes ?? resource.max_booking_minutes
   const [zid, setZid] = useState('')
   const [person, setPerson] = useState<PersonBrief | null>(null)
-  const [weekdays, setWeekdays] = useState<number[]>([isoWeekday(firstDefault)])
+  const [weekdays, setWeekdays] = useState<number[]>([])
   const times = useMemo(() => startTimes(ownOverride ? '00:00' : resource.opening_time,
     ownOverride ? '24:00' : resource.closing_time, resource.slot_minutes), [resource, ownOverride])
   const [startTime, setStartTime] = useState(times.includes('09:00') ? '09:00' : times[0] ?? '09:00')
   const [minutes, setMinutes] = useState(Math.min(60, normalMaximum))
-  const [firstDate, setFirstDate] = useState(firstDefault)
-  const [lastDate, setLastDate] = useState(addDaysIso(firstDefault, 7 * 10 - 1))
+  const [firstDate, setFirstDate] = useState('')
+  const [lastDate, setLastDate] = useState('')
+  const [bookingWindow, setBookingWindow] = useState<Pick<Availability, 'earliest_date' | 'latest_date' | 'max_advance_days'> | null>(null)
   const [purpose, setPurpose] = useState('')
   const [preview, setPreview] = useState<SeriesPreview | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const forZid = forOther ? person?.zid : undefined
+  const ready = !forOther || Boolean(person)
+  const step = resource.selection_step_minutes ?? resource.slot_minutes
+
+  useEffect(() => {
+    if (!ready) return
+    let cancelled = false
+    getAvailability(resource.id, todaySydney(), step, undefined, { forZid }).then(window => {
+      if (cancelled) return
+      const clamp = (date: string) => date < window.earliest_date ? window.earliest_date
+        : window.latest_date && date > window.latest_date ? window.latest_date : date
+      setBookingWindow(window)
+      setFirstDate(current => clamp(current || window.earliest_date))
+      setLastDate(current => clamp(current || window.latest_date || addDaysIso(window.earliest_date, 7 * 10 - 1)))
+      setWeekdays(current => current.length ? current : [isoWeekday(window.earliest_date)])
+      setError('')
+    }).catch(reason => {
+      if (!cancelled) setError(errorMessage(reason))
+    })
+    return () => { cancelled = true }
+  }, [resource.id, step, forZid, ready, ownOverride])
+
+  function chooseRecipient(other: boolean) {
+    setForOther(other)
+    setPerson(null)
+    setBookingWindow(null)
+    setPreview(null)
+    setError('')
+  }
   const durations = useMemo(() => {
     const list: number[] = []
     for (let m = resource.slot_minutes; m <= (ownOverride ? 1440 : normalMaximum); m += resource.slot_minutes) list.push(m)
@@ -47,6 +76,7 @@ export function RecurringBookingForm({ resource, onBooked }: { resource: Resourc
 
   async function check() {
     if (forOther && !person) return setError('Check the zID of the person first.')
+    if (!bookingWindow || outsideWindow || tooLong || !firstDate || !lastDate) return
     setBusy(true)
     setError('')
     try {
@@ -73,7 +103,7 @@ export function RecurringBookingForm({ resource, onBooked }: { resource: Resourc
   }
 
   async function create() {
-    if (!preview) return
+    if (!preview || !bookingWindow || outsideWindow || tooLong || !ready) return
     const skip = problemDates(preview.occurrences)
     const ok = await feedback.confirm({
       title: `Book ${preview.available_count} date(s)?`,
@@ -102,18 +132,28 @@ export function RecurringBookingForm({ resource, onBooked }: { resource: Resourc
   }
 
   const tooLong = lastDate < firstDate || Date.parse(lastDate) - Date.parse(firstDate) >= MAX_WEEKS * 7 * 86_400_000
+  const outsideWindow = Boolean(bookingWindow && (
+    firstDate < bookingWindow.earliest_date || lastDate < bookingWindow.earliest_date
+    || (bookingWindow.latest_date && (firstDate > bookingWindow.latest_date || lastDate > bookingWindow.latest_date))
+  ))
+  const datesReady = Boolean(ready && bookingWindow && firstDate && lastDate && !outsideWindow && !tooLong)
   return (
     <div className="bk-series">
       <h2>Repeat weekly: {resource.name}</h2>
-      <p className="bk-muted">Staff only. Book the same time every week (up to {MAX_WEEKS} weeks). Dates are approved at once; dates with a problem are skipped.</p>
+      <p className="bk-muted">Staff only. Book the same time every week within the booking window. Dates are approved at once; dates with a problem are skipped.</p>
+      {bookingWindow && <p className="bk-muted" role="status">{bookingWindow.latest_date
+        ? <>Every date must be from {fmtDate(bookingWindow.earliest_date)} to {fmtDate(bookingWindow.latest_date)} (at most {bookingWindow.max_advance_days} days ahead).</>
+        : <>Test overrides are on. Choose future dates from {fmtDate(bookingWindow.earliest_date)}, up to {MAX_WEEKS} weeks in one series.</>}
+      </p>}
+      {ready && !bookingWindow && !error && <p className="bk-muted" role="status">Loading booking dates…</p>}
 
       <fieldset className="bk-series-row">
         <legend>Book for</legend>
-        <label><input type="radio" checked={!forOther} onChange={() => { setForOther(false); setPerson(null); setPreview(null) }} /> Myself</label>
-        <label><input type="radio" checked={forOther} onChange={() => { setForOther(true); setPreview(null) }} /> Someone else</label>
+        <label><input type="radio" checked={!forOther} onChange={() => chooseRecipient(false)} /> Myself</label>
+        <label><input type="radio" checked={forOther} onChange={() => chooseRecipient(true)} /> Someone else</label>
         {forOther && (
           <span className="bk-series-person">
-            <input aria-label="zID of the person" placeholder="z5123456" value={zid} onChange={(e) => { setZid(e.target.value); setPerson(null) }} />
+            <input aria-label="zID of the person" placeholder="z5123456" value={zid} onChange={(e) => { setZid(e.target.value); setPerson(null); setBookingWindow(null); setPreview(null); setError('') }} />
             <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => void findPerson()}>Check</button>
             {person && <span className="bk-muted">{person.display_name} ({person.zid})</span>}
           </span>
@@ -143,13 +183,16 @@ export function RecurringBookingForm({ resource, onBooked }: { resource: Resourc
           </select>
         </label>
         <label>From
-          <input type="date" aria-label="First date" value={firstDate} onChange={(e) => e.target.value && changed(setFirstDate)(e.target.value)} />
+          <input type="date" aria-label="First date" min={bookingWindow?.earliest_date} max={bookingWindow?.latest_date ?? undefined}
+            disabled={!bookingWindow} value={firstDate} onChange={(e) => changed(setFirstDate)(e.target.value)} />
         </label>
         <label>Until
-          <input type="date" aria-label="Last date" value={lastDate} onChange={(e) => e.target.value && changed(setLastDate)(e.target.value)} />
+          <input type="date" aria-label="Last date" min={firstDate || bookingWindow?.earliest_date} max={bookingWindow?.latest_date ?? undefined}
+            disabled={!bookingWindow} value={lastDate} onChange={(e) => changed(setLastDate)(e.target.value)} />
         </label>
       </div>
       {tooLong && <p className="bk-error">Choose a last date on or after the first date, at most {MAX_WEEKS} weeks later.</p>}
+      {outsideWindow && <p className="bk-error" role="alert">Every date in the series must fit the booking window shown above.</p>}
 
       <label className="bk-series-purpose">Purpose
         <textarea rows={2} maxLength={1000} value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="e.g. Weekly COMP lab session" />
@@ -157,10 +200,10 @@ export function RecurringBookingForm({ resource, onBooked }: { resource: Resourc
 
       {error && <p className="bk-error" role="alert">{error}</p>}
       <div className="bk-series-actions">
-        <button type="button" className="ui-btn ui-btn-ghost" disabled={busy || weekdays.length === 0 || tooLong} onClick={() => void check()}>
+        <button type="button" className="ui-btn ui-btn-ghost" disabled={busy || weekdays.length === 0 || !datesReady} onClick={() => void check()}>
           {busy && !preview ? 'Checking…' : 'Check dates'}
         </button>
-        <button type="button" className="ui-btn ui-btn-primary" disabled={busy || !preview || preview.available_count === 0 || !purpose.trim()}
+        <button type="button" className="ui-btn ui-btn-primary" disabled={busy || !datesReady || !preview || preview.available_count === 0 || !purpose.trim()}
           onClick={() => void create()}>
           {preview ? `Book ${preview.available_count} date(s)` : 'Book series'}
         </button>

@@ -15,6 +15,7 @@ export const SERIES_REASON_TEXT: Record<string, string> = {
   BOOKING_CONFLICT: 'Already booked or held',
   DUPLICATE_BOOKING: 'This person already has a request then',
   BOOKING_TOO_SOON: 'Too soon (minimum advance days)',
+  BOOKING_TOO_FAR_AHEAD: 'Beyond the latest bookable date',
   OUTSIDE_OPENING_HOURS: 'Outside opening hours',
   INVALID_TIME_INCREMENT: 'Not on the time grid',
   DURATION_LIMIT: 'Longer than allowed',

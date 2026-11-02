@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { canAskForChange, changeSentMessage, openChangeText, replacesText } from '../src/features/booking/change-requests.ts'
 import { FIND_DURATIONS, hiddenSummary } from '../src/features/booking/find-time.ts'
-import { SEPARATE_BOOKING_TEXT, submitBlocker } from '../src/features/booking/format.ts'
+import { errorMessage, SEPARATE_BOOKING_TEXT, submitBlocker } from '../src/features/booking/format.ts'
 import { changedFields, checkResource, describeHours, emptyResource, hoursFromMinutes, minutesFromHours } from '../src/features/manager/resource-form.ts'
 import { hasContact, mailtoLink } from '../src/features/contact/contact.ts'
 import { guideItems } from '../src/features/induction/guide.ts'
@@ -39,6 +39,15 @@ test('Find a free time: normal lengths stop at three hours, and why rows are hid
   assert.deepEqual(hiddenSummary({ MAINTENANCE: 1, NOT_SUBMITTED: 18 }),
     { text: '19 hidden: 18 induction not submitted, 1 under maintenance', needsInduction: true })
   assert.deepEqual(hiddenSummary({ FROZEN: 3 }), { text: '3 hidden: 3 your booking is frozen', needsInduction: false })
+})
+
+test('booking-window errors show the configured limit without inventing a fallback', () => {
+  assert.equal(errorMessage({ code: 'BOOKING_TOO_FAR_AHEAD', details: { latest_date: '2030-01-29', max_advance_days: 28 } }),
+    'Bookings can be made at most 28 days ahead. The latest date you can book is 29 Jan 2030.')
+  assert.equal(errorMessage({ code: 'BOOKING_TOO_FAR_AHEAD', details: { latest_date: '2030-01-15', max_advance_days: 14 } }),
+    'Bookings can be made at most 14 days ahead. The latest date you can book is 15 Jan 2030.')
+  assert.equal(errorMessage({ code: 'BOOKING_TOO_FAR_AHEAD', details: { latest_date: '2030-01-15' } }),
+    'The latest date you can book is 15 Jan 2030.')
 })
 
 test('the booking form says what is still missing, in order', () => {

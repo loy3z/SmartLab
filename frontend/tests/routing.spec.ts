@@ -1053,17 +1053,27 @@ test('staff review unfreeze requests on Booking freezes', async ({ page }) => {
   expect(decisions).toEqual([{ decision: 'APPROVED', reason: '' }])
 })
 
+const recurringRoom = { id: 'room-1', name: 'Lab Room 1', kind: 'ROOM', location: 'Demo laboratory', description: '', active: true,
+  required_qualification_id: 'req-1', slot_minutes: 30, max_booking_minutes: 480, opening_time: '08:00:00', closing_time: '20:00:00',
+  timezone: 'Australia/Sydney', pending_hold_minutes: 1440, status: 'AVAILABLE', status_reason: null, room_id: null, category: null }
+
+function seriesAvailability(overrides: Record<string, unknown> = {}) {
+  return { resource_id: recurringRoom.id, date: '2030-01-01', timezone: 'Australia/Sydney', duration_minutes: 30,
+    slots: [], can_request: true, qualification_status: 'VERIFIED', earliest_date: '2030-01-08', latest_date: '2030-01-29',
+    min_advance_days: 7, max_advance_days: 28, ...overrides }
+}
+
 test('staff book a weekly series and skip the dates with a problem', async ({ page }) => {
-  const room = { id: 'room-1', name: 'Lab Room 1', kind: 'ROOM', location: 'Demo laboratory', description: '', active: true,
-    required_qualification_id: 'req-1', slot_minutes: 30, max_booking_minutes: 480, opening_time: '08:00:00', closing_time: '20:00:00',
-    timezone: 'Australia/Sydney', pending_hold_minutes: 1440, status: 'AVAILABLE', status_reason: null, room_id: null, category: null }
+  await page.clock.setFixedTime(new Date('2030-01-01T00:00:00Z'))
+  const room = recurringRoom
   const occurrence = (date: string, available = true, reason: string | null = null) => ({
     date, start: `${date}T22:00:00Z`, end: `${date}T23:00:00Z`, available, reason_code: reason, message: reason ? 'Problem' : null })
   const created: Record<string, unknown>[] = []
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
     const path = new URL(request.url()).pathname.replace('/api/v1/', '')
-    if (path.startsWith('resources/') && request.method() === 'GET') return route.fulfill({ json: { count: 1, results: [room] } })
+    if (path === 'resources/') return route.fulfill({ json: { count: 1, results: [room] } })
+    if (path === 'resources/room-1/availability/') return route.fulfill({ json: seriesAvailability() })
     if (path === 'bookings/series/preview/') {
       return route.fulfill({ json: { resource_id: 'room-1', booking_for: { id: 'test-admin', zid: 'z9000001', display_name: 'Test Admin', role: 'ADMIN' },
         weekdays: request.postDataJSON().weekdays, available_count: 2,
@@ -1080,6 +1090,13 @@ test('staff book a weekly series and skip the dates with a problem', async ({ pa
   await page.goto('/#/resources')
   await page.getByRole('button', { name: 'Repeat weekly', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Repeat weekly: Lab Room 1' })).toBeVisible()
+  await expect(page.getByLabel('First date')).toHaveValue('2030-01-08')
+  await expect(page.getByLabel('Last date')).toHaveValue('2030-01-29')
+  await expect(page.getByLabel('Last date')).toHaveAttribute('max', '2030-01-29')
+  await page.getByLabel('First date').fill('2030-01-14')
+  await page.getByLabel('Last date').fill('2030-01-28')
+  await page.getByRole('checkbox', { name: 'Tue', exact: true }).uncheck()
+  await page.getByRole('checkbox', { name: 'Mon', exact: true }).check()
   await page.getByRole('button', { name: 'Check dates', exact: true }).click()
   const table = page.getByRole('table', { name: 'Dates in this series' })
   await expect(table.locator('tbody tr')).toHaveCount(3)
@@ -1091,6 +1108,98 @@ test('staff book a weekly series and skip the dates with a problem', async ({ pa
   expect(created).toHaveLength(1)
   expect(created[0].skip_dates).toEqual(['2030-01-21'])
   expect(created[0].purpose).toBe('Weekly lab')
+})
+
+for (const role of ['ADMIN', 'MANAGER'] as const) {
+  test(`${role} weekly series follows configured dates for self and on behalf`, async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2030-01-01T00:00:00Z'))
+    const previews: Record<string, unknown>[] = []
+    const recipients: (string | null)[] = []
+    await page.route('**/api/v1/**', async route => {
+      const request = route.request()
+      const url = new URL(request.url())
+      const path = url.pathname.replace('/api/v1/', '')
+      if (path === 'resources/') return route.fulfill({ json: { count: 1, results: [recurringRoom] } })
+      if (path === 'resources/room-1/availability/') {
+        recipients.push(url.searchParams.get('for_zid'))
+        return route.fulfill({ json: seriesAvailability({ latest_date: '2030-01-15', max_advance_days: 14 }) })
+      }
+      if (path === 'people/lookup/') return route.fulfill({ json: users.STUDENT })
+      if (path === 'bookings/series/preview/') {
+        previews.push(request.postDataJSON())
+        return route.fulfill({ json: { resource_id: recurringRoom.id, booking_for: users.STUDENT,
+          weekdays: [2], occurrences: [], available_count: 0 } })
+      }
+      return route.fallback()
+    })
+    await page.goto('/#/login')
+    await signIn(page, role)
+    await page.goto('/#/resources')
+    await page.getByRole('button', { name: 'Repeat weekly', exact: true }).click()
+    const first = page.getByLabel('First date')
+    const last = page.getByLabel('Last date')
+    const check = page.getByRole('button', { name: 'Check dates', exact: true })
+    await expect(first).toHaveValue('2030-01-08')
+    await expect(first).toHaveAttribute('min', '2030-01-08')
+    await expect(first).toHaveAttribute('max', '2030-01-15')
+    await expect(last).toHaveValue('2030-01-15')
+    await expect(page.getByText('Every date must be from 8 Jan 2030 to 15 Jan 2030 (at most 14 days ahead).')).toBeVisible()
+    await last.fill('2030-01-16')
+    await expect(check).toBeDisabled()
+    await expect(page.getByRole('alert')).toContainText('Every date in the series must fit the booking window')
+    await last.fill('2030-01-15')
+    await first.fill('2030-01-07')
+    await expect(check).toBeDisabled()
+    await first.fill('2030-01-08')
+    await expect(check).toBeEnabled()
+    await page.getByRole('radio', { name: 'Someone else', exact: true }).check()
+    await expect(check).toBeDisabled()
+    await page.getByLabel('zID of the person', { exact: true }).fill(users.STUDENT.zid)
+    await page.getByRole('button', { name: 'Check', exact: true }).click()
+    await expect(last).toHaveAttribute('max', '2030-01-15')
+    await expect(check).toBeEnabled()
+    await check.click()
+    await expect(page.getByRole('table', { name: 'Dates in this series' })).toBeVisible()
+    expect(recipients).toContain(null)
+    expect(recipients.at(-1)).toBe(users.STUDENT.zid)
+    expect(previews).toEqual([expect.objectContaining({ first_date: '2030-01-08', last_date: '2030-01-15', on_behalf_of_zid: users.STUDENT.zid })])
+  })
+}
+
+test('weekly series test override has no upper date limit but on-behalf bookings restore it', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2030-01-01T00:00:00Z'))
+  await page.route('**/api/v1/**', async route => {
+    const url = new URL(route.request().url())
+    const path = url.pathname.replace('/api/v1/', '')
+    if (path === 'auth/me/') return route.fulfill({ json: { ...users.ADMIN, test_account: true, bypass_booking_rules: true } })
+    if (path === 'resources/') return route.fulfill({ json: { count: 1, results: [recurringRoom] } })
+    if (path === 'people/lookup/') return route.fulfill({ json: users.STUDENT })
+    if (path === 'resources/room-1/availability/') return route.fulfill({ json: url.searchParams.has('for_zid')
+      ? seriesAvailability()
+      : seriesAvailability({ test_bypass: true, earliest_date: '2030-01-01', latest_date: null, min_advance_days: 0, max_advance_days: 0 }) })
+    return route.fallback()
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'ADMIN')
+  await page.goto('/#/resources')
+  await page.getByRole('button', { name: 'Repeat weekly', exact: true }).click()
+  const first = page.getByLabel('First date')
+  const last = page.getByLabel('Last date')
+  const check = page.getByRole('button', { name: 'Check dates', exact: true })
+  await expect(first).toHaveValue('2030-01-01')
+  await expect(first).not.toHaveAttribute('max')
+  await expect(last).not.toHaveAttribute('max')
+  await last.fill('2030-03-01')
+  await expect(check).toBeEnabled()
+  await page.getByRole('radio', { name: 'Someone else', exact: true }).check()
+  await expect(check).toBeDisabled()
+  await page.getByLabel('zID of the person', { exact: true }).fill(users.STUDENT.zid)
+  await page.getByRole('button', { name: 'Check', exact: true }).click()
+  await expect(first).toHaveValue('2030-01-08')
+  await expect(last).toHaveValue('2030-01-29')
+  await expect(first).toHaveAttribute('max', '2030-01-29')
+  await expect(last).toHaveAttribute('max', '2030-01-29')
+  await expect(check).toBeEnabled()
 })
 
 test('students do not see Repeat weekly or Booking freezes', async ({ page }) => {

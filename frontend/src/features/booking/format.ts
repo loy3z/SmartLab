@@ -184,7 +184,7 @@ export function errorMessage(e: unknown): string {
   if (err?.code === 'BOOKING_TOO_SOON' && range?.earliest_date)
     return `Bookings must be made at least ${range.min_advance_days ?? 7} days in advance. The earliest date you can book is ${fmtDate(range.earliest_date)}.`
   if (err?.code === 'BOOKING_TOO_FAR_AHEAD' && range?.latest_date)
-    return `Bookings can be made at most ${range.max_advance_days ?? 30} days ahead. The latest date you can book is ${fmtDate(range.latest_date)}.`
+    return `${range.max_advance_days === undefined ? '' : `Bookings can be made at most ${range.max_advance_days} days ahead. `}The latest date you can book is ${fmtDate(range.latest_date)}.`
   if (err?.code === 'QUALIFICATION_REQUIRED') {
     const q = (err.details as { qualification_status?: string })?.qualification_status
     const why: Record<string, string> = {

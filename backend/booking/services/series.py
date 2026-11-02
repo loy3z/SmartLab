@@ -2,8 +2,8 @@
 
 Staff choose the weekdays, start time, length and first/last date (at most BookingRules.max_series_weeks). A
 preview shows every date and whether it can be booked; dates with a problem are skipped by choice, never queued.
-The series may reach past the normal "at most N days ahead" window, but every other rule applies to each date:
-the minimum advance days, opening hours, length, the person's induction (valid on that date), weekly allowance,
+Every date must fit the same booking window as a single booking, plus the opening hours, length,
+the person's induction (valid on that date), weekly allowance,
 active-future-booking limit and conflicts. Because staff create it, every kept date is approved at once. Each date is an ordinary
 booking with series_id, so cancelling one date, rescheduling it, Outlook and the calendar link work as for any booking.
 """
@@ -38,14 +38,13 @@ class SeriesMixin:
         if not isinstance(start_time, time):
             raise DomainError("VALIDATION_ERROR", "Choose a start time.")
         zone = ZoneInfo(resource.timezone)
-        earliest, _ = self.booking_window(resource)
         occurrences = []
         day = first_date
         while day <= last_date:
             if day.isoweekday() in days:
                 start = datetime.combine(day, start_time, zone).astimezone(UTC)
                 end = start + timedelta(minutes=duration_minutes)
-                occurrences.append(self._series_check(actor, person, resource, day, start, end, earliest))
+                occurrences.append(self._series_check(actor, person, resource, day, start, end))
             day += timedelta(days=1)
         if not occurrences:
             raise DomainError("SERIES_EMPTY", "No date in this range falls on the chosen weekdays.")
@@ -73,14 +72,11 @@ class SeriesMixin:
                 planned_future += 1
         return resource, person, days, occurrences
 
-    def _series_check(self, actor, person, resource, day, start, end, earliest):
+    def _series_check(self, actor, person, resource, day, start, end):
         # Sprint 3 (1.17.0): written the same way as in _series_plan and create_series (the actor's own series only).
         bypass = booking_rules_bypassed(actor, person.id)
-        error = test_period_violation(self, resource, start, end) if bypass else self._period_violation(resource, start, end)
-        if error is None and day < earliest and not bypass:
-            error = DomainError("BOOKING_TOO_SOON", f"Bookings must be made at least {self.min_advance_days} days in advance.")
-        if not bypass:
-            error = error or self.rule_violation(person.id, resource, start, end)
+        error = (test_period_violation(self, resource, start, end) if bypass
+                 else self.rule_violation(person.id, resource, start, end, check_window=True))
         if error is None and self._student_overlap(person.id, resource.id, start, end):
             error = DomainError("DUPLICATE_BOOKING", "This person already has a request for this resource at this time.")
         if error is None and self._overlaps(resource.id, start, end):

@@ -111,7 +111,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 
 可用性查询是当时的快照，提交前后仍可能有人占用时段。显示 `available=false` 的时段不能提示“可立即预约”；学生仍可对已被占用的时段提交申请，但会进入等待名单，界面应明确说明。每个资源的 `required_qualification_id` 可以不同，前端必须读取资源要求，不能用一个全局“已完成 induction”开关判断所有资源的资格。
 
-`slots[]` 的 `reason_code` 为 `START_TIME_PASSED`、`RESOURCE_UNAVAILABLE`（维修／关闭）、`TOO_SOON`（不足 7 天）、`TOO_FAR_AHEAD`（超过 30 天）、`BOOKED`、`TEMPORARILY_HELD` 或 `null`。响应顶层另有 `earliest_date`、`latest_date`、`min_advance_days`、`max_advance_days`，供日期选择器限制范围。临时占位时返回 `hold_until`（UTC 截止时间）和 `held_by_me`（是否为当前学生自己的占位）；`requested_by_me` 表示当前学生已经对同一资源提交了与该时段重叠的有效申请，前端应禁用再次提交。接口不返回其他学生身份。可显示占位倒计时，到期刷新查询，最终以服务端响应为准；`can_request` 只有在当前用户是学生、账号启用、对应 induction（及其前置）已通过且有效、资源开放时才为 `true`，不代表所选时段会获批；为 `false` 时应禁用提交按钮并提示先完成 induction。`review_window_minutes` 是该资源的审批期限（默认 1440 分钟）。
+`slots[]` 的 `reason_code` 为 `START_TIME_PASSED`、`RESOURCE_UNAVAILABLE`（维修／关闭）、`TOO_SOON`（不足 7 天）、`TOO_FAR_AHEAD`（超过默认 28 天／4 周）、`BOOKED`、`TEMPORARILY_HELD` 或 `null`。响应顶层另有 `earliest_date`、`latest_date`、`min_advance_days`、`max_advance_days`，供日期选择器限制范围。临时占位时返回 `hold_until`（UTC 截止时间）和 `held_by_me`（是否为当前学生自己的占位）；`requested_by_me` 表示当前学生已经对同一资源提交了与该时段重叠的有效申请，前端应禁用再次提交。接口不返回其他学生身份。可显示占位倒计时，到期刷新查询，最终以服务端响应为准；`can_request` 只有在当前用户是学生、账号启用、对应 induction（及其前置）已通过且有效、资源开放时才为 `true`，不代表所选时段会获批；为 `false` 时应禁用提交按钮并提示先完成 induction。`review_window_minutes` 是该资源的审批期限（默认 1440 分钟）。
 
 ### 审批流程
 
@@ -166,7 +166,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 - 递补不会主动通知，学生需要刷新“我的预约”或 dashboard 才能看到状态变化，前端可轮询。
 
 **限制**：
-- **预约窗口**：预约开始日期（资源当地日期）必须在“今天 + 7 天”到“今天 + 30 天”之间（默认值，来自后端可配置规则 `RulesProvider`，见 backend/README“可配置规则”），即至少提前一周、最多提前一个月。例：周六 10/10 最早能约下周六 10/17，最晚 11/9。太近返回 400 `BOOKING_TOO_SOON`，太远返回 400 `BOOKING_TOO_FAR_AHEAD`；两者的 `details` 都有 `earliest_date`、`latest_date`、`min_advance_days`、`max_advance_days`。改期同样受这个窗口限制；已提交的申请不受影响，日期临近后照常审核和递补。
+- **预约窗口**：预约开始日期（资源当地日期）必须在“今天 + 7 天”到“今天 + 28 天”之间（默认值，来自后端可配置规则 `RulesProvider`，见 backend/README“可配置规则”），即至少提前一周、最多提前四周。上限适用于所有角色、代他人预约以及员工重复预约的每个实际日期。例：周六 10/10 最早能约下周六 10/17，最晚 11/7。太近返回 400 `BOOKING_TOO_SOON`，太远返回 400 `BOOKING_TOO_FAR_AHEAD`；两者的 `details` 都有 `earliest_date`、`latest_date`、`min_advance_days`、`max_advance_days`。预约人申请改期同样受这个窗口限制；Manager 直接改期可跳过最短提前期，但仍受最晚日期限制；已提交的申请不受影响，日期临近后照常审核和递补。
   - 日期选择器：用时段查询响应里的 `earliest_date`／`latest_date` 设置 `<input type="date" min max>`，不要在前端写死天数。
   - 因为至少提前一周，默认 24 小时审批期限总会早于预约开始；只有 Manager 把审批期限设得比提前天数还长时，期限才会被截到预约开始时间。
 
@@ -313,7 +313,7 @@ Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{
 | `PREREQUISITE_CYCLE` | 409 | 前置设置会形成循环 |
 | `FORBIDDEN` | 403 | 学生代别人预约、非 Manager 改期，或 Admin 调用 Manager 接口 |
 | `BOOKING_TOO_SOON` | 400 | 需至少提前 7 天；`details.earliest_date` 为最早可约日期 |
-| `BOOKING_TOO_FAR_AHEAD` | 400 | 最多提前 30 天；`details.latest_date` 为最晚可约日期 |
+| `BOOKING_TOO_FAR_AHEAD` | 400 | 默认最多提前 28 天（4 周）；`details.latest_date` 为最晚可约日期 |
 | `QUALIFICATION_ALREADY_PENDING`／`QUALIFICATION_ALREADY_VERIFIED` | 409 | 保留当前资料，刷新资格状态 |
 | `IDEMPOTENCY_CONFLICT` | 409 | 同一 key 不能用于另一份请求；新操作生成新 key |
 | `DUPLICATE_BOOKING` | 409 | 当前学生已对同一资源提交重叠时段的有效申请；显示已有申请而不是再次加入候补 |
@@ -388,10 +388,10 @@ API 输出时间为 ISO 8601 UTC `Z`。前端用 `Australia/Sydney` 显示，支
 
 ## 重复预约（只有员工）
 
-- 资源卡片上的 **Repeat weekly** 按钮（只有 Admin／Manager 看得到）打开表单：预约给谁（自己／输入 zID 替别人）、每周几（1=周一 … 7=周日）、开始时间、时长、起止日期（最长 14 周）、用途。
+- 资源卡片上的 **Repeat weekly** 按钮（只有 Admin／Manager 看得到）打开表单：预约给谁（自己／输入 zID 替别人）、每周几（1=周一 … 7=周日）、开始时间、时长、起止日期（模式跨度最长 14 周；每个实际预约日期仍受当前预约窗口限制）、用途。
 - 先 `POST bookings/series/preview/`（`resource_id`、`weekdays`、`start_time` 如 `"09:00"`、`duration_minutes`、`first_date`、`last_date`、可选 `on_behalf_of_zid`），返回每个日期的 `available` 和 `reason_code`。
 - 再 `POST bookings/series/`（同样的字段加 `purpose`、`skip_dates`）。预览里不可用的日期必须放进 `skip_dates`，否则 409 `SERIES_CONFLICT`（重新预览）。冲突的日期不进候补。
-- 创建后每个日期直接是 `APPROVED`（`reason_code=SERIES_CREATED_BY_STAFF`，带 `series_id`），不走审批。可以突破“最多提前 30 天”，其余规则照常检查；每个保留日期计入对应周的 24-slot 上限和 8 个有效未来预约上限，超额日期在预览中分别显示 `WEEKLY_LIMIT_REACHED` 或 `FUTURE_BOOKING_LIMIT_REACHED`；到场确认照常要求。
+- 创建后每个日期直接是 `APPROVED`（`reason_code=SERIES_CREATED_BY_STAFF`，带 `series_id`），不走审批。给自己或代他人预约都须逐日满足当前预约窗口（默认提前 7–28 天）；超出最晚日期的预览项显示 `BOOKING_TOO_FAR_AHEAD`，创建时必须放进 `skip_dates`。14 周只是模式跨度上限，不延长可约日期；其余规则照常检查；每个保留日期计入对应周的 24-slot 上限和 8 个有效未来预约上限，超额日期在预览中分别显示 `WEEKLY_LIMIT_REACHED` 或 `FUTURE_BOOKING_LIMIT_REACHED`；到场确认照常要求。
 - 取消单次用 `POST bookings/{id}/cancel/`；取消整组剩下的用 `POST bookings/series/{id}/cancel/`（员工）。`GET bookings/series/{id}/` 返回这组的所有日期。
 
 ## 资源管理（只有 Manager）
@@ -533,7 +533,7 @@ Urgent booking requests still require both `purpose` and `urgent_reason` in `POS
 - `GET auth/config/` adds `test_console_enabled`. It is true only when `DEBUG=true`, `ENABLE_DEMO_AUTH=true`, `ENABLE_TEST_CONSOLE=true`, `AUTH_PROVIDER=booking.authentication.DemoIdentityProvider` and `REPOSITORY_FACTORY=booking.repository.MemoryRepository` (the in-memory store; with PostgreSQL it stays off). Any disabled condition hides the login endpoint (404) and invalidates existing test tokens (401). Default: disabled.
 - `POST auth/test-login/` accepts exactly `{ "login_id": "1" }`; no password. Returns the usual session envelope with a signed token and user (`zid="1"`, initial `role="STUDENT"`, `test_account=true`, `bypass_booking_rules=true`). Database `id` remains a UUID. The stored role stays STUDENT.
 - `POST auth/test-session/`, authenticated with that test token only, accepts `{ "role": "STUDENT" | "ADMIN" | "MANAGER", "bypass_booking_rules": true | false }`. It returns a fresh signed session. Replace the token and verify with `auth/me/`. Ordinary accounts receive 403 and cannot obtain overrides by adding fields to booking requests. Switching a session does not mutate another tab's already-issued token.
-- Bypass applies to the test account's own bookings, moves and staff weekly series. Free valid future times become APPROVED immediately (`TEST_OVERRIDE` for single bookings); account freeze, induction, 7–30 day window, opening hours, resource maximum duration, maintenance/closed status and weekly booking limit are bypassed. Archived resources remain unavailable. Single appointments are limited to 24 h; staff series to 52 weeks. Existing bookings and held requests cannot be displaced. Booking for someone else uses that person's normal rules. Turning bypass off restores normal booking windows and approvals; account 1 retains its automatically granted inductions.
+- Bypass applies to the test account's own bookings, moves and staff weekly series. Free valid future times become APPROVED immediately (`TEST_OVERRIDE` for single bookings); account freeze, induction, 7–28 day window, opening hours, resource maximum duration, maintenance/closed status and weekly booking limit are bypassed. Archived resources remain unavailable. Single appointments are limited to 24 h; staff series to 52 weeks. Existing bookings and held requests cannot be displaced. Booking for someone else uses that person's normal rules. Turning bypass off restores normal booking windows and approvals; account 1 retains its automatically granted inductions.
 - With bypass, availability and day-overview add `test_bypass=true`; `latest_date=null` means no upper calendar-date restriction and date inputs must omit `max`. `min_advance_days` and `max_advance_days` are 0. Single-resource availability adds `max_booking_minutes=1440` and `review_window_minutes=0`; slots cover the local calendar day and preserve past-time/conflict blocks. Normal sessions continue returning their normal window dates. Display a test-override label.
 - Self time changes return APPROVED immediately and cancel the replaced original booking. Test attendance is NOT_TRACKED. Website notifications and audit remain; no test booking is sent to Outlook or external notification channels.
 

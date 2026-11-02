@@ -4,6 +4,19 @@ from ._common import *  # noqa: F401,F403 - shared imports, helpers and PublicVi
 
 __all__ = ["ResourceListView", "DayOverviewView", "ResourceDetailView", "RequirementListView", "AvailabilityView", "QualificationListView", "QualificationDetailView", "QualificationFileView", "RequirementDetailView", "RequirementCreateView", "policy_json", "ResourceBookingPolicyView"]
 
+
+def resource_json(service, resource):
+    """Public resource data plus the effective normal-booking slot policy."""
+    value = json_value(resource)
+    max_slots, slot_minutes, maximum = service._normal_booking_limit(resource)
+    value.update(
+        booking_slot_minutes=slot_minutes,
+        max_booking_slots=max_slots,
+        selection_step_minutes=service._selection_step_minutes(resource),
+        effective_max_booking_minutes=maximum,
+    )
+    return value
+
 class ResourceListView(APIView):
     def get(self, request):
         records = [item for item in get_service().repo.list_resources() if item.active]
@@ -18,21 +31,26 @@ class ResourceListView(APIView):
         query = request.query_params.get("q", "").strip().casefold()
         if query:
             records = [item for item in records if query in f"{item.name} {item.location} {item.category or ''}".casefold()]
-        return Response(collection(records))
+        service = get_service()
+        return Response({"count": len(records), "results": [resource_json(service, item) for item in records]})
 
 class DayOverviewView(APIView):
     """Booking page day grid: free and taken times of every matching resource on one day."""
     def get(self, request):
         data = validated(DayOverviewQuerySerializer, request.query_params)
-        result = get_service().day_overview(
+        service = get_service()
+        result = service.day_overview(
             request.user, data["date"], data["duration_minutes"], kind=data.get("kind"),
             room_id=str(data["room_id"]) if data.get("room_id") else None, category=data.get("category") or None,
             query=data.get("q"), bookable_only=data["bookable_only"], free_at=data.get("free_at"))
+        for row in result["results"]:
+            row["resource"] = resource_json(service, row["resource"])
         return Response(json_value(result))
 
 class ResourceDetailView(APIView):
     def get(self, request, resource_id):
-        return Response(json_value(get_service().resource(str(resource_id))))
+        service = get_service()
+        return Response(resource_json(service, service.resource(str(resource_id))))
 
 class RequirementListView(APIView):
     def get(self, request):

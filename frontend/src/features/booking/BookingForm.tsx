@@ -36,6 +36,7 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
   const [urgent, setUrgent] = useState(false)
   const [urgentReason, setUrgentReason] = useState('')
   const bookingPurpose = urgent ? urgentReason.trim() : purpose.trim()
+  const normalMaximum = resource.effective_max_booking_minutes ?? resource.max_booking_minutes
   const testBypass = Boolean(user?.bypass_booking_rules && bookFor === 'self')
   // One key per logical request: reused on retry, regenerated when inputs change.
   const keyRef = useRef(newIdempotencyKey())
@@ -117,7 +118,7 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
     <form onSubmit={submit} className="bk-form">
       <h2>{resource.name}</h2>
       <p className="bk-muted">
-        {resource.location} · {testBypass ? 'test booking: any future time, up to 24 h' : `open ${fmtHours(resource.opening_time, resource.closing_time)} · up to ${fmtDuration(resource.max_booking_minutes)}`}
+        {resource.location} · {testBypass ? 'test booking: any future time, up to 24 h' : `open ${fmtHours(resource.opening_time, resource.closing_time)} · normal booking up to ${fmtDuration(normalMaximum)}`}
       </p>
       {/* Sprint 3 (1.16.0): everything the Manager wrote about it, and what the booking does not include.
           Sprint 3 (workspace UI): folded under "Resource details". */}

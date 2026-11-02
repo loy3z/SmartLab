@@ -1461,7 +1461,8 @@ test('a refused booking request is explained inside the booking dialog', async (
     }
     if (path === 'bookings/' && request.method() === 'POST') {
       return route.fulfill({ status: 409, json: { error: { code: 'WEEKLY_LIMIT_REACHED',
-        message: 'At most 3 bookings per person in one week (Monday to Sunday).', details: { limit: 3, count: 3, week_start: '2030-01-07' } } } })
+        message: 'A person may book up to 12 h in one week (Monday to Sunday).',
+        details: { limit_slots: 24, used_slots: 24, requested_slots: 1, remaining_slots: 0, slot_minutes: 30, week_start: '2030-01-07' } } } })
     }
     return route.fallback()
   })
@@ -1474,7 +1475,7 @@ test('a refused booking request is explained inside the booking dialog', async (
   await dialog.getByRole('textbox').last().fill('Thesis experiment')
   await dialog.getByRole('button', { name: 'Request 1 h', exact: true }).click()
   await expect.poll(() => availabilityLoads).toBeGreaterThan(1)   // the day reloads after the failure
-  await expect(dialog.getByRole('alert')).toContainText('Request not submitted: At most 3 bookings per person in one week')
+  await expect(dialog.getByRole('alert')).toContainText('Request not submitted: A person may book up to 12 h in one week')
   await expect(dialog.getByText('Choose a time above.')).toHaveCount(0)
 })
 

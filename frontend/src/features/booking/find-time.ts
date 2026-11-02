@@ -1,7 +1,8 @@
 // Sprint 3 (1.16.0): wording for "Find a free time" when rows are hidden (lengths and empty results).
 
 /** Booking lengths offered by Find a free time: half hours up to 2 h, then whole hours up to 8 h (the longest any demo resource allows). */
-export const FIND_DURATIONS = [30, 60, 90, 120, 180, 240, 300, 360, 420, 480]
+// Normal requests use 30-minute fair-use slots and may use at most six.
+export const FIND_DURATIONS = [30, 60, 90, 120, 150, 180]
 
 const REASON_TEXT: Record<string, string> = {
   NOT_SUBMITTED: 'induction not submitted',

@@ -73,10 +73,14 @@ MIN_ADVANCE_DAYS = int(os.getenv("MIN_ADVANCE_DAYS", "7"))
 MAX_ADVANCE_DAYS = int(os.getenv("MAX_ADVANCE_DAYS", "30"))
 if not 0 <= MIN_ADVANCE_DAYS <= MAX_ADVANCE_DAYS <= 365 or MAX_ADVANCE_DAYS < 1:
     raise ValueError("Require 0 <= MIN_ADVANCE_DAYS <= MAX_ADVANCE_DAYS <= 365 and MAX_ADVANCE_DAYS >= 1")
-# Sprint 3 rules. Team proposals (not client-confirmed), validated by booking.rules.BookingRules:
-# at most this many bookings per person per week; check-in window around the start; freeze after this many
-# missed check-ins for this many days; longest weekly series made by staff.
-MAX_BOOKINGS_PER_WEEK = int(os.getenv("MAX_BOOKINGS_PER_WEEK", "3"))
+# Fair-use rules confirmed by the client, validated by booking.rules.BookingRules. One quota slot is
+# 30 minutes; a normal request may use 6 slots, a person may hold 24 slots per local week,
+# and at most 8 active future bookings.
+# Check-in, missed-booking freezes and the longest weekly series remain configurable below.
+BOOKING_SLOT_MINUTES = int(os.getenv("BOOKING_SLOT_MINUTES", "30"))
+MAX_SLOTS_PER_BOOKING = int(os.getenv("MAX_SLOTS_PER_BOOKING", "6"))
+MAX_SLOTS_PER_WEEK = int(os.getenv("MAX_SLOTS_PER_WEEK", "24"))
+MAX_ACTIVE_FUTURE_BOOKINGS = int(os.getenv("MAX_ACTIVE_FUTURE_BOOKINGS", "8"))
 CHECK_IN_OPENS_MINUTES = int(os.getenv("CHECK_IN_OPENS_MINUTES", "15"))
 CHECK_IN_CLOSES_MINUTES = int(os.getenv("CHECK_IN_CLOSES_MINUTES", "30"))
 FREEZE_AFTER_NO_SHOWS = int(os.getenv("FREEZE_AFTER_NO_SHOWS", "4"))

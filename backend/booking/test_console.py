@@ -162,6 +162,8 @@ def test_availability(service, actor, resource, day, duration_minutes, exclude):
             "review_window_minutes": 0,
             "can_request": True, "qualification_status": "VERIFIED", "frozen_until": None,
             "missing_prerequisite_id": None, "test_bypass": True, "max_booking_minutes": 1440,
+            "booking_slot_minutes": 30, "max_booking_slots": 48,
+            "selection_step_minutes": resource.slot_minutes,
             "booking_for": {"id": actor.id, "zid": actor.zid, "display_name": actor.display_name,
                             "role": actor.role.value}, "urgent": False}
 

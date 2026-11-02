@@ -80,7 +80,8 @@ class BookingsMixin:
             replaced_id = replaces.id if replaces else None  # Sprint 3 (1.16.0): change request
             self._reject_duplicate_request(beneficiary.id, resource_id, start, end, replaced_id)
             error = (self.rule_violation(beneficiary.id, resource, start, end, check_window=not urgent)
-                     or self._weekly_limit_violation(beneficiary.id, resource, start, replaced_id))  # Sprint 3: weekly limit
+                     or self._weekly_limit_violation(beneficiary.id, resource, start, end, replaced_id)
+                     or self._future_booking_limit_violation(beneficiary.id, replaced_id))
             if error:
                 raise error
             now = self.now()
@@ -246,8 +247,9 @@ class BookingsMixin:
                     self._validate_horizon(resource, start)
             self._reject_duplicate_request(source.student_id, source.resource_id, start, end, source.id)
             error = test_period_violation(self, resource, start, end) if bypass else (
-                self.rule_violation(source.student_id, resource, start, end) or (
-                    None if source.series_id else self._weekly_limit_violation(source.student_id, resource, start, source.id)))
+                self.rule_violation(source.student_id, resource, start, end)
+                or self._weekly_limit_violation(source.student_id, resource, start, end, source.id)
+                or self._future_booking_limit_violation(source.student_id, source.id))
             if error and error.code == "QUALIFICATION_REQUIRED":
                 raise DomainError("QUALIFICATION_NOT_VERIFIED", "A current qualification covering the new booking period is required.",
                                   409, error.details)

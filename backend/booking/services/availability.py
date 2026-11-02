@@ -61,8 +61,16 @@ class AvailabilityMixin:
             return test_availability(self, actor, resource, day, duration_minutes, exclude)
         if not resource.active:
             raise DomainError("RESOURCE_UNAVAILABLE", "The resource is inactive.", 409)
-        if duration_minutes < 1 or duration_minutes > resource.max_booking_minutes or duration_minutes % resource.slot_minutes:
-            raise DomainError("INVALID_DURATION", f"Use multiples of {resource.slot_minutes} minutes, up to {resource.max_booking_minutes}.")
+        max_slots, quota_slot_minutes, maximum = self._normal_booking_limit(resource)
+        step = self._selection_step_minutes(resource)
+        if duration_minutes < 1 or duration_minutes > maximum or duration_minutes % step:
+            raise DomainError(
+                "INVALID_DURATION",
+                f"Choose a booking length up to {maximum / 60:g} h in {step}-minute increments.",
+                400,
+                {"max_slots": max_slots, "slot_minutes": quota_slot_minutes,
+                 "selection_step_minutes": step},
+            )
         zone = ZoneInfo(resource.timezone)
         cursor = datetime.combine(day, resource.opening_time, zone).astimezone(UTC)
         closing = datetime.combine(day, resource.closing_time, zone).astimezone(UTC)
@@ -95,9 +103,11 @@ class AvailabilityMixin:
                           "held_by_me": bool(holds) and all(item.student_id == person.id for item in holds)
                           if reason == "TEMPORARILY_HELD" else False,
                           "requested_by_me": requested_by_me})
-            cursor += timedelta(minutes=resource.slot_minutes)
+            cursor += timedelta(minutes=step)
         return {"resource_id": resource.id, "date": day.isoformat(), "timezone": resource.timezone,
                 "duration_minutes": duration_minutes, "slots": slots, **self._window_details(resource),
+                "booking_slot_minutes": quota_slot_minutes, "max_booking_slots": max_slots,
+                "selection_step_minutes": step, "max_booking_minutes": maximum,
                 "resource_status": resource.status.value, "status_reason": resource.status_reason,
                 "review_window_minutes": resource.pending_hold_minutes,
                 # Everyone follows the same rules: the person's induction (and its prerequisites) must be current.
@@ -142,8 +152,9 @@ class AvailabilityMixin:
                 continue
             if query and query not in f"{resource.name} {resource.location} {resource.category or ''}".casefold():
                 continue
-            maximum = 1440 if booking_rules_bypassed(actor) else resource.max_booking_minutes
-            if duration_minutes > maximum or duration_minutes % resource.slot_minutes:  # Sprint 3 (1.16.0)
+            maximum = 1440 if booking_rules_bypassed(actor) else self._normal_booking_limit(resource)[2]
+            step = resource.slot_minutes if booking_rules_bypassed(actor) else self._selection_step_minutes(resource)
+            if duration_minutes > maximum or duration_minutes % step:  # Sprint 3 (1.16.0)
                 too_long += 1
                 continue
             result = self._availability(actor, resource, day, duration_minutes, shared=shared)

@@ -16,6 +16,11 @@ export interface Resource {
   required_qualification_id: string | null
   slot_minutes: number
   max_booking_minutes: number
+  /** Fair-use unit and effective cap for an ordinary request. */
+  booking_slot_minutes?: number
+  max_booking_slots?: number
+  selection_step_minutes?: number
+  effective_max_booking_minutes?: number
   opening_time: string
   closing_time: string
   timezone: string
@@ -114,6 +119,9 @@ export type QualificationStatus =
 export interface Availability {
   test_bypass?: boolean
   max_booking_minutes?: number
+  booking_slot_minutes?: number
+  max_booking_slots?: number
+  selection_step_minutes?: number
   resource_id: string
   date: string
   timezone: string

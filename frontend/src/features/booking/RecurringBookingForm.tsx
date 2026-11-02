@@ -19,13 +19,14 @@ export function RecurringBookingForm({ resource, onBooked }: { resource: Resourc
   const [forOther, setForOther] = useState(false)
   const ownOverride = testBypass && !forOther
   const MAX_WEEKS = ownOverride ? 52 : 14
+  const normalMaximum = resource.effective_max_booking_minutes ?? resource.max_booking_minutes
   const [zid, setZid] = useState('')
   const [person, setPerson] = useState<PersonBrief | null>(null)
   const [weekdays, setWeekdays] = useState<number[]>([isoWeekday(firstDefault)])
   const times = useMemo(() => startTimes(ownOverride ? '00:00' : resource.opening_time,
     ownOverride ? '24:00' : resource.closing_time, resource.slot_minutes), [resource, ownOverride])
   const [startTime, setStartTime] = useState(times.includes('09:00') ? '09:00' : times[0] ?? '09:00')
-  const [minutes, setMinutes] = useState(Math.min(60, resource.max_booking_minutes))
+  const [minutes, setMinutes] = useState(Math.min(60, normalMaximum))
   const [firstDate, setFirstDate] = useState(firstDefault)
   const [lastDate, setLastDate] = useState(addDaysIso(firstDefault, 7 * 10 - 1))
   const [purpose, setPurpose] = useState('')
@@ -34,9 +35,9 @@ export function RecurringBookingForm({ resource, onBooked }: { resource: Resourc
   const [busy, setBusy] = useState(false)
   const durations = useMemo(() => {
     const list: number[] = []
-    for (let m = resource.slot_minutes; m <= (ownOverride ? 1440 : resource.max_booking_minutes); m += resource.slot_minutes) list.push(m)
+    for (let m = resource.slot_minutes; m <= (ownOverride ? 1440 : normalMaximum); m += resource.slot_minutes) list.push(m)
     return list
-  }, [resource, ownOverride])
+  }, [resource.slot_minutes, normalMaximum, ownOverride])
 
   const plan = (): SeriesPlan => ({
     resource_id: resource.id, weekdays: [...weekdays].sort(), start_time: startTime, duration_minutes: minutes,

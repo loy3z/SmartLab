@@ -27,8 +27,8 @@ class Sprint3Fixture(BookingFixtureMixin):
         start = datetime.combine(self.today + timedelta(days=days), time(hour), SYDNEY)
         return start, start + timedelta(minutes=minutes)
 
-    def request(self, actor=None, days=3, hour=10, resource=None, **extra):
-        start, end = self.at(days, hour)
+    def request(self, actor=None, days=3, hour=10, minutes=60, resource=None, **extra):
+        start, end = self.at(days, hour, minutes)
         return self.service.create_booking(actor or self.student, (resource or self.room).id, start, end,
                                            "Practical session", **extra)[0]
 
@@ -155,7 +155,7 @@ class NotificationTests(Sprint3Fixture, SimpleTestCase):
 class AttendanceTests(Sprint3Fixture, SimpleTestCase):
     def setUp(self):
         super().setUp()
-        self.service._override_rule(max_advance_days=60, max_bookings_per_week=20)
+        self.service._override_rule(max_advance_days=60, max_slots_per_week=200)
 
     def miss(self, booking):
         self.now = booking.start + timedelta(minutes=31)
@@ -258,25 +258,31 @@ class AttendanceTests(Sprint3Fixture, SimpleTestCase):
 
 
 class WeeklyLimitTests(Sprint3Fixture, SimpleTestCase):
-    def test_at_most_three_bookings_in_one_week(self):
-        # 2030-01-07 is a Monday (UTC); Sydney days 1-6 ahead are in the same Monday-Sunday week.
-        first, second, third = (self.request(self.student, days=day) for day in (1, 2, 3))
-        error = self.refused("WEEKLY_LIMIT_REACHED", self.request, self.student, days=4)
-        self.assertEqual((error.details["limit"], error.details["count"]), (3, 3))
+    def test_at_most_twenty_four_half_hour_slots_in_one_week(self):
+        # Four three-hour bookings consume 4 x 6 = 24 slots in the same Monday-Sunday week.
+        first, second, third, fourth = (
+            self.request(self.student, days=day, minutes=180) for day in (1, 2, 3, 4)
+        )
+        error = self.refused("WEEKLY_LIMIT_REACHED", self.request, self.student, days=5, minutes=30)
+        self.assertEqual(error.details, {
+            "limit_slots": 24, "used_slots": 24, "requested_slots": 1,
+            "remaining_slots": 0, "slot_minutes": 30, "week_start": self.today.isoformat(),
+        })
         self.service.cancel_booking(self.student, first.id)
-        self.assertEqual(self.request(self.student, days=4).status, BookingStatus.PENDING_APPROVAL)
+        self.assertEqual(self.request(self.student, days=5, minutes=180).status, BookingStatus.PENDING_APPROVAL)
         # A waitlisted request counts too.
-        self.request(self.other, days=5)
+        self.request(self.other, days=6, minutes=180)
         self.service.cancel_booking(self.student, second.id)
-        self.assertEqual(self.request(self.student, days=5).status, BookingStatus.WAITLISTED)
-        self.refused("WEEKLY_LIMIT_REACHED", self.request, self.student, days=6)
+        self.assertEqual(self.request(self.student, days=6, minutes=180).status, BookingStatus.WAITLISTED)
+        self.refused("WEEKLY_LIMIT_REACHED", self.request, self.student, days=6, hour=14, minutes=30)
         self.assertEqual(third.status, BookingStatus.PENDING_APPROVAL)
+        self.assertEqual(fourth.status, BookingStatus.PENDING_APPROVAL)
 
     def test_staff_booking_counts_for_the_person_booked_for_and_next_week_is_separate(self):
         self.qualification(self.admin)
-        for day in (1, 2, 3):
-            self.request(self.admin, days=day, on_behalf_of_zid=self.student.zid)
-        self.refused("WEEKLY_LIMIT_REACHED", self.request, self.student, days=4)
+        for day in (1, 2, 3, 4):
+            self.request(self.admin, days=day, minutes=180, on_behalf_of_zid=self.student.zid)
+        self.refused("WEEKLY_LIMIT_REACHED", self.request, self.student, days=5, minutes=30)
         self.service.max_advance_days = 30
         week_day = self.today.isoweekday()
         next_monday = 8 - week_day
@@ -285,11 +291,60 @@ class WeeklyLimitTests(Sprint3Fixture, SimpleTestCase):
     def test_reschedule_into_a_full_week_is_refused(self):
         self.service.max_advance_days = 30
         week_day = self.today.isoweekday()
-        moved = self.approved(self.student, days=8 - week_day + 2)  # next week
-        for day in (1, 2, 3):
-            self.request(self.student, days=day)
-        start, end = self.at(4)
+        moved = self.approved(self.student, days=8 - week_day + 2, minutes=30)  # next week
+        for day in (1, 2, 3, 4):
+            self.request(self.student, days=day, minutes=180)
+        start, end = self.at(5, minutes=30)
         self.refused("WEEKLY_LIMIT_REACHED", self.service.reschedule_booking, self.manager, moved.id, start, end)
+
+
+class FutureBookingLimitTests(Sprint3Fixture, SimpleTestCase):
+    def test_at_most_eight_active_future_bookings(self):
+        bookings = [
+            self.request(self.student, days=day, hour=hour, minutes=30)
+            for day, hour in ((1, 8), (1, 9), (2, 8), (3, 8), (4, 8), (5, 8), (6, 8), (7, 8))
+        ]
+        error = self.refused(
+            "FUTURE_BOOKING_LIMIT_REACHED",
+            self.request,
+            self.student,
+            days=7,
+            hour=9,
+            minutes=30,
+        )
+        self.assertEqual(error.details, {"limit": 8, "used": 8, "requested": 1, "remaining": 0})
+
+        self.service.cancel_booking(self.student, bookings[0].id)
+        replacement = self.request(self.student, days=7, hour=9, minutes=30)
+        self.assertEqual(replacement.status, BookingStatus.PENDING_APPROVAL)
+
+    def test_all_active_states_and_staff_bookings_count_for_the_beneficiary(self):
+        self.service._override_rule(max_active_future_bookings=3)
+        self.qualification(self.admin)
+        pending = self.request(self.student, days=1, hour=8, minutes=30)
+        approved = self.approved(self.student, days=2, hour=8, minutes=30)
+        self.request(self.other, days=3, hour=8, minutes=30)
+        waitlisted = self.request(
+            self.admin,
+            days=3,
+            hour=8,
+            minutes=30,
+            on_behalf_of_zid=self.student.zid,
+        )
+        self.assertEqual(waitlisted.status, BookingStatus.WAITLISTED)
+        self.refused("FUTURE_BOOKING_LIMIT_REACHED", self.request, self.student, days=4, hour=8, minutes=30)
+
+        self.service.review_booking(self.admin, pending.id, "REJECTED", "Not needed")
+        self.assertEqual(self.request(self.student, days=4, hour=8, minutes=30).status,
+                         BookingStatus.PENDING_APPROVAL)
+        self.assertEqual(approved.status, BookingStatus.APPROVED)
+
+    def test_manager_reschedule_does_not_consume_an_extra_place(self):
+        self.service._override_rule(max_active_future_bookings=1)
+        booking = self.approved(self.student, days=2, hour=8, minutes=30)
+        start, end = self.at(3, hour=9, minutes=30)
+        moved = self.service.reschedule_booking(self.manager, booking.id, start, end)
+        self.assertEqual((moved.start, moved.end), (start, end))
 
 
 class SeriesTests(Sprint3Fixture, SimpleTestCase):
@@ -297,6 +352,7 @@ class SeriesTests(Sprint3Fixture, SimpleTestCase):
         super().setUp()
         self.qualification(self.admin)
         self.service.max_advance_days = 14  # one-off bookings; a series may go further
+        self.service._override_rule(max_active_future_bookings=100)  # Most tests here isolate other series rules.
         self.monday = self.today + timedelta(days=(7 - self.today.weekday()) % 7 or 7)
 
     def plan(self, actor=None, **extra):
@@ -329,8 +385,42 @@ class SeriesTests(Sprint3Fixture, SimpleTestCase):
         self.assertEqual(len(self.notices(self.student, "SERIES_CREATED_FOR_YOU")), 1)
         self.assertIn("(1 h)", self.notices(self.student, "SERIES_CREATED_FOR_YOU")[0].body)
         self.assertEqual(self.notices(self.student, "BOOKING_APPROVED"), [])
-        # Series bookings do not count towards the weekly limit.
+        # This one-off request is in the current week; the series starts next week.
         self.assertEqual(self.request(self.student, days=1).status, BookingStatus.PENDING_APPROVAL)
+
+    def test_series_preview_and_creation_use_the_same_weekly_slot_allowance(self):
+        self.service._override_rule(max_slots_per_week=4)
+        actor, arguments = self.plan(
+            weekdays=[1, 2, 3], last_date=self.monday + timedelta(days=2),
+            on_behalf_of_zid=self.student.zid,
+        )
+        preview = self.service.preview_series(actor, **arguments)
+        self.assertEqual([item["available"] for item in preview["occurrences"]], [True, True, False])
+        self.assertEqual(preview["occurrences"][2]["reason_code"], "WEEKLY_LIMIT_REACHED")
+        series, bookings = self.service.create_series(
+            actor, purpose="Weekly lab", skip_dates=[preview["occurrences"][2]["date"]], **arguments)
+        self.assertEqual(len(bookings), 2)
+        self.assertTrue(all(item.series_id == series.id for item in bookings))
+        days = (self.monday - self.today).days
+        self.refused("WEEKLY_LIMIT_REACHED", self.request, self.student, days=days, hour=15, minutes=30)
+
+    def test_series_preview_and_creation_use_the_future_booking_limit(self):
+        self.service._override_rule(max_active_future_bookings=2)
+        actor, arguments = self.plan(
+            weekdays=[1, 2, 3], last_date=self.monday + timedelta(days=2),
+            on_behalf_of_zid=self.student.zid,
+        )
+        preview = self.service.preview_series(actor, **arguments)
+        self.assertEqual([item["available"] for item in preview["occurrences"]], [True, True, False])
+        self.assertEqual(preview["occurrences"][2]["reason_code"], "FUTURE_BOOKING_LIMIT_REACHED")
+        series, bookings = self.service.create_series(
+            actor,
+            purpose="Short weekly lab",
+            skip_dates=[preview["occurrences"][2]["date"]],
+            **arguments,
+        )
+        self.assertEqual(len(bookings), 2)
+        self.assertTrue(all(item.series_id == series.id for item in bookings))
 
     def test_series_rules(self):
         actor, arguments = self.plan(last_date=self.monday + timedelta(weeks=14))
@@ -481,8 +571,28 @@ class Sprint3APITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(bad.status_code, 400)
 
     def test_weekly_limit_api_error(self):
-        for day in (1, 2, 3):
-            self.create(self.verified, day_offset=day)
-        refused = self.verified.post("/api/v1/bookings/", self.payload(day_offset=4), format="json")
+        for day in (1, 2, 3, 4):
+            self.create(self.verified, day_offset=day, minutes=180)
+        refused = self.verified.post("/api/v1/bookings/", self.payload(day_offset=5, minutes=30), format="json")
         self.assertEqual((refused.status_code, refused.data["error"]["code"]), (409, "WEEKLY_LIMIT_REACHED"))
-        self.assertEqual(refused.data["error"]["details"]["limit"], 3)
+        self.assertEqual(refused.data["error"]["details"]["limit_slots"], 24)
+        self.assertEqual(refused.data["error"]["details"]["used_slots"], 24)
+
+    def test_future_booking_limit_api_error(self):
+        for hour in range(8, 16):
+            self.create(self.verified, day_offset=1, hour=hour, minutes=30)
+        refused = self.verified.post(
+            "/api/v1/bookings/",
+            self.payload(day_offset=1, hour=16, minutes=30),
+            format="json",
+        )
+        self.assertEqual(
+            (refused.status_code, refused.data["error"]["code"]),
+            (409, "FUTURE_BOOKING_LIMIT_REACHED"),
+        )
+        self.assertEqual(refused.data["error"]["details"], {
+            "limit": 8,
+            "used": 8,
+            "requested": 1,
+            "remaining": 0,
+        })

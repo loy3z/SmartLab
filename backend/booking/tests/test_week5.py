@@ -221,7 +221,8 @@ class RulesProviderTests(BookingFixtureMixin, SimpleTestCase):
 
     def test_invalid_rules_are_refused(self):
         for values in ({"min_advance_days": 9, "max_advance_days": 3}, {"qualification_validity_days": 0},
-                       {"default_review_window_minutes": 20161}):
+                       {"default_review_window_minutes": 20161}, {"booking_slot_minutes": 0},
+                       {"max_slots_per_booking": 0}, {"max_active_future_bookings": 0}):
             with self.subTest(values=values), self.assertRaises(ValueError):
                 BookingRules(**values)
 

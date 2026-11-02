@@ -7,7 +7,7 @@
 - `database/schema.sql`：18 张表（含 `site_contact`、`notification_preference`、`announcement`、`booking_history_removal` 和持久化邮件队列 `email_delivery`）、约束、索引、序列和审计保护触发器。
 - `database/seed_resources.sql`：2 条培训要求（Advanced 要求先通过 General）、2 个房间、20 台设备（记录所在房间）。
 - `database/seed_users.sql`：6 个演示账号（与内存版演示数据相同的假 zID 和 id），以及 z1000001 一条已通过的 induction。全部是编造的数据，不要把真实学生的 zID 提交进 Git。
-- `database/migrations/`：已有数据库的升级脚本 001–011，按编号顺序执行，都可以重复执行（见第 2 节）。
+- `database/migrations/`：已有数据库的升级脚本 001–013，按编号顺序执行，都可以重复执行（见第 2 节）。
 - `booking/tests/test_postgres.py`：用真实 PostgreSQL 跑的适配器集成测试（见第 6 节）。
 - `booking/postgres.py`：数据库及上传文件存储适配器。
 - `requirements-postgres.txt`：后端依赖及 PostgreSQL 驱动。
@@ -70,6 +70,30 @@ Get-ChildItem .\database\migrations\*.sql | Sort-Object Name | ForEach-Object {
 | `009_announcements_notification_channels.sql` | Sprint 3（1.19.0）：偏好加 `email_enabled DEFAULT true NOT NULL`，保留旧 `enabled`；通知记录加 `in_app`、`email` 渠道快照（默认 true）；新表 `announcement`、每资源一条未下架状态公告的部分唯一索引及时间索引 |
 | `010_booking_history_removal.sql` | 1.20.0：每用户／预约一条个人历史移除记录；复合主键保证幂等，外键保留原预约和用户；不删除或修改任何预约 |
 | `011_durable_email_delivery.sql` | 邮件通知的最终收件地址和内容、发送状态、尝试次数、重试时间及 worker 租约；通知删除时级联清理 |
+| `012_additional_hours_requests.sql` | `booking` 加额外每周小时申请标志与理由、正在采集数据的声明与说明；旧记录默认 false／null，保留原状态和时间。约束要求此类请求没有待审批占位和普通自动审批期限，并禁止兼作紧急请求 |
+| `013_long_booking_requests.sql` | `booking` 加长时段申请标志与理由；旧记录默认 false／null，保留普通及额外小时预约。长预约必须有理由，不能同时是紧急请求、额外小时申请或循环预约；保留正常待审占位和候补流程 |
+
+### 已有数据库升级到长时段预约申请
+
+先完成 012，再执行 013，之后再启动包含长预约功能的后端。013 只增加 `long_booking`、`long_booking_reason` 及一致性约束，可以重复执行；已有普通预约和 012 额外小时预约的时间、状态、审批和占位数据不变。新建库的 `schema.sql` 已包含 012 和 013。
+
+```powershell
+& "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\012_additional_hours_requests.sql' --file='.\database\migrations\013_long_booking_requests.sql'
+if ($LASTEXITCODE -ne 0) { throw '012／013 升级失败，事务已回滚。' }
+```
+
+`long_booking=true` 必须附带非空理由，并且 `urgent=false`、`additional_hours=false`、`series_id=NULL`。长时段请求沿用普通待审占位与先到先得候补，因此允许 `hold_until` 和 `review_due_at`；业务层要求 Manager 明确审批，不自动批准。`start`／`end` 与 `reviewed_by`／`reviewed_at` 保存获准的具体时段和审批记录。
+
+### 已有数据库升级到额外每周小时申请
+
+部署此功能的后端前，对已经到 011 的数据库执行 012；若还缺更早迁移，先按编号补齐。脚本只增加四个字段及一致性约束，不修改旧预约的状态、时间、审批或占位信息，可以重复执行。新建库的 `schema.sql` 已包含相同结构。
+
+```powershell
+& "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\012_additional_hours_requests.sql'
+if ($LASTEXITCODE -ne 0) { throw '012 升级失败，事务已回滚。' }
+```
+
+`additional_hours` 与 `additional_hours_reason` 保存申请及理由；`active_data_collection` 与 `data_collection_reason` 保存申请人对数据采集工作的声明。此类请求的 `hold_until`、`review_due_at` 必须为空：可以提前提交，等待 Manager 决定时不占时段，也不进入普通预约的自动批准流程。Manager 只能在预约开始前配置的窗口内批准（默认 48 小时）；到开始时间仍未决定的申请过期，批准后才按现有 `APPROVED` 规则占用时段。`start`／`end`、`reviewed_by`／`reviewed_at` 保存批准的准确范围，决定时的优先级依据、顺序、审批窗口及采集声明确认写入审计记录。
 
 ### 已有数据库升级到持久化邮件队列
 

@@ -14,6 +14,7 @@ x-backend-environment: &backend-environment
   # All booking paths share the same configurable local-calendar window (four weeks by default).
   MIN_ADVANCE_DAYS: ${MIN_ADVANCE_DAYS:-7}
   MAX_ADVANCE_DAYS: ${MAX_ADVANCE_DAYS:-28}
+  ADDITIONAL_HOURS_APPROVAL_WINDOW_HOURS: ${ADDITIONAL_HOURS_APPROVAL_WINDOW_HOURS:-48}
   # PostgreSQL is the shared source of truth for both the API and the scheduler.
   SEED_DEMO_DATA: "false"
   LOAD_DEMO_DATA: ${LOAD_DEMO_DATA:-false}

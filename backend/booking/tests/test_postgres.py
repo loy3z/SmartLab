@@ -192,6 +192,153 @@ class PostgresAdapterTests(TransactionTestCase):
             cursor.execute("SELECT to_regclass('public.email_delivery')")
             self.assertEqual(cursor.fetchone()[0], "email_delivery")
 
+    def test_additional_hours_round_trip_and_do_not_hold_time_until_approved(self):
+        from booking.postgres import PostgresRepository
+        pending = self.raw_booking(
+            self.start, BookingStatus.PENDING_APPROVAL, additional_hours=True,
+            additional_hours_reason="Extra weekly time for the experiment",
+            active_data_collection=True, data_collection_reason="Collecting the final sample series")
+        reloaded = PostgresRepository()
+        self.assertEqual(reloaded.get_booking(pending.id), pending)
+        self.assertEqual(reloaded.list_blocking_bookings(self.room.id, self.start, self.end, self.now), [])
+        normal = self.raw_booking(self.start, BookingStatus.PENDING_APPROVAL, student=self.b,
+                                  hold_until=self.now + timedelta(hours=24))
+        self.assertEqual([item.id for item in reloaded.list_blocking_bookings(
+            self.room.id, self.start, self.end, self.now)], [normal.id])
+        approved = replace(pending, status=BookingStatus.APPROVED, reviewed_by=self.manager.id,
+                           reviewed_at=self.now, decision_reason="Approved for the requested time")
+        self.repo.save_booking(approved)
+        self.assertEqual(reloaded.get_booking(approved.id), approved)
+        self.assertEqual({item.id for item in reloaded.list_blocking_bookings(
+            self.room.id, self.start, self.end, self.now)}, {approved.id, normal.id})
+
+    def test_additional_hours_database_constraints_protect_nonholding_requests(self):
+        booking = self.raw_booking(self.start, BookingStatus.PENDING_APPROVAL, additional_hours=True,
+                                   additional_hours_reason="Extra weekly time")
+        invalid_updates = [
+            ("additional_hours_reason = NULL", []),
+            ("additional_hours_reason = '   '", []),
+            ("active_data_collection = true", []),
+            ("active_data_collection = true, data_collection_reason = '   '", []),
+            ("additional_hours = false, active_data_collection = true, data_collection_reason = 'Collecting samples'", []),
+            ("hold_until = %s", [self.now + timedelta(hours=1)]),
+            ("review_due_at = %s", [self.now + timedelta(hours=48)]),
+            ("urgent = true", []),
+        ]
+        for assignments, params in invalid_updates:
+            with self.subTest(assignments=assignments), self.assertRaises(IntegrityError), transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(f"UPDATE public.booking SET {assignments} WHERE id = %s", [*params, booking.id])
+        self.assertEqual(self.repo.get_booking(booking.id), booking)
+
+    def test_012_migration_can_run_twice_without_changing_additional_requests(self):
+        pending = self.raw_booking(self.start, BookingStatus.PENDING_APPROVAL, additional_hours=True,
+                                   additional_hours_reason="Extra weekly time", active_data_collection=True,
+                                   data_collection_reason="Collecting final samples")
+        migration = Path(settings.BASE_DIR) / 'database/migrations/012_additional_hours_requests.sql'
+        with connection.cursor() as cursor:
+            cursor.execute(migration.read_text(encoding='utf-8'))
+            cursor.execute(migration.read_text(encoding='utf-8'))
+        self.assertEqual(self.repo.get_booking(pending.id), pending)
+
+    def test_012_migrates_legacy_bookings_twice_without_changing_existing_fields(self):
+        legacy = self.raw_booking(self.start, BookingStatus.PENDING_APPROVAL,
+                                  hold_until=self.now + timedelta(hours=24),
+                                  review_due_at=self.now + timedelta(hours=24))
+        migration = Path(settings.BASE_DIR) / 'database/migrations/012_additional_hours_requests.sql'
+        # PostgreSQL transactional DDL restores the modern structure and every other row after this test.
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute('''ALTER TABLE public.booking DROP COLUMN additional_hours,
+                                  DROP COLUMN additional_hours_reason, DROP COLUMN active_data_collection,
+                                  DROP COLUMN data_collection_reason''')
+                cursor.execute(migration.read_text(encoding='utf-8'))
+                cursor.execute(migration.read_text(encoding='utf-8'))
+            restored = self.repo.get_booking(legacy.id)
+            self.assertEqual(restored, legacy)
+            self.assertEqual((restored.additional_hours, restored.additional_hours_reason,
+                              restored.active_data_collection, restored.data_collection_reason),
+                             (False, None, False, None))
+            transaction.set_rollback(True)
+
+    def test_long_booking_round_trip_preserves_pending_hold_and_manager_approval(self):
+        from booking.postgres import PostgresRepository
+        pending = Booking(str(uuid4()), self.a.id, self.room.id, self.start,
+                          self.start + timedelta(hours=4), "Continuous experiment", self.now,
+                          BookingStatus.PENDING_APPROVAL, "LONG_BOOKING_AWAITING_MANAGER",
+                          hold_until=self.now + timedelta(hours=24), review_due_at=self.now + timedelta(hours=24),
+                          created_by=self.a.id, long_booking=True,
+                          long_booking_reason="The experiment requires four uninterrupted hours")
+        self.repo.save_booking(pending)
+        reloaded = PostgresRepository()
+        self.assertEqual(reloaded.get_booking(pending.id), pending)
+        self.assertEqual([item.id for item in reloaded.list_blocking_bookings(
+            self.room.id, pending.start, pending.end, self.now)], [pending.id])
+        approved = replace(pending, status=BookingStatus.APPROVED, reviewed_by=self.manager.id,
+                           reviewed_at=self.now, decision_reason="Approved for this four-hour session")
+        self.repo.save_booking(approved)
+        self.assertEqual(reloaded.get_booking(approved.id), approved)
+        self.assertEqual([item.id for item in reloaded.list_blocking_bookings(
+            self.room.id, approved.start, approved.end, self.now + timedelta(hours=25))], [approved.id])
+
+    def test_long_booking_database_constraints_reject_missing_reason_and_mixed_request_kinds(self):
+        from booking.domain import BookingSeries
+        booking = self.raw_booking(self.start, BookingStatus.PENDING_APPROVAL, long_booking=True,
+                                   long_booking_reason="Continuous experiment")
+        series = BookingSeries(str(uuid4()), self.a.id, self.admin.id, self.room.id,
+                               str(self.start.isoweekday()), time(10), 60, self.start.date(),
+                               self.start.date(), "Ordinary weekly session", self.now)
+        self.repo.save_series(series)
+        invalid_updates = [
+            ("long_booking_reason = NULL", [], "booking_long_booking_reason_check"),
+            ("long_booking_reason = '   '", [], "booking_long_booking_reason_check"),
+            ("urgent = true", [], "booking_long_booking_kind_check"),
+            ("additional_hours = true, additional_hours_reason = 'More weekly time'", [], "booking_long_booking_kind_check"),
+            ("series_id = %s", [series.id], "booking_long_booking_kind_check"),
+        ]
+        for assignments, params, constraint in invalid_updates:
+            with self.subTest(assignments=assignments):
+                with self.assertRaises(IntegrityError) as denied, transaction.atomic():
+                    with connection.cursor() as cursor:
+                        cursor.execute(f"UPDATE public.booking SET {assignments} WHERE id = %s", [*params, booking.id])
+                self.assertEqual(denied.exception.__cause__.diag.constraint_name, constraint)
+        self.assertEqual(self.repo.get_booking(booking.id), booking)
+
+    def test_013_migration_can_run_twice_without_changing_long_or_additional_requests(self):
+        long = self.raw_booking(self.start, BookingStatus.PENDING_APPROVAL, long_booking=True,
+                                long_booking_reason="Continuous experiment", hold_until=self.now + timedelta(hours=24),
+                                review_due_at=self.now + timedelta(hours=24))
+        extra = self.raw_booking(self.start + timedelta(hours=2), BookingStatus.PENDING_APPROVAL,
+                                 additional_hours=True, additional_hours_reason="More weekly time",
+                                 active_data_collection=True, data_collection_reason="Collecting the final samples")
+        migration = Path(settings.BASE_DIR) / 'database/migrations/013_long_booking_requests.sql'
+        with connection.cursor() as cursor:
+            cursor.execute(migration.read_text(encoding='utf-8'))
+            cursor.execute(migration.read_text(encoding='utf-8'))
+        self.assertEqual(self.repo.get_booking(long.id), long)
+        self.assertEqual(self.repo.get_booking(extra.id), extra)
+
+    def test_012_then_013_upgrade_preserves_normal_and_additional_booking_records(self):
+        normal = self.raw_booking(self.start, BookingStatus.PENDING_APPROVAL,
+                                  hold_until=self.now + timedelta(hours=24), review_due_at=self.now + timedelta(hours=24))
+        extra = self.raw_booking(self.start + timedelta(hours=2), BookingStatus.APPROVED,
+                                 additional_hours=True, additional_hours_reason="More weekly time",
+                                 active_data_collection=True, data_collection_reason="Collecting final samples",
+                                 reviewed_by=self.manager.id, reviewed_at=self.now)
+        migrations = [Path(settings.BASE_DIR) / 'database/migrations' / name for name in (
+            '012_additional_hours_requests.sql', '013_long_booking_requests.sql')]
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute('ALTER TABLE public.booking DROP COLUMN long_booking, DROP COLUMN long_booking_reason')
+                for _ in range(2):
+                    for migration in migrations:
+                        cursor.execute(migration.read_text(encoding='utf-8'))
+            for original in (normal, extra):
+                restored = self.repo.get_booking(original.id)
+                self.assertEqual(restored, original)
+                self.assertEqual((restored.long_booking, restored.long_booking_reason), (False, None))
+            transaction.set_rollback(True)
+
     # Sprint 3 (2026-11-01): an existing table from main's original 011 must also converge.
     def test_011_normalizes_the_legacy_foreign_key_without_losing_email(self):
         from booking.domain import Notification

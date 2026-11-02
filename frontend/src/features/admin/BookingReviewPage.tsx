@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router'
 import { Drawer, EmptyState, Facts, InfoDisclosure, PageHeader, RefreshStamp, Tabs } from '../../ui/components'
 import { useFeedback } from '../../ui/feedback-context'
 import { useAuth } from '../auth/auth-context'
 import { listAdminBookings, listAdminQualifications, listResources, listStudentBookings, reviewBooking } from '../../api/index.ts'
 import { errorMessage, fmtDateTime, fmtDuration, fmtRange, fmtRelative, minutesBetween, STATUS_TEXT } from '../booking/format'
 import type { Booking, Qualification, Resource } from '../../api/types/index.ts'
+import { additionalHoursPriority, compareAdditionalHours } from '../booking/additional-hours'
 
-type ReviewTab = 'PENDING_APPROVAL' | 'WAITLISTED'
+type ReviewTab = 'PENDING_APPROVAL' | 'WAITLISTED' | 'ADDITIONAL_HOURS' | 'LONG_BOOKINGS'
 const URGENT_MS = 2 * 60 * 60 * 1000
 
 const overlaps = (a: Booking, b: Booking) =>
@@ -17,7 +19,8 @@ const who = (b: Booking) => b.student?.display_name || b.student?.zid || 'Unknow
 export function BookingReviewPage() {
   const feedback = useFeedback()
   const { user } = useAuth()
-  const [tab, setTab] = useState<ReviewTab>('PENDING_APPROVAL')
+  const [params, setParams] = useSearchParams()
+  const tab: ReviewTab = params.get('type') === 'additional-hours' ? 'ADDITIONAL_HOURS' : params.get('type') === 'long-bookings' ? 'LONG_BOOKINGS' : params.get('type') === 'waitlisted' ? 'WAITLISTED' : 'PENDING_APPROVAL'
   const [pending, setPending] = useState<Booking[]>([])
   const [waitlisted, setWaitlisted] = useState<Booking[]>([])
   const [resources, setResources] = useState<Resource[]>([])
@@ -62,11 +65,12 @@ export function BookingReviewPage() {
 
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase()
-    const list = (tab === 'PENDING_APPROVAL' ? pending : waitlisted).filter((b) =>
+    const list = (tab === 'WAITLISTED' ? waitlisted : pending.filter(b => tab === 'ADDITIONAL_HOURS' ? b.additional_hours
+      : tab === 'LONG_BOOKINGS' ? b.long_booking : !b.additional_hours && !b.long_booking)).filter((b) =>
       (!resourceFilter || b.resource_id === resourceFilter) &&
       (!term || [b.student?.zid, b.student?.display_name, b.student?.university_email].some((v) => v?.toLowerCase().includes(term))))
     // Urgent requests (Manager decision, no automatic decision) come first.
-    return [...list].sort((a, b) => tab === 'PENDING_APPROVAL'
+    return [...list].sort((a, b) => tab === 'ADDITIONAL_HOURS' ? compareAdditionalHours(a, b) : tab !== 'WAITLISTED'
       ? Number(Boolean(b.urgent)) - Number(Boolean(a.urgent)) || Date.parse(a.review_due_at ?? a.start) - Date.parse(b.review_due_at ?? b.start)
       : a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
   }, [tab, pending, waitlisted, resourceFilter, search])
@@ -75,9 +79,27 @@ export function BookingReviewPage() {
 
   async function approve(b: Booking) {
     if (busy) return
+    if (b.long_booking && (user?.role !== 'MANAGER' || own(b))) return
+    if (b.additional_hours) {
+      if (user?.role !== 'MANAGER' || own(b) || !b.additional_hours_review?.can_approve) return
+      const answer = await feedback.confirm({
+        title: 'Approve additional hours?',
+        details: [
+          { label: 'Researcher', value: who(b) }, { label: 'Resource', value: resourceName(b) },
+          { label: 'Time', value: fmtRange(b.start, b.end) },
+          { label: 'Request reason', value: b.additional_hours_reason || '—' },
+          ...(b.active_data_collection ? [{ label: 'Active data collection claimed', value: b.data_collection_reason || '—' }] : []),
+        ],
+        message: b.active_data_collection
+          ? 'By approving, you confirm this researcher is currently collecting data as described. The server will recheck spare capacity, the approval window and queue order.'
+          : 'The server will recheck spare capacity, the approval window and queue order. Approval grants only this requested time.',
+        confirmLabel: b.active_data_collection ? 'Confirm data collection and approve' : 'Approve additional hours',
+      })
+      if (!answer.confirmed) return
+    }
     setBusy(b.id)
     try {
-      await reviewBooking(b.id, 'APPROVED')
+      await reviewBooking(b.id, 'APPROVED', '', b.additional_hours && b.active_data_collection ? true : undefined)
       feedback.success(`${who(b)} · ${resourceName(b)} · ${fmtRange(b.start, b.end)}`, 'Booking approved')
       setOpenId(null)
     } catch (e) {
@@ -116,15 +138,16 @@ export function BookingReviewPage() {
   }
 
   const own = (b: Booking) => Boolean(user && (b.student_id === user.id || b.created_by === user.id))
-  const managerOnly = (b: Booking) => Boolean(b.urgent && user?.role !== 'MANAGER')
+  const managerOnly = (b: Booking) => Boolean((b.urgent || b.additional_hours || b.long_booking) && user?.role !== 'MANAGER')
 
   const actions = (b: Booking, size = 'ui-btn-sm') => own(b)
     ? <span className="bk-muted">{user && b.student_id === user.id ? 'Your own request' : 'You created this request'}</span>
-    : managerOnly(b) ? <span className="bk-muted">Urgent: a Manager decides</span>
+    : managerOnly(b) ? <span className="bk-muted">{b.additional_hours ? 'Additional hours: a Manager decides' : b.long_booking ? 'Longer booking: a Manager decides' : 'Urgent: a Manager decides'}</span>
     : (
       <>
         {b.status === 'PENDING_APPROVAL' && (
-          <button type="button" className={`ui-btn ui-btn-approve ${size}`} disabled={busy !== null} onClick={(e) => { e.stopPropagation(); void approve(b) }}>
+          <button type="button" className={`ui-btn ui-btn-approve ${size}`} disabled={busy !== null || Boolean(b.additional_hours && !b.additional_hours_review?.can_approve)}
+            title={b.additional_hours ? b.additional_hours_review?.blocker_message ?? undefined : undefined} onClick={(e) => { e.stopPropagation(); void approve(b) }}>
             {busy === b.id ? 'Saving…' : '✓ Approve'}
           </button>
         )}
@@ -133,7 +156,7 @@ export function BookingReviewPage() {
     )
 
   const blockerText = (b: Booking) => {
-    const ahead = pending.find((p) => overlaps(p, b))
+    const ahead = pending.find((p) => !p.additional_hours && overlaps(p, b))
     return ahead ? `${who(ahead)}'s request (awaiting approval)` : 'An approved booking'
   }
 
@@ -141,7 +164,7 @@ export function BookingReviewPage() {
     <>
       <PageHeader
         title="Booking review"
-        description="Requests nearest their review deadline are listed first."
+        description={tab === 'ADDITIONAL_HOURS' ? 'Priority requests first, then submission order. Pending additional hours do not hold time.' : 'Requests nearest their review deadline are listed first.'}
         actions={<RefreshStamp at={loadedAt} onRefresh={reload} busy={loading && loadedAt !== null} />}
       />
 
@@ -149,9 +172,11 @@ export function BookingReviewPage() {
         <Tabs
           label="Request lists"
           value={tab}
-          onChange={(next) => { setTab(next); setOpenId(null) }}
+          onChange={(next) => { setParams(next === 'PENDING_APPROVAL' ? {} : { type: next === 'ADDITIONAL_HOURS' ? 'additional-hours' : next === 'LONG_BOOKINGS' ? 'long-bookings' : 'waitlisted' }); setOpenId(null) }}
           items={[
-            { key: 'PENDING_APPROVAL', label: 'Awaiting approval', count: loadedAt ? pending.length : null },
+            { key: 'PENDING_APPROVAL', label: 'Awaiting approval', count: loadedAt ? pending.filter(b => !b.additional_hours && !b.long_booking).length : null },
+            { key: 'LONG_BOOKINGS', label: 'Long bookings', count: loadedAt ? pending.filter(b => b.long_booking).length : null },
+            { key: 'ADDITIONAL_HOURS', label: 'Additional hours', count: loadedAt ? pending.filter(b => b.additional_hours).length : null },
             { key: 'WAITLISTED', label: 'Waitlisted', count: loadedAt ? waitlisted.length : null },
           ]}
         />
@@ -166,11 +191,14 @@ export function BookingReviewPage() {
 
       <InfoDisclosure summary="How approval works">
         <ul>
-          <li>Every request waits here for an admin. It holds its time until you decide.</li>
-          <li>If nobody decides before the deadline, the system approves it when the student's induction is still valid and the time is free, and rejects it otherwise.</li>
+          <li>Ordinary requests wait for an admin and hold their time until a decision.</li>
+          <li>For ordinary requests, if nobody decides before the deadline, the system approves when the student's induction is still valid and the time is free, and rejects otherwise.</li>
           <li>Requests for a time that is already taken are <b>waitlisted</b>. When the time frees up, the next one moves to Awaiting approval. Waitlisted requests can only be rejected.</li>
           <li>Nobody can decide a request that is for them or that they created (staff may book on behalf of someone).</li>
           <li><b>Urgent</b> requests start sooner than the normal booking window. Only a Manager can decide them; they are never decided automatically and expire if nobody decides before they start.</li>
+          <li><b>Additional hours</b> need a Manager's approval within the configured period before the start and only when capacity is free. They do not hold time, are never approved automatically and expire at the start if still pending.</li>
+          <li><b>Long bookings</b> may exceed the normal single-session length, but all other limits still apply. Only a Manager can approve or reject them. A free time is held during review; the request expires at its review deadline if nobody decides, and is never approved automatically.</li>
+          <li>No recorded lab use in the requested week and active data collection have equal priority; submission order breaks ties. A Manager must confirm any active-data-collection claim before approval.</li>
         </ul>
       </InfoDisclosure>
 
@@ -178,10 +206,10 @@ export function BookingReviewPage() {
       {loading && loadedAt === null && <p role="status">Loading requests…</p>}
 
       {loadedAt !== null && rows.length === 0 && (
-        <EmptyState title={tab === 'PENDING_APPROVAL' ? "You're all caught up" : 'No one is waitlisted'}>
+        <EmptyState title={tab === 'WAITLISTED' ? 'No one is waitlisted' : "You're all caught up"}>
           {resourceFilter || search
             ? 'No requests match these filters.'
-            : tab === 'PENDING_APPROVAL' ? 'There are no requests waiting for approval.' : 'Requests appear here when someone asks for a time that is already taken.'}
+            : tab === 'ADDITIONAL_HOURS' ? 'There are no additional-hours requests waiting for a Manager.' : tab === 'LONG_BOOKINGS' ? 'There are no long-booking requests waiting for a Manager.' : tab === 'PENDING_APPROVAL' ? 'There are no requests waiting for approval.' : 'Requests appear here when someone asks for a time that is already taken.'}
         </EmptyState>
       )}
 
@@ -190,7 +218,7 @@ export function BookingReviewPage() {
           <table className="ui-table">
             <thead>
               <tr>
-                <th>{tab === 'PENDING_APPROVAL' ? 'Decide within' : 'Queue'}</th>
+                <th>{tab === 'ADDITIONAL_HOURS' ? 'Priority and approval' : tab === 'WAITLISTED' ? 'Queue' : 'Decide within'}</th>
                 <th>Student</th>
                 <th>Resource</th>
                 <th>Time</th>
@@ -207,12 +235,20 @@ export function BookingReviewPage() {
                 return (
                   <tr key={b.id} className={`is-clickable${openId === b.id ? ' is-selected' : ''}`} onClick={() => setOpenId(b.id)}>
                     <td>
+                      {b.additional_hours ? <>
+                        <span className="ui-pill is-amber">Additional hours{b.additional_hours_review?.queue_position ? ` · #${b.additional_hours_review.queue_position}` : ''}</span>
+                        <span className="ui-sub-text">{additionalHoursPriority(b)}</span>
+                        {b.additional_hours_review && <span className="ui-sub-text">Approval opens {fmtDateTime(b.additional_hours_review.approval_opens_at)}</span>}
+                        <span className="ui-sub-text">{b.additional_hours_review?.blocker_message || (b.additional_hours_review?.can_approve ? 'Ready for Manager approval' : 'Approval eligibility unavailable')}</span>
+                      </> : <>
+                      {b.long_booking && <span className="ui-pill is-amber">Longer booking</span>}{' '}
                       {b.urgent && <span className="ui-badge-urgent">URGENT</span>}{' '}
-                      {tab === 'PENDING_APPROVAL' && b.urgent && !b.review_due_at
+                      {tab !== 'WAITLISTED' && b.urgent && !b.review_due_at
                         ? <span className="ui-deadline is-urgent" title={fmtDateTime(b.start)}>before {fmtRelative(b.start, now).replace(/^in /, '')}</span>
-                        : tab === 'PENDING_APPROVAL'
+                        : tab !== 'WAITLISTED'
                         ? <span className={`ui-deadline${urgent ? ' is-urgent' : ''}`} title={b.review_due_at ? fmtDateTime(b.review_due_at) : ''}>{b.review_due_at ? fmtRelative(b.review_due_at, now).replace(/^in /, '') : '—'}</span>
                         : <span className="ui-pill is-amber">#{b.waitlist_position ?? '?'}</span>}
+                      </>}
                     </td>
                     <td>
                       <span className="ui-primary-text">{who(b)}</span>
@@ -307,7 +343,7 @@ function BookingDrawer({ booking: b, resource, resourceName, waitingBehind, bloc
       <section>
         <h3>Request</h3>
         <Facts items={[
-          { label: 'Status', value: STATUS_TEXT[b.status] + (b.status === 'WAITLISTED' && b.waitlist_position ? ` · #${b.waitlist_position}` : '') },
+          { label: 'Status', value: ((b.additional_hours || b.long_booking) && b.status === 'PENDING_APPROVAL' ? 'Waiting for Manager approval' : STATUS_TEXT[b.status]) + (b.status === 'WAITLISTED' && b.waitlist_position ? ` · #${b.waitlist_position}` : '') },
           { label: 'Resource', value: resourceName },
           { label: 'Time', value: fmtRange(b.start, b.end) },
           { label: 'Length', value: fmtDuration(minutesBetween(b.start, b.end)) },
@@ -315,6 +351,20 @@ function BookingDrawer({ booking: b, resource, resourceName, waitingBehind, bloc
           // Sprint 3 (1.16.0): change request
           ...(b.replaces_booking ? [{ label: 'Change request', value: `Moves their approved booking ${fmtRange(b.replaces_booking.start, b.replaces_booking.end)}; that booking is cancelled when this is approved.` }] : []),
           ...(b.urgent ? [{ label: 'Urgent', value: `${b.urgent_reason || 'Yes'} (only a Manager can decide)` }] : []),
+          ...(b.long_booking ? [
+            { label: 'Longer session reason', value: b.long_booking_reason || '—' },
+            { label: 'Approval', value: 'Manager only. Never automatic; expires if the review deadline passes without a decision.' },
+          ] : []),
+          ...(b.additional_hours ? [
+            { label: 'Additional hours reason', value: b.additional_hours_reason || '—' },
+            { label: 'Priority', value: additionalHoursPriority(b) },
+            ...(b.active_data_collection ? [{ label: 'Active data collection claimed', value: b.data_collection_reason || '—' }] : []),
+            ...(b.additional_hours_review ? [
+              { label: 'Approval opens', value: `${fmtDateTime(b.additional_hours_review.approval_opens_at)} (${b.additional_hours_review.approval_window_hours} hours before the start)` },
+              { label: 'Approval status', value: b.additional_hours_review.blocker_message || (b.additional_hours_review.can_approve ? 'Ready for Manager approval' : 'Not eligible for approval') },
+            ] : []),
+            { label: 'While pending', value: 'No time is held. Never approved automatically; expires at the requested start.' },
+          ] : []),
           ...(b.on_behalf && b.created_by_user
             ? [{ label: 'Created by', value: `${b.created_by_user.display_name} (${b.created_by_user.zid}, ${b.created_by_user.role.toLowerCase()})` }]
             : []),

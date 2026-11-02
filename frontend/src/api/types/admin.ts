@@ -34,4 +34,9 @@ export interface StaffOverview {
   today_count: number
   missed_today: number
   can_decide_urgent: boolean
+  additional_hours_requests?: number
+  additional_hours_ready?: number
+  can_decide_additional_hours?: boolean
+  long_booking_requests?: number
+  can_decide_long_bookings?: boolean
 }

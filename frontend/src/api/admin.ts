@@ -54,10 +54,11 @@ export function reviewBooking(
   bookingId: string,
   decision: 'APPROVED' | 'REJECTED',
   reason: string = '',
+  confirmActiveDataCollection?: boolean,
 ) {
   return post<Booking>(
     `admin/bookings/${bookingId}/review/`,
-    { decision, reason },
+    { decision, reason, ...(confirmActiveDataCollection === undefined ? {} : { confirm_active_data_collection: confirmActiveDataCollection }) },
   )
 }
 

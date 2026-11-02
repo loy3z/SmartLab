@@ -271,7 +271,32 @@ class Booking:
     # automatically (services/changes.py). None for ordinary requests.
     replaces_id: str | None = None
 
+    # Additional weekly allowance is requested separately and approved only by a Manager.
+    # Pending requests never reserve capacity; the approval applies to this exact booking.
+    additional_hours: bool = False
+    additional_hours_reason: str | None = None
+    active_data_collection: bool = False
+    data_collection_reason: str | None = None
+
+    # A separate Manager decision exempts only this booking's normal single-booking duration cap.
+    long_booking: bool = False
+    long_booking_reason: str | None = None
+
     def __post_init__(self) -> None:
+        if self.long_booking:
+            if not self.long_booking_reason or not self.long_booking_reason.strip():
+                raise ValueError("Longer bookings require a reason.")
+            if self.urgent or self.additional_hours or self.series_id is not None:
+                raise ValueError("Longer bookings cannot be urgent, additional-hours requests or recurring bookings.")
+        if self.additional_hours:
+            if not self.additional_hours_reason or not self.additional_hours_reason.strip():
+                raise ValueError("Additional hours require a reason.")
+            if self.urgent or self.hold_until is not None or self.review_due_at is not None:
+                raise ValueError("Additional-hours requests cannot be urgent, hold capacity or auto-approve.")
+        if self.active_data_collection and (
+            not self.additional_hours or not self.data_collection_reason or not self.data_collection_reason.strip()
+        ):
+            raise ValueError("An active-data-collection claim requires an additional-hours request and explanation.")
         if self.attendance is not None and self.attendance not in ATTENDANCE_VALUES:
             raise ValueError("attendance must be CHECKED_IN, NO_SHOW, EXCUSED or NOT_TRACKED.")
         _require_aware(

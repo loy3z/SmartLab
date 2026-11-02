@@ -57,8 +57,9 @@ class BookingsMixin:
         with self.repo.atomic(resource_ids=[resource_id], student_ids=[beneficiary.id]):
             existing = self.repo.get_booking(booking_id)
             if existing:
-                if ((existing.resource_id, existing.start, existing.end, existing.purpose, existing.student_id, existing.urgent)
-                        != (resource_id, start, end, purpose.strip(), beneficiary.id, bool(urgent))):
+                if ((existing.resource_id, existing.start, existing.end, existing.purpose, existing.student_id, existing.urgent,
+                     existing.additional_hours, existing.long_booking)
+                        != (resource_id, start, end, purpose.strip(), beneficiary.id, bool(urgent), False, False)):
                     raise DomainError("IDEMPOTENCY_CONFLICT", "This Idempotency-Key was already used with different booking details.", 409)
                 return existing, False
             resource = self.resource(resource_id)
@@ -126,6 +127,12 @@ class BookingsMixin:
         """Sprint 3: confirm a new request to the person it is for (also emailed when email is on)."""
         if booking.status == BookingStatus.WAITLISTED:
             state = "is on the waitlist: it moves up when the time frees"
+        elif booking.long_booking:
+            state = (f"is waiting for a Manager's decision by {self.describe_moment(booking.review_due_at, booking)}; "
+                     "it expires if no Manager approves it before that deadline")
+        elif booking.additional_hours:
+            state = ("is waiting for a Manager to consider unused capacity; it does not reserve this time "
+                     f"and can only be approved within {self.rules().additional_hours_approval_window_hours} hours of its start")
         elif booking.urgent:
             state = "is waiting for a Manager (urgent request)"
         else:
@@ -151,7 +158,7 @@ class BookingsMixin:
             raise DomainError("NOT_FOUND", "Booking not found.", 404)
         return booking
 
-    def review_booking(self, actor, booking_id, decision, reason=""):
+    def review_booking(self, actor, booking_id, decision, reason="", confirm_active_data_collection=False):
         self.require_staff(actor)
         self.process_due_requests()
         if decision not in ("APPROVED", "REJECTED"):
@@ -159,6 +166,10 @@ class BookingsMixin:
         if decision == "REJECTED" and not reason.strip():
             raise DomainError("REASON_REQUIRED", "A rejection reason is required.")
         source = self.booking_for(actor, booking_id)
+        if source.additional_hours:
+            return self.review_additional_hours_booking(actor, booking_id, decision, reason, confirm_active_data_collection)
+        if source.long_booking:
+            return self.review_long_booking(actor, booking_id, decision, reason)
         with self.repo.atomic(resource_ids=[source.resource_id], student_ids=[source.student_id]):
             source = self.booking_for(actor, booking_id)
             if decision == "APPROVED" and source.status == BookingStatus.WAITLISTED:
@@ -232,6 +243,12 @@ class BookingsMixin:
         self.require_manager(actor)
         self.process_due_requests()
         source = self.booking_for(actor, booking_id)
+        if source.additional_hours:
+            raise DomainError("ADDITIONAL_HOURS_NEW_REQUEST_REQUIRED",
+                              "Additional hours are approved for one exact time. Cancel this booking and submit a new additional-hours request.", 409)
+        if source.long_booking:
+            raise DomainError("LONG_BOOKING_NEW_REQUEST_REQUIRED",
+                              "A longer booking is approved for one exact time. Cancel this booking and submit a new longer-booking request.", 409)
         if start.tzinfo is None or start.utcoffset() is None or end.tzinfo is None or end.utcoffset() is None:
             raise DomainError("INVALID_TIME", "Start and end require UTC offsets.")
         start, end = start.astimezone(UTC), end.astimezone(UTC)

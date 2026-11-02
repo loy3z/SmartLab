@@ -37,10 +37,12 @@ interface Props {
   prerequisiteName?: string
   /** Sprint 3, staff only: book the same time every week. */
   onRepeat?: () => void
+  onAdditionalHours?: () => void
+  onLongBooking?: () => void
   testOverride?: boolean
 }
 
-export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEquipment, roomName, prerequisiteName, onRepeat, testOverride }: Props) {
+export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEquipment, roomName, prerequisiteName, onRepeat, onAdditionalHours, onLongBooking, testOverride }: Props) {
   const chip = testOverride ? { text: 'Test override enabled', ok: true }
     : state === 'PREREQUISITE_REQUIRED' && prerequisiteName ? { text: `${prerequisiteName} needed first`, ok: false } : CHIP[state]
   const note = state === 'PREREQUISITE_REQUIRED'
@@ -83,6 +85,9 @@ export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEq
         <div className="resource-hours"><ClockIcon size={13} /><span>{fmtHours(resource.opening_time, resource.closing_time)}</span><span>Up to {(resource.effective_max_booking_minutes ?? resource.max_booking_minutes) / 60} h</span></div>
         <div className="bk-rcard-actions">
           <button type="button" className="bk-btn-outline bk-rcard-primary" disabled={blocked} onClick={onOpen}>View availability</button>
+          {onAdditionalHours && <button type="button" className="bk-btn-outline" disabled={blocked || unavailable} onClick={onAdditionalHours}>Request additional hours</button>}
+          {onLongBooking && resource.max_booking_minutes > (resource.effective_max_booking_minutes ?? resource.max_booking_minutes) &&
+            <button type="button" className="bk-btn-outline" disabled={blocked || unavailable} onClick={onLongBooking}>Request a longer booking</button>}
           {onRepeat && (
             <button type="button" className="bk-btn-outline" disabled={blocked || (unavailable && !testOverride)} onClick={onRepeat}>Repeat weekly</button>
           )}

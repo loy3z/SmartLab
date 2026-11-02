@@ -47,6 +47,8 @@ class BookingRules:
     # Pending, waitlisted and approved bookings whose start is still in the future
     # all count towards this per-person limit.
     max_active_future_bookings: int = 8
+    # Managers may grant additional weekly hours only this close to the requested start.
+    additional_hours_approval_window_hours: int = 48
     # "I'm here" check-in is open from this many minutes before the start to this many minutes after it
     # (never after the end). Not checking in by then is a missed booking (no-show).
     check_in_opens_minutes: int = 15
@@ -71,6 +73,7 @@ class BookingRules:
         _bounded_int("max_slots_per_booking", self.max_slots_per_booking, 1, 100)
         _bounded_int("max_slots_per_week", self.max_slots_per_week, 1, 1000)
         _bounded_int("max_active_future_bookings", self.max_active_future_bookings, 1, 1000)
+        _bounded_int("additional_hours_approval_window_hours", self.additional_hours_approval_window_hours, 1, 168)
         _bounded_int("check_in_opens_minutes", self.check_in_opens_minutes, 0, 240)
         _bounded_int("check_in_closes_minutes", self.check_in_closes_minutes, 1, 480)
         _bounded_int("freeze_after_no_shows", self.freeze_after_no_shows, 1, 100)
@@ -109,6 +112,7 @@ class SettingsRulesProvider:
             max_slots_per_booking=settings.MAX_SLOTS_PER_BOOKING,
             max_slots_per_week=settings.MAX_SLOTS_PER_WEEK,
             max_active_future_bookings=settings.MAX_ACTIVE_FUTURE_BOOKINGS,
+            additional_hours_approval_window_hours=settings.ADDITIONAL_HOURS_APPROVAL_WINDOW_HOURS,
             check_in_opens_minutes=settings.CHECK_IN_OPENS_MINUTES,
             check_in_closes_minutes=settings.CHECK_IN_CLOSES_MINUTES,
             freeze_after_no_shows=settings.FREEZE_AFTER_NO_SHOWS,

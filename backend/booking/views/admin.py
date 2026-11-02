@@ -112,8 +112,9 @@ class AdminResourceStatusView(APIView):
         sync_after_write(service)
         people = {item.id: item for item in service.repo.list_principals()}
         resources = {resource.id: resource}
+        lookups = BookingListLookups(service, affected, people)
         return Response({"resource": json_value(resource),
-                         "affected_bookings": [staff_booking_json(item, people, resources) for item in affected]})
+                         "affected_bookings": [staff_booking_json(item, people, resources, lookups) for item in affected]})
 
 def audit_json(record, principals):
     result = json_value(record)
@@ -189,15 +190,17 @@ class AdminBookingReviewView(APIView):
         service = get_service()
         service.require_staff(request.user)
         data = validated(BookingReviewSerializer, request.data)
-        booking = service.review_booking(request.user, str(booking_id), data["decision"], data["reason"])
+        booking = service.review_booking(request.user, str(booking_id), data["decision"], data["reason"],
+                                         confirm_active_data_collection=data["confirm_active_data_collection"])
         booking, = sync_after_write(service, booking)
         return Response(json_value(booking))
 
 def changed_resource_json(service, resource, outside):
     """The saved resource plus the future bookings that no longer fit its rules (kept until a Manager acts)."""
-    people = {booking.student_id: service.repo.get_principal(booking.student_id) for booking, _ in outside}
+    lookups = BookingListLookups(service, [booking for booking, _ in outside]) if outside else None
+    people = lookups.people if lookups else {}
     return {"resource": json_value(resource),
-            "bookings_outside_rules": [{**staff_booking_json(booking, people, {resource.id: resource}), "problem": code}
+            "bookings_outside_rules": [{**staff_booking_json(booking, people, {resource.id: resource}, lookups), "problem": code}
                                        for booking, code in outside]}
 
 class AdminResourceListView(APIView):

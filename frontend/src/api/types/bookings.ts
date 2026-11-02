@@ -96,6 +96,14 @@ export interface Booking {
   /** Urgent request: inside the minimum advance window; only a Manager can decide it. */
   urgent?: boolean
   urgent_reason?: string | null
+  long_booking?: boolean
+  long_booking_reason?: string | null
+  /** Separate request for unused capacity beyond the normal weekly allowance. */
+  additional_hours?: boolean
+  additional_hours_reason?: string | null
+  active_data_collection?: boolean
+  data_collection_reason?: string | null
+  additional_hours_review?: AdditionalHoursReview | null
   /** Sprint 3: weekly series made by staff; null for single bookings. */
   series_id?: string | null
   /** Sprint 3: CHECKED_IN, NO_SHOW (missed), EXCUSED (resource unavailable), NOT_TRACKED, or null (not yet). */
@@ -110,6 +118,38 @@ export interface Booking {
   replaces_booking?: BookingTimeRef | null
   /** Sprint 3 (1.16.0): on an approved booking, its change request that is still waiting (pending or waitlisted). */
   open_change?: BookingTimeRef | null
+}
+
+export interface AdditionalHoursReview {
+  approval_opens_at: string
+  approval_window_hours: number
+  priority_group: 'PRIORITY' | 'STANDARD'
+  priority_reasons: ('NO_USE_THIS_WEEK' | 'ACTIVE_DATA_COLLECTION')[]
+  queue_position: number | null
+  /** Business eligibility only; role and self-review restrictions still apply. */
+  can_approve: boolean
+  blocker_code: string | null
+  blocker_message: string | null
+}
+
+export interface AdditionalHoursRequest {
+  resource_id: string
+  start: string
+  end: string
+  purpose: string
+  additional_hours_reason: string
+  active_data_collection: boolean
+  data_collection_reason?: string
+  on_behalf_of_zid?: string
+}
+
+export interface LongBookingRequest {
+  resource_id: string
+  start: string
+  end: string
+  purpose: string
+  long_booking_reason: string
+  on_behalf_of_zid?: string
 }
 
 /** Sprint 3 (1.16.0): the time and status of a linked booking (change requests). */

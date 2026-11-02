@@ -16,12 +16,14 @@ export function getAvailability(
   date: string,
   durationMinutes: number,
   excludeBookingId?: string,
-  options: { forZid?: string; urgent?: boolean } = {},
+  options: { forZid?: string; urgent?: boolean; additionalHours?: boolean; longBooking?: boolean } = {},
 ) {
   const qs = new URLSearchParams({ date, duration_minutes: String(durationMinutes) })
   if (excludeBookingId) qs.set('exclude_booking_id', excludeBookingId)
   if (options.forZid) qs.set('for_zid', options.forZid)
   if (options.urgent) qs.set('urgent', 'true')
+  if (options.additionalHours) qs.set('additional_hours', 'true')
+  if (options.longBooking) qs.set('long_booking', 'true')
   return request<Availability>(`resources/${id}/availability/?${qs}`)
 }
 

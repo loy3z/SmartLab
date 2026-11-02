@@ -5,7 +5,7 @@ import type { Booking } from '../../api/types/index.ts'
 /** Whether to offer "Change time": the person's own approved booking that has not started and has no change waiting. */
 export function canAskForChange(booking: Booking, userId: string | undefined, now: number): boolean {
   return Boolean(userId) && booking.student_id === userId && booking.status === 'APPROVED'
-    && Date.parse(booking.start) > now && !booking.open_change
+    && Date.parse(booking.start) > now && !booking.open_change && !booking.additional_hours && !booking.long_booking
 }
 
 /** Line on an approved booking that has a change waiting, e.g. "Change requested: Tue 4 Nov, 2:00 pm – 3:00 pm · Waitlisted". */

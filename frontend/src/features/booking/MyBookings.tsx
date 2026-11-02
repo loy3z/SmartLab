@@ -14,6 +14,7 @@ import { bookingDetail, errorMessage, fmtDuration, fmtRange, fmtTime, minutesBet
 import { ACTIVE, canRemoveBookingHistory, groupBookings } from './my-bookings'
 import { RescheduleBox } from './RescheduleBox'
 import { SeriesCard } from './SeriesCard'
+import { additionalHoursPriority } from './additional-hours'
 import type { Booking, Resource } from '../../api/types/index.ts'
 
 
@@ -216,7 +217,9 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
           <div key={b.id} className="bk-bcard">
             <div className="bk-bhead">
               <h3>{res?.name ?? 'Resource'}</h3>
-              <span className={`bk-chip st-${b.status}`}>{STATUS_TEXT[b.status]}{b.status === 'WAITLISTED' && b.waitlist_position ? ` · #${b.waitlist_position}` : ''}</span>
+              <span className={`bk-chip st-${b.status}`}>{(b.additional_hours || b.long_booking) && b.status === 'PENDING_APPROVAL' ? 'Waiting for Manager approval' : STATUS_TEXT[b.status]}{b.status === 'WAITLISTED' && b.waitlist_position ? ` · #${b.waitlist_position}` : ''}</span>
+              {b.additional_hours && <span className="bk-chip">Additional hours</span>}
+              {b.long_booking && <span className="bk-chip">Longer booking</span>}
               {b.urgent && <span className="bk-chip is-urgent">URGENT</span>}
               {b.attendance && ATTENDANCE_TEXT[b.attendance] && (
                 <span className={`bk-chip att-${b.attendance}`}>{ATTENDANCE_TEXT[b.attendance]}</span>
@@ -230,6 +233,18 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
               </p>
             )}
             {b.urgent && b.urgent_reason && <p className="bk-muted">Urgent because: {b.urgent_reason}</p>}
+            {b.long_booking && <>
+              <p className="bk-muted">Longer session requested because: {b.long_booking_reason}</p>
+              {b.status === 'APPROVED' && future(b) && <p className="bk-muted">Approval applies only to this time. To move a longer booking, cancel and submit a new long-booking request.</p>}
+            </>}
+            {b.additional_hours && <>
+              <p className="bk-muted">Additional hours requested because: {b.additional_hours_reason}</p>
+              {b.active_data_collection && <p className="bk-muted">Active data collection: {b.data_collection_reason}</p>}
+              {b.status === 'PENDING_APPROVAL' && <p className="bk-muted">{additionalHoursPriority(b)}{b.additional_hours_review?.queue_position ? ` · Queue position ${b.additional_hours_review.queue_position}` : ''}.
+                {b.additional_hours_review?.blocker_message && <> {b.additional_hours_review.blocker_message}</>}
+              </p>}
+              {b.status === 'APPROVED' && future(b) && <p className="bk-muted">Additional hours apply only to this time. To choose another time, cancel and submit a new request.</p>}
+            </>}
             <p><b>{fmtRange(b.start, b.end)}</b> <span className="bk-muted">· {fmtDuration(minutesBetween(b.start, b.end))}</span></p>
             <p className="bk-muted">{bookingDetail(b)}</p>
             {b.purpose && !(b.urgent && b.purpose === b.urgent_reason) && <p className="bk-muted">Purpose: {b.purpose}</p>}
@@ -252,11 +267,11 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
             )}
             {(cancellable(b) || (isManager && b.status === 'APPROVED' && future(b) && res)) && rescheduling !== b.id && changing !== b.id && (
               <div className="bk-card-actions">
-                {isManager && b.status === 'APPROVED' && future(b) && res && (
+                {isManager && !b.additional_hours && !b.long_booking && b.status === 'APPROVED' && future(b) && res && (
                   <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setRescheduling(b.id)}>Reschedule</button>
                 )}
                 {/* Sprint 3 (1.16.0): everyone else asks for a new time; Managers move bookings directly. */}
-                {!isManager && res && canAskForChange(b, user?.id, now) && (
+                {!isManager && !b.additional_hours && !b.long_booking && res && canAskForChange(b, user?.id, now) && (
                   <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setChanging(b.id)}>Change time</button>
                 )}
                 {cancellable(b) && (

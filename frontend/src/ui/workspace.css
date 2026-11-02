@@ -136,8 +136,8 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .app-shell .bk-facts dt { color: var(--muted); }
 .app-shell .bk-rbody .bk-chip { margin-top: 10px; }
 .app-shell .bk-rbody .bk-linkbtn { font-size: 12px; color: var(--ink); margin-top: 5px; text-decoration: none; }
-.app-shell .bk-rcard-actions { display: flex; align-items: stretch; gap: 8px; padding-top: 15px; margin-top: 0; border: 0; }
-.app-shell .bk-rcard-actions > .bk-btn-outline { flex: 1; width: auto; min-height: 40px; background: #f2f4ef; border-color: transparent; color: var(--ink); }
+.app-shell .bk-rcard-actions { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; padding-top: 15px; margin-top: 0; border: 0; }
+.app-shell .bk-rcard-actions > .bk-btn-outline { flex: 1 1 140px; width: auto; min-height: 40px; background: #f2f4ef; border-color: transparent; color: var(--ink); }
 .app-shell .bk-rcard-actions > .bk-rcard-primary { background: var(--ink); border-color: var(--ink); color: #fff; }
 .app-shell .bk-rcard-actions > .bk-rcard-primary:hover:not(:disabled) { background: #34443e; border-color: #34443e; }
 .app-shell .bk-unavailable { background: var(--amber-bg); color: var(--amber); border: 0; border-radius: 8px; font-size: 12px; margin-top: 12px; }

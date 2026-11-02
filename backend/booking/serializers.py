@@ -60,6 +60,33 @@ class PersonLookupSerializer(StrictSerializer):
     zid = serializers.RegexField(r"^[zZ]\d{7}$")
 
 
+class AdditionalHoursCreateSerializer(StrictSerializer):
+    resource_id = serializers.UUIDField()
+    start = AwareDateTimeField()
+    end = AwareDateTimeField()
+    purpose = serializers.CharField(max_length=1000)
+    on_behalf_of_zid = serializers.RegexField(r"^[zZ]\d{7}$", required=False, allow_blank=True)
+    additional_hours_reason = serializers.CharField(max_length=1000)
+    active_data_collection = serializers.BooleanField(required=False, default=False)
+    data_collection_reason = serializers.CharField(max_length=1000, required=False, allow_blank=True, default="")
+
+    def validate(self, attrs):
+        if attrs["active_data_collection"] and not attrs["data_collection_reason"].strip():
+            raise serializers.ValidationError({"data_collection_reason": "Explain the ongoing data collection for Manager verification."})
+        if not attrs["active_data_collection"] and attrs["data_collection_reason"].strip():
+            raise serializers.ValidationError({"data_collection_reason": "Select active data collection when providing this explanation."})
+        return attrs
+
+
+class LongBookingCreateSerializer(StrictSerializer):
+    resource_id = serializers.UUIDField()
+    start = AwareDateTimeField()
+    end = AwareDateTimeField()
+    purpose = serializers.CharField(max_length=1000)
+    on_behalf_of_zid = serializers.RegexField(r"^[zZ]\d{7}$", required=False, allow_blank=True)
+    long_booking_reason = serializers.CharField(max_length=1000)
+
+
 class BookingRescheduleSerializer(StrictSerializer):
     start = AwareDateTimeField()
     end = AwareDateTimeField()
@@ -96,6 +123,7 @@ class QualificationReviewSerializer(StrictSerializer):
 class BookingReviewSerializer(StrictSerializer):
     decision = serializers.ChoiceField(choices=["APPROVED", "REJECTED"])
     reason = serializers.CharField(required=False, allow_blank=True, default="", max_length=2000)
+    confirm_active_data_collection = serializers.BooleanField(required=False, default=False)
 
     def validate(self, attrs):
         if attrs["decision"] == "REJECTED" and not attrs["reason"].strip():
@@ -119,6 +147,13 @@ class AvailabilityQuerySerializer(StrictSerializer):
     exclude_booking_id = serializers.UUIDField(required=False)
     for_zid = serializers.RegexField(r"^[zZ]\d{7}$", required=False, allow_blank=True)
     urgent = serializers.BooleanField(required=False, default=False)
+    additional_hours = serializers.BooleanField(required=False, default=False)
+    long_booking = serializers.BooleanField(required=False, default=False)
+
+    def validate(self, attrs):
+        if sum(bool(attrs[key]) for key in ("urgent", "additional_hours", "long_booking")) > 1:
+            raise serializers.ValidationError("Choose only one of urgent, additional-hours or longer-booking availability.")
+        return attrs
 
 
 class OutlookProcessSerializer(StrictSerializer):

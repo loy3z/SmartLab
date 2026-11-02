@@ -36,32 +36,38 @@ class _DaySources:
 
 class AvailabilityMixin:
     def availability(self, actor, resource_id, day, duration_minutes=30, exclude_booking_id=None,
-                     for_zid=None, urgent=False):
+                     for_zid=None, urgent=False, additional_hours=False, long_booking=False):
         """Free and taken times of one day.
 
         exclude_booking_id: the booking being rescheduled, so its current time shows as free.
         for_zid (Admin/Manager): show eligibility and own requests for the person being booked for.
         urgent: times before the minimum advance window count as available (an urgent request).
+        additional_hours: the minimum lead time is waived, but the normal duration/horizon and eligibility apply.
+        long_booking: show the technical resource limit, but keep the normal lead time and horizon.
         """
         self.process_due_requests()
         return self._availability(actor, self.resource(resource_id), day, duration_minutes, exclude_booking_id,
-                                  for_zid, urgent)
+                                  for_zid, urgent, additional_hours=additional_hours, long_booking=long_booking)
 
     def _availability(self, actor, resource, day, duration_minutes=30, exclude_booking_id=None, for_zid=None,
-                      urgent=False, shared=None):
+                      urgent=False, shared=None, additional_hours=False, long_booking=False):
         """shared: a _DaySources read once for every resource of the day overview (2026-10-29, load test S7)."""
         person = self._beneficiary(actor, for_zid)
+        if long_booking and (additional_hours or urgent):
+            raise DomainError("VALIDATION_ERROR", "Longer bookings cannot be combined with urgent or additional-hours requests.")
         exclude = None
         if exclude_booking_id:
             excluded = self.booking_for(actor, exclude_booking_id)
             if excluded.resource_id != resource.id:
                 raise DomainError("VALIDATION_ERROR", "exclude_booking_id must be a booking for this resource.")
             exclude = excluded.id
-        if booking_rules_bypassed(actor, person.id):
+        if booking_rules_bypassed(actor, person.id) and not (additional_hours or long_booking):
             return test_availability(self, actor, resource, day, duration_minutes, exclude)
         if not resource.active:
             raise DomainError("RESOURCE_UNAVAILABLE", "The resource is inactive.", 409)
-        max_slots, quota_slot_minutes, maximum = self._normal_booking_limit(resource)
+        normal_maximum = self._normal_booking_limit(resource)[2]
+        max_slots, quota_slot_minutes, maximum = (self._long_booking_limit(resource) if long_booking
+                                                 else self._normal_booking_limit(resource))
         step = self._selection_step_minutes(resource)
         if duration_minutes < 1 or duration_minutes > maximum or duration_minutes % step:
             raise DomainError(
@@ -94,7 +100,7 @@ class AvailabilityMixin:
             window = self._window_reason(resource, cursor)
             reason = ("START_TIME_PASSED" if cursor <= self.now() else
                       "RESOURCE_UNAVAILABLE" if not resource.bookable else
-                      "TOO_SOON" if window == "BOOKING_TOO_SOON" and not urgent else
+                      "TOO_SOON" if window == "BOOKING_TOO_SOON" and not (urgent or additional_hours) else
                       "TOO_FAR_AHEAD" if window == "BOOKING_TOO_FAR_AHEAD" else
                       "BOOKED" if any(item.status == BookingStatus.APPROVED for item in blockers) else
                       "TEMPORARILY_HELD" if holds else None)
@@ -104,15 +110,21 @@ class AvailabilityMixin:
                           if reason == "TEMPORARILY_HELD" else False,
                           "requested_by_me": requested_by_me})
             cursor += timedelta(minutes=step)
+        window_details = self._window_details(resource)
+        if additional_hours:
+            window_details.update(earliest_date=self.now().astimezone(zone).date().isoformat(), min_advance_days=0)
         return {"resource_id": resource.id, "date": day.isoformat(), "timezone": resource.timezone,
-                "duration_minutes": duration_minutes, "slots": slots, **self._window_details(resource),
+                "duration_minutes": duration_minutes, "slots": slots, **window_details,
                 "booking_slot_minutes": quota_slot_minutes, "max_booking_slots": max_slots,
                 "selection_step_minutes": step, "max_booking_minutes": maximum,
+                "normal_max_booking_minutes": normal_maximum,
+                "min_booking_minutes": (normal_maximum // step + 1) * step if long_booking else step,
                 "resource_status": resource.status.value, "status_reason": resource.status_reason,
                 "review_window_minutes": resource.pending_hold_minutes,
                 # Everyone follows the same rules: the person's induction (and its prerequisites) must be current.
                 "can_request": (person.active and eligibility == "VERIFIED" and resource.bookable
-                                and not frozen_person.frozen_at(self.now())),
+                                and not frozen_person.frozen_at(self.now())
+                                and (not long_booking or maximum > normal_maximum)),
                 "frozen_until": frozen_person.frozen_until if frozen_person.frozen_at(self.now()) else None,
                 "qualification_status": eligibility,
                 "missing_prerequisite_id": (self.missing_prerequisite(person.id, resource.required_qualification_id,
@@ -120,7 +132,9 @@ class AvailabilityMixin:
                 if eligibility == "PREREQUISITE_REQUIRED" else None,
                 "booking_for": {"id": person.id, "zid": person.zid, "display_name": person.display_name,
                                 "role": person.role.value},
-                "urgent": bool(urgent)}
+                "urgent": bool(urgent), "additional_hours": bool(additional_hours),
+                "long_booking": bool(long_booking),
+                "additional_hours_approval_window_hours": self.rules().additional_hours_approval_window_hours}
 
     def day_overview(self, actor, day, duration_minutes=60, kind=None, room_id=None, category=None, query=None,
                      bookable_only=False, free_at=None):

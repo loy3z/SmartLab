@@ -12,6 +12,10 @@ class WaitlistMixin:
         Approve only if every rule still holds (the same check an Admin approval uses) and no approved
         booking overlaps; otherwise reject with the rule that failed.
         """
+        if booking.additional_hours:
+            return BookingStatus.REJECTED, "ADDITIONAL_HOURS_NEEDS_MANAGER", "Additional hours require a Manager's decision."
+        if booking.long_booking:
+            return BookingStatus.EXPIRED, "LONG_BOOKING_REVIEW_EXPIRED", "No Manager approved the longer booking before its review deadline."
         resource = self.repo.get_resource(booking.resource_id)
         error = self.rule_violation(booking.student_id, resource, booking.start, booking.end)
         if error:
@@ -33,7 +37,7 @@ class WaitlistMixin:
         """
         resource = self.repo.get_resource(str(resource_id))
         queue = sorted((item for item in self.repo.list_bookings(resource_id=str(resource_id), statuses=[BookingStatus.WAITLISTED])
-                        if item.status == BookingStatus.WAITLISTED), key=lambda item: (item.created_at, item.id))
+                        if item.status == BookingStatus.WAITLISTED and not item.additional_hours), key=lambda item: (item.created_at, item.id))
         changed = []
         for booking in queue:
             now = self.now()
@@ -44,7 +48,8 @@ class WaitlistMixin:
                 # A closed resource keeps its queue until it reopens.
                 if resource is None or not resource.bookable or self._overlaps(booking.resource_id, booking.start, booking.end, booking.id, booking.replaces_id):
                     continue
-                error = self.rule_violation(booking.student_id, resource, booking.start, booking.end)
+                error = self.rule_violation(booking.student_id, resource, booking.start, booking.end,
+                                            allow_long_booking=booking.long_booking)
                 if error is None:
                     deadline = self._review_deadline(resource, booking.start)
                     status, reason, action = BookingStatus.PENDING_APPROVAL, "PROMOTED_FROM_WAITLIST", "BOOKING_PROMOTED"
@@ -56,6 +61,8 @@ class WaitlistMixin:
             self._save_booking(revised)
             self._audit("SYSTEM", action, "booking", revised.id, status=status.value, reason_code=reason,
                         hold_until=revised.hold_until.isoformat() if status in HEAD_STATUSES else None)
+            if revised.long_booking and revised.status == BookingStatus.PENDING_APPROVAL:
+                self._notify_long_booking_managers(revised)
             changed.append(revised)
         if changed:
             ids = _promoted_ids.get()
@@ -68,7 +75,7 @@ class WaitlistMixin:
     @staticmethod
     def _due_for_processing(booking, now):
         """Whether time processing would change this undecided request: its start has passed, or its review window has ended."""
-        return booking.start <= now or (booking.status in HEAD_STATUSES and booking.review_due_at is not None
+        return booking.start <= now or (not booking.additional_hours and booking.status in HEAD_STATUSES and booking.review_due_at is not None
                                         and booking.review_due_at <= now)
 
     def process_due_requests(self):
@@ -101,9 +108,10 @@ class WaitlistMixin:
                         released.add(current.resource_id)
                 elif current.status in HEAD_STATUSES and current.review_due_at and current.review_due_at <= now:
                     status, reason, note = self._auto_decision(current)
-                    action = "BOOKING_AUTO_APPROVED" if status == BookingStatus.APPROVED else "BOOKING_AUTO_REJECTED"
+                    action = ("BOOKING_AUTO_APPROVED" if status == BookingStatus.APPROVED else
+                              "BOOKING_TIME_PROCESSED" if status == BookingStatus.EXPIRED else "BOOKING_AUTO_REJECTED")
                     extra = {"reviewed_by": "SYSTEM", "reviewed_at": now, "decision_reason": note}
-                    if status == BookingStatus.REJECTED:
+                    if status in (BookingStatus.REJECTED, BookingStatus.EXPIRED):
                         released.add(current.resource_id)
                 else:
                     continue

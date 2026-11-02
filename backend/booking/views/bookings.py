@@ -2,13 +2,15 @@
 
 from ._common import *  # noqa: F401,F403 - shared imports, helpers and PublicView.
 
-__all__ = ["BookingListView", "my_bookings", "PersonLookupView", "BookingDetailView", "BookingCancelView", "BookingRescheduleView", "BookingChangeView", "DashboardView", "BookingCheckInView", "BookingHistoryRemoveView"]
+__all__ = ["BookingListView", "AdditionalHoursBookingView", "LongBookingView", "my_bookings", "PersonLookupView", "BookingDetailView", "BookingCancelView", "BookingRescheduleView", "BookingChangeView", "DashboardView", "BookingCheckInView", "BookingHistoryRemoveView"]
 
 class BookingListView(APIView):
     def get(self, request):
         service = get_service()
         service.process_due_requests()
-        return Response(collection(my_bookings(service, request.user)))
+        bookings = my_bookings(service, request.user)
+        lookups = BookingListLookups(service, bookings)
+        return Response(collection(bookings, lambda item: booking_json(item, lookups)))
 
     def post(self, request):
         service = get_service()
@@ -20,6 +22,37 @@ class BookingListView(APIView):
                                                   urgent=data["urgent"], urgent_reason=data["urgent_reason"])
         booking, = sync_after_write(service, booking)
         return Response(json_value(booking), status=201 if created else 200)
+
+class AdditionalHoursBookingView(APIView):
+    """Separate weekly allowance: unheld requests awaiting a Manager's explicit decision."""
+    def post(self, request):
+        service = get_service()
+        service.require_booking_user(request.user)
+        data = validated(AdditionalHoursCreateSerializer, request.data)
+        booking, created = service.create_additional_hours_booking(
+            request.user, str(data["resource_id"]), data["start"], data["end"], data["purpose"],
+            data["additional_hours_reason"], request.headers.get("Idempotency-Key"),
+            on_behalf_of_zid=data.get("on_behalf_of_zid") or None,
+            active_data_collection=data["active_data_collection"], data_collection_reason=data["data_collection_reason"],
+        )
+        booking, = sync_after_write(service, booking)
+        return Response(json_value(booking), status=201 if created else 200)
+
+
+class LongBookingView(APIView):
+    """A separate request to exceed the ordinary duration cap, requiring a Manager's decision."""
+    def post(self, request):
+        service = get_service()
+        service.require_booking_user(request.user)
+        data = validated(LongBookingCreateSerializer, request.data)
+        booking, created = service.create_long_booking(
+            request.user, str(data["resource_id"]), data["start"], data["end"], data["purpose"],
+            data["long_booking_reason"], request.headers.get("Idempotency-Key"),
+            on_behalf_of_zid=data.get("on_behalf_of_zid") or None,
+        )
+        booking, = sync_after_write(service, booking)
+        return Response(json_value(booking), status=201 if created else 200)
+
 
 def my_bookings(service, user):
     """Bookings for me plus those I created for other people, oldest first."""
@@ -88,7 +121,9 @@ class DashboardView(APIView):
         bookings = my_bookings(service, request.user)
         submissions = service.repo.list_submissions(student_id=request.user.id)
         counts = {item.value: sum(booking.status == item for booking in bookings) for item in BookingStatus}
-        return Response({"bookings": json_value(bookings), "qualifications": [submission_json(item) for item in submissions], "counts": counts})
+        lookups = BookingListLookups(service, bookings)
+        return Response({"bookings": [booking_json(item, lookups) for item in bookings],
+                         "qualifications": [submission_json(item) for item in submissions], "counts": counts})
 
 class BookingCheckInView(APIView):
     def post(self, request, booking_id):

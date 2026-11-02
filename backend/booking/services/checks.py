@@ -21,6 +21,13 @@ class ChecksMixin:
         maximum_slots = min(rules.max_slots_per_booking, resource_slots)
         return maximum_slots, rules.booking_slot_minutes, maximum_slots * rules.booking_slot_minutes
 
+    def _long_booking_limit(self, resource):
+        """The resource's technical maximum, aligned to its selectable step; no normal duration exemption elsewhere."""
+        slot_minutes = self.rules().booking_slot_minutes
+        step = self._selection_step_minutes(resource)
+        maximum = resource.max_booking_minutes // step * step
+        return maximum // slot_minutes, slot_minutes, maximum
+
     def _overlaps(self, resource_id, start, end, exclude_id=None, also_exclude=None):
         """Bookings and active holds that block this period.
 
@@ -61,14 +68,15 @@ class ChecksMixin:
         if error:
             raise error
 
-    def _period_violation(self, resource, start, end):
+    def _period_violation(self, resource, start, end, allow_long_booking=False):
         """Time rules of one resource: future start, maximum length, one local day within opening hours, increments."""
         if start.tzinfo is None or start.utcoffset() is None or end.tzinfo is None or end.utcoffset() is None:
             return DomainError("INVALID_TIME", "Start and end require UTC offsets.")
         if start >= end or start <= self.now():
             return DomainError("INVALID_TIME", "Use a future start time and an end later than start.")
         duration = (end - start).total_seconds() / 60
-        max_slots, slot_minutes, maximum = self._normal_booking_limit(resource)
+        max_slots, slot_minutes, maximum = (self._long_booking_limit(resource) if allow_long_booking
+                                            else self._normal_booking_limit(resource))
         if duration % slot_minutes:
             return DomainError(
                 "INVALID_SLOT_COUNT",
@@ -79,7 +87,7 @@ class ChecksMixin:
         if duration > maximum:
             return DomainError(
                 "DURATION_LIMIT",
-                f"A normal booking may be up to {maximum / 60:g} h.",
+                f"{'This resource permits bookings' if allow_long_booking else 'A normal booking may be'} up to {maximum / 60:g} h.",
                 400,
                 {"max_slots": max_slots, "slot_minutes": slot_minutes,
                  "resource_max_minutes": resource.max_booking_minutes},
@@ -123,7 +131,7 @@ class ChecksMixin:
                                403, details)
         return None
 
-    def rule_violation(self, student_id, resource, start, end, check_window=False):
+    def rule_violation(self, student_id, resource, start, end, check_window=False, allow_long_booking=False):
         """The one place that decides whether a booking follows the rules (conflicts are checked separately).
 
         Used when a request is created, approved by an Admin, decided automatically, promoted from the
@@ -134,7 +142,7 @@ class ChecksMixin:
         made on time does not become invalid while it waits for review. Returns a DomainError or None.
         """
         return (self._account_violation(student_id) or self._resource_violation(resource)
-                or self._period_violation(resource, start, end)
+                or self._period_violation(resource, start, end, allow_long_booking=allow_long_booking)
                 or (self._window_violation(resource, start) if check_window else None)
                 or self._qualification_violation(student_id, resource, end))
 
@@ -178,8 +186,9 @@ class ChecksMixin:
     def _weekly_limit_violation(self, student_id, resource, start, end, exclude_id=None, additional_slots=0):
         """Enforce the per-person slot allowance for the resource's local Monday-Sunday week.
 
-        Pending, waitlisted, approved and staff-created series dates all count. ``additional_slots``
-        reserves earlier occurrences while a new series is being validated before it is saved.
+        Ordinary pending, waitlisted, approved and staff-created series dates all count. Additional-hours
+        allocations are separate and never consume this base allowance. ``additional_slots`` reserves earlier
+        occurrences while a new series is being validated before it is saved.
         """
         rules = self.rules()
         limit = rules.max_slots_per_week
@@ -189,7 +198,7 @@ class ChecksMixin:
         week_end = week_start + timedelta(days=7)
         used = sum(self._duration_slots(item.start, item.end)
                    for item in self.repo.list_bookings(student_id=str(student_id))
-                   if item.id != exclude_id and item.status in ACTIVE_REQUEST_STATUSES
+                   if item.id != exclude_id and item.status in ACTIVE_REQUEST_STATUSES and not item.additional_hours
                    and week_start <= item.start.astimezone(zone).date() < week_end)
         requested = self._duration_slots(start, end) + additional_slots
         if used + requested > limit:

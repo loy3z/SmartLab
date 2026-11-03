@@ -231,7 +231,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | GET | `bookings/{id}/` | 预约详情 |
 | POST | `bookings/{id}/cancel/` | 取消预约 |
 | POST | `bookings/{id}/reschedule/` | 仅 Manager：改期已批准且尚未开始的预约：`start`、`end` |
-| GET | `dashboard/` | 我的预约、资料与数量 |
+| GET | `dashboard/` | 我的预约、资料与数量；`week_hours` 是本周（悉尼时间周一到周日）已约小时数 `used_hours` 和每周上限 `limit_hours`，额外时数不算（1.23.0） |
 | GET | `admin/qualifications/?status=PENDING` | 管理员资格队列（`PENDING`／`VERIFIED`／`REJECTED`）；每条带 `student`（`id`、`zid`、`display_name`、`university_email`），审核页直接显示姓名和 zID |
 | POST | `admin/qualifications/{id}/review/` | `decision: VERIFIED\|REJECTED`，可带 `reason`；不接受 `valid_until`，有效期由后端设定 |
 | GET | `admin/bookings/?status=PENDING_APPROVAL` | 待审批队列（默认）；`status=WAITLISTED` 查看候补；`status=ALL&resource_id=&student_id=&q=&since=&until=` 查看所有人的预约（带学生和资源名）；`q` 是 zID 或姓名的一部分（预约人或创建人，不分大小写） |

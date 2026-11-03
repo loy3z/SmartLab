@@ -123,7 +123,8 @@ class DashboardView(APIView):
         counts = {item.value: sum(booking.status == item for booking in bookings) for item in BookingStatus}
         lookups = BookingListLookups(service, bookings)
         return Response({"bookings": [booking_json(item, lookups) for item in bookings],
-                         "qualifications": [submission_json(item) for item in submissions], "counts": counts})
+                         "qualifications": [submission_json(item) for item in submissions], "counts": counts,
+                         "week_hours": service.week_hours(request.user.id)})  # 2026-11-03: hours left this week
 
 class BookingCheckInView(APIView):
     def post(self, request, booking_id):

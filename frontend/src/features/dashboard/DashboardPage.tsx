@@ -38,6 +38,11 @@ function latestQualifications(qualifications: Qualification[]) {
   return latest
 }
 
+/** Hours of the weekly allowance still free, e.g. "4.5 h" (never below zero). */
+function fmtHoursLeft(week: Dashboard['week_hours']) {
+  return `${Math.max(0, week.limit_hours - week.used_hours)} h`
+}
+
 export function DashboardPage({ user }: { user: User }) {
   return <DashboardSession key={user.id} user={user} />
 }
@@ -176,7 +181,15 @@ function DashboardContent({ state }: { state: Extract<DashboardState, { status: 
           <strong>{verifiedCount}</strong>
           <span className="dash-stat-detail">Current, valid training records</span>
         </Link>
+        {/* 2026-11-03 (Loy): hours left of the weekly allowance; more time is requested as additional hours. */}
+        <Link className="dash-stat" to="/bookings?view=upcoming">
+          <span className="dash-stat-icon"><ClockIcon size={24} /></span>
+          <span className="dash-stat-label">Hours left this week</span>
+          <strong>{fmtHoursLeft(data.week_hours)}</strong>
+          <span className="dash-stat-detail">{data.week_hours.used_hours} of {data.week_hours.limit_hours} h booked</span>
+        </Link>
       </section>
+      <p className="dash-more-hours">Need more than {data.week_hours.limit_hours} h this week? <Link className="dash-link" to="/resources">Request additional hours <span aria-hidden="true">→</span></Link></p>
 
       {/* Sprint 3 (1.20.0): keep the compact next session and booking list together, beside training. */}
       <div className="dash-columns">

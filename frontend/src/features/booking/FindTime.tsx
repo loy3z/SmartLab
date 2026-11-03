@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { useAuth } from '../auth/auth-context'
 import { getDayOverview } from '../../api/index.ts'
-import { FIND_DURATIONS, hiddenSummary } from './find-time'
+import { findDurations, hiddenSummary } from './find-time'
 import { errorMessage, fmtClock, fmtDate, fmtDuration, fmtRange, todaySydney, TZ } from './format'
 import { CalendarIcon, CheckIcon, SearchIcon } from './icons'
 import type { DayOverview, DayOverviewQuery, DayOverviewRow, Resource, ResourceKind } from '../../api/types/index.ts'
@@ -43,6 +43,9 @@ export function FindTime({ onPick, resources = [] }: {
   const draft: DayOverviewQuery = { date, duration_minutes: duration, kind: kind || undefined, room_id: roomId || undefined,
     category: kind === 'ROOM' ? undefined : category || undefined, bookable_only: bookableOnly, free_at: startTime }
   const filtersChanged = Boolean(query && JSON.stringify(query) !== JSON.stringify(draft))
+  // Lengths follow the longest normal booking any listed resource allows (the configurable client limit).
+  const caps = resources.map(resource => resource.effective_max_booking_minutes ?? resource.max_booking_minutes)
+  const lengths = findDurations(caps.length ? Math.max(...caps) : undefined)
 
   useEffect(() => {
     if (!query) return
@@ -69,7 +72,7 @@ export function FindTime({ onPick, resources = [] }: {
       <div className="bk-find-primary-fields">
         <label>Date<input type="date" aria-label="Date" required min={todaySydney()} max={data?.latest_date ?? undefined} value={date} onChange={event => setDate(event.target.value)} /></label>
         <label>Start time<input type="time" aria-label="Start time" required step={1800} value={startTime} onChange={event => setStartTime(event.target.value)} /></label>
-        <label>Length<select aria-label="Length" value={duration} onChange={event => setDuration(Number(event.target.value))}>{FIND_DURATIONS.map(minutes => <option key={minutes} value={minutes}>{fmtDuration(minutes)}</option>)}</select></label>
+        <label>Length<select aria-label="Length" value={duration} onChange={event => setDuration(Number(event.target.value))}>{lengths.map(minutes => <option key={minutes} value={minutes}>{fmtDuration(minutes)}</option>)}</select></label>
         <label>Type<select aria-label="Type" value={kind} onChange={event => setKind(event.target.value as '' | ResourceKind)}><option value="">All resources</option><option value="ROOM">Rooms only</option><option value="EQUIPMENT">Equipment only</option></select></label>
         <button type="submit" className="ui-btn ui-btn-primary" disabled={loading}><SearchIcon size={15} />{loading ? 'Searching…' : 'Find available resources'}</button>
       </div>

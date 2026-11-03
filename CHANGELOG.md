@@ -2,6 +2,11 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.22.0 之后：限额在服务器上可调（2026-11-03，接口不变）
+
+- 客户 11-02 邮件要求 3 小时、12 小时这些数字容易调整。`docker-compose.yml` 和 `.env.docker.example` 补上 `BOOKING_SLOT_MINUTES`、`MAX_SLOTS_PER_BOOKING`、`MAX_SLOTS_PER_WEEK`、`MAX_ACTIVE_FUTURE_BOOKINGS`；之前容器收不到这几个变量，服务器上改了不生效。
+- Find a free time 的时长选项跟随资源的 `effective_max_booking_minutes`，不再写死到 3 小时。
+
 ## 1.22.0：超长预约申请（迁移 013）
 
 - 新增独立超长预约表单和 API，只放宽普通单次时长上限；每周时数、未来预约数量、正常提前预约窗口和资源自身限制继续由后端执行，员工代约同样受限，不与额外时数、紧急或循环预约合并。

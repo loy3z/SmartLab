@@ -278,6 +278,16 @@ class WeeklyLimitTests(Sprint3Fixture, SimpleTestCase):
         self.assertEqual(third.status, BookingStatus.PENDING_APPROVAL)
         self.assertEqual(fourth.status, BookingStatus.PENDING_APPROVAL)
 
+    def test_dashboard_week_hours_count_this_week_only(self):
+        # 2026-11-03: the dashboard shows hours booked this Sydney week; additional hours and other weeks do not count.
+        self.service.max_advance_days = 30
+        self.request(self.student, days=1, minutes=180)
+        self.request(self.student, days=2, minutes=90)
+        self.service.create_additional_hours_booking(self.student, self.room.id, *self.at(3), "Extra", "More time")
+        self.request(self.student, days=8, minutes=60)
+        self.assertEqual(self.service.week_hours(self.student.id),
+                         {"week_start": self.today.isoformat(), "used_hours": 4.5, "limit_hours": 12})
+
     def test_staff_booking_counts_for_the_person_booked_for_and_next_week_is_separate(self):
         self.qualification(self.admin)
         for day in (1, 2, 3, 4):
@@ -578,6 +588,11 @@ class Sprint3APITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual((refused.status_code, refused.data["error"]["code"]), (409, "WEEKLY_LIMIT_REACHED"))
         self.assertEqual(refused.data["error"]["details"]["limit_slots"], 24)
         self.assertEqual(refused.data["error"]["details"]["used_slots"], 24)
+
+    def test_dashboard_reports_week_hours(self):
+        self.create(self.verified, day_offset=1, minutes=180)
+        week = self.verified.get("/api/v1/dashboard/").data["week_hours"]
+        self.assertEqual((week["used_hours"], week["limit_hours"]), (3, 12))
 
     def test_future_booking_limit_api_error(self):
         for hour in range(8, 16):

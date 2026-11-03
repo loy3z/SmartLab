@@ -195,11 +195,7 @@ class ChecksMixin:
         zone = ZoneInfo(resource.timezone)
         day = start.astimezone(zone).date()
         week_start = day - timedelta(days=day.weekday())
-        week_end = week_start + timedelta(days=7)
-        used = sum(self._duration_slots(item.start, item.end)
-                   for item in self.repo.list_bookings(student_id=str(student_id))
-                   if item.id != exclude_id and item.status in ACTIVE_REQUEST_STATUSES and not item.additional_hours
-                   and week_start <= item.start.astimezone(zone).date() < week_end)
+        used = self._week_slots_used(student_id, zone, week_start, exclude_id)
         requested = self._duration_slots(start, end) + additional_slots
         if used + requested > limit:
             weekly_hours = limit * rules.booking_slot_minutes / 60
@@ -211,6 +207,24 @@ class ChecksMixin:
                                 "slot_minutes": rules.booking_slot_minutes,
                                 "week_start": week_start.isoformat()})
         return None
+
+    def _week_slots_used(self, student_id, zone, week_start, exclude_id=None):
+        """Slots of the weekly allowance a person has used in the local week starting week_start (additional hours excluded)."""
+        week_end = week_start + timedelta(days=7)
+        return sum(self._duration_slots(item.start, item.end)
+                   for item in self.repo.list_bookings(student_id=str(student_id))
+                   if item.id != exclude_id and item.status in ACTIVE_REQUEST_STATUSES and not item.additional_hours
+                   and week_start <= item.start.astimezone(zone).date() < week_end)
+
+    def week_hours(self, student_id):
+        """Dashboard (2026-11-03): this Sydney week's hours booked against the weekly allowance."""
+        rules = self.rules()
+        zone = ZoneInfo("Australia/Sydney")
+        today = self.now().astimezone(zone).date()
+        week_start = today - timedelta(days=today.weekday())
+        hours = lambda slots: slots * rules.booking_slot_minutes / 60  # noqa: E731
+        return {"week_start": week_start.isoformat(), "used_hours": hours(self._week_slots_used(student_id, zone, week_start)),
+                "limit_hours": hours(rules.max_slots_per_week)}
 
     def _future_booking_limit_violation(self, student_id, exclude_id=None, additional_count=0):
         """Enforce the per-person cap on active bookings that have not started yet.

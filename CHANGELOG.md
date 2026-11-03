@@ -2,6 +2,11 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.23.0：Dashboard 显示本周还剩多少小时（2026-11-03）
+
+- Loy 2026-11-03：学生看不到自己本周还能约多少小时，只有超额被拒时才知道。学生 Dashboard 加第四个框“Hours left this week”，显示剩余小时和“已约 x / 12 h”，点框进入 Book a resource，并提示可以申请额外时数。8 个未来预约不另加显示：Upcoming bookings 加 Pending requests 就是这个数。
+- 接口：`GET dashboard/` 增加 `week_hours`（`week_start`、`used_hours`、`limit_hours`），按悉尼时间本周计算，与每周上限用同一个函数 `_week_slots_used`，额外时数不算。
+
 ## 1.22.0 之后：限额在服务器上可调（2026-11-03，接口不变）
 
 - 客户 11-02 邮件要求 3 小时、12 小时这些数字容易调整。`docker-compose.yml` 和 `.env.docker.example` 补上 `BOOKING_SLOT_MINUTES`、`MAX_SLOTS_PER_BOOKING`、`MAX_SLOTS_PER_WEEK`、`MAX_ACTIVE_FUTURE_BOOKINGS`；之前容器收不到这几个变量，服务器上改了不生效。

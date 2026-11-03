@@ -212,6 +212,8 @@ export interface Dashboard {
   bookings: Booking[]
   qualifications: Qualification[]
   counts: Record<BookingStatus, number>
+  /** 2026-11-03: hours of the weekly allowance booked this Sydney week (Monday to Sunday); additional hours not counted. */
+  week_hours: { week_start: string; used_hours: number; limit_hours: number }
 }
 
 export interface BookingRequest {

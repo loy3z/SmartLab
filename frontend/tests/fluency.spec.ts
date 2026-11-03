@@ -60,7 +60,8 @@ const test = base.extend<{ api: Api }>({
       }
       if (path === 'dashboard/') {
         if (api.overviewGate) await api.overviewGate
-        return json({ bookings: [], qualifications: [], counts: { APPROVED: 0, PENDING_APPROVAL: 0, WAITING_QUALIFICATION: 0, WAITLISTED: 0, CANCELLED: 0, REJECTED: 0, EXPIRED: 0 } })
+        return json({ bookings: [], qualifications: [], counts: { APPROVED: 0, PENDING_APPROVAL: 0, WAITING_QUALIFICATION: 0, WAITLISTED: 0, CANCELLED: 0, REJECTED: 0, EXPIRED: 0 },
+          week_hours: { week_start: '2030-01-07', used_hours: 0, limit_hours: 12 } })
       }
       if (path === 'admin/overview/') {
         if (api.overviewGate) await api.overviewGate

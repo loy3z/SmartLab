@@ -14,6 +14,7 @@ const STAFF_PASSWORD = '123'
 const dashboard: Dashboard = {
   bookings: [], qualifications: [],
   counts: { WAITING_QUALIFICATION: 0, WAITLISTED: 0, PENDING_APPROVAL: 0, APPROVED: 0, REJECTED: 0, CANCELLED: 0, EXPIRED: 0 },
+  week_hours: { week_start: '2030-01-07', used_hours: 7.5, limit_hours: 12 },
 }
 const emptyList = { count: 0, results: [] }
 
@@ -1404,7 +1405,13 @@ test('booking dashboard uses distinct metrics and a compact next session on desk
   await signIn(page, 'STUDENT')
   await page.setViewportSize({ width: 1440, height: 1000 })
   const metrics = page.locator('.dash-stats .dash-stat')
-  await expect(metrics).toHaveCount(3)
+  await expect(metrics).toHaveCount(4)
+  // 2026-11-03: hours left this week, with the way to ask for more.
+  await expect(metrics.nth(3)).toContainText('Hours left this week')
+  await expect(metrics.nth(3)).toContainText('4.5 h')
+  await expect(metrics.nth(3)).toContainText('7.5 of 12 h booked')
+  await expect(page.locator('.dash-more-hours')).toContainText('Need more than 12 h this week?')
+  await expect(page.getByRole('link', { name: 'Request additional hours' })).toHaveAttribute('href', '#/resources')
   expect(await metrics.first().evaluate(el => getComputedStyle(el).borderRadius)).not.toBe('0px')
   expect((await page.locator('.dash-session').boundingBox())!.height).toBeLessThan(240)
   await expect(page.getByRole('heading', { name: 'More upcoming', exact: true })).toBeVisible()

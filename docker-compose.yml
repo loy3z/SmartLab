@@ -15,6 +15,11 @@ x-backend-environment: &backend-environment
   MIN_ADVANCE_DAYS: ${MIN_ADVANCE_DAYS:-7}
   MAX_ADVANCE_DAYS: ${MAX_ADVANCE_DAYS:-28}
   ADDITIONAL_HOURS_APPROVAL_WINDOW_HOURS: ${ADDITIONAL_HOURS_APPROVAL_WINDOW_HOURS:-48}
+  # Client fair-use limits (backend/.env.example explains each one): 6 x 30 min = 3 h per booking, 24 x 30 min = 12 h per week.
+  BOOKING_SLOT_MINUTES: ${BOOKING_SLOT_MINUTES:-30}
+  MAX_SLOTS_PER_BOOKING: ${MAX_SLOTS_PER_BOOKING:-6}
+  MAX_SLOTS_PER_WEEK: ${MAX_SLOTS_PER_WEEK:-24}
+  MAX_ACTIVE_FUTURE_BOOKINGS: ${MAX_ACTIVE_FUTURE_BOOKINGS:-8}
   # PostgreSQL is the shared source of truth for both the API and the scheduler.
   SEED_DEMO_DATA: "false"
   LOAD_DEMO_DATA: ${LOAD_DEMO_DATA:-false}

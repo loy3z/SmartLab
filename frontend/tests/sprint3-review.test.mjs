@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { canAskForChange, changeSentMessage, openChangeText, replacesText } from '../src/features/booking/change-requests.ts'
-import { FIND_DURATIONS, hiddenSummary } from '../src/features/booking/find-time.ts'
+import { findDurations, hiddenSummary } from '../src/features/booking/find-time.ts'
 import { errorMessage, SEPARATE_BOOKING_TEXT, submitBlocker } from '../src/features/booking/format.ts'
 import { changedFields, checkResource, describeHours, emptyResource, hoursFromMinutes, minutesFromHours } from '../src/features/manager/resource-form.ts'
 import { hasContact, mailtoLink } from '../src/features/contact/contact.ts'
@@ -33,8 +33,10 @@ test('change requests: offered on the person\'s own future approved booking with
   assert.match(changeSentMessage(booking()).message, /old time has been released/)
 })
 
-test('Find a free time: normal lengths stop at three hours, and why rows are hidden', () => {
-  assert.deepEqual(FIND_DURATIONS, [30, 60, 90, 120, 150, 180])
+test('Find a free time: lengths stop at the longest normal booking allowed, and why rows are hidden', () => {
+  assert.deepEqual(findDurations(), [30, 60, 90, 120, 150, 180])
+  assert.deepEqual(findDurations(120), [30, 60, 90, 120])
+  assert.deepEqual(findDurations(240), [30, 60, 90, 120, 150, 180, 240])
   assert.deepEqual(hiddenSummary(undefined), { text: '', needsInduction: false })
   assert.deepEqual(hiddenSummary({ MAINTENANCE: 1, NOT_SUBMITTED: 18 }),
     { text: '19 hidden: 18 induction not submitted, 1 under maintenance', needsInduction: true })

@@ -5,7 +5,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 ## 1.27.0：延长由 Manager 批准（迁移 016）
 
 - `POST bookings/{id}/extend/ {end}`：本人申请时不再立即生效，返回的预约带 `extension_end`（`end` 不变），Manager 收到 `EXTENSION_REQUESTED`；再次申请会替换。Manager 调用仍立即生效。申请时只检查开放时间、资源自身最长时长、时间步长和后面是否空闲，单次 3 小时和每周时数由 Manager 决定。
-- `POST bookings/{id}/extend/review/ {decision, reason}`：仅 Manager。批准时再查一次后面是否空闲，`end` 改为 `extension_end`；拒绝要写原因。错误：`NO_EXTENSION_REQUEST`、`EXTENSION_EXPIRED`、`BOOKING_CONFLICT`（都是 409）。本人收到 `EXTENSION_APPROVED`／`EXTENSION_REJECTED`（也发邮件）。
+- `POST bookings/{id}/extend/review/ {decision, reason, expected_end?}`：仅 Manager。网页提交当时显示的 `expected_end`；申请已被替换时返回 409 `EXTENSION_CHANGED`。批准时再查一次后面是否空闲，`end` 改为 `extension_end`；拒绝要写原因。其他 409：`NO_EXTENSION_REQUEST`、`EXTENSION_EXPIRED`、`BOOKING_CONFLICT`。本人收到 `EXTENSION_APPROVED`／`EXTENSION_REJECTED`（也发邮件）。
 - `GET admin/overview/` 增加 `extension_requests`（要求的结束时间还没过的预约，最多 10 个）。Booking 增加 `extension_end`。
 - 页面：My bookings 的 Extend 打开一条时间轴（开始到关门），拖动结束线或用方向键选新的结束时间，到下一个预约前为止；学生按 Ask a Manager，Manager 按 Extend now。时间轴读取 `resources/{id}/availability/`（学生加 `urgent=true`，这样当天被占用的时段能显示出来）。
 
@@ -25,7 +25,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 ## 1.24.0：客户 Week 8 会议（无迁移）
 
 - **Manager 覆盖规则**：Manager 的 `POST bookings/`（给自己或 `on_behalf_of_zid` 代约，不含改期申请）直接 `APPROVED`，`reason_code=MANAGER_OVERRIDE`。不检查 induction、提前 7–28 天、单次 3 小时、每周 12 小时、8 个未来预约和冻结；仍检查资源可预约、开放时间、资源自身最长时长、时间步长，时段必须空闲（冲突 409 `BOOKING_CONFLICT`，不进候补）。Admin 不变。`POST bookings/{id}/reschedule/` 同样不再检查 induction、日期窗口、每周和未来预约数。
-- **Manager 的可用时段**：availability（非额外时数、非超长模式）和 day overview 返回 `manager_override: true`；日期从今天起、`latest_date=null`，`max_booking_minutes` 为资源自身最长时长，`can_request` 只看人是否在用、资源是否可约。
+- **Manager 的可用时段**：availability（非额外时数、非超长模式）和 day overview 返回 `manager_override: true`；日期从今天起、`latest_date=null`，`max_booking_minutes` 为资源自身最长时长，`can_request` 只看人是否在用、资源是否可约。availability 此时还返回 `normal_booking_window`，员工重复预约表单仍使用这个常规日期范围。
 - **延长进行中的预约**：`POST bookings/{id}/extend/`，请求 `{end}`。预约人本人或 Manager，预约须已批准、已开始、未结束；后面空闲就立即生效（不审批），`revision` 加 1，Outlook 更新原事件，Manager 收到 `BOOKING_EXTENDED` 通知。非 Manager 还要满足单次 3 小时、每周时数和 induction 到新结束时间。错误：未开始／已结束／额外时数／超长 409 `EXTENSION_NOT_AVAILABLE`；新结束不晚于原结束 400 `VALIDATION_ERROR`；后面被占 409 `BOOKING_CONFLICT`；其余同普通规则（`DURATION_LIMIT`、`OUTSIDE_OPENING_HOURS`、`WEEKLY_LIMIT_REACHED`）。
 - **冻结**：1.24.0 默认关闭，1.25.0 整个删除，见上一节。
 

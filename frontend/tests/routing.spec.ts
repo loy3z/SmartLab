@@ -1519,6 +1519,10 @@ for (const role of ['ADMIN', 'MANAGER'] as const) {
       if (path === 'resources/') return route.fulfill({ json: { count: 1, results: [recurringRoom] } })
       if (path === 'resources/room-1/availability/') {
         recipients.push(url.searchParams.get('for_zid'))
+        if (role === 'MANAGER') return route.fulfill({ json: seriesAvailability({
+          manager_override: true, earliest_date: '2030-01-01', latest_date: null,
+          normal_booking_window: { earliest_date: '2030-01-08', latest_date: '2030-01-15', max_advance_days: 14 },
+        }) })
         return route.fulfill({ json: seriesAvailability({ latest_date: '2030-01-15', max_advance_days: 14 }) })
       }
       if (path === 'people/lookup/') return route.fulfill({ json: users.STUDENT })
@@ -1606,6 +1610,9 @@ test('a Manager adds equipment and sees bookings that no longer fit an edit', as
     timezone: 'Australia/Sydney', pending_hold_minutes: 1440, status: 'AVAILABLE', status_reason: null, room_id: null, category: null }
   const resources: Record<string, unknown>[] = [room]
   const sent: { method: string; path: string; body: Record<string, unknown> }[] = []
+  let internalAttempts = 0
+  let releaseInternal!: () => void
+  const internalReady = new Promise<void>((resolve) => { releaseInternal = resolve })
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
     const path = new URL(request.url()).pathname.replace('/api/v1/', '')
@@ -1620,8 +1627,15 @@ test('a Manager adds equipment and sees bookings that no longer fit an edit', as
       resources.push(created)
       return route.fulfill({ status: 201, json: created })
     }
-    if (path.endsWith('/internal/') && request.method() === 'GET') {  // 2026-11-07: Managers-only details, empty here
-      return route.fulfill({ json: { resource_id: 'room-1', owner: '', asset_number: '', provided_by: '', specifications: '', updated_at: null, updated_by: null } })
+    if (path === 'admin/resources/eq-9/internal/' && request.method() === 'PATCH') {
+      internalAttempts++
+      if (internalAttempts === 1) return route.fulfill({ status: 503, json: { detail: 'Try again.' } })
+      expect(request.postDataJSON()).toEqual({ asset_number: 'A-900' })
+      return route.fulfill({ json: { resource_id: 'eq-9', asset_number: 'A-900' } })
+    }
+    if (path === 'admin/resources/room-1/internal/' && request.method() === 'GET') {
+      await internalReady
+      return route.fulfill({ json: { resource_id: 'room-1', owner: 'Lab team', asset_number: '', provided_by: '', specifications: '', updated_at: null, updated_by: null } })
     }
     if (path === 'admin/resources/room-1/' && request.method() === 'PATCH') {
       const body = request.postDataJSON()
@@ -1643,14 +1657,22 @@ test('a Manager adds equipment and sees bookings that no longer fit an edit', as
   await dialog.getByLabel('Location').fill('Lab Room 1, bench 4')
   await dialog.getByLabel('Kept in room').selectOption('room-1')
   await dialog.getByLabel('Equipment type').fill('Optics')
+  await dialog.getByLabel('UNSW asset number').fill('A-900')
   await dialog.getByRole('button', { name: 'Add', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toBeVisible()
+  await dialog.getByRole('button', { name: 'Save changes', exact: true }).click()
   await expect(page.getByRole('table', { name: 'Resources' })).toContainText('Spectrometer 900')
+  expect(internalAttempts).toBe(2)
+  expect(sent.filter(({ method }) => method === 'POST')).toHaveLength(1)
   expect(sent[0].body).toMatchObject({ kind: 'EQUIPMENT', name: 'Spectrometer 900', room_id: 'room-1', category: 'Optics',
     required_qualification_id: 'req-1', slot_minutes: 30, opening_time: '08:00', closing_time: '20:00' })
 
   await page.getByRole('tab', { name: /Rooms/ }).click()
   await page.getByRole('button', { name: 'Edit Lab Room 1', exact: true }).click()
   const edit = page.getByRole('dialog', { name: 'Edit Lab Room 1' })
+  await expect(edit.getByLabel('Owner')).toBeDisabled()
+  releaseInternal()
+  await expect(edit.getByLabel('Owner')).toHaveValue('Lab team')
   await edit.getByLabel('Closes').fill('17:00')
   await edit.getByRole('button', { name: 'Save changes', exact: true }).click()
   await expect(page.getByRole('status', { name: 'Bookings outside the new rules' })).toContainText('outside the new opening hours')
@@ -2386,6 +2408,6 @@ test('a Manager approves an extension request on the Lab overview', async ({ pag
   await expect(panel).toContainText('Test Student')
   await panel.getByRole('button', { name: 'Approve', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Extension requests', exact: true })).toHaveCount(0)
-  expect(decisions).toEqual([{ decision: 'APPROVED', reason: '' }])
+  expect(decisions).toEqual([{ decision: 'APPROVED', reason: '', expected_end: waiting.extension_end }])
 })
 

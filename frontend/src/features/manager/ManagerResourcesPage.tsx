@@ -232,6 +232,8 @@ function ResourceDialog({ editing, rooms, requirements, onClose, onSaved }: {
   // 2026-11-07 (client, Week 8): Managers-only details, saved separately; only changed fields are sent.
   const [internalSaved, setInternalSaved] = useState<ResourceInternalInput>(EMPTY_INTERNAL)
   const [internal, setInternal] = useState<ResourceInternalInput>(EMPTY_INTERNAL)
+  const [internalStatus, setInternalStatus] = useState(editing.mode === 'edit' ? 'loading' : 'ready')
+  const [created, setCreated] = useState<Resource | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const problems = checkResource(kind, form)
@@ -244,11 +246,15 @@ function ResourceDialog({ editing, rooms, requirements, onClose, onSaved }: {
 
   useEffect(() => {
     if (editing.mode !== 'edit') return
+    let active = true
     getResourceInternalInfo(editing.resource.id).then((info) => {
+      if (!active) return
       const values = { owner: info.owner, asset_number: info.asset_number, provided_by: info.provided_by, specifications: info.specifications }
       setInternalSaved(values)
       setInternal(values)
-    }).catch(() => undefined) // the rest of the form still works; nothing is sent unless a field is typed in
+      setInternalStatus('ready')
+    }).catch(() => { if (active) setInternalStatus('failed') })
+    return () => { active = false }
   }, [editing])
 
   const set = <K extends keyof ResourceInput>(key: K, value: ResourceInput[K]) => setForm((current) => ({ ...current, [key]: value }))
@@ -258,22 +264,32 @@ function ResourceDialog({ editing, rooms, requirements, onClose, onSaved }: {
     if (busy || firstProblem) return
     setBusy(true)
     setError('')
+    let createdResource = created
     try {
       let saved: Resource
       let outsideRules: BookingOutsideRules[] = []
-      if (editing.mode === 'add') {
+      if (editing.mode === 'add' && !createdResource) {
         saved = await createResource(kind, form)
+        // Sprint 3: if the separate internal save fails, retry on this resource rather than adding a duplicate.
+        createdResource = saved
+        setCreated(saved)
       } else {
-        const result = await updateResource(editing.resource.id, changedFields(initial, form))
-        saved = result.resource
-        outsideRules = result.bookings_outside_rules
+        const current = editing.mode === 'edit' ? editing.resource : createdResource!
+        const changes = changedFields(resourceToInput(current), form)
+        saved = current
+        if (Object.keys(changes).length) {
+          const result = await updateResource(current.id, changes)
+          saved = result.resource
+          outsideRules = result.bookings_outside_rules
+          if (createdResource) setCreated(saved)
+        }
       }
       const internalChanges = Object.fromEntries(Object.entries(internal)
         .filter(([key, value]) => value !== internalSaved[key as keyof ResourceInternalInput]))
       if (Object.keys(internalChanges).length) await updateResourceInternalInfo(saved.id, internalChanges)
       onSaved(saved, outsideRules)
     } catch (e) {
-      setError(errorMessage(e))
+      setError(createdResource ? `Resource already added. ${errorMessage(e)}` : errorMessage(e))
     } finally {
       setBusy(false)
     }
@@ -348,9 +364,11 @@ function ResourceDialog({ editing, rooms, requirements, onClose, onSaved }: {
         )}
         <DetailsEditor details={form.details} onChange={(details) => set('details', details)}
           placeholder={kind === 'ROOM' ? 'e.g. Floor · Level 3' : 'e.g. Model · Rigol DS1054Z'} />
-        <fieldset className="mr-details">
+        <fieldset className="mr-details" disabled={internalStatus !== 'ready'}>
           <legend>Managers only</legend>
           <small className="bk-muted">Not shown to students or Admins.</small>
+          {internalStatus === 'loading' && <p role="status">Loading internal details…</p>}
+          {internalStatus === 'failed' && <p role="status">Could not load internal details. Reopen this form to try again.</p>}
           <label className="ui-field"><span>Owner</span>
             <input maxLength={120} value={internal.owner} onChange={(e) => setInternal({ ...internal, owner: e.target.value })} />
           </label>
@@ -370,7 +388,7 @@ function ResourceDialog({ editing, rooms, requirements, onClose, onSaved }: {
         <div className="ui-dialog-actions">
           <button type="button" className="ui-btn ui-btn-ghost" onClick={onClose}>Cancel</button>
           <button type="submit" className="ui-btn ui-btn-primary" disabled={busy || Boolean(firstProblem)}>
-            {busy ? 'Saving…' : editing.mode === 'add' ? 'Add' : 'Save changes'}
+            {busy ? 'Saving…' : editing.mode === 'add' && !created ? 'Add' : 'Save changes'}
           </button>
         </div>
       </form>

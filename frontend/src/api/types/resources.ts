@@ -156,6 +156,13 @@ export interface Availability {
   latest_date: string | null
   min_advance_days: number
   max_advance_days: number
+  /** Sprint 3: configured window for weekly series when a Manager's single booking has no window. */
+  normal_booking_window?: {
+    earliest_date: string
+    latest_date: string
+    min_advance_days: number
+    max_advance_days: number
+  }
   resource_status?: ResourceStatus
   status_reason?: string | null
   /** The resource's admin review window in minutes. */

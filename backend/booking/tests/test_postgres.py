@@ -493,6 +493,10 @@ class PostgresAdapterTests(TransactionTestCase):
         asked = replace(booking, extension_end=booking.end + timedelta(hours=1))
         self.repo.save_booking(asked)
         self.assertEqual(self.repo.get_booking(booking.id), asked)
+        self.now = booking.end + timedelta(minutes=1)
+        self.assertIn(booking.id, [item.id for item in self.service.staff_overview(self.manager)["extension_requests"]])
+        self.now = asked.extension_end
+        self.assertNotIn(booking.id, [item.id for item in self.service.staff_overview(self.manager)["extension_requests"]])
         with self.assertRaises(Exception):
             self.repo.save_booking(replace(booking, extension_end=booking.end))
 

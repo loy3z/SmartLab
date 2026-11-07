@@ -84,7 +84,7 @@ export function ManagerHomePage() {
                 <p className="bk-muted">People in the lab now who ask to finish later. Approving moves the end if the time after is still free.</p>
                 <ul className="today-list">
                   {(overview.extension_requests ?? []).map((booking) => (
-                    <ExtensionRow key={booking.id} booking={booking}
+                    <ExtensionRow key={`${booking.id}:${booking.extension_end}`} booking={booking}
                       resourceName={resources.find((item) => item.id === booking.resource_id)?.name ?? 'Resource'} onDecided={() => void load()} />
                   ))}
                 </ul>
@@ -160,10 +160,11 @@ function ExtensionRow({ booking, resourceName, onDecided }: { booking: Booking; 
   const [error, setError] = useState('')
 
   async function decide(decision: 'APPROVED' | 'REJECTED') {
+    if (!booking.extension_end) return
     setBusy(true)
     setError('')
     try {
-      await reviewExtension(booking.id, decision, reason.trim())
+      await reviewExtension(booking.id, decision, booking.extension_end, reason.trim())
       onDecided()
     } catch (e) {
       setError(errorMessage(e))
@@ -174,7 +175,7 @@ function ExtensionRow({ booking, resourceName, onDecided }: { booking: Booking; 
 
   return (
     <li className="manager-home-request">
-      <span><strong>{resourceName}</strong> · {booking.booked_for?.display_name ?? 'Someone'}
+      <span><strong>{resourceName}</strong> · {booking.booked_for?.display_name ?? 'Someone'}{' '}
         <span className="today-meta">until {fmtTime(booking.end)}, asks until {fmtTime(booking.extension_end!)}</span></span>
       {rejecting ? (
         <span className="ui-actions">

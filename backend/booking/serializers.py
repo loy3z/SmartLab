@@ -97,6 +97,7 @@ class BookingExtendSerializer(StrictSerializer):  # 2026-11-06 (client, Week 8)
 class ExtensionReviewSerializer(StrictSerializer):  # 2026-11-07: a Manager decides an extension request
     decision = serializers.ChoiceField(choices=["APPROVED", "REJECTED"])
     reason = serializers.CharField(required=False, allow_blank=True, default="", max_length=2000)
+    expected_end = AwareDateTimeField(required=False)  # Sprint 3: reject decisions on a replaced request
 
 class QualificationCreateSerializer(StrictSerializer):
     requirement_id = serializers.UUIDField()

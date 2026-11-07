@@ -117,7 +117,8 @@ class BookingExtensionReviewView(APIView):
     def post(self, request, booking_id):
         data = validated(ExtensionReviewSerializer, request.data)
         service = get_service()
-        booking = service.review_extension(request.user, str(booking_id), data["decision"], data["reason"])
+        booking = service.review_extension(request.user, str(booking_id), data["decision"], data["reason"],
+                                           expected_end=data.get("expected_end"))
         booking, = sync_after_write(service, booking)
         return Response(json_value(booking))
 

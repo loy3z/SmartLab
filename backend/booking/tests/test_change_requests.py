@@ -169,6 +169,27 @@ class ExtendBookingTests(Sprint3Fixture, SimpleTestCase):
         self.assertEqual(self.service.staff_overview(self.manager)["extension_requests"], [])  # its requested end passed
         self.refused("EXTENSION_EXPIRED", self.service.review_extension, self.manager, booking.id, "APPROVED")
 
+    def test_an_extension_stays_visible_until_its_requested_end(self):
+        booking = self.approved(days=3, hour=10)
+        self.now = booking.start + timedelta(minutes=10)
+        asked = self.extend(booking, 12)
+        self.now = booking.end + timedelta(minutes=5)
+        requests = self.service.staff_overview(self.manager)["extension_requests"]
+        self.assertEqual([item.id for item in requests], [booking.id])
+        approved = self.service.review_extension(self.manager, booking.id, "APPROVED")
+        self.assertEqual(approved.end, asked.extension_end)
+
+    def test_review_does_not_decide_a_replacement_the_manager_has_not_seen(self):
+        booking = self.approved(days=3, hour=10)
+        self.now = booking.start + timedelta(minutes=10)
+        first = self.extend(booking, 12)
+        replaced = self.extend(booking, 14)
+        self.refused("EXTENSION_CHANGED", self.service.review_extension, self.manager, booking.id, "APPROVED",
+                     expected_end=first.extension_end)
+        self.assertEqual(self.repo.get_booking(booking.id), replaced)
+        approved = self.service.review_extension(self.manager, booking.id, "APPROVED", expected_end=replaced.extension_end)
+        self.assertEqual(approved.end, replaced.extension_end)
+
 
 class MaintenanceNoticeTests(Sprint3Fixture, SimpleTestCase):
     def test_people_with_bookings_are_told_when_a_room_goes_out_of_service_and_reopens(self):

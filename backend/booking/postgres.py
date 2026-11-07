@@ -253,7 +253,7 @@ class PostgresRepository:
         return _get(Booking, booking_id)
 
     def list_bookings(self, student_id=None, resource_id=None, *, statuses=None, start_from=None, start_to=None,
-                      end_from=None, due_by=None, created_by=None, unmarked=False):
+                      end_from=None, due_by=None, created_by=None, unmarked=False, extension_end_after=None):
         """2026-10-29 (load test R1): the same keyword filters as repository.booking_matches, applied in SQL so only
         the rows a caller may need are read and decoded."""
         clauses, params = [], []
@@ -267,7 +267,7 @@ class PostgresRepository:
             clauses.append('status = ANY(%s)')
             params.append([_encode(status) for status in statuses])
         for condition, value in (('"start" >= %s', start_from), ('"start" <= %s', start_to),
-                                 ('"end" >= %s', end_from)):
+                                 ('"end" >= %s', end_from), ('extension_end > %s', extension_end_after)):
             if value is not None:
                 clauses.append(condition)
                 params.append(value)

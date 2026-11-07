@@ -80,8 +80,9 @@ docker compose --env-file .env.docker up -d
 
 - 迁移后、换上新容器前的几秒里，旧容器读用户会报错；部署脚本两步紧挨着，影响很短。
 - 删掉的冻结数据只在部署前的备份里。
+- 如果执行 014 后、切换容器前部署失败，当前运行的旧版需要先补回 006 的表和列。部署脚本会尝试自动补回；若提示失败，在服务器的 `~/smartlab-next` 目录用下面的命令重跑 006，再检查旧版能否登录和读取预约。
 - 要回滚到 1.25.0 之前的代码，先用新镜像重跑 006（可重复执行）补回列和表，再 `--rollback`：
-  `docker compose --env-file .env.docker run --rm api migrate database/migrations/006_calendar_notifications_attendance_series.sql`
+  `docker compose -p smartlab --env-file .env.docker run --rm --no-deps api migrate database/migrations/006_calendar_notifications_attendance_series.sql`
 
 为什么不在每次启动时重跑全部迁移：迁移 005 会把两个演示员工账号的密码改回演示密码，重跑会冲掉 Manager 改过的密码。
 

@@ -140,6 +140,7 @@ class StaffBookingServiceTests(BookingFixtureMixin, SimpleTestCase):
         day = self.today + timedelta(days=2)
         mine = self.service.availability(self.manager, self.room.id, day, 60)
         self.assertEqual((mine["can_request"], mine["manager_override"], mine["latest_date"]), (True, True, None))
+        self.assertEqual(mine["normal_booking_window"], self.service._window_details(self.room))
         self.assertTrue(all(slot["available"] for slot in mine["slots"]))
         self.assertEqual(mine["max_booking_minutes"], self.room.max_booking_minutes)
         overview = self.service.day_overview(self.manager, day, duration_minutes=60)

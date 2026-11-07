@@ -90,7 +90,7 @@ class ChangesMixin:
                                   f"at {self.describe_moment(end, source)}.", source, link="/manager/home", except_ids={actor.id})
             return requested
 
-    def review_extension(self, actor, booking_id, decision, reason=""):
+    def review_extension(self, actor, booking_id, decision, reason="", *, expected_end=None):
         """Manager: approve (the end moves, if the time after is still free) or reject (with a reason) a waiting request."""
         self.require_manager(actor)
         if decision not in ("APPROVED", "REJECTED"):
@@ -103,6 +103,9 @@ class ChangesMixin:
             source = self.booking_for(actor, booking_id)
             if source.extension_end is None or source.status != BookingStatus.APPROVED:
                 raise DomainError("NO_EXTENSION_REQUEST", "This booking has no extension request waiting.", 409)
+            # Sprint 3: decide the time the Manager saw, not a replacement submitted while the page was open.
+            if expected_end is not None and source.extension_end != expected_end:
+                raise DomainError("EXTENSION_CHANGED", "The requested end changed. Refresh the page before deciding.", 409)
             if decision == "REJECTED":
                 rejected = replace(source, extension_end=None, updated_at=self.now())
                 self._save_booking(rejected)

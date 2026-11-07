@@ -68,8 +68,11 @@ class OverviewMixin:
             "due_soon": due_soon[:LIST_LIMIT],
             "due_soon_hours": DUE_SOON_HOURS,
             "out_of_service": out_of_service,
-            "extension_requests": [item for item in self.repo.list_bookings(statuses=[BookingStatus.APPROVED], end_from=now)
-                                   if item.extension_end and item.extension_end > now][:LIST_LIMIT],
+            # Sprint 3: a Manager can still approve after the original end, until the requested end.
+            "extension_requests": sorted(
+                self.repo.list_bookings(statuses=[BookingStatus.APPROVED], extension_end_after=now),
+                key=lambda item: (item.extension_end, item.id),
+            )[:LIST_LIMIT],
             "today": today[:LIST_LIMIT],
             "today_count": len(today),
             "missed_today": sum(1 for item in today if item.attendance == "NO_SHOW"),

@@ -111,19 +111,21 @@ class AvailabilityMixin:
                           "requested_by_me": requested_by_me})
             cursor += timedelta(minutes=step)
         window_details = self._window_details(resource)
+        # Sprint 3: weekly series keep the configured booking window even for Managers.
+        normal_window = {"normal_booking_window": window_details.copy()} if override else {}
         if additional_hours or override:
             window_details.update(earliest_date=self.now().astimezone(zone).date().isoformat(), min_advance_days=0)
         if override:
             window_details.update(latest_date=None)
         return {"resource_id": resource.id, "date": day.isoformat(), "timezone": resource.timezone,
-                "duration_minutes": duration_minutes, "slots": slots, **window_details,
+                "duration_minutes": duration_minutes, "slots": slots, **window_details, **normal_window,
                 "booking_slot_minutes": quota_slot_minutes, "max_booking_slots": max_slots,
                 "selection_step_minutes": step, "max_booking_minutes": maximum,
                 "normal_max_booking_minutes": normal_maximum,
                 "min_booking_minutes": (normal_maximum // step + 1) * step if long_booking else step,
                 "resource_status": resource.status.value, "status_reason": resource.status_reason,
                 "review_window_minutes": resource.pending_hold_minutes,
-                # Everyone follows the same rules: the person's induction (and its prerequisites) must be current.
+                # Outside the Manager override, the person's induction and prerequisites must be current.
                 "can_request": (person.active and resource.bookable) if override else (
                     person.active and eligibility == "VERIFIED" and resource.bookable
                     and (not long_booking or maximum > normal_maximum)),

@@ -39,12 +39,14 @@ from .domain import (
 def booking_matches(booking: Booking, *, statuses: Sequence[BookingStatus] | None = None,
                     start_from: datetime | None = None, start_to: datetime | None = None,
                     end_from: datetime | None = None, due_by: datetime | None = None,
-                    created_by: str | None = None, unmarked: bool = False) -> bool:
+                    created_by: str | None = None, unmarked: bool = False,
+                    extension_end_after: datetime | None = None) -> bool:
     """The list_bookings keyword filters (2026-10-29, load test R1); PostgresRepository applies the same ones in SQL.
 
     Every bound is inclusive, so a filter only narrows what is read: callers still apply their own exact checks.
     due_by keeps bookings whose start or review deadline is at or before it (time processing);
     unmarked keeps bookings with no attendance recorded.
+    extension_end_after (Sprint 3) keeps requests whose proposed end has not yet passed (exclusive).
     """
     return ((statuses is None or booking.status in statuses)
             and (start_from is None or booking.start >= start_from)
@@ -53,7 +55,9 @@ def booking_matches(booking: Booking, *, statuses: Sequence[BookingStatus] | Non
             and (due_by is None or booking.start <= due_by
                  or (booking.review_due_at is not None and booking.review_due_at <= due_by))
             and (created_by is None or booking.created_by == created_by)
-            and (not unmarked or booking.attendance is None))
+            and (not unmarked or booking.attendance is None)
+            and (extension_end_after is None
+                 or (booking.extension_end is not None and booking.extension_end > extension_end_after)))
 
 
 def submission_matches(submission: QualificationSubmission, *, student_ids: Sequence[str] | None = None,
@@ -111,6 +115,7 @@ class Repository(Protocol):
         due_by: datetime | None = None,
         created_by: str | None = None,
         unmarked: bool = False,
+        extension_end_after: datetime | None = None,
     ) -> list[Booking]: ...
     def save_booking(self, booking: Booking) -> None: ...
     # Sprint 3 (1.20.0): per-person visibility, separate from the shared booking.

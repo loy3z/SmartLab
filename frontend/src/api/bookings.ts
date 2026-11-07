@@ -31,8 +31,8 @@ export const rescheduleBooking = (id: string, start: string, end: string) =>
 export const extendBooking = (id: string, end: string) => post<Booking>(`bookings/${id}/extend/`, { end })
 
 /** 2026-11-07, Manager: approve or reject an extension request (a rejection needs a reason). */
-export const reviewExtension = (id: string, decision: 'APPROVED' | 'REJECTED', reason = '') =>
-  post<Booking>(`bookings/${id}/extend/review/`, { decision, reason })
+export const reviewExtension = (id: string, decision: 'APPROVED' | 'REJECTED', expectedEnd: string, reason = '') =>
+  post<Booking>(`bookings/${id}/extend/review/`, { decision, reason, expected_end: expectedEnd })
 
 /** Sprint 3 (1.16.0): the person a booking is for asks for a new time; returns the new request (the old booking stays until it is approved). */
 export const requestTimeChange = (id: string, start: string, end: string) =>

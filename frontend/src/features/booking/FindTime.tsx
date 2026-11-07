@@ -25,7 +25,8 @@ export function FindTime({ onPick, resources = [] }: {
   resources?: Resource[]
 }) {
   const { user } = useAuth()
-  const [date, setDate] = useState(() => addDays(todaySydney(), user?.bypass_booking_rules ? 0 : 7))
+  const isManager = user?.role === 'MANAGER'
+  const [date, setDate] = useState(() => addDays(todaySydney(), user?.bypass_booking_rules || isManager ? 0 : 7))
   const [duration, setDuration] = useState(60)
   const [kind, setKind] = useState<'' | ResourceKind>('')
   const [roomId, setRoomId] = useState('')
@@ -43,8 +44,9 @@ export function FindTime({ onPick, resources = [] }: {
   const draft: DayOverviewQuery = { date, duration_minutes: duration, kind: kind || undefined, room_id: roomId || undefined,
     category: kind === 'ROOM' ? undefined : category || undefined, bookable_only: bookableOnly, free_at: startTime }
   const filtersChanged = Boolean(query && JSON.stringify(query) !== JSON.stringify(draft))
-  // Lengths follow the longest normal booking any listed resource allows (the configurable client limit).
-  const caps = resources.map(resource => resource.effective_max_booking_minutes ?? resource.max_booking_minutes)
+  // Sprint 3: the Manager's search follows the resource limit, like the day overview and single booking.
+  const caps = resources.map(resource => isManager ? resource.max_booking_minutes
+    : resource.effective_max_booking_minutes ?? resource.max_booking_minutes)
   const lengths = findDurations(caps.length ? Math.max(...caps) : undefined)
 
   useEffect(() => {

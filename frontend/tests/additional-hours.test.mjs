@@ -42,7 +42,7 @@ test('additional hours grant only the requested time; ordinary changes remain av
 })
 
 test('additional-hours overview and notifications distinguish manual review from normal bookings', () => {
-  const base = { urgent_requests: 0, pending_bookings: 0, changes_waiting: 0, pending_inductions: 0, unfreeze_requests: 0,
+  const base = { urgent_requests: 0, pending_bookings: 0, changes_waiting: 0, pending_inductions: 0,
     waitlisted: 0, due_soon: [], additional_hours_requests: 3, additional_hours_ready: 1, can_decide_additional_hours: true }
   const card = todoCards(base).find(item => item.key === 'additional-hours')
   assert.equal(card.count, 3)

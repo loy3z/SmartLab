@@ -37,6 +37,20 @@ export interface Resource {
   details?: ResourceDetail[]
 }
 
+/** 2026-11-07 (client, Week 8): what only Managers see about a resource (GET/PATCH admin/resources/{id}/internal/). */
+export interface ResourceInternalInput {
+  owner: string
+  asset_number: string
+  provided_by: string
+  specifications: string
+}
+
+export interface ResourceInternalInfo extends ResourceInternalInput {
+  resource_id: string
+  updated_at: string | null
+  updated_by: string | null
+}
+
 /** Sprint 3 (1.16.0): one "label: value" line on a resource. */
 export interface ResourceDetail {
   label: string
@@ -56,6 +70,7 @@ export interface DayOverviewRow {
 
 export interface DayOverview {
   test_bypass?: boolean
+  manager_override?: boolean // 1.24.0: a Manager's window starts today with no last date
   date: string
   duration_minutes: number
   timezone: string
@@ -123,6 +138,8 @@ export interface Availability {
   additional_hours?: boolean
   additional_hours_approval_window_hours?: number
   test_bypass?: boolean
+  /** 1.24.0: a Manager overrides the booking window, induction and limits; only free times can be booked. */
+  manager_override?: boolean
   max_booking_minutes?: number
   booking_slot_minutes?: number
   max_booking_slots?: number
@@ -139,6 +156,13 @@ export interface Availability {
   latest_date: string | null
   min_advance_days: number
   max_advance_days: number
+  /** Sprint 3: configured window for weekly series when a Manager's single booking has no window. */
+  normal_booking_window?: {
+    earliest_date: string
+    latest_date: string
+    min_advance_days: number
+    max_advance_days: number
+  }
   resource_status?: ResourceStatus
   status_reason?: string | null
   /** The resource's admin review window in minutes. */
@@ -149,8 +173,6 @@ export interface Availability {
   booking_for?: PersonBrief
   /** Urgent view: times inside the minimum advance window count as available. */
   urgent?: boolean
-  /** Sprint 3: set while the person's booking is frozen after missed check-ins. */
-  frozen_until?: string | null
 }
 
 export interface PersonBrief {

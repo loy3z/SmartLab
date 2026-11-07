@@ -2,13 +2,13 @@
 Find a free time hides resources (too long for them, or not bookable by this person)."""
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from uuid import uuid4
 
 from django.test import SimpleTestCase, override_settings
 
 from booking.domain import BookingStatus, Principal, Role
-from booking.tests.test_api import BookingAPIFixtureMixin
+from booking.tests.test_api import SYDNEY, BookingAPIFixtureMixin
 from booking.tests.test_sprint3 import Sprint3Fixture
 
 
@@ -111,6 +111,86 @@ class ChangeRequestTests(Sprint3Fixture, SimpleTestCase):
                      days=5, hour=8, minutes=30)
 
 
+class ExtendBookingTests(Sprint3Fixture, SimpleTestCase):
+    """2026-11-07 (client, Week 8): the person asks to finish a booking in progress later; a Manager decides."""
+
+    def at_hour(self, booking, hour, minute=0):
+        return datetime.combine(booking.start.astimezone(SYDNEY).date(), time(hour, minute), SYDNEY)
+
+    def extend(self, booking, hour, minute=0, actor=None):
+        return self.service.extend_booking(actor or self.student, booking.id, self.at_hour(booking, hour, minute))
+
+    def test_a_request_waits_for_a_manager_who_approves_it(self):
+        booking = self.approved(days=3, hour=10)  # 10:00-11:00
+        self.refused("EXTENSION_NOT_AVAILABLE", self.extend, booking, 12)  # not started yet
+        self.now = booking.start + timedelta(minutes=40)
+        asked = self.extend(booking, 12)
+        self.assertEqual((asked.end, asked.extension_end), (booking.end, self.at_hour(booking, 12)))
+        self.assertEqual(len(self.notices(self.manager, "EXTENSION_REQUESTED")), 1)
+        asked = self.extend(booking, 14)  # asking again replaces the requested end; 4 h is allowed, a Manager decides
+        self.assertEqual(asked.extension_end, self.at_hour(booking, 14))
+        self.refused("FORBIDDEN", self.service.review_extension, self.admin, booking.id, "APPROVED")
+        approved = self.service.review_extension(self.manager, booking.id, "APPROVED")
+        self.assertEqual((approved.end, approved.extension_end, approved.revision),
+                         (self.at_hour(booking, 14), None, booking.revision + 1))
+        self.assertIn("now ends at", self.notices(self.student, "EXTENSION_APPROVED")[0].body)
+        self.refused("NO_EXTENSION_REQUEST", self.service.review_extension, self.manager, booking.id, "APPROVED")
+        self.assertEqual([item.action for item in self.repo.list_audit() if item.entity_id == booking.id][-2:],
+                         ["EXTENSION_REQUESTED", "BOOKING_EXTENDED"])
+
+    def test_rejection_needs_a_reason_and_the_time_after_must_still_be_free(self):
+        booking = self.approved(days=3, hour=10)
+        self.approved(self.other, days=3, hour=15)  # 15:00-16:00
+        self.now = booking.start + timedelta(minutes=10)
+        self.refused("BOOKING_CONFLICT", self.extend, booking, 15, 30)
+        self.refused("VALIDATION_ERROR", self.extend, booking, 11)
+        self.refused("NOT_FOUND", self.extend, booking, 13, actor=self.other)
+        self.refused("DURATION_LIMIT", self.extend, booking, 19)  # the room's longest booking is 8 h
+        self.extend(booking, 13)
+        self.refused("REASON_REQUIRED", self.service.review_extension, self.manager, booking.id, "REJECTED", " ")
+        rejected = self.service.review_extension(self.manager, booking.id, "REJECTED", "Cleaning at 12:00")
+        self.assertEqual((rejected.end, rejected.extension_end), (booking.end, None))
+        self.assertIn("Cleaning at 12:00", self.notices(self.student, "EXTENSION_REJECTED")[0].body)
+        # Someone books the time after while a request waits: approval is refused.
+        self.extend(booking, 15)
+        self.service._override_rule(min_advance_days=0)
+        self.approved(self.other, days=3, hour=13)
+        self.refused("BOOKING_CONFLICT", self.service.review_extension, self.manager, booking.id, "APPROVED")
+
+    def test_a_manager_extends_at_once_and_sees_the_waiting_requests(self):
+        booking = self.approved(days=3, hour=10)
+        mine = self.request(self.manager, days=3, hour=14)  # a Manager booking is approved at once
+        self.now = booking.start + timedelta(minutes=10)
+        self.extend(booking, 12)
+        overview = self.service.staff_overview(self.manager)
+        self.assertEqual([item.id for item in overview["extension_requests"]], [booking.id])
+        self.now = mine.start + timedelta(minutes=5)
+        self.assertEqual(self.extend(mine, 16, actor=self.manager).end, self.at_hour(mine, 16))
+        self.assertEqual(self.service.staff_overview(self.manager)["extension_requests"], [])  # its requested end passed
+        self.refused("EXTENSION_EXPIRED", self.service.review_extension, self.manager, booking.id, "APPROVED")
+
+    def test_an_extension_stays_visible_until_its_requested_end(self):
+        booking = self.approved(days=3, hour=10)
+        self.now = booking.start + timedelta(minutes=10)
+        asked = self.extend(booking, 12)
+        self.now = booking.end + timedelta(minutes=5)
+        requests = self.service.staff_overview(self.manager)["extension_requests"]
+        self.assertEqual([item.id for item in requests], [booking.id])
+        approved = self.service.review_extension(self.manager, booking.id, "APPROVED")
+        self.assertEqual(approved.end, asked.extension_end)
+
+    def test_review_does_not_decide_a_replacement_the_manager_has_not_seen(self):
+        booking = self.approved(days=3, hour=10)
+        self.now = booking.start + timedelta(minutes=10)
+        first = self.extend(booking, 12)
+        replaced = self.extend(booking, 14)
+        self.refused("EXTENSION_CHANGED", self.service.review_extension, self.manager, booking.id, "APPROVED",
+                     expected_end=first.extension_end)
+        self.assertEqual(self.repo.get_booking(booking.id), replaced)
+        approved = self.service.review_extension(self.manager, booking.id, "APPROVED", expected_end=replaced.extension_end)
+        self.assertEqual(approved.end, replaced.extension_end)
+
+
 class MaintenanceNoticeTests(Sprint3Fixture, SimpleTestCase):
     def test_people_with_bookings_are_told_when_a_room_goes_out_of_service_and_reopens(self):
         booked = self.approved(days=3, hour=10)
@@ -155,6 +235,25 @@ class ChangeRequestAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         other = self.student.post(f"/api/v1/bookings/{created.data['id']}/change/",
                                   {"start": new_time["start"], "end": new_time["end"]}, format="json")
         self.assertEqual(other.status_code, 404)
+
+    def test_extend_a_booking_in_progress(self):
+        """2026-11-07: the person asks, a Manager approves."""
+        payload = self.payload(day_offset=3, hour=10)
+        created = self.verified.post("/api/v1/bookings/", payload, format="json")
+        self.admin.post(f"/api/v1/admin/bookings/{created.data['id']}/review/", {"decision": "APPROVED"}, format="json")
+        self.service.clock = lambda: datetime.fromisoformat(payload["start"]) + timedelta(minutes=5)
+        later = self.payload(day_offset=3, hour=11)["end"]  # 12:00
+        url = f"/api/v1/bookings/{created.data['id']}/extend/"
+        response = self.verified.post(url, {"end": later}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(datetime.fromisoformat(response.data["extension_end"].replace("Z", "+00:00")), datetime.fromisoformat(later))
+        self.assertEqual(response.data["end"], created.data["end"])
+        self.assertEqual(self.verified.post(url, {"end": later, "start": later}, format="json").status_code, 400)
+        self.assertEqual(self.admin.post(url + "review/", {"decision": "APPROVED"}, format="json").status_code, 403)
+        self.assertEqual(self.manager.post(url + "review/", {"decision": "REJECTED"}, format="json").status_code, 400)
+        decided = self.manager.post(url + "review/", {"decision": "APPROVED"}, format="json")
+        self.assertEqual((decided.status_code, decided.data["extension_end"]), (200, None))
+        self.assertEqual(datetime.fromisoformat(decided.data["end"].replace("Z", "+00:00")), datetime.fromisoformat(later))
 
 
 class DayOverviewCountTests(Sprint3Fixture, SimpleTestCase):

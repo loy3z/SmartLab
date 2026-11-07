@@ -37,7 +37,7 @@ team-repo/
 │   ├── booking/
 │   │   ├── views/               HTTP 接口：解析请求 → 调用 service → 转 JSON
 │   │   │                        （2026-10-25 拆分：auth、resources、bookings、admin、outlook、notifications、
-│   │   │                         calendar、series、unfreeze、misc；公共导入和辅助函数在 _common.py）
+│   │   │                         calendar、series、misc；公共导入和辅助函数在 _common.py）
 │   │   ├── serializers.py       请求参数校验
 │   │   ├── urls.py              /api/v1/ 下的路径
 │   │   ├── services/            业务规则（见第 3 节）
@@ -93,7 +93,7 @@ team-repo/
 | `audit.py` | 审计记录查询 |
 | `notifications.py` | 站内通知：保存预约时统一判断要通知谁（`_booking_changed`），以及读取和标为已读 |
 | `calendar_feed.py` | 日历订阅链接：随机码的生成、重置和订阅内容 |
-| `attendance.py` | 到场确认、缺席、冻结（取消之后的预约）和解冻申请 |
+| `attendance.py` | 到场确认和缺席记录（1.25.0 删除了冻结） |
 | `series.py` | 员工的重复预约：逐日检查、直接批准、整组取消 |
 | `reminders.py` | 提醒：预约开始前一天、induction 快到期（每条只发一次） |
 | `reports.py` | Manager 的使用情况报表（只读） |
@@ -137,7 +137,7 @@ sequenceDiagram
 
 ## 5. 时间推进
 
-审批期限到了自动批准或拒绝、开始时间过了改为 `EXPIRED`、空出来的时段递补给候补，这些都在 `waitlist.py` 的 `process_due_requests` 里完成；接着是到场确认（`attendance.py`）：到场窗口结束仍未确认的已批准预约记为缺席，达到次数就冻结这个人并取消他之后的预约；最后发出到期的提醒（`reminders.py`）。它在三个地方被调用：
+审批期限到了自动批准或拒绝、开始时间过了改为 `EXPIRED`、空出来的时段递补给候补，这些都在 `waitlist.py` 的 `process_due_requests` 里完成；接着是到场确认（`attendance.py`）：到场窗口结束仍未确认的已批准预约记为缺席（只记录，不处罚）；最后发出到期的提醒（`reminders.py`）。它在三个地方被调用：
 
 - 读取预约、时段、dashboard 的接口会先调用一次（所以前端只需要刷新）。
 - `POST admin/process-due/`。
@@ -194,14 +194,16 @@ sequenceDiagram
 | 编辑后哪些未来预约不再符合 | `services/resources.py` `_bookings_outside_rules` |
 | 什么时候不能下架 | `services/resources.py` `archive_resource` |
 | 到场窗口（开始前 15 分钟到开始后 30 分钟） | `services/attendance.py` `check_in_window` |
-| 什么算缺席、第几次冻结、冻结时取消哪些预约 | `services/attendance.py` `_process_attendance`、`_freeze` |
-| 被冻结的人不能被预约 | `services/attendance.py` `frozen_violation`（在 `bookings.py` `create_booking` 和 `series.py` 里调用） |
+| 什么算缺席（1.25.0 起只记录，没有冻结） | `services/attendance.py` `_process_attendance` |
+| Manager 预约越过哪些规则、哪些仍检查（1.24.0） | `services/bookings.py` `_create_manager_booking`、`reschedule_booking`；时段选择 `services/availability.py` `_availability`（`override`） |
+| 谁能延长、什么时候、检查什么；学生的延长由 Manager 批准（1.27.0） | `services/changes.py` `extend_booking`、`review_extension`、`_check_extension`；前端 `features/booking/extend.ts`、`ExtendBox.tsx` |
 | 每周最多 3 个预约 | `services/checks.py` `_weekly_limit_violation` |
 | 重复预约每个日期的检查 | `services/series.py` `_series_check` |
 | 预约变化时通知谁 | `services/notifications.py` `_booking_changed` |
 | 提醒什么时候发 | `services/reminders.py` `_booking_reminders`、`_induction_reminders` |
 | 报表里每个数字怎么算 | `services/reports.py` `usage_report` |
-| Booking Records 按姓名／zID 搜索 | `services/resources.py` `booking_report`（参数 `query`） |
+| Booking Records 按姓名／zID 搜索；Admin 只看 7 天内结束及以后的预约（1.26.0） | `services/resources.py` `booking_report`（参数 `query`、`ADMIN_HISTORY_DAYS`） |
+| 谁能看设备的内部资料（1.26.0，只有 Manager） | `services/resources.py` `resource_internal_info`、`update_resource_internal_info`；单独的表 `resource_internal_info`，不进资源 JSON |
 | 申请提交后给本人的确认 | `services/bookings.py` `_created_notices`；重复预约在 `services/series.py` `create_series` |
 | 哪些通知发邮件、发给谁、主题和正文 | `email_channel.py`：`EmailChannel.deliver`、`choose_recipient`、`compose`；类型列表是 `settings.py` 的 `EMAIL_NOTIFICATION_KINDS` |
 | My Bookings 怎么把重复预约合成一张卡片 | 前端 `features/booking/my-bookings.ts` `groupBookings`、`seriesSummary` |
@@ -228,7 +230,7 @@ sequenceDiagram
 | 账号 1 自动获得全部永久 induction，新增要求也补齐，无 evidence 附件（1.17.1） | `test_console.py` `get_test_account`、`_grant_test_inductions`；`authentication.py` `DemoIdentityProvider.resolve_bearer`；`views/_common.py` `submission_json`；前端 `induction/InductionPage.tsx` |
 | 测试数据不发送外部消息、日历同步（1.17.0） | `services/base.py` `_save_booking`；`views/_common.py` `sync_after_write`；`notification_channels.py` `deliver_new_notifications` |
 | Urgent 只有一份说明，evidence 必填提示（1.17.0） | 前端 `BookingForm.tsx` `bookingPurpose`；`induction/evidence.ts` `evidenceProblem` |
-| 员工登录后进哪个页面（1.16.0） | 前端 `app/routes.ts` `homePath` |
+| 各角色登录后进哪个页面（Admin：Today；Manager：Lab overview，1.26.0）、Today 显示哪些卡片 | 前端 `app/routes.ts` `homePath`；`features/admin/today.ts` `cardsFor` |
 | 独立通知渠道、邮件专用记录不进铃铛（Sprint 3，1.19.0） | `services/notifications.py` `_category_channels`、`_notify`、`list_notifications`、`mark_notification_read`、`mark_all_notifications_read`；`notification_channels.py` `deliver_new_notifications` |
 | 五类偏好部分保存、默认值及邮件站点能力（1.19.0） | `services/notifications.py` `notification_preferences`、`save_notification_preferences`；`views/notifications.py` `NotificationPreferencesView` |
 | 公告生效、过期、作者编辑与 Manager 额外下架权（1.19.0） | `services/announcements.py` `list_announcements`、`create_announcement`、`update_announcement`、`remove_announcement`；`views/announcements.py`（学生写请求先验权限） |

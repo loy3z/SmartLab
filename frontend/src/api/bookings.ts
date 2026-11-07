@@ -26,11 +26,19 @@ export const removeBookingHistory = (id: string) => post<void>(`bookings/${id}/r
 export const rescheduleBooking = (id: string, start: string, end: string) =>
   post<Booking>(`bookings/${id}/reschedule/`, { start, end })
 
+/** 1.24.0 (client, Week 8): finish a booking in progress later. 2026-11-07: a request a Manager decides; a Manager's
+ *  own extension applies at once. */
+export const extendBooking = (id: string, end: string) => post<Booking>(`bookings/${id}/extend/`, { end })
+
+/** 2026-11-07, Manager: approve or reject an extension request (a rejection needs a reason). */
+export const reviewExtension = (id: string, decision: 'APPROVED' | 'REJECTED', expectedEnd: string, reason = '') =>
+  post<Booking>(`bookings/${id}/extend/review/`, { decision, reason, expected_end: expectedEnd })
+
 /** Sprint 3 (1.16.0): the person a booking is for asks for a new time; returns the new request (the old booking stays until it is approved). */
 export const requestTimeChange = (id: string, start: string, end: string) =>
   post<Booking>(`bookings/${id}/change/`, { start, end })
 
-// Sprint 3: check-in and booking freeze ---------------------------------------------------------------------------------
+// Sprint 3: check-in -----------------------------------------------------------------------------------------------
 export const checkIn = (bookingId: string) => post<Booking>(`bookings/${bookingId}/check-in/`, {})
 
 // Sprint 3: weekly series (staff) ---------------------------------------------------------------------------------------

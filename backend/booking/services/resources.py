@@ -13,10 +13,11 @@ decisions. The edit returns the future bookings that no longer fit, so the Manag
 Archiving hides a resource (active = false) instead of deleting it, so bookings and the audit trail keep it.
 """
 from dataclasses import replace
-from datetime import time
+from datetime import time, timedelta
 from uuid import uuid4
 
-from ..domain import MAX_PENDING_HOLD_MINUTES, BookingStatus, Resource, ResourceDetail, ResourceKind, ResourceStatus
+from ..domain import (MAX_PENDING_HOLD_MINUTES, BookingStatus, Resource, ResourceDetail, ResourceInternalInfo, ResourceKind,
+                      ResourceStatus, Role)
 from ..errors import DomainError
 from .base import ACTIVE_REQUEST_STATUSES
 
@@ -26,6 +27,10 @@ EDITABLE_FIELDS = ("name", "location", "description", "required_qualification_id
                    "slot_minutes", "max_booking_minutes", "opening_time", "closing_time", "pending_hold_minutes",
                    "capacity", "details")  # Sprint 3 (1.16.0): capacity, details
 MAX_DETAILS = 12  # Sprint 3 (1.16.0): "label: value" lines per resource
+# 2026-11-07 (client, Week 8): Admins see bookings that ended at most this many days ago; full history is for Managers.
+ADMIN_HISTORY_DAYS = 7
+# 2026-11-07 (client, Week 8): Manager-only internal fields and their longest length.
+INTERNAL_FIELDS = {"owner": 120, "asset_number": 60, "provided_by": 120, "specifications": 2000}
 
 
 class ResourcesMixin:
@@ -76,6 +81,29 @@ class ResourcesMixin:
                 self.repo.save_resource(updated)
                 self._audit(actor.id, "RESOURCE_UPDATED", "resource", current.id, changes=changed)
             return updated, self._bookings_outside_rules(updated)
+
+    def resource_internal_info(self, actor, resource_id):
+        """Manager only (client, Week 8): owner, UNSW asset number, where it came from, specifications. Empty until saved."""
+        self.require_manager(actor)
+        resource = self.resource(resource_id)
+        return self.repo.get_resource_internal_info(resource.id) or ResourceInternalInfo(resource.id)
+
+    def update_resource_internal_info(self, actor, resource_id, changes):
+        """Manager only: change the internal fields sent (blank clears one). Students and Admins never see them."""
+        self.require_manager(actor)
+        cleaned = {}
+        for field, value in changes.items():
+            text = (value or "").strip()
+            if field not in INTERNAL_FIELDS or len(text) > INTERNAL_FIELDS.get(field, 0):
+                raise DomainError("VALIDATION_ERROR", f"{field}: unknown field or too long.", 400, {field: ["Unknown or too long."]})
+            cleaned[field] = text
+        with self.repo.atomic(resource_ids=[str(resource_id)]):
+            current = self.resource_internal_info(actor, resource_id)
+            updated = replace(current, **cleaned, updated_at=self.now(), updated_by=actor.id)
+            self.repo.save_resource_internal_info(updated)
+            self._audit(actor.id, "RESOURCE_INTERNAL_INFO_UPDATED", "resource", current.resource_id,
+                        changes=sorted(field for field in cleaned if getattr(current, field) != getattr(updated, field)))
+            return updated
 
     def archive_resource(self, actor, resource_id):
         """Manager: stop listing a resource. Refused while it still has future bookings or, for a room, listed equipment."""
@@ -294,9 +322,14 @@ class ResourcesMixin:
         """Admin/Manager: every booking matching the filters, ordered by start time (for lists, print and CSV).
 
         Sprint 3: query matches part of the zID or name of the person booked for or of the person who created it.
+        2026-11-07 (client, Week 8): an Admin only sees bookings that ended in the last ADMIN_HISTORY_DAYS days or later;
+        the full history is for Managers.
         """
         self.require_staff(actor)
         self.process_due_requests()
+        if actor.role == Role.ADMIN:
+            earliest = self.now() - timedelta(days=ADMIN_HISTORY_DAYS)
+            since = max(since, earliest) if since else earliest
         query = (query or "").strip().casefold()
         people = {item.id: f"{item.zid} {item.display_name}".casefold() for item in self.repo.list_principals()} if query else {}
         # 2026-10-29 (load test S2): the repository narrows the rows read (inclusive bounds); the checks below are unchanged.

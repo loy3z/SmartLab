@@ -1,13 +1,14 @@
 // Sprint 3: Booking Records (Admin and Manager). Who booked what and when, with filters and a CSV of the same
 // list; the Usage statistics tab is the former Usage Report page.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { EmptyState, PageHeader, Tabs } from '../../ui/components'
 import { useFeedback } from '../../ui/feedback-context'
+import { useAuth } from '../auth/auth-context'
 import { downloadBookingRecords, listBookingRecords, listResources } from '../../api/index.ts'
 import { errorMessage, fmtDuration, fmtRange, minutesBetween, STATUS_TEXT, todaySydney } from '../booking/format'
 import type { Booking, Resource } from '../../api/types/index.ts'
-import { attendanceText, creatorText, defaultRecordFilters, RECORD_STATUSES, recordQuery, type RecordFilters } from './records'
+import { ADMIN_HISTORY_DAYS, attendanceText, creatorText, defaultRecordFilters, RECORD_STATUSES, recordQuery, type RecordFilters } from './records'
 import { UsageTab } from './UsageTab'
 
 type Tab = 'records' | 'usage'
@@ -26,11 +27,11 @@ function saveCsv(blob: Blob, filename: string) {
   }
 }
 
-function RecordsTab() {
+function RecordsTab({ isManager, lookup }: { isManager: boolean; lookup: string }) {
   const feedback = useFeedback()
-  const initial = useMemo(() => defaultRecordFilters(todaySydney()), [])
-  const [filters, setFilters] = useState<RecordFilters>(initial)
-  const [search, setSearch] = useState('') // typed text; applied on Search / Enter
+  // 2026-11-07 (client, Week 8): Admins see recent history only; a Manager can arrive with a zID to look up.
+  const [filters, setFilters] = useState<RecordFilters>(() => defaultRecordFilters(todaySydney(), isManager, lookup))
+  const [search, setSearch] = useState(filters.q) // typed text; applied on Search / Enter
   const [resources, setResources] = useState<Resource[]>([])
   // Sprint 3 (fluency V4): retain the exact filters behind the visible rows, even after a failed request.
   const [result, setResult] = useState<{ rows: Booking[]; filters: RecordFilters } | null>(null)
@@ -95,6 +96,7 @@ function RecordsTab() {
           </button>
         </div>
       </div>
+      {!isManager && <p className="bk-muted">Admins see bookings from the last {ADMIN_HISTORY_DAYS} days and upcoming ones. The full history is for Managers.</p>}
       {!updating && error && <p role="alert" className="bk-error">{error}{rows && ' Showing the previous results.'}</p>}
       {updating && <p role="status">{rows ? 'Updating…' : 'Loading bookings…'}</p>}
       {rows && rows.length === 0 && <EmptyState icon="–" title="No bookings match these filters" />}
@@ -137,17 +139,20 @@ function RecordsTab() {
 
 export function BookingRecordsPage() {
   const [params, setParams] = useSearchParams()
-  const tab: Tab = params.get('tab') === 'usage' ? 'usage' : 'records'
+  const { user } = useAuth()
+  const isManager = user?.role === 'MANAGER'
+  // 2026-11-07: usage statistics (history reports) are for Managers only.
+  const tab: Tab = isManager && params.get('tab') === 'usage' ? 'usage' : 'records'
   return (
     <div>
       <PageHeader
         title="Booking records"
       />
       <div className="ui-toolbar">
-        <Tabs<Tab> label="Booking records view" value={tab} onChange={(key) => setParams(key === 'usage' ? { tab: 'usage' } : {})}
-          items={[{ key: 'records', label: 'Records' }, { key: 'usage', label: 'Usage statistics' }]} />
+        {isManager && <Tabs<Tab> label="Booking records view" value={tab} onChange={(key) => setParams(key === 'usage' ? { tab: 'usage' } : {})}
+          items={[{ key: 'records', label: 'Records' }, { key: 'usage', label: 'Usage statistics' }]} />}
       </div>
-      {tab === 'records' ? <RecordsTab /> : <UsageTab />}
+      {tab === 'records' ? <RecordsTab isManager={isManager} lookup={params.get('q')?.trim() ?? ''} /> : <UsageTab />}
     </div>
   )
 }

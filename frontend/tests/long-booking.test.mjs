@@ -31,7 +31,7 @@ test('approved longer bookings must be cancelled and requested again to change t
 })
 
 test('long-booking overview links to the independent Manager review queue', () => {
-  const data = { urgent_requests: 0, pending_bookings: 0, changes_waiting: 0, pending_inductions: 0, unfreeze_requests: 0,
+  const data = { urgent_requests: 0, pending_bookings: 0, changes_waiting: 0, pending_inductions: 0,
     waitlisted: 0, due_soon: [], long_booking_requests: 2, can_decide_long_bookings: true }
   const card = todoCards(data).find(item => item.key === 'long-bookings')
   assert.equal(card.count, 2)

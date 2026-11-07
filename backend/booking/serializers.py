@@ -91,6 +91,14 @@ class BookingRescheduleSerializer(StrictSerializer):
     start = AwareDateTimeField()
     end = AwareDateTimeField()
 
+class BookingExtendSerializer(StrictSerializer):  # 2026-11-06 (client, Week 8)
+    end = AwareDateTimeField()
+
+class ExtensionReviewSerializer(StrictSerializer):  # 2026-11-07: a Manager decides an extension request
+    decision = serializers.ChoiceField(choices=["APPROVED", "REJECTED"])
+    reason = serializers.CharField(required=False, allow_blank=True, default="", max_length=2000)
+    expected_end = AwareDateTimeField(required=False)  # Sprint 3: reject decisions on a replaced request
+
 class QualificationCreateSerializer(StrictSerializer):
     requirement_id = serializers.UUIDField()
     title = serializers.CharField(max_length=160)
@@ -236,6 +244,14 @@ class SiteContactSerializer(StrictSerializer):
     note = serializers.CharField(required=False, allow_blank=True, max_length=1000)
 
 
+class ResourceInternalInfoSerializer(StrictSerializer):
+    """2026-11-07 (client, Week 8): Manager-only internal fields (every field optional; blank clears it)."""
+    owner = serializers.CharField(required=False, allow_blank=True, max_length=120)
+    asset_number = serializers.CharField(required=False, allow_blank=True, max_length=60)
+    provided_by = serializers.CharField(required=False, allow_blank=True, max_length=120)
+    specifications = serializers.CharField(required=False, allow_blank=True, max_length=2000)
+
+
 class ResourceDetailSerializer(StrictSerializer):
     """Sprint 3 (1.16.0): one "label: value" line on a resource."""
     label = serializers.CharField(allow_blank=True, max_length=40)
@@ -281,22 +297,6 @@ class NotificationPreferencesSerializer(StrictSerializer):
     """Sprint 3 (1.19.0): {"preferences": {"bookings": {"in_app": true, "email": false}}}."""
     # Sprint 3 (1.19.0): independent channel choices, with partial updates.
     preferences = serializers.DictField(child=serializers.DictField(child=serializers.BooleanField(), allow_empty=False), allow_empty=False)
-
-
-class UnfreezeRequestSerializer(StrictSerializer):
-    reason = serializers.CharField(max_length=1000)
-
-
-class UnfreezeReviewSerializer(BookingReviewSerializer):
-    pass
-
-
-class UnfreezeListQuerySerializer(StrictSerializer):
-    status = serializers.ChoiceField(choices=["PENDING", "APPROVED", "REJECTED"], required=False)
-
-
-class UnfreezeSerializer(StrictSerializer):
-    reason = serializers.CharField(max_length=1000, required=False, allow_blank=True, default="")
 
 
 class SeriesPlanSerializer(StrictSerializer):

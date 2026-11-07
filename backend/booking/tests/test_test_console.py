@@ -42,9 +42,7 @@ class TestConsoleAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(self.service.repo.get_principal(TEST_ACCOUNT_ID).role, Role.STUDENT)
         self.assertEqual(self.tester.get('/api/v1/admin/users/').status_code, 403)
 
-    def test_bypasses_training_windows_duration_opening_hours_freeze_and_weekly_limit(self):
-        base = self.service.repo.get_principal(TEST_ACCOUNT_ID)
-        self.service.repo.save_principal(replace(base, frozen_until=NOW + timedelta(days=365)))
+    def test_bypasses_training_windows_duration_opening_hours_and_weekly_limit(self):
         self.service._override_rule(max_slots_per_week=1)
         for offset, hour, minutes in [(1, 1, 540), (2, 2, 60), (3, 3, 60), (60, 4, 60)]:
             result = self.tester.post('/api/v1/bookings/', self.payload(day_offset=offset, hour=hour, minutes=minutes), format='json')
@@ -53,7 +51,6 @@ class TestConsoleAPITests(BookingAPIFixtureMixin, SimpleTestCase):
             self.assertEqual(result.data['reason_code'], 'TEST_OVERRIDE')
             self.assertEqual(result.data['attendance'], 'NOT_TRACKED')
             self.assertIsNone(result.data['review_due_at'])
-        self.assertFalse(self.tester.get('/api/v1/auth/me/').data['booking_frozen'])
         self.assertIn('TEST_BOOKING_CREATED', [item.action for item in self.service.repo.list_audit()])
 
     def test_bypass_off_keeps_inductions_but_restores_windows_and_approval(self):
@@ -170,8 +167,9 @@ class TestConsoleAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(self.authorized(tampered).get('/api/v1/auth/me/').status_code, 401)
 
     def test_test_override_does_not_extend_to_bookings_for_someone_else(self):
-        manager = self.switch('MANAGER')
-        response = manager.post('/api/v1/bookings/', {**self.payload(day_offset=8), 'on_behalf_of_zid': 'z1000002'}, format='json')
+        # An Admin: since 2026-11-06 a Manager overrides the rules for anyone (Manager override, not the test one).
+        admin = self.switch('ADMIN')
+        response = admin.post('/api/v1/bookings/', {**self.payload(day_offset=8), 'on_behalf_of_zid': 'z1000002'}, format='json')
         self.assertEqual(response.status_code, 403, response.data)
         self.assertEqual(response.data['error']['code'], 'QUALIFICATION_REQUIRED')
 

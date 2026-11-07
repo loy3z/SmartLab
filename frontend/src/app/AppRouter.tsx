@@ -14,7 +14,6 @@ import { QualificationReviewPage } from '../features/admin/QualificationReviewPa
 import { BookingReviewPage } from '../features/admin/BookingReviewPage'
 import { CalendarSyncPage } from '../features/admin/CalendarSyncPage'
 // Sprint 3 pages
-import { FreezesPage } from '../features/admin/FreezesPage'
 import { ManagerBookingsPage } from '../features/manager/ManagerBookingsPage'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { AppLayout } from './AppLayout'
@@ -23,6 +22,7 @@ import { ManagerUsersPage } from '../features/manager/ManagerUsersPage'
 import { ManagerResourcesPage } from '../features/manager/ManagerResourcesPage'
 import { BookingRecordsPage } from '../features/records/BookingRecordsPage' // Sprint 3
 import { TodayPage } from '../features/admin/TodayPage' // Sprint 3 (1.16.0)
+import { ManagerHomePage } from '../features/manager/ManagerHomePage' // 2026-11-07
 import { LabSetupPage } from '../features/manager/LabSetupPage' // Sprint 3 (1.16.0)
 import { canAccess, homePath, isKnownPath, loginDestination, normalizePath } from './routes'
 
@@ -31,13 +31,13 @@ const titles: Record<string, string> = {
   '/settings/notifications': 'Notifications', '/admin/announcements': 'Announcements', // Sprint 3 (1.19.0)
   '/dashboard': 'Dashboard', '/resources': 'Book a resource', '/bookings': 'My bookings',
   '/induction': 'Induction & training', '/admin/qualifications': 'Induction review',
-  '/admin/bookings': 'Booking review', '/admin/freezes': 'Booking freezes', '/admin/calendar-sync': 'Calendar sync', '/manager/bookings': 'Room management',
+  '/admin/bookings': 'Booking review', '/admin/calendar-sync': 'Calendar sync', '/manager/bookings': 'Room management',
   '/account': 'Account details', '/help': 'Help & support', '/login': 'Sign in',
   '/login/mock-sso': 'Demo university sign-in', '/staff/login': 'Staff sign-in', '/test/login': 'Test console',
   '/manager/users': 'User management',
   '/manager/resources': 'Resources',
   '/admin/records': 'Booking records',
-  '/admin/today': 'Today', '/manager/setup': 'Lab setup', // Sprint 3 (1.16.0)
+  '/admin/today': 'Today', '/manager/home': 'Lab overview', '/manager/setup': 'Lab setup', // Sprint 3 (1.16.0)
 }
 
 function useSignOut() {
@@ -96,7 +96,7 @@ function RouteMessage({ restricted = false }: { restricted?: boolean }) {
       <p className="app-page-description">
         {restricted ? 'Use the navigation to open the pages available to your account.' : 'The link may be wrong or out of date.'}
       </p>
-      <Link className="app-button" to={user ? homePath(user.role) : '/login'}>{user ? `Go to ${user.role === 'STUDENT' ? 'Dashboard' : 'Today'}` : 'Sign in'}</Link>
+      <Link className="app-button" to={user ? homePath(user.role) : '/login'}>{user ? `Go to ${user.role === 'STUDENT' ? 'Dashboard' : user.role === 'MANAGER' ? 'Lab overview' : 'Today'}` : 'Sign in'}</Link>
     </section>
   )
 }
@@ -150,10 +150,10 @@ export function AppRouter() {
           <Route path="/bookings" caseSensitive element={<MyBookings refreshKey={0} />} />
           <Route path="/induction" caseSensitive element={<InductionPage />} />
           <Route path="/admin/today" caseSensitive element={<TodayPage />} />{/* Sprint 3 (1.16.0) */}
+          <Route path="/manager/home" caseSensitive element={<ManagerHomePage />} />{/* 2026-11-07 */}
           <Route path="/admin/qualifications" caseSensitive element={<QualificationReviewPage />} />
           <Route path="/admin/bookings" caseSensitive element={<BookingReviewPage />} />
           {/* Sprint 3 */}
-          <Route path="/admin/freezes" caseSensitive element={<FreezesPage />} />
           <Route path="/admin/calendar-sync" caseSensitive element={<CalendarSyncPage />} />
           <Route path="/manager/bookings" caseSensitive element={<ManagerBookingsPage />} />
           <Route path="/manager/users" caseSensitive element={<ManagerUsersPage />} />

@@ -1,6 +1,4 @@
 // Sprint 3 (2026-10-27): moved from the booking feature folder; definitions unchanged.
-import type { UnfreezeRequest } from './admin'
-
 export type Role = 'STUDENT' | 'ADMIN' | 'MANAGER'
 
 export interface User {
@@ -12,11 +10,6 @@ export interface User {
   role: Role
   university_email: string
   active: boolean
-  /** Sprint 3: missed check-ins since the last freeze. */
-  no_show_count?: number
-  frozen_until?: string | null
-  /** True while booking is frozen (frozen_until is in the future). */
-  booking_frozen?: boolean
 }
 
 export interface UserInduction {
@@ -62,6 +55,3 @@ export interface AuthConfig {
   staff_sign_in_enabled?: boolean
 }
 
-export interface FrozenUser extends User {
-  pending_request: UnfreezeRequest | null
-}

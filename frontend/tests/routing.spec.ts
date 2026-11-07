@@ -87,6 +87,8 @@ const test = base.extend<{ api: MockApi }>({
       // Sprint 3 (1.16.0): the lab's contact details (empty until a Manager saves them) and the staff Today page.
       if (path === 'site/contact/' && request.method() === 'GET') return json({ id: 'contact', email: '', phone: '', hours: '', note: '' })
       if (path === 'admin/overview/' && request.method() === 'GET' && user.role !== 'STUDENT') return json(emptyOverview(user.role))
+      // 2026-11-07: the Manager home page shows this week's usage figures.
+      if (path === 'admin/reports/usage/' && request.method() === 'GET' && user.role === 'MANAGER') return json(emptyUsage)
       if (path === 'admin/users/' && request.method() === 'GET' && user.role === 'MANAGER') {
         return json({ count: accounts.length, results: accounts })
       }
@@ -102,10 +104,14 @@ const test = base.extend<{ api: MockApi }>({
   }, { auto: true }],
 })
 
+const emptyUsage = { first_date: '2030-01-07', last_date: '2030-01-13', days: 7, results: [],
+  totals: { approved: 0, booked_hours: 0, open_hours: 0, utilisation: null, checked_in: 0, no_show: 0, excused: 0, not_tracked: 0,
+    attendance_rate: null, cancelled: 0, rejected: 0 } }
+
 // Sprint 3 (1.16.0): nothing waiting on the staff Today page.
 function emptyOverview(role: string) {
   return { role, pending_inductions: 0, pending_bookings: 0, urgent_requests: 0, waitlisted: 0, changes_waiting: 0, due_soon: [],
-    due_soon_hours: 6, unfreeze_requests: 0, out_of_service: [], today: [], today_count: 0, missed_today: 0, can_decide_urgent: role === 'MANAGER' }
+    due_soon_hours: 6, out_of_service: [], today: [], today_count: 0, missed_today: 0, can_decide_urgent: role === 'MANAGER' }
 }
 
 async function signIn(page: Page, role: Role = 'STUDENT') {
@@ -151,7 +157,7 @@ const portals: { role: Role; home: string; heading: string; forbidden: string }[
   { role: 'STUDENT', home: '/dashboard', heading: 'Dashboard', forbidden: '/admin/qualifications' },
   // Sprint 3 (1.16.0): staff start on Today.
   { role: 'ADMIN', home: '/admin/today', heading: 'Today', forbidden: '/manager/bookings' },
-  { role: 'MANAGER', home: '/admin/today', heading: 'Today', forbidden: '/dashboard' },
+  { role: 'MANAGER', home: '/manager/home', heading: 'Lab overview', forbidden: '/dashboard' }, // 2026-11-07
 ]
 for (const { role, home, heading, forbidden } of portals) {
   test(`${role} gets its home, shared account page and a restricted page for a forbidden route`, async ({ page, api }) => {
@@ -418,7 +424,7 @@ for (const failure of ['offline', 'rejected'] as const) {
 
 for (const { label, user, home } of [
   { label: 'Administrator', user: users.ADMIN, home: '/admin/today' }, // Sprint 3 (1.16.0)
-  { label: 'Manager', user: users.MANAGER, home: '/admin/today' },
+  { label: 'Manager', user: users.MANAGER, home: '/manager/home' }, // 2026-11-07
 ]) {
   test(`staff sign-in authenticates ${label} with zID and password`, async ({ page, api }) => {
     await page.goto('/#/login')
@@ -708,7 +714,7 @@ test('find a free time searches only on submit and preserves the chosen interval
   await expect(dialog).toHaveCount(0)
 })
 
-// Sprint 3: notifications, check-in, calendar link, booking freeze, weekly series.
+// Sprint 3: notifications, check-in, calendar link, weekly series.
 const approvedBooking = (overrides: Record<string, unknown> = {}) => ({
   id: 'bk-1', student_id: 'test-student', resource_id: 'room-1', start: '2030-01-10T00:00:00Z', end: '2030-01-10T01:00:00Z',
   purpose: 'Lab', created_at: '2030-01-01T00:00:00Z', status: 'APPROVED', reason_code: 'MANUALLY_APPROVED', decision_reason: null,
@@ -1411,7 +1417,7 @@ test('booking dashboard uses distinct metrics and a compact next session on desk
   await expect(metrics.nth(3)).toContainText('4.5 h')
   await expect(metrics.nth(3)).toContainText('7.5 of 12 h booked')
   await expect(page.locator('.dash-more-hours')).toContainText('Need more than 12 h this week?')
-  await expect(page.getByRole('link', { name: 'Request additional hours' })).toHaveAttribute('href', '#/resources')
+  await expect(page.getByRole('link', { name: 'Request additional hours' })).toHaveAttribute('href', '#/resources?for=additional-hours')
   expect(await metrics.first().evaluate(el => getComputedStyle(el).borderRadius)).not.toBe('0px')
   expect((await page.locator('.dash-session').boundingBox())!.height).toBeLessThan(240)
   await expect(page.getByRole('heading', { name: 'More upcoming', exact: true })).toBeVisible()
@@ -1431,6 +1437,7 @@ test('booking staff overview retains its tasks with a compact status line', asyn
   } }))
   await page.goto('/#/login')
   await signIn(page, 'MANAGER')
+  await page.goto('/#/admin/today') // 2026-11-07: a Manager lands on the Lab overview
   await page.setViewportSize({ width: 1440, height: 1000 })
   await expect(page.getByRole('link', { name: /Booking requests to decide/ })).toBeVisible()
   await expect(page.getByRole('heading', { name: /Bookings today/ })).toBeVisible()
@@ -1441,63 +1448,6 @@ test('booking staff overview retains its tasks with a compact status line', asyn
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   }
   await page.screenshot({ path: '../../output/booking-history-2026-10-28/today-390.png', fullPage: true })
-})
-
-test('a frozen person sees the freeze and can ask to be unfrozen', async ({ page }) => {
-  const sent: unknown[] = []
-  await page.route('**/api/v1/**', async (route) => {
-    const request = route.request()
-    const path = new URL(request.url()).pathname.replace('/api/v1/', '')
-    if (path === 'auth/me/') return route.fulfill({ json: { ...users.STUDENT, no_show_count: 0, frozen_until: '2030-02-10T00:00:00Z', booking_frozen: true } })
-    if (path === 'account/unfreeze-requests/' && request.method() === 'GET') {
-      return route.fulfill({ json: { count: sent.length, results: sent.length ? [{ id: 'u1', principal_id: 'test-student', reason: 'Sick', created_at: '2030-01-01T00:00:00Z',
-        status: 'PENDING', decided_by: null, decided_at: null, decision_reason: null, person: null, decided_by_user: null }] : [] } })
-    }
-    if (path === 'account/unfreeze-requests/' && request.method() === 'POST') {
-      sent.push(request.postDataJSON())
-      return route.fulfill({ status: 201, json: { id: 'u1', status: 'PENDING' } })
-    }
-    return route.fallback()
-  })
-  await page.goto('/#/login')
-  await signIn(page, 'STUDENT')
-  await page.goto('/#/bookings')
-  const notice = page.getByRole('status', { name: 'Booking frozen' })
-  await expect(notice).toContainText('Booking frozen until 10 Feb 2030')
-  await notice.getByPlaceholder('Explain what happened').fill('I was sick')
-  await notice.getByRole('button', { name: 'Send request', exact: true }).click()
-  await expect(notice).toContainText('waiting for staff')
-  expect(sent).toEqual([{ reason: 'I was sick' }])
-})
-
-test('staff review unfreeze requests on Booking freezes', async ({ page }) => {
-  const decisions: unknown[] = []
-  const person = { id: 'test-unqualified-student', zid: 'z1000002', display_name: 'Test Unqualified Student', role: 'STUDENT' }
-  const requestItem = { id: 'u1', principal_id: person.id, reason: 'Missed while sick', created_at: '2030-01-01T00:00:00Z', status: 'PENDING',
-    decided_by: null, decided_at: null, decision_reason: null, person: { ...person, frozen_until: '2030-02-10T00:00:00Z', booking_frozen: true }, decided_by_user: null }
-  await page.route('**/api/v1/admin/**', async (route) => {
-    const request = route.request()
-    const path = new URL(request.url()).pathname.replace('/api/v1/', '')
-    if (path === 'admin/unfreeze-requests/') return route.fulfill({ json: { count: decisions.length ? 0 : 1, results: decisions.length ? [] : [requestItem] } })
-    if (path === 'admin/frozen-users/') {
-      return route.fulfill({ json: { count: decisions.length ? 0 : 1, results: decisions.length ? [] : [{ ...unqualifiedStudent, frozen_until: '2030-02-10T00:00:00Z',
-        booking_frozen: true, no_show_count: 0, pending_request: requestItem }] } })
-    }
-    if (path === 'admin/unfreeze-requests/u1/review/' && request.method() === 'POST') {
-      decisions.push(request.postDataJSON())
-      return route.fulfill({ json: { ...requestItem, status: 'APPROVED' } })
-    }
-    return route.fallback()
-  })
-  await page.goto('/#/login')
-  await signIn(page, 'ADMIN')
-  await page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'Booking freezes', exact: true }).click()
-  const requests = page.getByRole('table', { name: 'Unfreeze requests' })
-  await expect(requests).toContainText('Missed while sick')
-  await requests.getByRole('button', { name: 'Unfreeze', exact: true }).click()
-  await page.getByRole('dialog', { name: 'Unfreeze Test Unqualified Student (z1000002)?' }).getByRole('button', { name: 'Unfreeze', exact: true }).click()
-  await expect(page.getByText('No requests waiting')).toBeVisible()
-  expect(decisions).toEqual([{ decision: 'APPROVED', reason: '' }])
 })
 
 const recurringRoom = { id: 'room-1', name: 'Lab Room 1', kind: 'ROOM', location: 'Demo laboratory', description: '', active: true,
@@ -1569,6 +1519,10 @@ for (const role of ['ADMIN', 'MANAGER'] as const) {
       if (path === 'resources/') return route.fulfill({ json: { count: 1, results: [recurringRoom] } })
       if (path === 'resources/room-1/availability/') {
         recipients.push(url.searchParams.get('for_zid'))
+        if (role === 'MANAGER') return route.fulfill({ json: seriesAvailability({
+          manager_override: true, earliest_date: '2030-01-01', latest_date: null,
+          normal_booking_window: { earliest_date: '2030-01-08', latest_date: '2030-01-15', max_advance_days: 14 },
+        }) })
         return route.fulfill({ json: seriesAvailability({ latest_date: '2030-01-15', max_advance_days: 14 }) })
       }
       if (path === 'people/lookup/') return route.fulfill({ json: users.STUDENT })
@@ -1649,14 +1603,6 @@ test('weekly series test override has no upper date limit but on-behalf bookings
   await expect(check).toBeEnabled()
 })
 
-test('students do not see Repeat weekly or Booking freezes', async ({ page }) => {
-  await page.goto('/#/login')
-  await signIn(page, 'STUDENT')
-  await expect(page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'Booking freezes', exact: true })).toHaveCount(0)
-  await page.goto('/#/admin/freezes')
-  await expect(page.getByRole('heading', { name: 'This page is not available for your role' })).toBeVisible()
-})
-
 // Sprint 3: Managers add and edit rooms and equipment.
 test('a Manager adds equipment and sees bookings that no longer fit an edit', async ({ page }) => {
   const room = { id: 'room-1', name: 'Lab Room 1', kind: 'ROOM', location: 'Demo laboratory', description: '', active: true,
@@ -1664,6 +1610,9 @@ test('a Manager adds equipment and sees bookings that no longer fit an edit', as
     timezone: 'Australia/Sydney', pending_hold_minutes: 1440, status: 'AVAILABLE', status_reason: null, room_id: null, category: null }
   const resources: Record<string, unknown>[] = [room]
   const sent: { method: string; path: string; body: Record<string, unknown> }[] = []
+  let internalAttempts = 0
+  let releaseInternal!: () => void
+  const internalReady = new Promise<void>((resolve) => { releaseInternal = resolve })
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
     const path = new URL(request.url()).pathname.replace('/api/v1/', '')
@@ -1677,6 +1626,16 @@ test('a Manager adds equipment and sees bookings that no longer fit an edit', as
       const created = { ...room, ...body, id: 'eq-9', opening_time: `${body.opening_time}:00`, closing_time: `${body.closing_time}:00` }
       resources.push(created)
       return route.fulfill({ status: 201, json: created })
+    }
+    if (path === 'admin/resources/eq-9/internal/' && request.method() === 'PATCH') {
+      internalAttempts++
+      if (internalAttempts === 1) return route.fulfill({ status: 503, json: { detail: 'Try again.' } })
+      expect(request.postDataJSON()).toEqual({ asset_number: 'A-900' })
+      return route.fulfill({ json: { resource_id: 'eq-9', asset_number: 'A-900' } })
+    }
+    if (path === 'admin/resources/room-1/internal/' && request.method() === 'GET') {
+      await internalReady
+      return route.fulfill({ json: { resource_id: 'room-1', owner: 'Lab team', asset_number: '', provided_by: '', specifications: '', updated_at: null, updated_by: null } })
     }
     if (path === 'admin/resources/room-1/' && request.method() === 'PATCH') {
       const body = request.postDataJSON()
@@ -1698,14 +1657,22 @@ test('a Manager adds equipment and sees bookings that no longer fit an edit', as
   await dialog.getByLabel('Location').fill('Lab Room 1, bench 4')
   await dialog.getByLabel('Kept in room').selectOption('room-1')
   await dialog.getByLabel('Equipment type').fill('Optics')
+  await dialog.getByLabel('UNSW asset number').fill('A-900')
   await dialog.getByRole('button', { name: 'Add', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toBeVisible()
+  await dialog.getByRole('button', { name: 'Save changes', exact: true }).click()
   await expect(page.getByRole('table', { name: 'Resources' })).toContainText('Spectrometer 900')
+  expect(internalAttempts).toBe(2)
+  expect(sent.filter(({ method }) => method === 'POST')).toHaveLength(1)
   expect(sent[0].body).toMatchObject({ kind: 'EQUIPMENT', name: 'Spectrometer 900', room_id: 'room-1', category: 'Optics',
     required_qualification_id: 'req-1', slot_minutes: 30, opening_time: '08:00', closing_time: '20:00' })
 
   await page.getByRole('tab', { name: /Rooms/ }).click()
   await page.getByRole('button', { name: 'Edit Lab Room 1', exact: true }).click()
   const edit = page.getByRole('dialog', { name: 'Edit Lab Room 1' })
+  await expect(edit.getByLabel('Owner')).toBeDisabled()
+  releaseInternal()
+  await expect(edit.getByLabel('Owner')).toHaveValue('Lab team')
   await edit.getByLabel('Closes').fill('17:00')
   await edit.getByRole('button', { name: 'Save changes', exact: true }).click()
   await expect(page.getByRole('status', { name: 'Bookings outside the new rules' })).toContainText('outside the new opening hours')
@@ -1720,8 +1687,8 @@ test('Admins do not see the Resources page', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'This page is not available for your role' })).toBeVisible()
 })
 
-// Sprint 3: usage statistics tab of Booking Records (Admins and Managers).
-test('an Admin reads the usage statistics on Booking Records', async ({ page }) => {
+// Sprint 3: usage statistics tab of Booking Records (Managers only since 2026-11-07).
+test('a Manager reads the usage statistics on Booking Records; an Admin has no such tab', async ({ page }) => {
   const figures = { approved: 3, booked_hours: 4.5, open_hours: 84, utilisation: 0.054, checked_in: 1, no_show: 1, excused: 0,
     not_tracked: 0, attendance_rate: 0.5, cancelled: 1, rejected: 0 }
   const asked: string[] = []
@@ -1732,6 +1699,11 @@ test('an Admin reads the usage statistics on Booking Records', async ({ page }) 
   })
   await page.goto('/#/login')
   await signIn(page, 'ADMIN')
+  await page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'Booking records', exact: true }).click()
+  await expect(page.getByText('Admins see bookings from the last 7 days')).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Usage statistics', exact: true })).toHaveCount(0)
+  await signOut(page)
+  await signIn(page, 'MANAGER')
   await page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'Booking records', exact: true }).click()
   await page.getByRole('tab', { name: 'Usage statistics', exact: true }).click()
   await expect(page).toHaveURL(/#\/admin\/records\?tab=usage$/)
@@ -2105,21 +2077,42 @@ test('phone width: tables and tab rows never make a page wider than the screen',
   }
 })
 
+// 2026-11-07 (client, Week 8): the three roles look different; a Manager starts on the Lab overview.
+test('a Manager starts on the Lab overview, sees the role badge and looks up a zID', async ({ page }) => {
+  await page.goto('/#/login')
+  await signIn(page, 'ADMIN')
+  await expect(page.getByText('Admin view', { exact: true })).toBeVisible()
+  await signOut(page)
+  await signIn(page, 'MANAGER')
+  await expect(page).toHaveURL(/#\/manager\/home$/)
+  await expect(page.getByText('Manager view', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Only a Manager decides', exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: /Urgent requests/ })).toBeVisible()
+  await page.getByLabel('zID to look up').fill('z12')
+  await page.getByRole('button', { name: 'Look up', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('z followed by 7 digits')
+  await page.getByLabel('zID to look up').fill('Z1000001')
+  await page.getByRole('button', { name: 'Look up', exact: true }).click()
+  await expect(page).toHaveURL(/#\/admin\/records\?q=z1000001$/)
+  await expect(page.getByLabel('Name or zID')).toHaveValue('z1000001')
+})
+
 test('staff start on Today, whose cards open the pages that handle them', async ({ page }) => {
   await page.route('**/api/v1/admin/overview/', (route) => route.fulfill({ json: {
     role: 'ADMIN', pending_inductions: 2, pending_bookings: 3, urgent_requests: 1, waitlisted: 0, changes_waiting: 1,
-    due_soon: [approvedBooking({ status: 'PENDING_APPROVAL', review_due_at: '2030-01-01T02:00:00Z' })], due_soon_hours: 6, unfreeze_requests: 0,
+    due_soon: [approvedBooking({ status: 'PENDING_APPROVAL', review_due_at: '2030-01-01T02:00:00Z' })], due_soon_hours: 6,
     out_of_service: [{ resource: { ...reviewRoom, status: 'MAINTENANCE', status_reason: 'Water leak' }, affected_bookings: 2 }],
     today: [], today_count: 0, missed_today: 0, can_decide_urgent: false } }))
   await page.goto('/#/login')
   await signIn(page, 'ADMIN')
   await expect(page).toHaveURL(/#\/admin\/today$/)
   await expect(page.getByRole('heading', { name: 'Today', exact: true })).toBeVisible()
-  await expect(page.getByText('A Manager decides these')).toBeVisible()
+  // 2026-11-07 (client, Week 8): an Admin's Today has review work only; what a Manager decides is on the Manager home.
+  await expect(page.getByRole('link', { name: /Urgent requests/ })).toHaveCount(0)
   await expect(page.getByText('Water leak')).toBeVisible()
   await expect(page.getByText('2 future bookings')).toBeVisible()
   // Sprint 3 (2026-10-28 feedback L2, L5): urgent has its own red line; the check only shows when nothing waits.
-  await expect(page.getByRole('link', { name: /Urgent requests/ })).toHaveCSS('border-top-color', 'rgb(173, 63, 57)')
+  await expect(page.getByRole('link', { name: /Booking requests to decide/ })).toHaveCSS('border-top-color', 'rgb(173, 63, 57)')
   await expect(page.locator('.today-brief-mark')).toHaveCount(0)
   await page.getByRole('link', { name: /Induction evidence to review/ }).click()
   await expect(page).toHaveURL(/#\/admin\/qualifications$/)
@@ -2129,7 +2122,7 @@ test('Today keeps a lone card and a lone panel in proportion', async ({ page }) 
   // Sprint 3 (2026-10-28 feedback L2): one card stays a third wide; a panel without its neighbour spans the row.
   await page.route('**/api/v1/admin/overview/', (route) => route.fulfill({ json: {
     role: 'ADMIN', pending_inductions: 1, pending_bookings: 0, urgent_requests: 0, waitlisted: 0, changes_waiting: 0,
-    due_soon: [], due_soon_hours: 6, unfreeze_requests: 0,
+    due_soon: [], due_soon_hours: 6,
     out_of_service: [{ resource: { ...reviewRoom, status: 'MAINTENANCE', status_reason: 'Water leak' }, affected_bookings: 1 }],
     today: [], today_count: 0, missed_today: 0, can_decide_urgent: false } }))
   await page.setViewportSize({ width: 1440, height: 900 })
@@ -2233,7 +2226,7 @@ for (const role of ['STUDENT', 'ADMIN', 'MANAGER'] as Role[]) {
     await expect(page.getByText('Email is not switched on for this site.', { exact: true })).toBeVisible()
     await expect(page.getByRole('checkbox', { name: 'Booking updates: By email', exact: true })).toBeDisabled()
     // Review Q1 (2026-10-27): with email off the whole column shows unchecked; the saved choice returns when email is on.
-    for (const category of ['Booking updates', 'Reminders', 'Induction and training', 'Account and booking freeze', 'Room and equipment status']) {
+    for (const category of ['Booking updates', 'Reminders', 'Induction and training', 'Missed check-ins', 'Room and equipment status']) {
       await expect(page.getByRole('checkbox', { name: `${category}: By email`, exact: true })).not.toBeChecked()
     }
     expect(writes).toHaveLength(1)
@@ -2353,3 +2346,100 @@ test('1.19 resource status keeps errors inside the form and sends the optional S
   await expect(dialog).toHaveCount(0)
   expect(writes[1]).toEqual({ status: 'MAINTENANCE', reason: 'Repairing the air conditioning', expected_back: '2030-01-10T01:00:00.000Z' })
 })
+
+// 2026-11-07 (client, Week 8): drag the end of a booking in progress, as in a calendar; it asks a Manager.
+test('a student drags the end of a booking in progress to ask a Manager for more time', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2030-01-09T23:30:00Z')) // 10:30 in Sydney
+  const room = { ...recurringRoom, closing_time: '13:00:00' }
+  const booking = approvedBooking({ id: 'b-ext', start: '2030-01-09T23:00:00Z', end: '2030-01-10T00:00:00Z', check_in_open: false })
+  let current: Record<string, unknown> = booking
+  const sent: Record<string, unknown>[] = []
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname.replace('/api/v1/', '')
+    if (path === 'bookings/' && request.method() === 'GET') return route.fulfill({ json: { count: 1, results: [current] } })
+    if (path === 'resources/' && request.method() === 'GET') return route.fulfill({ json: { count: 1, results: [room] } })
+    if (path === 'resources/room-1/availability/') {
+      return route.fulfill({ json: { slots: [{ start: '2030-01-10T01:00:00Z', end: '2030-01-10T01:30:00Z', available: false,
+        reason_code: 'BOOKED', hold_until: null, held_by_me: false, requested_by_me: false }] } }) // someone from 12:00
+    }
+    if (path === 'bookings/b-ext/extend/' && request.method() === 'POST') {
+      const body = request.postDataJSON()
+      sent.push(body)
+      current = { ...booking, extension_end: body.end }
+      return route.fulfill({ json: current })
+    }
+    return route.fallback()
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'STUDENT')
+  await page.goto('/#/bookings')
+  await page.getByRole('button', { name: 'Extend', exact: true }).click()
+  const handle = page.getByRole('slider', { name: 'New end time' })
+  await expect(handle).toBeEnabled()
+  // Drag far to the right: it stops at 12:00, where the next booking starts.
+  const track = (await page.locator('.ext-track').boundingBox())!
+  await page.mouse.move(track.x + track.width * 0.4, track.y + track.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(track.x + track.width * 0.95, track.y + track.height / 2, { steps: 5 })
+  await page.mouse.up()
+  await expect(handle).toHaveAttribute('aria-valuetext', /12:00/)
+  await handle.press('ArrowLeft') // keyboard: back one step, to 11:30
+  await expect(handle).toHaveAttribute('aria-valuetext', /11:30/)
+  await page.getByRole('button', { name: 'Ask a Manager', exact: true }).click()
+  await expect(page.getByText(/Waiting for a Manager/)).toBeVisible()
+  expect(sent).toEqual([{ end: '2030-01-10T00:30:00.000Z' }])
+})
+
+test('a Manager approves an extension request on the Lab overview', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2030-01-09T23:30:00Z'))
+  const waiting = approvedBooking({ id: 'b-ext', start: '2030-01-09T23:00:00Z', end: '2030-01-10T00:00:00Z', extension_end: '2030-01-10T01:00:00Z' })
+  const decisions: Record<string, unknown>[] = []
+  await page.route('**/api/v1/admin/overview/', (route) => route.fulfill({ json: {
+    ...emptyOverview('MANAGER'), extension_requests: decisions.length ? [] : [waiting] } }))
+  await page.route('**/api/v1/bookings/b-ext/extend/review/', (route) => {
+    decisions.push(route.request().postDataJSON())
+    return route.fulfill({ json: { ...waiting, end: waiting.extension_end, extension_end: null } })
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'MANAGER')
+  await expect(page.getByRole('link', { name: /1\s*Extension requests/ })).toBeVisible()
+  const panel = page.getByRole('heading', { name: 'Extension requests', exact: true }).locator('..')
+  await expect(panel).toContainText('Test Student')
+  await panel.getByRole('button', { name: 'Approve', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Extension requests', exact: true })).toHaveCount(0)
+  expect(decisions).toEqual([{ decision: 'APPROVED', reason: '', expected_end: waiting.extension_end }])
+})
+
+// 2026-11-07 (three-role walkthrough): what another person decides shows without F5.
+test('Today shows a new request when the Admin comes back to the tab', async ({ page }) => {
+  let pending = 0
+  await page.route('**/api/v1/admin/overview/', (route) => route.fulfill({ json: { ...emptyOverview('ADMIN'), pending_bookings: pending } }))
+  await page.goto('/#/login')
+  await signIn(page, 'ADMIN')
+  await expect(page.getByText('Nothing waiting for review')).toBeVisible()
+  pending = 1 // a student submits a request in another window
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(page.getByRole('link', { name: /Booking requests to decide/ })).toBeVisible()
+})
+
+test('a Manager sees Manager rules on resource cards; a student opens additional hours straight from a card', async ({ page }) => {
+  const room = { ...recurringRoom, max_booking_minutes: 480, effective_max_booking_minutes: 180 }
+  await page.route('**/api/v1/resources/?**', (route) => route.fulfill({ json: { count: 1, results: [room] } }))
+  await page.goto('/#/login')
+  await signIn(page, 'MANAGER')
+  await page.goto('/#/resources')
+  const card = page.locator('.bk-rcard').first()
+  await expect(card).toContainText('Manager booking: no induction needed')
+  await expect(card).toContainText('Up to 8 h')
+  await expect(card).not.toContainText('Submit induction')
+  await signOut(page)
+  await signIn(page, 'STUDENT')
+  await page.goto('/#/resources?for=additional-hours')
+  await expect(page.getByText('Choose a room or equipment to request additional hours.')).toBeVisible()
+  const studentCard = page.locator('.bk-rcard').first()
+  await expect(studentCard).toContainText('Up to 3 h')
+  await expect(studentCard.getByRole('button', { name: 'View availability' })).toHaveCount(0)
+  await expect(studentCard.getByRole('button', { name: 'Request additional hours' })).toHaveCount(1)
+})
+

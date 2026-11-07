@@ -2,6 +2,48 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.27.0 之后：三角色走查的五处修改（2026-11-07，只改前端，接口不变）
+
+依据 Loy 的走查 `claude/reports/2026-11-07-three-role-walkthrough.md`。
+
+- **页面自己刷新**：Today、Lab overview、My bookings、Dashboard 每 30 秒、以及切回这个标签页时重新读取（`lib/use-auto-refresh.ts`）。学生提交后 Admin 不用 F5 就能看到，Admin 批准后学生也能看到。
+- **写对审批人**：紧急、额外时数、超长申请在 My bookings、Dashboard、Booking review 都显示 Waiting for Manager approval（`format.ts` `statusText`）。之前紧急申请写 admin。
+- **Manager 的资源卡片**：显示 Manager booking: no induction needed 和资源自身最长时长，不再提示先交 induction、最多 3 小时。
+- **额外时数入口**：Dashboard 的 Request additional hours 打开 `/resources?for=additional-hours`，每张卡片的主按钮直接打开额外时数申请。
+- **延长申请卡片**：链接到 `/manager/home?focus=extensions`，页面滚到审批列表（手机上也是）。
+
+## 1.27.0：延长改为拖动时间轴、由 Manager 批准（2026-11-07，迁移 016）
+
+- Loy 2026-11-07 按会议 14:11–15:53 的原意定：学生在时间轴上拖动预约的结束时间（像在日历里拖），发出延长申请，由 Manager 批准；不再立即生效。Manager 自己延长仍然立即生效。
+- 申请存在预约的 `extension_end` 上（迁移 016），再次申请会替换；申请时和批准时都检查后面是否空闲、开放时间和资源最长时长；等待期间不占用后面的时间。
+- Manager 在 Lab overview 的 Extension requests 里批准或拒绝（拒绝要写原因），Today 和 Lab overview 有 Extension requests 卡片；双方都收到通知，批准和拒绝也发邮件。新接口 `POST bookings/{id}/extend/review/`。
+- 1.24.0 的下拉框换成可拖动、也可用方向键的时间轴；学生的延长不再受单次 3 小时和每周时数限制（由 Manager 决定）。
+- Week 8 复查：延长申请留在待审列表直至申请的新结束时间，拒绝对已替换的时间作决定；修正 Manager 查空闲和重复预约的日期／时长、设备内部资料保存失败后的重试，以及执行 014 后部署失败的恢复提示和流程。
+
+## 1.26.0：三个角色看到的明显不同（2026-11-07，迁移 015）
+
+依据客户 Week 8 会议（02:33–04:48、19:49–20:56：面板可以相似，数据访问要完全不同；Admin 不需要全部历史，Manager 需要）。任务卡 `tasks-week8-2026-11-06.md` W5–W7。
+
+- **W5 Manager 首页**：Manager 登录后进 Lab overview（`/manager/home`）：只有 Manager 能决定的事、房间和设备状态、本周使用情况、按 zID 查一年历史、实验室管理入口。Admin 的 Today 只留审批工作（不再显示紧急、额外时数、超长三张 Manager 卡片）。页面顶部显示 Student／Admin／Manager view 标识。
+- **W6 Admin 只看近期历史**：Booking Records 和 CSV 对 Admin 只返回 7 天内结束及以后的预约；使用情况报表改为只有 Manager 能看。
+- **W7 只给 Manager 看的设备资料**：负责人、UNSW 资产编号、来源、规格。存在单独的表 `resource_internal_info`（迁移 015），Manager 在 Resources 编辑弹窗里填写，接口 `GET/PATCH admin/resources/{id}/internal/`；普通资源数据里没有这些字段。
+
+## 1.25.0：删除冻结（2026-11-07，迁移 014）
+
+- Loy 2026-11-07：客户 Week 8 会议不想用缺席处罚，1.24.0 的“默认关闭”改为整个删除。
+- 删除：缺席 N 次冻结、冻结时取消之后的预约、解冻申请和 Booking freezes 页面、5 个接口、用户的 `no_show_count`／`frozen_until`／`booking_frozen` 字段、`FREEZE_AFTER_NO_SHOWS`／`FREEZE_DAYS` 配置。
+- 保留：到场确认（I'm here）、每个预约的缺席标记和使用情况报表；缺席时通知本人以后来不了要取消。旧数据里因冻结取消的预约照常显示原因。
+- 迁移 014 删表 `unfreeze_request` 和两列，会删掉这些数据；回滚旧代码前要重跑 006（见 `DEPLOY.md`）。
+
+## 1.24.0：客户 Week 8 会议的三项（2026-11-06，无迁移）
+
+依据：客户 11-04 会议（项目文档 `reports/2026-11-04-client-meeting-week8.md`）。任务卡 `tasks-week8-2026-11-06.md`。
+
+- **Manager 可以越过规则**（会议 00:41–02:28、07:15–08:42）：Manager 给自己或代别人预约时直接批准，不检查 induction、提前 7–28 天、单次 3 小时、每周 12 小时、8 个未来预约和冻结；资源可预约、开放时间、资源自身最长时长和时段空闲照常检查，不挤掉别人。Manager 改期同样不再查 induction 和这些限额。这推翻了 10-17 “induction 不能绕过”的决定。Admin 不变。
+- **延长进行中的预约**（14:19–15:53）：新接口 `POST bookings/{id}/extend/`；My bookings 和 Manager 的 Room bookings 有 Extend 按钮。后面空闲就立即生效，Manager 收到通知；学生超过 3 小时或周额度时请 Manager 延长。
+- **冻结默认关闭**（15:56–17:27）：客户不想第一阶段就处罚。`FREEZE_AFTER_NO_SHOWS` 默认改为 0（不冻结），缺席仍记录，通知改为提醒及时取消。功能保留，设为正数即恢复。
+- 按实验室分别配置规则（会议第 1 项）这次没有做，方案和要问客户的问题在任务卡。
+
 ## 1.23.0：Dashboard 显示本周还剩多少小时（2026-11-03）
 
 - Loy 2026-11-03：学生看不到自己本周还能约多少小时，只有超额被拒时才知道。学生 Dashboard 加第四个框“Hours left this week”，显示剩余小时和“已约 x / 12 h”，点框进入 Book a resource，并提示可以申请额外时数。8 个未来预约不另加显示：Upcoming bookings 加 Pending requests 就是这个数。

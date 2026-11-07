@@ -1,8 +1,8 @@
 // Sprint 3 (2026-10-27): moved from the booking feature folder; function bodies unchanged.
 import { request, requestBlob } from '../lib/api-client'
 import { post } from './client'
-import type { StaffOverview, UnfreezeRequest } from './types/admin'
-import type { FrozenUser, ManagedUser, User } from './types/auth'
+import type { StaffOverview } from './types/admin'
+import type { ManagedUser } from './types/auth'
 import type { Booking, CalendarCheck, CalendarSyncStatus } from './types/bookings'
 import type { ListResponse } from './types/common'
 import type { Qualification, Resource, ResourceStatus, UsageReport } from './types/resources'
@@ -108,20 +108,6 @@ export function updateResourceStatus(
 }
 
 
-export const listFrozenUsers = () => request<ListResponse<FrozenUser>>('admin/frozen-users/')
-
-export function listUnfreezeRequests(status?: 'PENDING' | 'APPROVED' | 'REJECTED') {
-  const qs = new URLSearchParams()
-  if (status) qs.set('status', status)
-  return request<ListResponse<UnfreezeRequest>>(`admin/unfreeze-requests/?${qs}`)
-}
-
-export const reviewUnfreeze = (id: string, decision: 'APPROVED' | 'REJECTED', reason = '') =>
-  post<UnfreezeRequest>(`admin/unfreeze-requests/${id}/review/`, { decision, reason })
-
-export const unfreezeUser = (userId: string, reason = '') => post<User>(`admin/users/${userId}/unfreeze/`, { reason })
-
-
 // Sprint 3: usage report (Manager) ---------------------------------------------------------------------------
 export const getUsageReport = (firstDate: string, lastDate: string) =>
   request<UsageReport>(`admin/reports/usage/?${new URLSearchParams({ first_date: firstDate, last_date: lastDate })}`)
@@ -139,7 +125,3 @@ export const processCalendarSync = () => post<{ processed_count: number }>('admi
 
 export const retryCalendarSync = (bookingId: string) => post<Booking>(`admin/bookings/${bookingId}/outlook-retry/`, {})
 
-
-export const listMyUnfreezeRequests = () => request<ListResponse<UnfreezeRequest>>('account/unfreeze-requests/')
-
-export const requestUnfreeze = (reason: string) => post<UnfreezeRequest>('account/unfreeze-requests/', { reason })

@@ -70,13 +70,9 @@ class Principal:
     role: Role
     university_email: str
     active: bool = True
-    # Sprint 3: missed check-ins since the last freeze. Reaching the rules' limit freezes booking for a while.
-    no_show_count: int = 0
-    # While in the future, this person cannot be booked for (their reviewing rights are unaffected).
-    frozen_until: datetime | None = None
+    # 2026-11-07: no_show_count and frozen_until were removed with the booking freeze (client, Week 8).
 
     def __post_init__(self) -> None:
-        _require_aware(frozen_until=self.frozen_until)
         if not self.university_email or "@" not in self.university_email or any(char.isspace() for char in self.university_email):
             raise ValueError("A university email address is required for each principal.")
 
@@ -84,9 +80,6 @@ class Principal:
     def is_staff(self) -> bool:
         """Admins and Managers are university staff: they review and manage, and may also book."""
         return self.role in (Role.ADMIN, Role.MANAGER)
-
-    def frozen_at(self, at: datetime) -> bool:
-        return bool(self.frozen_until and self.frozen_until > at)
 
     @property
     def is_authenticated(self) -> bool:
@@ -157,6 +150,20 @@ class SiteContact:
 
 
 SITE_CONTACT_ID = "00000000-0000-0000-0000-000000000c01"
+
+
+@dataclass(frozen=True)
+class ResourceInternalInfo:
+    """2026-11-07 (client, Week 8): what only Managers see about a room or piece of equipment: who owns it, its UNSW
+    asset number, where it came from and its specifications. A separate record (table resource_internal_info), so it
+    never travels with the resource data that students and Admins receive."""
+    resource_id: str
+    owner: str = ""
+    asset_number: str = ""
+    provided_by: str = ""
+    specifications: str = ""
+    updated_at: datetime | None = None
+    updated_by: str | None = None
 
 
 @dataclass(frozen=True)
@@ -281,6 +288,9 @@ class Booking:
     # A separate Manager decision exempts only this booking's normal single-booking duration cap.
     long_booking: bool = False
     long_booking_reason: str | None = None
+    # 2026-11-07 (client, Week 8): the later end the person asked for while the booking is in progress; it waits for
+    # a Manager (extend_booking / review_extension in services/changes.py). None when nothing is waiting.
+    extension_end: datetime | None = None
 
     def __post_init__(self) -> None:
         if self.long_booking:
@@ -308,6 +318,7 @@ class Booking:
             reviewed_at=self.reviewed_at,
             updated_at=self.updated_at,
             hold_until=self.hold_until,
+            extension_end=self.extension_end,
         )
 
     def hold_is_active(self, at: datetime) -> bool:
@@ -454,29 +465,6 @@ class CalendarFeed:
 
     def __post_init__(self) -> None:
         _require_aware(created_at=self.created_at)
-
-
-class UnfreezeStatus(str, Enum):
-    PENDING = "PENDING"
-    APPROVED = "APPROVED"
-    REJECTED = "REJECTED"
-
-
-@dataclass(frozen=True)
-class UnfreezeRequest:
-    id: str
-    principal_id: str
-    reason: str
-    created_at: datetime
-    status: UnfreezeStatus = UnfreezeStatus.PENDING
-    decided_by: str | None = None
-    decided_at: datetime | None = None
-    decision_reason: str | None = None
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.status, UnfreezeStatus):
-            object.__setattr__(self, "status", UnfreezeStatus(self.status))
-        _require_aware(created_at=self.created_at, decided_at=self.decided_at)
 
 
 # Sprint 3 (1.19.0): explicit author role preserves the signature of signed test sessions too.

@@ -9,7 +9,7 @@ const CATEGORIES: Record<string, { label: string; description: string }> = {
   bookings: { label: 'Booking updates', description: 'Requests received, approved, rejected, moved, cancelled, waitlisted and expired; weekly series.' },
   reminders: { label: 'Reminders', description: 'Upcoming bookings and induction expiry reminders.' },
   induction: { label: 'Induction and training', description: 'Evidence received, verified or rejected.' },
-  account: { label: 'Account and booking freeze', description: 'Missed check-ins, booking freezes, unfreeze decisions and restored access.' },
+  account: { label: 'Missed check-ins', description: 'When a booking is recorded as missed.' },
   resources: { label: 'Room and equipment status', description: 'Maintenance, closures and reopening affecting your bookings.' },
 }
 export function NotificationPreferences() {

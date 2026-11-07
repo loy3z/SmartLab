@@ -30,16 +30,16 @@
 | --- | --- | --- | --- | --- |
 | 1 | 日历订阅链接 | 所有人 | My Bookings | 1.12.0 |
 | 2 | 站内通知（铃铛） | 所有人 | 顶部栏 | 1.12.0 |
-| 3 | 到场确认、缺席、冻结与解冻 | 所有人；员工处理解冻 | My Bookings、Booking Freezes | 1.12.0 |
+| 3 | 到场确认和缺席（冻结 1.25.0 删除） | 所有人 | My Bookings | 1.12.0 |
 | 4 | 每人每周最多 3 个预约 | 所有人 | Book a Resource | 1.12.0 |
 | 5 | 员工的重复预约 | Admin、Manager | 资源卡片上的 Repeat weekly | 1.12.0 |
 | 6 | Manager 在网页上管理房间和设备 | Manager | Resources | 1.13.0 |
 | 7 | 提醒：预约快开始、induction 快到期、申请过期 | 所有人 | 铃铛 | 1.13.0 |
-| 8 | 使用情况报表 | Admin、Manager（1.14.0 起） | Booking Records → Usage statistics | 1.13.0 |
+| 8 | 使用情况报表 | Manager（1.26.0 起；1.14.0–1.25.0 Admin 也可以） | Booking Records → Usage statistics | 1.13.0 |
 | 9 | 员工修改自己的密码 | Admin、Manager | Account | 1.13.0 |
 | 10 | `create_manager` 命令：建第一个 Manager | 部署的人 | 命令行 | 1.13.0 |
 | 11 | 邮件通知（Gmail 系统邮箱）和“申请已收到”确认 | 所有人收；部署的人配置 | 邮箱、铃铛 | 1.14.0 |
-| 12 | Booking Records：查、筛选、导出所有人的预约 | Admin、Manager | Booking Records | 1.14.0 |
+| 12 | Booking Records：查、筛选、导出所有人的预约 | Manager 全部；Admin 只有 7 天内（1.26.0） | Booking Records | 1.14.0 |
 | 13 | 重复预约在 My Bookings 里合成一张卡片 | 所有人 | My Bookings | 1.14.0 |
 | 14 | 时长用小时显示；页面顶部更紧凑 | 所有人 | Book a Resource、My Bookings 等 | 1.14.0 |
 | 15 | 可视化第一部分：铃铛动效和面板、资源封面、时间格配色和“现在”线、基础动效 | 所有人 | 顶部栏、Book a Resource、所有页面 | 1.15.0 |
@@ -71,31 +71,16 @@
 - **数据**：表 `notification`。
 - **测试**：`test_sprint3.py` `NotificationTests` 和 `test_notifications_api`；`test_extra_channels_receive_new_notifications_after_the_request`；前端 `tests/sprint3.test.mjs`。
 
-## 3. 到场确认、缺席、冻结与解冻
+## 3. 到场确认和缺席
 
-- **规则**：
-  - 开始前 15 分钟到开始后 30 分钟内，本人要点 I'm here，否则记一次缺席。资源当时在维修或关闭的不算。
-  - 第 4 次缺席冻结 30 天：期间不能被预约，之后的预约和申请全部取消。
-  - 冻结只看 zID，员工被冻结仍然能审批别人的申请。
-  - 被冻结的人可以申请解冻，由 Admin／Manager 同意或拒绝，也可以直接解冻。
-- **后端**：`booking/services/attendance.py`：
-  - 到场：`check_in_window`、`check_in_state`、`check_in`；
-  - 缺席与冻结：`_process_attendance`、`_freeze`、`frozen_violation`；
-  - 解冻：`request_unfreeze`、`review_unfreeze`、`unfreeze`。
-- **接口**：
-  - `POST bookings/{id}/check-in/`
-  - `GET/POST account/unfreeze-requests/`
-  - `GET admin/unfreeze-requests/`、`POST admin/unfreeze-requests/{id}/review/`
-  - `GET admin/frozen-users/`、`POST admin/users/{id}/unfreeze/`
-- **前端**：
-  - My Bookings 里的 I'm here 按钮：`MyBookings.tsx`、`attendance.ts`；
-  - 冻结提示和解冻申请：`FreezeNotice.tsx`；
-  - 员工页面：`features/admin/FreezesPage.tsx`（Booking Freezes）。
-- **数据**：
-  - `app_users.no_show_count`、`frozen_until`；
-  - `booking.attendance`、`checked_in_at`；
-  - 表 `unfreeze_request`。
-- **测试**：`test_sprint3.py` `AttendanceTests`、`test_unfreeze_api`、`test_check_in_and_booking_fields`；`test_postgres.py` `test_weekly_series_check_in_and_freeze_are_persisted`。
+1.25.0（2026-11-07）删除了冻结和解冻申请（客户 Week 8 会议；迁移 014），这一节只剩到场确认和缺席记录。
+
+- **规则**：开始前 15 分钟到开始后 30 分钟内，本人要点 I'm here，否则记一次缺席并通知本人（提醒以后来不了要取消）。资源当时在维修或关闭的不算。缺席没有处罚，只用于使用情况报表。
+- **后端**：`booking/services/attendance.py`：`check_in_window`、`check_in_state`、`check_in`、`_process_attendance`。
+- **接口**：`POST bookings/{id}/check-in/`。
+- **前端**：My Bookings 里的 I'm here 按钮：`MyBookings.tsx`、`attendance.ts`。
+- **数据**：`booking.attendance`、`checked_in_at`。
+- **测试**：`test_sprint3.py` `AttendanceTests`、`test_check_in_and_booking_fields`；`test_postgres.py` `test_weekly_series_check_in_and_missed_booking_are_persisted`。
 
 ## 4. 每人每周最多 3 个预约
 
@@ -247,9 +232,8 @@
   - 测试（`booking/tests/`）：`test_sprint3.py`、`test_resource_setup.py`、`test_reminders.py`、`test_usage_report.py`、`test_change_password.py`、`test_create_manager.py`、`test_email_channel.py`、`test_change_requests.py`、`test_lab_setup.py`（后两个 1.16.0）
 - **前端**：
   - 页面和组件：
-    - `features/admin/FreezesPage.tsx`
     - `features/auth/ChangePassword.tsx`
-    - `features/booking/CalendarSubscribe.tsx`、`FreezeNotice.tsx`、`RecurringBookingForm.tsx`
+    - `features/booking/CalendarSubscribe.tsx`、`RecurringBookingForm.tsx`
     - `features/manager/ManagerResourcesPage.tsx`（`ManagerUsagePage.tsx` 在 1.14.0 改成 `features/records/UsageTab.tsx`）
     - `features/records/BookingRecordsPage.tsx`、`UsageTab.tsx`
     - `features/notifications/NotificationBell.tsx`
@@ -440,3 +424,44 @@ No API, schema or booking-rule change. Review: project docs `claude/reports/2026
 ## 29. 压力测试（2026-10-29）
 
 脚本和结果都在 [load-test/README.md](load-test/README.md)。性能修复的代码改动见 CHANGELOG 的压力测试三轮。
+
+## 30. 客户 Week 8 会议（2026-11-06，1.24.0，无迁移）
+
+任务卡：项目文档 `claude/tasks-week8-2026-11-06.md`。
+
+| 项 | 文件和入口 | 测试 |
+| --- | --- | --- |
+| W1 Manager 越过规则 | `services/bookings.py` `_create_manager_booking`（`create_booking` 调用）、`reschedule_booking`；`services/availability.py` `_availability`、`day_overview` 的 `manager_override`；前端 `BookingForm.tsx`、`SlotPicker.tsx`、`slot-picker.ts` `dateRange`、`ManagerBookingsPage.tsx` 说明文字 | `test_approval_flow.py` `test_a_manager_booking_overrides_the_rules_but_needs_free_time`；`test_staff_booking.py` `test_a_manager_sees_times_inside_the_window_and_the_full_length`；`test_booking_window.py`、`test_sprint3.py` 改期用例 |
+| W2 延长进行中的预约 | `services/changes.py` `extend_booking`；`checks.py` `_period_violation`（参数 `started`）；`views/bookings.py` `BookingExtendView`；`urls.py`；`serializers.py` `BookingExtendSerializer`；前端 `api/bookings.ts` `extendBooking`、`features/booking/extend.ts`、`ExtendBox.tsx`、`MyBookings.tsx`、`ManagerBookingsPage.tsx` | `test_change_requests.py` `ExtendBookingTests`、`test_extend_a_booking_in_progress`；`frontend/tests/extend.test.mjs` |
+| W3 冻结默认关闭 | 已被 1.25.0 整个删除（第 31 节） | — |
+
+## 31. 删除冻结（2026-11-07，1.25.0，迁移 014）
+
+Loy 定：客户不想用缺席处罚，冻结整个删除。任务卡：项目文档 `claude/tasks-week8-2026-11-06.md` W4。
+
+| 部分 | 删除或改动 |
+| --- | --- |
+| 数据库 | `migrations/014_remove_booking_freeze.sql` 删表 `unfreeze_request`、删 `app_users.no_show_count`、`frozen_until`；`schema.sql` 同步 |
+| 后端 | `domain.py` 去掉 `Principal.no_show_count`、`frozen_until`、`frozen_at` 和 `UnfreezeRequest`；`rules.py`、`settings.py`、`.env.example` 去掉两个冻结参数；`attendance.py` 只剩到场和缺席标记；各处 `frozen_violation` 调用（`bookings.py`、`additional_hours.py`、`long_bookings.py`、`series.py`）、`availability.py` 的冻结字段、`overview.py` 的 `unfreeze_requests`、两种仓储的解冻方法、`views/unfreeze.py`、5 个接口和 4 个 serializer 都删除 |
+| 前端 | 删 `FreezesPage.tsx`、`FreezeNotice.tsx`、`/admin/freezes` 路由和菜单、Today 的解冻卡片、相关 API 和类型 |
+| 测试 | 删冻结和解冻用例；`test_sprint3.py` `test_missed_bookings_are_marked_and_notified_without_a_penalty` 确认缺席 5 次也不影响预约 |
+
+## 32. 三个角色看到的明显不同（2026-11-07，1.26.0，迁移 015）
+
+客户 Week 8 会议。任务卡：项目文档 `claude/tasks-week8-2026-11-06.md` W5–W7。
+
+| 项 | 文件和入口 | 测试 |
+| --- | --- | --- |
+| W5 Manager 首页、角色标识 | 新 `features/manager/ManagerHomePage.tsx`、`manager-home.ts`；`admin/today.ts` `MANAGER_DECIDES`、`cardsFor`；`TodayPage.tsx`；`app/routes.ts` `homePath`、`/manager/home`；`AppRouter.tsx`；`AppLayout.tsx` 菜单和 `app-role-badge`；`ui/workspace.css` | `frontend/tests/roles.test.mjs`；Playwright `a Manager starts on the Lab overview, sees the role badge and looks up a zID`、`staff start on Today…` |
+| W6 Admin 只看近期历史 | `services/resources.py` `booking_report`、`ADMIN_HISTORY_DAYS`；`services/reports.py` `usage_report` 改为 `require_manager`；前端 `records/records.ts` `defaultRecordFilters`、`BookingRecordsPage.tsx`；`routes.ts` `/manager/usage` | `test_roles.py` `AdminHistoryTests`；`test_usage_report.py`；`roles.test.mjs`；Playwright `a Manager reads the usage statistics…` |
+| W7 Manager 才能看的设备资料 | `domain.py` `ResourceInternalInfo`；两种仓储 `get/save_resource_internal_info`；`services/resources.py` `resource_internal_info`、`update_resource_internal_info`、`INTERNAL_FIELDS`；`views/admin.py` `AdminResourceInternalInfoView`；`serializers.py` `ResourceInternalInfoSerializer`；`migrations/015_resource_internal_info.sql`、`schema.sql`；前端 `api/resources.ts`、`ManagerResourcesPage.tsx`（Managers only 一栏） | `test_roles.py` `InternalInfoTests`、`InternalInfoAPITests`；`test_postgres.py` `test_resource_internal_info_is_persisted` |
+
+## 33. 延长改为拖动时间轴、由 Manager 批准（2026-11-07，1.27.0，迁移 016）
+
+取代第 30 节 W2 的“立即生效”。任务卡：项目文档 `claude/tasks-week8-2026-11-06.md` W8。
+
+| 部分 | 文件和入口 | 测试 |
+| --- | --- | --- |
+| 数据 | `domain.py` `Booking.extension_end`；`migrations/016_extension_requests.sql`（加列和检查约束 `booking_extension_end_check`）、`schema.sql` | `test_postgres.py` `test_extension_request_is_persisted` |
+| 后端 | `services/changes.py` `extend_booking`（学生申请，Manager 立即生效）、`review_extension`、`_check_extension`、`_apply_extension`；`services/overview.py` `extension_requests`；`views/bookings.py` `BookingExtensionReviewView`；`serializers.py` `ExtensionReviewSerializer`；`urls.py`；通知 `EXTENSION_REQUESTED`／`APPROVED`／`REJECTED`（`notifications.py`、`settings.py` 邮件类型） | `test_change_requests.py` `ExtendBookingTests`（3 个）、`test_extend_a_booking_in_progress` |
+| 前端 | `features/booking/ExtendBox.tsx`（时间轴、拖动和方向键）、`extend.ts` `timelineCells`、`latestEnd`、`waitingExtension`、`sydneyDate`；`MyBookings.tsx` 等待提示；`admin/today.ts` `extensions` 卡片；`manager/ManagerHomePage.tsx` `ExtensionRow`；`api/bookings.ts` `reviewExtension`；`ui/workspace.css` `.ext-*` | `tests/extend.test.mjs`；Playwright `a student drags the end of a booking in progress…`、`a Manager approves an extension request on the Lab overview` |

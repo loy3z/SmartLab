@@ -2,7 +2,7 @@
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from ..domain import BookingStatus, ResourceKind
+from ..domain import BookingStatus, ResourceKind, Role
 from ..errors import DomainError
 from .base import ACTIVE_REQUEST_STATUSES, HEAD_STATUSES
 from .qualifications import EligibilitySources
@@ -14,13 +14,12 @@ class _DaySources:
     once (before: about 6 queries per resource, 130 for the 22 demo resources).
 
     Each part answers exactly what the single-resource path asks, filtered per resource in memory: the person's
-    eligibility records, their freeze state, their active requests, and the bookings or active holds overlapping
+    eligibility records, their active requests, and the bookings or active holds overlapping
     the day (the same rule as list_blocking_bookings, over the earliest opening to the latest closing).
     """
     def __init__(self, service, person, resources, day):
         repo, now = service.repo, service.now()
         self.eligibility = EligibilitySources(repo.list_submissions(student_id=person.id), repo.list_requirements())
-        self.frozen_person = repo.get_principal(person.id) or person
         self.own_requests = repo.list_bookings(student_id=person.id, statuses=ACTIVE_REQUEST_STATUSES)
         opens = min(datetime.combine(day, item.opening_time, ZoneInfo(item.timezone)) for item in resources)
         closes = max(datetime.combine(day, item.closing_time, ZoneInfo(item.timezone)) for item in resources)
@@ -65,8 +64,10 @@ class AvailabilityMixin:
             return test_availability(self, actor, resource, day, duration_minutes, exclude)
         if not resource.active:
             raise DomainError("RESOURCE_UNAVAILABLE", "The resource is inactive.", 409)
+        # 2026-11-06 (client, Week 8): a Manager's booking skips the person's rules (see _create_manager_booking).
+        override = actor.role == Role.MANAGER and not (additional_hours or long_booking)
         normal_maximum = self._normal_booking_limit(resource)[2]
-        max_slots, quota_slot_minutes, maximum = (self._long_booking_limit(resource) if long_booking
+        max_slots, quota_slot_minutes, maximum = (self._long_booking_limit(resource) if long_booking or override
                                                  else self._normal_booking_limit(resource))
         step = self._selection_step_minutes(resource)
         if duration_minutes < 1 or duration_minutes > maximum or duration_minutes % step:
@@ -82,7 +83,6 @@ class AvailabilityMixin:
         closing = datetime.combine(day, resource.closing_time, zone).astimezone(UTC)
         sources = shared.eligibility if shared else None
         eligibility, _ = self.qualification_state(person.id, resource, sources=sources)
-        frozen_person = shared.frozen_person if shared else (self.repo.get_principal(person.id) or person)  # Sprint 3: booking freeze
         mine = shared.own_requests if shared else self.repo.list_bookings(student_id=person.id, resource_id=resource.id)
         own_requests = [item for item in mine
                         if item.resource_id == resource.id and item.status in ACTIVE_REQUEST_STATUSES and item.id != exclude]
@@ -100,8 +100,8 @@ class AvailabilityMixin:
             window = self._window_reason(resource, cursor)
             reason = ("START_TIME_PASSED" if cursor <= self.now() else
                       "RESOURCE_UNAVAILABLE" if not resource.bookable else
-                      "TOO_SOON" if window == "BOOKING_TOO_SOON" and not (urgent or additional_hours) else
-                      "TOO_FAR_AHEAD" if window == "BOOKING_TOO_FAR_AHEAD" else
+                      "TOO_SOON" if window == "BOOKING_TOO_SOON" and not (urgent or additional_hours or override) else
+                      "TOO_FAR_AHEAD" if window == "BOOKING_TOO_FAR_AHEAD" and not override else
                       "BOOKED" if any(item.status == BookingStatus.APPROVED for item in blockers) else
                       "TEMPORARILY_HELD" if holds else None)
             slots.append({"start": cursor, "end": end, "available": reason is None, "reason_code": reason,
@@ -111,21 +111,25 @@ class AvailabilityMixin:
                           "requested_by_me": requested_by_me})
             cursor += timedelta(minutes=step)
         window_details = self._window_details(resource)
-        if additional_hours:
+        # Sprint 3: weekly series keep the configured booking window even for Managers.
+        normal_window = {"normal_booking_window": window_details.copy()} if override else {}
+        if additional_hours or override:
             window_details.update(earliest_date=self.now().astimezone(zone).date().isoformat(), min_advance_days=0)
+        if override:
+            window_details.update(latest_date=None)
         return {"resource_id": resource.id, "date": day.isoformat(), "timezone": resource.timezone,
-                "duration_minutes": duration_minutes, "slots": slots, **window_details,
+                "duration_minutes": duration_minutes, "slots": slots, **window_details, **normal_window,
                 "booking_slot_minutes": quota_slot_minutes, "max_booking_slots": max_slots,
                 "selection_step_minutes": step, "max_booking_minutes": maximum,
                 "normal_max_booking_minutes": normal_maximum,
                 "min_booking_minutes": (normal_maximum // step + 1) * step if long_booking else step,
                 "resource_status": resource.status.value, "status_reason": resource.status_reason,
                 "review_window_minutes": resource.pending_hold_minutes,
-                # Everyone follows the same rules: the person's induction (and its prerequisites) must be current.
-                "can_request": (person.active and eligibility == "VERIFIED" and resource.bookable
-                                and not frozen_person.frozen_at(self.now())
-                                and (not long_booking or maximum > normal_maximum)),
-                "frozen_until": frozen_person.frozen_until if frozen_person.frozen_at(self.now()) else None,
+                # Outside the Manager override, the person's induction and prerequisites must be current.
+                "can_request": (person.active and resource.bookable) if override else (
+                    person.active and eligibility == "VERIFIED" and resource.bookable
+                    and (not long_booking or maximum > normal_maximum)),
+                "manager_override": override,
                 "qualification_status": eligibility,
                 "missing_prerequisite_id": (self.missing_prerequisite(person.id, resource.required_qualification_id,
                                                                       sources=sources) or (None,))[0]
@@ -148,7 +152,7 @@ class AvailabilityMixin:
         multiple of their time step) are left out and counted in ``too_long`` instead of failing the whole page
         (before, one such resource made the whole request fail with INVALID_DURATION).
         Rows hidden by bookable_only are counted by reason in ``not_bookable`` (resource status when it is out of
-        service, FROZEN when the person's booking is frozen, otherwise their induction status), so the page can say
+        service, otherwise their induction status), so the page can say
         why nothing is shown.
         """
         self.process_due_requests()
@@ -166,7 +170,8 @@ class AvailabilityMixin:
                 continue
             if query and query not in f"{resource.name} {resource.location} {resource.category or ''}".casefold():
                 continue
-            maximum = 1440 if booking_rules_bypassed(actor) else self._normal_booking_limit(resource)[2]
+            maximum = (1440 if booking_rules_bypassed(actor) else self._long_booking_limit(resource)[2]
+                       if actor.role == Role.MANAGER else self._normal_booking_limit(resource)[2])  # 2026-11-06
             step = resource.slot_minutes if booking_rules_bypassed(actor) else self._selection_step_minutes(resource)
             if duration_minutes > maximum or duration_minutes % step:  # Sprint 3 (1.16.0)
                 too_long += 1
@@ -174,8 +179,7 @@ class AvailabilityMixin:
             result = self._availability(actor, resource, day, duration_minutes, shared=shared)
             if bookable_only and not result["can_request"]:
                 status, induction = result["resource_status"], result["qualification_status"]
-                reason = (status if status != "AVAILABLE" else "FROZEN" if result["frozen_until"]
-                          else induction if induction != "VERIFIED" else "NOT_AVAILABLE")
+                reason = status if status != "AVAILABLE" else induction if induction != "VERIFIED" else "NOT_AVAILABLE"
                 not_bookable[reason] = not_bookable.get(reason, 0) + 1  # Sprint 3 (1.16.0)
                 continue
             if free_at is not None:
@@ -189,6 +193,9 @@ class AvailabilityMixin:
         window = self._window_details(next(iter(active))) if active else {}
         if booking_rules_bypassed(actor):
             window = test_window(self)
+        elif actor.role == Role.MANAGER and active:  # 2026-11-06 (client, Week 8): Manager override, from today
+            window.update(earliest_date=self.now().astimezone(ZoneInfo("Australia/Sydney")).date().isoformat(),
+                          latest_date=None, min_advance_days=0, manager_override=True)
         return {"date": day.isoformat(), "duration_minutes": duration_minutes, "timezone": "Australia/Sydney", **window,
                 "too_long": too_long, "not_bookable": not_bookable,  # Sprint 3 (1.16.0)
                 "rooms": [{"id": item.id, "name": item.name} for item in sorted(rooms.values(), key=lambda r: r.name)],

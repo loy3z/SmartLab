@@ -6,7 +6,7 @@ link to the page that handles it. Nothing is changed by reading it (apart from t
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from ..domain import BookingStatus, QualificationStatus, ResourceStatus, Role, UnfreezeStatus
+from ..domain import BookingStatus, QualificationStatus, ResourceStatus, Role
 from .base import ACTIVE_REQUEST_STATUSES, UNDECIDED_STATUSES
 
 DUE_SOON_HOURS = 6   # pending requests whose review window ends within this many hours are listed first
@@ -21,10 +21,10 @@ class OverviewMixin:
         - pending_inductions: evidence waiting for review.
         - pending_bookings / urgent_requests / waitlisted: undecided booking requests (urgent ones only a Manager decides).
         - due_soon: pending requests whose review window ends within DUE_SOON_HOURS, soonest first.
-        - unfreeze_requests: people asking for their booking freeze to be lifted.
         - out_of_service: resources under maintenance or closed, with how many future bookings or requests they still have.
         - today: approved bookings starting today (Sydney), in time order; missed_today counts those marked as missed.
         - changes_waiting: change requests (people asking to move a booking) still undecided.
+        - extension_requests (2026-11-07): bookings whose person asks to finish later; a Manager decides.
         """
         self.require_staff(actor)
         self.process_due_requests()
@@ -67,8 +67,12 @@ class OverviewMixin:
                 BookingStatus.PENDING_APPROVAL, BookingStatus.WAITLISTED)),
             "due_soon": due_soon[:LIST_LIMIT],
             "due_soon_hours": DUE_SOON_HOURS,
-            "unfreeze_requests": sum(1 for item in self.repo.list_unfreeze_requests() if item.status == UnfreezeStatus.PENDING),
             "out_of_service": out_of_service,
+            # Sprint 3: a Manager can still approve after the original end, until the requested end.
+            "extension_requests": sorted(
+                self.repo.list_bookings(statuses=[BookingStatus.APPROVED], extension_end_after=now),
+                key=lambda item: (item.extension_end, item.id),
+            )[:LIST_LIMIT],
             "today": today[:LIST_LIMIT],
             "today_count": len(today),
             "missed_today": sum(1 for item in today if item.attendance == "NO_SHOW"),

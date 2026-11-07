@@ -31,9 +31,14 @@ export function addDays(ymd: string, days: number): string {
   return value.toISOString().slice(0, 10)
 }
 
-/** From 30 days ago to 30 days ahead: recent history and what is coming. */
-export function defaultRecordFilters(today: string): RecordFilters {
-  return { from: addDays(today, -30), to: addDays(today, 30), resourceId: '', q: '', status: 'ALL' }
+/** Admins see bookings that ended at most this many days ago (server: ADMIN_HISTORY_DAYS, 2026-11-07). */
+export const ADMIN_HISTORY_DAYS = 7
+
+/** Recent history (30 days for a Manager, the Admin limit for an Admin) to 30 days ahead. A zID lookup from the
+ *  Manager home page (q) searches the last year. */
+export function defaultRecordFilters(today: string, isManager = true, q = ''): RecordFilters {
+  const history = q && isManager ? 365 : isManager ? 30 : ADMIN_HISTORY_DAYS
+  return { from: addDays(today, -history), to: addDays(today, 30), resourceId: '', q, status: 'ALL' }
 }
 
 const offsetFormat = new Intl.DateTimeFormat('en-US', { timeZone: SYDNEY, timeZoneName: 'longOffset' })

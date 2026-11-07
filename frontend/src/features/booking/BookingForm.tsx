@@ -38,6 +38,9 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
   const bookingPurpose = urgent ? urgentReason.trim() : purpose.trim()
   const normalMaximum = resource.effective_max_booking_minutes ?? resource.max_booking_minutes
   const testBypass = Boolean(user?.bypass_booking_rules && bookFor === 'self')
+  // 1.24.0 (client, Week 8): a Manager's booking skips induction, window and limits, and is approved at once.
+  const isManager = user?.role === 'MANAGER'
+  const direct = testBypass || isManager
   // One key per logical request: reused on retry, regenerated when inputs change.
   const keyRef = useRef(newIdempotencyKey())
 
@@ -118,7 +121,7 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
     <form onSubmit={submit} className="bk-form">
       <h2>{resource.name}</h2>
       <p className="bk-muted">
-        {resource.location} · {testBypass ? 'test booking: any future time, up to 24 h' : `open ${fmtHours(resource.opening_time, resource.closing_time)} · normal booking up to ${fmtDuration(normalMaximum)}`}
+        {resource.location} · {testBypass ? 'test booking: any future time, up to 24 h' : `open ${fmtHours(resource.opening_time, resource.closing_time)} · ${isManager ? `Manager booking up to ${fmtDuration(resource.max_booking_minutes)}` : `normal booking up to ${fmtDuration(normalMaximum)}`}`}
       </p>
       {/* Sprint 3 (1.16.0): everything the Manager wrote about it, and what the booking does not include.
           Sprint 3 (workspace UI): folded under "Resource details". */}
@@ -145,14 +148,16 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
               {lookupError && <span className="bk-error" role="alert">{lookupError}</span>}
             </div>
           )}
-          <small className="bk-muted">The booking belongs to that person and their induction is checked. You are recorded as the creator.</small>
+          <small className="bk-muted">{isManager
+            ? 'The booking belongs to that person. As a Manager you override their induction and booking limits. You are recorded as the creator.'
+            : 'The booking belongs to that person and their induction is checked. You are recorded as the creator.'}</small>
         </fieldset>
       )}
 
-      <label className="bk-urgent">
+      {!isManager && <label className="bk-urgent">
         <input type="checkbox" checked={urgent} onChange={(e) => { setUrgent(e.target.checked); pick(null) }} />
         Urgent request (sooner than the normal booking window)
-      </label>
+      </label>}
       {urgent && (
         <label className="bk-block">
           <span>Purpose and urgency <span className="bk-required">Required</span></span>
@@ -187,13 +192,15 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
         {range && <span className="bk-submit-time">{fmtRange(range.start, range.end)}</span>}
         <button className="bk-btn-yellow" type="submit"
           disabled={!range || busy || !bookingPurpose || !canRequest || !ready}>
-          {busy ? 'Submitting…' : range ? `${testBypass ? 'Book' : 'Request'} ${fmtDuration(minutes)}${urgent ? ' (urgent)' : ''}` : 'Request booking'}
+          {busy ? 'Submitting…' : range ? `${direct ? 'Book' : 'Request'} ${fmtDuration(minutes)}${urgent ? ' (urgent)' : ''}` : direct ? 'Book' : 'Request booking'}
         </button>
         {/* Sprint 3 (1.16.0): say what is still missing instead of leaving a grey button to guess at.
             2026-10-29 (Loy): a failed request is shown here first, next to the button, so it is seen in the dialog. */}
         {error ? <span className="bk-error" role="alert">Request not submitted: {error}</span>
           : missing ? <span className="bk-missing" role="status">{missing}</span> : canRequest && !urgent && (
-            <span className="bk-muted">{testBypass ? 'Test booking: approved immediately. Existing bookings cannot be displaced.' : 'An admin reviews every request. If nobody decides within the review period, the system decides automatically.'}</span>
+            <span className="bk-muted">{testBypass ? 'Test booking: approved immediately. Existing bookings cannot be displaced.'
+              : isManager ? 'Manager booking: approved immediately. Existing bookings cannot be displaced.'
+                : 'An admin reviews every request. If nobody decides within the review period, the system decides automatically.'}</span>
           )}
       </div>
     </form>

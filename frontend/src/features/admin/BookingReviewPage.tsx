@@ -4,7 +4,7 @@ import { Drawer, EmptyState, Facts, InfoDisclosure, PageHeader, RefreshStamp, Ta
 import { useFeedback } from '../../ui/feedback-context'
 import { useAuth } from '../auth/auth-context'
 import { listAdminBookings, listAdminQualifications, listResources, listStudentBookings, reviewBooking } from '../../api/index.ts'
-import { errorMessage, fmtDateTime, fmtDuration, fmtRange, fmtRelative, minutesBetween, STATUS_TEXT } from '../booking/format'
+import { errorMessage, fmtDateTime, fmtDuration, fmtRange, fmtRelative, minutesBetween, STATUS_TEXT, statusText } from '../booking/format'
 import type { Booking, Qualification, Resource } from '../../api/types/index.ts'
 import { additionalHoursPriority, compareAdditionalHours } from '../booking/additional-hours'
 
@@ -343,7 +343,7 @@ function BookingDrawer({ booking: b, resource, resourceName, waitingBehind, bloc
       <section>
         <h3>Request</h3>
         <Facts items={[
-          { label: 'Status', value: ((b.additional_hours || b.long_booking) && b.status === 'PENDING_APPROVAL' ? 'Waiting for Manager approval' : STATUS_TEXT[b.status]) + (b.status === 'WAITLISTED' && b.waitlist_position ? ` · #${b.waitlist_position}` : '') },
+          { label: 'Status', value: statusText(b) + (b.status === 'WAITLISTED' && b.waitlist_position ? ` · #${b.waitlist_position}` : '') },
           { label: 'Resource', value: resourceName },
           { label: 'Time', value: fmtRange(b.start, b.end) },
           { label: 'Length', value: fmtDuration(minutesBetween(b.start, b.end)) },

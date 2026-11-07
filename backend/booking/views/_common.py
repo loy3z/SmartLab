@@ -16,16 +16,16 @@ from ..authentication import issue_demo_token, require_demo_mode
 from ..domain import Booking, BookingStatus, Principal, QualificationStatus, ResourceKind, Role
 from ..exceptions import DomainError
 from ..runtime import get_service
-from ..serializers import (AvailabilityQuerySerializer, DayOverviewQuerySerializer, BookingCreateSerializer, BookingRescheduleSerializer, BookingReviewSerializer,
+from ..serializers import (AvailabilityQuerySerializer, DayOverviewQuerySerializer, BookingCreateSerializer, BookingRescheduleSerializer, BookingExtendSerializer, ExtensionReviewSerializer, BookingReviewSerializer,
                           DemoLoginSerializer, DemoRegisterSerializer, StaffActivateSerializer, StaffSignInSerializer, QualificationCreateSerializer, QualificationReviewSerializer,
                           OutlookProcessSerializer, BookingPolicySerializer, AuditQuerySerializer,
                           UserListQuerySerializer, UserUpdateSerializer, ManagerCreateSerializer, ResourceStatusSerializer,
                           AdminBookingQuerySerializer, StaffCreateSerializer, PrerequisiteSerializer,
-                          PersonLookupSerializer, NotificationQuerySerializer, UnfreezeRequestSerializer,
-                          UnfreezeReviewSerializer, UnfreezeListQuerySerializer, UnfreezeSerializer,
+                          PersonLookupSerializer, NotificationQuerySerializer,
                           SeriesPlanSerializer, SeriesCreateSerializer, ResourceFieldsSerializer,
                           ResourceCreateSerializer, UsageReportQuerySerializer, ChangePasswordSerializer,
-                          RequirementFieldsSerializer, RequirementUpdateSerializer, SiteContactSerializer)  # Sprint 3 (1.16.0)
+                          RequirementFieldsSerializer, RequirementUpdateSerializer, SiteContactSerializer,
+                          ResourceInternalInfoSerializer)  # Sprint 3 (1.16.0)
 from ..ics import render_calendar
 from ..test_console import (TestPrincipal, get_test_account, require_test_console,
                            test_console_enabled, test_identity, TEST_ACCOUNT_ID, booking_rules_bypassed)
@@ -44,10 +44,7 @@ def json_value(value):
     if isinstance(value, Booking):
         return booking_json(value)
     if is_dataclass(value):
-        result = json_value(asdict(value))
-        if isinstance(value, Principal):  # Sprint 3: booking freeze
-            result["booking_frozen"] = value.frozen_at(get_service().now()) and not booking_rules_bypassed(value)
-        return result
+        return json_value(asdict(value))
     if isinstance(value, dict):
         return {key: json_value(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):

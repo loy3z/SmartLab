@@ -106,12 +106,12 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
         { path: '/admin/announcements', label: 'Announcements', icon: <FileIcon /> }, // Sprint 3 (1.19.0)
         { path: '/admin/qualifications', label: 'Induction review', icon: <CapIcon /> },
         { path: '/admin/bookings', label: 'Booking review', icon: <FileIcon /> },
-        { path: '/admin/freezes', label: 'Booking freezes', icon: <UserIcon /> },
       ],
     },
     ...(user.role === 'MANAGER' ? [{
       label: 'Lab management',
       items: [
+        { path: '/manager/home', label: 'Lab overview', icon: <DashboardIcon /> }, // 2026-11-07 (client, Week 8)
         { path: '/manager/bookings', label: 'Room management', icon: <CalendarIcon /> },
         { path: '/manager/resources', label: 'Resources', icon: <FileIcon /> },
         { path: '/manager/users', label: 'User management', icon: <UserIcon /> },
@@ -243,6 +243,8 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
             {/* Sprint 3 (internal-tool UI, AI-2 / D7): no "<role> Portal" title; the role shows in the account button. */}
+            {/* 2026-11-07 (client, Week 8): the three roles look clearly different, so the role is named on every page. */}
+            <span className={`app-role-badge is-${user.role.toLowerCase()}`}>{roleLabel} view</span>
           </div>
           <NotificationBell />{/* Sprint 3 */}
           <div className="app-account" ref={accountRef} onBlur={(event) => {

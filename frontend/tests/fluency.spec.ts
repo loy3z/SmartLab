@@ -66,7 +66,7 @@ const test = base.extend<{ api: Api }>({
       if (path === 'admin/overview/') {
         if (api.overviewGate) await api.overviewGate
         return json({ role: api.role, pending_inductions: 0, pending_bookings: 0, urgent_requests: 0, waitlisted: 0, changes_waiting: 0,
-          due_soon: [], due_soon_hours: 6, unfreeze_requests: 0, out_of_service: [], today: [], today_count: 0, missed_today: 0, can_decide_urgent: api.role === 'MANAGER' })
+          due_soon: [], due_soon_hours: 6, out_of_service: [], today: [], today_count: 0, missed_today: 0, can_decide_urgent: api.role === 'MANAGER' })
       }
       if (path === 'admin/bookings/') {
         if (api.recordsGate) await api.recordsGate

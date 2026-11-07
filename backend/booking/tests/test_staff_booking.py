@@ -76,11 +76,12 @@ class StaffBookingServiceTests(BookingFixtureMixin, SimpleTestCase):
         self.request(self.student)
         self.refused("DUPLICATE_BOOKING", self.request, self.admin, on_behalf_of_zid=self.student.zid)
 
-    def test_staff_follow_the_normal_window_and_conflict_rules(self):
-        self.qualification(self.manager)
-        self.refused("BOOKING_TOO_SOON", self.request, self.manager, days=2)
+    def test_admins_follow_the_normal_window_and_conflict_rules(self):
+        """Managers override these since 2026-11-06 (test_approval_flow); Admins do not."""
+        self.qualification(self.admin)
+        self.refused("BOOKING_TOO_SOON", self.request, self.admin, days=2)
         self.request(self.student)
-        self.assertEqual(self.request(self.manager).status, BookingStatus.WAITLISTED)
+        self.assertEqual(self.request(self.admin).status, BookingStatus.WAITLISTED)
 
     # --- urgent requests ------------------------------------------------------------------------------
 
@@ -114,13 +115,11 @@ class StaffBookingServiceTests(BookingFixtureMixin, SimpleTestCase):
         self.service.process_due_requests()
         self.assertEqual(self.repo.get_booking(booking.id).status, BookingStatus.EXPIRED)
 
-    def test_a_manager_cannot_approve_an_urgent_request_they_created(self):
+    def test_a_manager_urgent_booking_for_someone_is_approved_at_once(self):
+        """2026-11-06 (client, Week 8): before, it waited for a second Manager (the creator may not review it)."""
         booking = self.request(self.manager, days=2, on_behalf_of_zid=self.student.zid, urgent=True, urgent_reason="Visiting examiner")
-        self.assertEqual((booking.student_id, booking.created_by), (self.student.id, self.manager.id))
-        self.refused("SELF_REVIEW_FORBIDDEN", self.service.review_booking, self.manager, booking.id, "APPROVED")
-        second = Principal(str(uuid4()), "z9777777", "Second manager", Role.MANAGER, "z9777777@ad.unsw.edu.au")
-        self.repo.save_principal(second)
-        self.assertEqual(self.service.review_booking(second, booking.id, "APPROVED").status, BookingStatus.APPROVED)
+        self.assertEqual((booking.student_id, booking.created_by, booking.status, booking.urgent),
+                         (self.student.id, self.manager.id, BookingStatus.APPROVED, True))
 
     # --- availability ---------------------------------------------------------------------------------
 
@@ -135,6 +134,18 @@ class StaffBookingServiceTests(BookingFixtureMixin, SimpleTestCase):
         for_student = self.service.availability(self.admin, self.room.id, day, 60, for_zid=self.student.zid)
         self.assertEqual((for_student["can_request"], for_student["booking_for"]["zid"]), (True, self.student.zid))
         self.refused("FORBIDDEN", self.service.availability, self.student, self.room.id, day, 60, for_zid=self.other.zid)
+
+    def test_a_manager_sees_times_inside_the_window_and_the_full_length(self):
+        """2026-11-06 (client, Week 8): the Manager override in the time picker (the manager has no induction)."""
+        day = self.today + timedelta(days=2)
+        mine = self.service.availability(self.manager, self.room.id, day, 60)
+        self.assertEqual((mine["can_request"], mine["manager_override"], mine["latest_date"]), (True, True, None))
+        self.assertEqual(mine["normal_booking_window"], self.service._window_details(self.room))
+        self.assertTrue(all(slot["available"] for slot in mine["slots"]))
+        self.assertEqual(mine["max_booking_minutes"], self.room.max_booking_minutes)
+        overview = self.service.day_overview(self.manager, day, duration_minutes=60)
+        self.assertTrue(overview["manager_override"])
+        self.assertFalse(self.service.availability(self.admin, self.room.id, day, 60)["manager_override"])
 
 
 @override_settings(DEBUG=True, ENABLE_DEMO_AUTH=True, SEED_DEMO_DATA=True)

@@ -73,6 +73,12 @@ export const STATUS_TEXT: Record<BookingStatus, string> = {
 }
 
 /** Student-facing explanation of where a request stands, from status + reason_code (server is the source of truth). */
+/** 2026-11-07: the status shown for a booking. Urgent, additional-hours and longer requests wait for a Manager. */
+export function statusText(b: Booking): string {
+  return b.status === 'PENDING_APPROVAL' && (b.urgent || b.additional_hours || b.long_booking)
+    ? 'Waiting for Manager approval' : STATUS_TEXT[b.status]
+}
+
 export function bookingDetail(b: Booking): string {
   switch (b.status) {
     case 'APPROVED':
@@ -118,7 +124,7 @@ export function bookingDetail(b: Booking): string {
           ? `This request was rejected automatically at the end of the review period${b.decision_reason ? `: ${b.decision_reason}` : '.'}`
           : `This request was rejected${b.decision_reason ? `: ${b.decision_reason}` : '.'}`
     case 'CANCELLED':
-      return b.reason_code === 'ACCOUNT_FROZEN' // Sprint 3: booking freeze
+      return b.reason_code === 'ACCOUNT_FROZEN' // older bookings: the freeze was removed on 2026-11-07
         ? 'Cancelled because booking was frozen after missed check-ins.'
         : b.reason_code === 'CANCELLED_BY_STAFF'
           ? 'This booking was cancelled by staff.'

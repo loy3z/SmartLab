@@ -9,14 +9,14 @@ const permissions: Record<string, readonly Role[]> = {
   '/admin/today': ['ADMIN', 'MANAGER'], // Sprint 3 (1.16.0): staff home page
   '/admin/qualifications': ['ADMIN', 'MANAGER'],
   '/admin/bookings': ['ADMIN', 'MANAGER'],
-  '/admin/freezes': ['ADMIN', 'MANAGER'], // Sprint 3: booking freezes
   '/admin/calendar-sync': ['ADMIN', 'MANAGER'],
+  '/manager/home': ['MANAGER'], // 2026-11-07 (client, Week 8): Manager home page
   '/manager/bookings': ['MANAGER'],
   '/manager/users': ['MANAGER'],
   '/manager/resources': ['MANAGER'], // Sprint 3: resource setup
   '/manager/setup': ['MANAGER'], // Sprint 3 (1.16.0): inductions and the lab's contact details
   '/admin/records': ['ADMIN', 'MANAGER'], // Sprint 3: Booking Records (records and usage statistics)
-  '/manager/usage': ['ADMIN', 'MANAGER'], // Sprint 3: old Usage Report address, redirects to Booking Records
+  '/manager/usage': ['MANAGER'], // Sprint 3: old Usage Report address, redirects to Booking Records (Managers only, 2026-11-07)
   // Sprint 3 (1.19.0)
   '/settings/notifications': ['STUDENT', 'ADMIN', 'MANAGER'],
   '/admin/announcements': ['ADMIN', 'MANAGER'],
@@ -30,8 +30,8 @@ export function normalizePath(pathname: string): string {
 }
 
 export function homePath(role: Role): string {
-  // Sprint 3 (1.16.0): Admins and Managers start on "Today" (was Qualification Review / Room Management).
-  return role === 'STUDENT' ? '/dashboard' : '/admin/today'
+  // Sprint 3 (1.16.0): staff start on "Today". 2026-11-07 (client, Week 8): a Manager starts on the Lab overview.
+  return role === 'STUDENT' ? '/dashboard' : role === 'MANAGER' ? '/manager/home' : '/admin/today'
 }
 
 export function isKnownPath(path: string): boolean { return Object.hasOwn(permissions, path) }

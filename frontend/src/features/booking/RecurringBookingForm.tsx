@@ -40,8 +40,10 @@ export function RecurringBookingForm({ resource, onBooked }: { resource: Resourc
   useEffect(() => {
     if (!ready) return
     let cancelled = false
-    getAvailability(resource.id, todaySydney(), step, undefined, { forZid }).then(window => {
+    getAvailability(resource.id, todaySydney(), step, undefined, { forZid }).then(availability => {
       if (cancelled) return
+      // Sprint 3: the Manager override is for single bookings, not weekly series.
+      const window = availability.normal_booking_window ?? availability
       const clamp = (date: string) => date < window.earliest_date ? window.earliest_date
         : window.latest_date && date > window.latest_date ? window.latest_date : date
       setBookingWindow(window)

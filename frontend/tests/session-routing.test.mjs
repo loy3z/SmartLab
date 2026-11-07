@@ -10,9 +10,9 @@ const roles = ['STUDENT', 'ADMIN', 'MANAGER']
 
 test('each role lands on a page it can actually access', () => {
   assert.equal(homePath('STUDENT'), '/dashboard')
-  // Sprint 3 (1.16.0): staff start on Today.
+  // Sprint 3 (1.16.0): staff start on Today; 2026-11-07: a Manager starts on the Lab overview.
   assert.equal(homePath('ADMIN'), '/admin/today')
-  assert.equal(homePath('MANAGER'), '/admin/today')
+  assert.equal(homePath('MANAGER'), '/manager/home')
   for (const role of roles) {
     assert.equal(canAccess(homePath(role), role), true)
   }
@@ -80,7 +80,7 @@ test('login rejects forbidden, unknown, external and malformed return destinatio
   for (const state of [null, undefined, {}, 'invalid', { from: '/dashboard' }]) {
     assert.equal(loginDestination(state, 'ADMIN'), '/admin/today') // Sprint 3 (1.16.0)
   }
-  assert.equal(loginDestination({ from: '/dashboard' }, 'MANAGER'), '/admin/today') // Sprint 3 (1.16.0)
+  assert.equal(loginDestination({ from: '/dashboard' }, 'MANAGER'), '/manager/home') // 2026-11-07: Manager home page
   assert.equal(loginDestination({ from: '/manager/users' }, 'ADMIN'), '/admin/today')
   assert.equal(loginDestination({ from: '/resources' }, 'MANAGER'), '/resources')
 })

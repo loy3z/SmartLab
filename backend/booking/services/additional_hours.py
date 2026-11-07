@@ -51,8 +51,7 @@ class AdditionalHoursMixin:
                     raise DomainError("IDEMPOTENCY_CONFLICT", "This Idempotency-Key was already used with different booking details.", 409)
                 return existing, False
             resource = self.resource(resource_id)
-            error = (self.rule_violation(beneficiary.id, resource, start, end)
-                     or self.frozen_violation(self.repo.get_principal(beneficiary.id) or beneficiary))
+            error = self.rule_violation(beneficiary.id, resource, start, end)
             if error:
                 raise error
             if self._window_reason(resource, start) == "BOOKING_TOO_FAR_AHEAD":
@@ -115,10 +114,6 @@ class AdditionalHoursMixin:
                                409, {"approval_opens_at": opens.isoformat().replace("+00:00", "Z"), "approval_window_hours": hours})
         resource = self.repo.get_resource(booking.resource_id)
         error = self.rule_violation(booking.student_id, resource, booking.start, booking.end)
-        if error:
-            return error
-        person = self.repo.get_principal(booking.student_id)
-        error = self.frozen_violation(person)
         if error:
             return error
         if self._window_reason(resource, booking.start) == "BOOKING_TOO_FAR_AHEAD":

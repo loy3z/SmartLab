@@ -18,7 +18,6 @@ const REASON_TEXT: Record<string, string> = {
   NOT_CONFIGURED: 'not open for booking yet',
   MAINTENANCE: 'under maintenance',
   CLOSED: 'closed',
-  FROZEN: 'your booking is frozen',
 }
 
 /** Reasons that the person can fix on the Induction & Training page. */

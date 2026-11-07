@@ -4,12 +4,12 @@ Django 5.2 + Django REST Framework 3.16。提供学生时段查询、房间／�
 
 ## 功能与规则
 
-- **超长预约申请**（1.22.0）：通过独立的 `POST bookings/long-bookings/` 提交用途和超长理由，只豁免普通单次时长上限（默认 3 小时）。仍计入每周 12 小时和最多 8 个未来预约，遵守正常提前 7–28 天、资源自身最长时长、开放时间、资格和冻结限制；不能与紧急申请、额外时数或循环预约合并。所有数字继续读取现有配置。
+- **超长预约申请**（1.22.0）：通过独立的 `POST bookings/long-bookings/` 提交用途和超长理由，只豁免普通单次时长上限（默认 3 小时）。仍计入每周 12 小时和最多 8 个未来预约，遵守正常提前 7–28 天、资源自身最长时长、开放时间和资格限制；不能与紧急申请、额外时数或循环预约合并。所有数字继续读取现有配置。
 - **超长预约审批**：时段空闲时按资源审批期限占位，冲突时进入现有先到先得候补队列。只有 Manager 能批准或拒绝，不能审批本人或本人创建的申请；到审批期限仍未处理则过期释放时段，绝不自动批准。获批仅适用于原资源和原起止时间，改期须取消后重新申请。现有数据库须先完成迁移 012，再执行 013。
 - **所有人用同一套规则预约**：学生、Admin、Manager 都可以预约，**只有对应 induction 已通过且有效期覆盖整个预约时才能提交申请**；资料还在审核、被拒或已过期都不能申请，员工也不例外。induction 只能由 Admin／Manager 人工审核，不能审核自己的。
 - **代他人预约**：Admin／Manager 可以用 `on_behalf_of_zid` 替别人预约。预约属于被预约人（`student_id`，检查他的 induction），`created_by` 记录创建者，审计同时记两个人。不能审批给自己的或自己创建的申请。
 - **紧急申请**：开始时间早于最短提前期（默认 7 天）的申请可以标为紧急（必须写原因）。只跳过提前期，induction、开放时间和冲突照常检查（时段必须空闲，不进候补）；只有 Manager 能决定，不自动批准，开始前没人决定就过期。
-- **额外时数申请**（1.21.0）：通过独立的 `POST bookings/additional-hours/` 申请普通每周额度之外的时数，必填用途和理由；可以提前提交，不要求先用完普通额度。待审批时不占住资源，也不消耗普通每周 12 小时，但待审和已批准的额外预约都计入 8 个未来预约上限。Manager 只能在预约开始前配置的窗口内（默认 48 小时）批准，并重新检查资源空闲、资格、冻结状态及优先顺序；单次 3 小时、开放时间和最多提前 28 天仍适用。该流程允许短通知申请，不受最少提前 7 天限制，不自动批准，开始时仍未决定则过期。
+- **额外时数申请**（1.21.0）：通过独立的 `POST bookings/additional-hours/` 申请普通每周额度之外的时数，必填用途和理由；可以提前提交，不要求先用完普通额度。待审批时不占住资源，也不消耗普通每周 12 小时，但待审和已批准的额外预约都计入 8 个未来预约上限。Manager 只能在预约开始前配置的窗口内（默认 48 小时）批准，并重新检查资源空闲、资格及优先顺序；单次 3 小时、开放时间和最多提前 28 天仍适用。该流程允许短通知申请，不受最少提前 7 天限制，不自动批准，开始时仍未决定则过期。
 - **额外时数公平顺序**：同一资源、时间重叠且当前可批准的额外申请中，“目标预约当地周一至周日内，跨资源没有已开始且已签到的使用记录”与“正在进行数据采集”属于同一优先组，组内按提交时间及 ID 排序。采集声明必须有说明，Manager 批准时必须明确确认；无效声明应拒绝。无优先条件的申请在后一组，组内同样先到先得。普通已批准预约与有效占位优先于额外时数；额外申请之间不预占资源。审批在事务内重查，审计记录当时的优先依据、顺序、窗口、采集确认及授权时段。
 - **额外时数授权范围**：只适用于已批准的具体资源和起止时间；不能通过普通改期接口移动，需取消后重新申请。Admin 不能批准或拒绝额外申请，Manager 也不能审批本人或本人创建的申请。申请、结果和过期使用现有通知渠道，Manager 收到专门待办通知。
 - **只有 Manager 能直接改期**：改任何人已批准的普通未来预约，不受最短提前期限制（`RESCHEDULED_BY_MANAGER`）。超长和额外时数授权固定到原时段，须取消后重新申请。
@@ -28,9 +28,9 @@ Django 5.2 + Django REST Framework 3.16。提供学生时段查询、房间／�
 - **Manager 拥有 Admin 的全部权限**，另外独有审批期限配置、资源状态、人员管理和 Lab setup（1.16.0）；**Admin 不能访问任何 Manager 页面和接口**（包括读取审批期限）。人员管理：`GET /api/v1/admin/users/` 查看人员名单（带 `is_staff` 和学生的 induction 状态）；Add staff（`POST /api/v1/admin/users/staff/`，`role` 为 `ADMIN` 或 `MANAGER`）新建员工账号；`PATCH /api/v1/admin/users/{id}/` 停用或恢复账号。**Student、Admin、Manager 是三种分开的账号，角色在创建时确定，之后不能互换**（学生不能升为员工，Admin 和 Manager 也不能互相切换，`ROLE_CHANGE_NOT_ALLOWED` 409）；要换人就新建账号、停用旧账号。不能修改自己，至少保留一个启用的 Manager，修改写审计。`POST /api/v1/admin/users/managers/` 等同于 Add staff 选 Manager（兼容接口）。
 - Admin／Manager 可通过 `GET /api/v1/admin/audit/` 按资源、学生、操作类型和时间查看审计记录（申请、审批、改期、取消、资格审核等），满足客户对操作轨迹的要求。
 - **日历订阅链接**：每人一条私密地址（`GET /api/v1/calendar/link/`，地址里是系统生成的随机码，和微软 Token 无关）。用户在 Outlook 里“从 Internet 订阅”粘贴即可，Outlook 自己定期读取 `GET /api/v1/calendar/{token}.ics`，里面是本人作为预约人的已批准预约；改期是更新同一条，取消后消失。可以重新生成（`POST calendar/link/reset/`），旧链接立即失效。更新频率由 Outlook 决定，可能要几个小时。
-- **站内通知**（顶部铃铛，`GET /api/v1/notifications/`）：自己提交的申请已收到、预约被批准／拒绝（含系统自动决定）、候补转为待审批、被 Manager 改期、被员工取消、员工替你建了预约、induction 审核结果、缺席记录、冻结与解冻；Manager 还会收到紧急申请。普通新申请不通知管理员。通知和状态变化写在同一个事务里；其他发送渠道写在 `booking/notification_channels.py`，用 `NOTIFICATION_CHANNELS` 配置。
+- **站内通知**（顶部铃铛，`GET /api/v1/notifications/`）：自己提交的申请已收到、预约被批准／拒绝（含系统自动决定）、候补转为待审批、被 Manager 改期、被员工取消、员工替你建了预约、induction 审核结果、缺席记录；Manager 还会收到紧急申请。普通新申请不通知管理员。通知和状态变化写在同一个事务里；其他发送渠道写在 `booking/notification_channels.py`，用 `NOTIFICATION_CHANNELS` 配置。
 - **邮件通知**：`booking/email_channel.py` 通过系统 Gmail 邮箱（SMTP + 应用专用密码）把申请已收到、批准或拒绝、过期、候补转正、改期、被员工取消、提醒、替你预约、改期申请的结果和维修／重新开放（1.16.0）这些通知发到预约人的大学邮箱。默认关闭（`EMAIL_ENABLED`）；打开后 `EMAIL_MODE` 默认 `allowlist`，只发给名单里的地址，演示时用 `redirect` 把所有邮件改发给自己。邮件先与通知一起写入 PostgreSQL，scheduler 对临时 SMTP 故障做退避重试，进程重启不会丢待办。测试命令 `manage.py send_test_email --to 你的邮箱`。配置见 [email-setup.md](docs/email-setup.md)。
-- **到场确认与冻结**：已批准的预约在开始前 15 分钟到开始后 30 分钟之间，由预约人自己在“我的预约”点 I'm here（`POST bookings/{id}/check-in/`）。窗口结束仍未确认就记一次缺席（`attendance=NO_SHOW`；资源当时维修或关闭的记为 `EXCUSED`，不算）。**第 4 次缺席时冻结 30 天**：冻结期间不能提交新申请（员工也不能替他建），并**立即取消他之后所有的预约和申请**，空出的时段交给候补。冻结只看受益人（zID）：员工被冻结只影响预约，不影响审批别人。被冻结的人可以提交解冻申请（`POST account/unfreeze-requests/`），Admin／Manager 在 Booking freezes 页面同意或拒绝，也可以直接解冻；不能处理自己的申请。网站按钮在哪里都能点，所以它防的是“忘了取消”，防不住故意作弊。
+- **到场确认**：已批准的预约在开始前 15 分钟到开始后 30 分钟之间，由预约人自己在“我的预约”点 I'm here（`POST bookings/{id}/check-in/`）。窗口结束仍未确认就记一次缺席（`attendance=NO_SHOW`；资源当时维修或关闭的记为 `EXCUSED`，不算），并通知本人以后来不了要及时取消。缺席只用于使用情况报表，没有处罚：1.25.0 按客户 Week 8 会议的意见删除了冻结和解冻申请。
 - **每人每周最多 24 个半小时 slots（12 小时）**：同一受益人在同一周（资源当地时间周一到周日）里普通待审批、候补、已批准和循环预约的实际时长都计入；独立额外时数申请及其已批准预约不占这个普通额度。新普通申请会连同已占用额度一起计算，超过 24 slots 返回 409 `WEEKLY_LIMIT_REACHED`，Manager 改期也一样。取消、被拒、过期后 slots 自动释放；员工代建算在受益人头上。
 - **每人最多 8 个有效未来预约**：待审批、候补、已批准和循环预约都计入，超过时返回 409 `FUTURE_BOOKING_LIMIT_REACHED`。取消、被拒、过期或预约开始后自动释放名额；员工代建算在受益人头上；一个已批准预约及其待处理改期申请合计只算一个。
 - **重复预约（只有员工）**：员工在资源卡片上点 Repeat weekly，选每周几、时间、时长、起止日期（模式跨度最长 14 周，每个实际预约日期仍须在当前预约窗口内），先预览每个日期（`POST bookings/series/preview/`），有问题的日期跳过（不进候补），再创建（`POST bookings/series/`）。每个日期均检查当前预约窗口（默认提前 7–28 天），给自己和代他人预约都适用；超过最晚日期的预览项返回 `BOOKING_TOO_FAR_AHEAD`，创建时必须跳过。开放时间、受益人每个日期的 induction 和冲突等规则照常检查；员工自己创建，所以**直接批准**。每一次都是一条普通预约（带 `series_id`），可以取消单次或整组剩下的（`POST bookings/series/{id}/cancel/`）；到场确认照常要求。
@@ -41,10 +41,11 @@ Django 5.2 + Django REST Framework 3.16。提供学生时段查询、房间／�
   - 不真删除：下架（`POST …/archive/`）后从预约页消失，历史和审计都保留，可以恢复（`POST …/restore/`）。还有未来预约（`RESOURCE_HAS_BOOKINGS`），或房间里还有设备（`ROOM_HAS_EQUIPMENT`）时不能下架。
   - 每次新增、修改、下架、恢复都写审计（`RESOURCE_CREATED`／`RESOURCE_UPDATED`（记录改了哪些字段）／`RESOURCE_ARCHIVED`／`RESOURCE_RESTORED`）。
 - **提醒**（通知铃铛）：已批准的预约开始前 24 小时提醒“记得点 I'm here”；已通过的 induction 在 14 天内到期时提醒重新上传；候补或待审批的申请到开始时间还没轮到或没人决定时，通知“申请已过期”。每条提醒只发一次。
-- **使用情况报表**（Admin／Manager，Booking records 页面的 Usage statistics 标签，`GET /api/v1/admin/reports/usage/?first_date=&last_date=`）：每个资源在日期范围内的已批准预约数、预约小时数、占开放时间的比例、到场率（已到场 ÷（已到场 + 缺席））、缺席、取消和被拒数。只读。
+- **使用情况报表**（1.26.0 起只有 Manager，Booking records 页面的 Usage statistics 标签，`GET /api/v1/admin/reports/usage/?first_date=&last_date=`）：每个资源在日期范围内的已批准预约数、预约小时数、占开放时间的比例、到场率（已到场 ÷（已到场 + 缺席））、缺席、取消和被拒数。只读。
 - **员工修改自己的密码**（Account 页面，`POST /api/v1/auth/change-password/`）：要填当前密码，新密码至少 8 位且不能和当前相同；学生没有密码（用大学登录）。
 - **Lab setup**（1.16.0，Manager，`/manager/setup`）：新建 induction、编辑名称和四段说明（怎么完成、接受什么证明、谁审核、找谁问，显示在 Induction & Training 页面），以及实验室联系方式（`GET/PATCH site/contact/`，显示在 Help、已批准预约和 induction 说明下）。
-- **员工首页 Today**（1.16.0，`GET admin/overview/`）：Admin 和 Manager 登录后先看到待处理的事项（待审 induction、预约、紧急申请、候补、改期、快到期限的申请、解冻申请、维修中的资源）和今天的预约。
+- **员工首页**（`GET admin/overview/`）：Admin 登录后进 Today，看到待审 induction、预约、候补、改期、快到期限的申请、维修中的资源和今天的预约。Manager 登录后进 Lab overview（1.26.0），先看到只有 Manager 能决定的事（紧急、额外时数、超长）、房间状态、本周使用情况和按 zID 查历史的入口；Today 照样可以打开。
+- **按角色区分数据**（1.26.0）：Booking Records 和 CSV 对 Admin 只返回 7 天内结束及以后的预约，完整历史只给 Manager；设备的负责人、UNSW 资产编号、来源、规格存在单独的表里，只有 Manager 能读写（`GET/PATCH admin/resources/{id}/internal/`）。
 - **建第一个 Manager**：`python manage.py create_manager --zid z9000003 --name "Lab Manager" --email z9000003@ad.unsw.edu.au`，输出一次性邀请码，对方在 staff 登录页激活。只能在 PostgreSQL 模式用。
 
 Pending 不算确认，但在审批期限内占住时段，后来的人不能抢走正在审核的时段；冲突的申请进入等待名单，不占位。每个资源关联一项资格要求（可带前置），资格有效期必须覆盖预约结束时间。
@@ -68,8 +69,6 @@ Manager 可通过 `GET /api/v1/admin/resources/{id}/booking-policy/` 查看审�
 | 额外时数可批准的开始前小时数 | `additional_hours_approval_window_hours` | 48 | `ADDITIONAL_HOURS_APPROVAL_WINDOW_HOURS` |
 | 到场确认：开始前多少分钟开放 | `check_in_opens_minutes` | 15 | `CHECK_IN_OPENS_MINUTES` |
 | 到场确认：开始后多少分钟截止 | `check_in_closes_minutes` | 30 | `CHECK_IN_CLOSES_MINUTES` |
-| 第几次缺席时冻结 | `freeze_after_no_shows` | 4 | `FREEZE_AFTER_NO_SHOWS` |
-| 冻结天数 | `freeze_days` | 30 | `FREEZE_DAYS` |
 | 重复预约模式最长周数（不放宽每个日期的预约窗口） | `max_series_weeks` | 14 | `MAX_SERIES_WEEKS` |
 | 预约开始前多少小时提醒 | `reminder_hours_before` | 24 | `REMINDER_HOURS_BEFORE` |
 | induction 到期前多少天提醒 | `induction_reminder_days` | 14 | `INDUCTION_REMINDER_DAYS` |
@@ -158,7 +157,7 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
 | `audit.py` | 审计记录查询 |
 | `notifications.py` | 站内通知（铃铛）；其他发送渠道在 `booking/notification_channels.py` |
 | `calendar_feed.py` | 日历订阅链接（iCalendar 内容由 `booking/ics.py` 生成） |
-| `attendance.py` | 到场确认、缺席、冻结和解冻申请 |
+| `attendance.py` | 到场确认和缺席记录 |
 | `series.py` | 员工的重复预约 |
 | `reminders.py` | 提醒：预约快开始、induction 快到期 |
 | `reports.py` | Manager 的使用情况报表 |

@@ -7,8 +7,9 @@ import { PageHeader, RefreshStamp } from '../../ui/components'
 import { getStaffOverview, listResources } from '../../api/index.ts'
 import { errorMessage, fmtRelative, fmtTime } from '../booking/format'
 import type { Booking, Resource, StaffOverview } from '../../api/types/index.ts'
-import { attendanceLabel, todoCards } from './today'
+import { attendanceLabel, cardsFor } from './today'
 import { CheckIcon } from '../booking/icons'
+import { useAutoRefresh } from '../../lib/use-auto-refresh' // 2026-11-07
 
 export function TodayPage() {
   const announcements = useAnnouncements()
@@ -37,13 +38,14 @@ export function TodayPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load()
   }, [load])
+  useAutoRefresh(() => void load())
 
   const now = loadedAt ?? 0
   const who = (b: Booking) => b.booked_for?.display_name ?? 'Someone'
   const today = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Sydney', weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())
   // Sprint 3 (fluency V5): gate only the first paint; retain the existing refresh behavior once data exists.
   const homeReady = announcements.settled && (data !== null || !loading)
-  const waiting = data !== null && todoCards(data).some(card => card.count > 0)
+  const waiting = data !== null && cardsFor(data).some(card => card.count > 0)
 
   return (
     <section className="today">
@@ -62,7 +64,7 @@ export function TodayPage() {
             {!waiting && <span className="today-brief-mark"><CheckIcon size={23} /></span>}
           </div>
           <div className="today-cards">
-            {todoCards(data).filter(card => card.count > 0).map((card) => (
+            {cardsFor(data).filter(card => card.count > 0).map((card) => (
               <Link key={card.key} to={card.to} className={`today-card is-${card.tone}`}>
                 <span className="today-count">{card.count}</span>
                 <span className="today-label">{card.label}</span>

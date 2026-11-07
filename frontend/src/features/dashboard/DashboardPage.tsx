@@ -1,9 +1,10 @@
 import { AnnouncementBoard } from '../announcements/AnnouncementBoard' // Sprint 3 (1.19.0)
 import { useAnnouncements } from '../announcements/use-announcements' // Sprint 3 (fluency V5)
 import { useEffect, useState } from 'react'
+import { useAutoRefresh } from '../../lib/use-auto-refresh' // 2026-11-07
 import { Link } from 'react-router'
 import { getDashboard, listRequirements, listResources } from '../../api/index.ts'
-import { errorMessage, fmtDateTime, fmtRange, fmtTime, STATUS_TEXT, TZ } from '../booking/format'
+import { errorMessage, fmtDateTime, fmtRange, fmtTime, statusText, TZ } from '../booking/format'
 import { AlertIcon, CalendarIcon, CapIcon, CheckIcon, ClockIcon } from '../booking/icons'
 import type { Dashboard, Qualification, Requirement, Resource, User } from '../../api/types/index.ts'
 import { InductionRow } from '../induction/InductionRow'
@@ -87,6 +88,7 @@ function DashboardSession({ user }: { user: User }) {
     setState({ status: 'loading' })
     setRefreshKey((value) => value + 1)
   }
+  useAutoRefresh(() => setRefreshKey((value) => value + 1)) // 2026-11-07: quietly, without the loading state
   // Sprint 3 (fluency V5): publish the first home and announcement result together; errors also settle.
   const loading = state.status === 'loading' || !announcements.settled
   // Only the first paint waits; "Refresh overview" reloads the overview and the announcements stay in place.
@@ -189,7 +191,7 @@ function DashboardContent({ state }: { state: Extract<DashboardState, { status: 
           <span className="dash-stat-detail">{data.week_hours.used_hours} of {data.week_hours.limit_hours} h booked</span>
         </Link>
       </section>
-      <p className="dash-more-hours">Need more than {data.week_hours.limit_hours} h this week? <Link className="dash-link" to="/resources">Request additional hours <span aria-hidden="true">→</span></Link></p>
+      <p className="dash-more-hours">Need more than {data.week_hours.limit_hours} h this week? <Link className="dash-link" to="/resources?for=additional-hours">Request additional hours <span aria-hidden="true">→</span></Link></p>
 
       {/* Sprint 3 (1.20.0): keep the compact next session and booking list together, beside training. */}
       <div className="dash-columns">
@@ -214,7 +216,7 @@ function DashboardContent({ state }: { state: Extract<DashboardState, { status: 
               return <li className="dash-booking" key={booking.id}>
                 <div className="dash-date" aria-hidden="true"><span>{monthFormat.format(start)}</span><strong>{dayFormat.format(start)}</strong></div>
                 <div className="dash-booking-info"><h3>{resourceById.get(booking.resource_id)?.name ?? 'Resource'}</h3><p>{fmtDateTime(booking.start)} – {fmtTime(booking.end)}</p></div>
-                <span className={`dash-badge dash-booking-status-${booking.status}`}>{STATUS_TEXT[booking.status]}</span>
+                <span className={`dash-badge dash-booking-status-${booking.status}`}>{statusText(booking)}</span>
               </li>
             })}</ul>
           </section>}

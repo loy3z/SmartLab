@@ -16,7 +16,7 @@ each file holds one part (all methods share ``self``: repo, storage, clock, rule
   audit.py           audit trail query
   notifications.py   website notifications (the bell); extra channels in booking/notification_channels.py
   calendar_feed.py   calendar subscription link (iCalendar feed, booking/ics.py)
-  attendance.py      check-in, missed bookings, booking freeze and unfreeze requests
+  attendance.py      check-in and missed bookings
   series.py          weekly series made by staff
   reminders.py       reminders: booking coming up, induction expiring soon
   reports.py         usage report for Managers

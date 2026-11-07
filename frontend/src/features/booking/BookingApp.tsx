@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { useAuth } from '../auth/auth-context'
 import { BookingForm } from './BookingForm'
 import { AdditionalHoursForm } from './AdditionalHoursForm'
@@ -8,7 +8,6 @@ import { FindTime } from './FindTime'
 import { listQualifications, listRequirements, listResources } from '../../api/index.ts'
 import { errorMessage, SEPARATE_BOOKING_TEXT } from './format' // Sprint 3 (1.16.0): SEPARATE_BOOKING_TEXT
 import { AlertIcon, CheckIcon, SearchIcon, UploadIcon } from './icons'
-import { FreezeNotice } from './FreezeNotice' // Sprint 3
 import { Modal } from './Modal'
 import { RecurringBookingForm } from './RecurringBookingForm' // Sprint 3
 import { ResourceCard, type InductionState } from './ResourceCard'
@@ -43,6 +42,10 @@ interface Picked { resource: Resource; start: string; minutes: number; date: str
 export function BookingApp({ onBooked }: { onBooked: () => void }) {
   const { user } = useAuth()
   const isStaff = user?.role === 'ADMIN' || user?.role === 'MANAGER'
+  const isManager = user?.role === 'MANAGER'
+  // 2026-11-07: opened from "Request additional hours" on the Dashboard: each card's main button opens that form.
+  const [params, setParams] = useSearchParams()
+  const forAdditionalHours = params.get('for') === 'additional-hours'
   const [repeat, setRepeat] = useState<Resource | null>(null) // Sprint 3: weekly series dialog
   const [additional, setAdditional] = useState<Resource | null>(null)
   const [longBooking, setLongBooking] = useState<Resource | null>(null)
@@ -103,7 +106,6 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
   return (
     <>
       <h1>Book a resource</h1>{/* Sprint 3 (internal-tool UI, AI-2): no introduction line */}
-      <FreezeNotice />
 
       {/* Sprint 3 (compact page top): one line for all inductions instead of a large banner each.
           Sprint 3 (workspace UI): folded under "Training requirements"; review R2: open while any is not verified,
@@ -192,16 +194,24 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
       {/* Sprint 3 (1.16.0): rooms and equipment are booked separately (agreed with Loy, 25 Oct). */}
       <p className="bk-muted bk-separate">{SEPARATE_BOOKING_TEXT[view]}</p>
       {error && <p className="bk-error">{error}</p>}
+      {forAdditionalHours && (
+        <div className="ui-callout" role="status">
+          Choose a room or equipment to request additional hours.{' '}
+          <button type="button" className="bk-linkbtn" onClick={() => setParams({})}>Book normally instead</button>
+        </div>
+      )}
       <div className="bk-grid">
         {shown.map((r) => (
           <ResourceCard
             key={r.id}
             testOverride={Boolean(user?.bypass_booking_rules)}
+            managerOverride={isManager}
             resource={r}
             state={stateFor(r, quals, reqs)}
             prerequisiteName={prerequisiteName(r, quals, reqs)}
-            onOpen={() => setOpen(r)}
-            onAdditionalHours={() => setAdditional(r)}
+            onOpen={() => (forAdditionalHours ? setAdditional(r) : setOpen(r))}
+            openLabel={forAdditionalHours ? 'Request additional hours' : undefined}
+            onAdditionalHours={forAdditionalHours ? undefined : () => setAdditional(r)}
             onLongBooking={() => setLongBooking(r)}
             roomName={r.kind === 'EQUIPMENT' ? roomName(r.room_id) : undefined}
             equipmentCount={r.kind === 'ROOM' ? equipment.filter((item) => item.room_id === r.id).length : undefined}

@@ -325,3 +325,26 @@ input::placeholder, textarea::placeholder { color: #78837d; }
   .bookings-resource-filter label { width: 100%; }
   .bookings-resource-filter select { flex: 1; width: 0; }
 }
+
+/* 2026-11-07 (client, Week 8): role badge in the top bar and the Manager home page. */
+.app-role-badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: .02em; border: 1px solid transparent; }
+.app-role-badge.is-student { background: var(--blue-bg); color: var(--blue); border-color: #c9d9e7; }
+.app-role-badge.is-admin { background: var(--amber-bg); color: var(--amber); border-color: #ecd3a5; }
+.app-role-badge.is-manager { background: var(--ink); color: #fff; }
+.manager-home-heading { margin: 22px 0 0; font-size: 16px; }
+.manager-home-figures { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 8px 0 12px; }
+.manager-home-figures strong { font-size: 20px; margin-right: 4px; }
+.manager-home-links { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 6px; }
+@media (max-width: 760px) { .manager-home .today-grid { grid-template-columns: 1fr; } }
+
+/* 2026-11-07: drag the end of a booking in progress (ExtendBox) and extension requests on the Manager home. */
+.ext-track { position: relative; display: grid; gap: 2px; height: 34px; margin: 10px 0 4px; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-sub); touch-action: none; cursor: ew-resize; }
+.ext-cell { border-radius: 0; background: var(--card); }
+.ext-cell.is-mine { background: var(--ink); }
+.ext-cell.is-added { background: var(--yellow); }
+.ext-cell.is-taken { background: repeating-linear-gradient(135deg, var(--grey-bg) 0 4px, var(--line-strong) 4px 6px); }
+.ext-handle { position: absolute; top: -4px; bottom: -4px; width: 10px; margin-left: -5px; border: 2px solid var(--ink); border-radius: var(--radius-control); background: #fff; cursor: ew-resize; }
+.ext-handle:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+.ext-scale { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+.manager-home-request { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+

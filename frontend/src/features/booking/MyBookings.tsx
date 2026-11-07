@@ -9,8 +9,10 @@ import { CalendarSubscribe } from './CalendarSubscribe'
 import { ChangeTimeBox } from './ChangeTimeBox' // Sprint 3 (1.16.0)
 import { canAskForChange, openChangeText, replacesText } from './change-requests' // Sprint 3 (1.16.0)
 import { ContactLink } from '../contact/LabContact' // Sprint 3 (1.16.0)
-import { FreezeNotice } from './FreezeNotice'
-import { bookingDetail, errorMessage, fmtDuration, fmtRange, fmtTime, minutesBetween, STATUS_TEXT } from './format'
+import { ExtendBox } from './ExtendBox' // 1.24.0
+import { canExtend, waitingExtension } from './extend'
+import { useAutoRefresh } from '../../lib/use-auto-refresh' // 2026-11-07
+import { bookingDetail, errorMessage, fmtDuration, fmtRange, fmtTime, minutesBetween, statusText } from './format'
 import { ACTIVE, canRemoveBookingHistory, groupBookings } from './my-bookings'
 import { RescheduleBox } from './RescheduleBox'
 import { SeriesCard } from './SeriesCard'
@@ -50,6 +52,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
   const [rescheduling, setRescheduling] = useState<string | null>(null)
   const [changing, setChanging] = useState<string | null>(null) // Sprint 3 (1.16.0): booking whose change box is open
   const [removing, setRemoving] = useState<string | null>(null) // Sprint 3 (1.20.0)
+  const [extending, setExtending] = useState<string | null>(null) // 1.24.0: booking whose extend box is open
 
   const load = useCallback(async () => {
     setError('')
@@ -69,6 +72,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load()
   }, [load, refreshKey])
+  useAutoRefresh(() => void load()) // 2026-11-07: an approval shows without F5
 
   async function cancel(b: Booking) {
     const name = resources[b.resource_id]?.name ?? 'this resource'
@@ -171,7 +175,6 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
     <div className="bookings-list">
       <h1>My bookings</h1>{/* Sprint 3 (internal-tool UI, AI-2): no introduction line */}
       {/* Sprint 3 */}
-      <FreezeNotice />
       <CalendarSubscribe />
       {!loading && !error && <div className="bookings-filters">
         <Tabs value={view} onChange={next => setFilter('view', next)} label="Booking status"
@@ -217,7 +220,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
           <div key={b.id} className="bk-bcard">
             <div className="bk-bhead">
               <h3>{res?.name ?? 'Resource'}</h3>
-              <span className={`bk-chip st-${b.status}`}>{(b.additional_hours || b.long_booking) && b.status === 'PENDING_APPROVAL' ? 'Waiting for Manager approval' : STATUS_TEXT[b.status]}{b.status === 'WAITLISTED' && b.waitlist_position ? ` · #${b.waitlist_position}` : ''}</span>
+              <span className={`bk-chip st-${b.status}`}>{statusText(b)}{b.status === 'WAITLISTED' && b.waitlist_position ? ` · #${b.waitlist_position}` : ''}</span>
               {b.additional_hours && <span className="bk-chip">Additional hours</span>}
               {b.long_booking && <span className="bk-chip">Longer booking</span>}
               {b.urgent && <span className="bk-chip is-urgent">URGENT</span>}
@@ -285,6 +288,24 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
                     body={`Booking reference: ${b.id}\nResource: ${res?.name ?? ''}\nTime: ${fmtRange(b.start, b.end)}\n\n`} />
                 )}
               </div>
+            )}
+            {/* 1.24.0 (client, Week 8): stay longer while the booking is in progress */}
+            {waitingExtension(b, now) && extending !== b.id && (
+              <p className="bk-change-note">You asked to finish at {fmtTime(waitingExtension(b, now)!)}. Waiting for a Manager.</p>
+            )}
+            {canExtend(b, user?.id, isManager, now) && res && extending !== b.id && (
+              <div className="bk-card-actions">
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setExtending(b.id)}>Extend</button>
+              </div>
+            )}
+            {extending === b.id && res && (
+              <ExtendBox booking={b} resource={res} isManager={isManager} onClose={() => setExtending(null)}
+                onDone={(updated) => {
+                  setExtending(null)
+                  if (updated.extension_end) feedback.success(`Finish at ${fmtTime(updated.extension_end)} once a Manager approves it.`, 'Request sent')
+                  else feedback.success(`Now until ${fmtTime(updated.end)}.`, 'Booking extended')
+                  void load()
+                }} />
             )}
             {rescheduling === b.id && res && (
               <RescheduleBox booking={b} resource={res} onDone={rescheduled} onClose={() => setRescheduling(null)} />

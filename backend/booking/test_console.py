@@ -109,7 +109,7 @@ def test_period_violation(service, resource, start, end):
 
 def create_test_booking(service, actor, resource, booking_id, start, end, purpose, urgent, reason, replaces):
     """Approve the test account's own booking at once, skipping lab policy (window, induction, opening hours,
-    maintenance, length, weekly limit, freeze). Still enforced: an active resource, a future start, at most 24 h,
+    maintenance, length, weekly limit). Still enforced: an active resource, a future start, at most 24 h,
     no duplicate and no clash with another booking or held time. Called inside the normal transaction."""
     error = test_period_violation(service, resource, start, end)
     if error:
@@ -160,7 +160,7 @@ def test_availability(service, actor, resource, day, duration_minutes, exclude):
             "duration_minutes": duration_minutes, "slots": slots, **test_window(service),
             "resource_status": resource.status.value, "status_reason": resource.status_reason,
             "review_window_minutes": 0,
-            "can_request": True, "qualification_status": "VERIFIED", "frozen_until": None,
+            "can_request": True, "qualification_status": "VERIFIED",
             "missing_prerequisite_id": None, "test_bypass": True, "max_booking_minutes": 1440,
             "booking_slot_minutes": 30, "max_booking_slots": 48,
             "selection_step_minutes": resource.slot_minutes,

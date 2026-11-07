@@ -11,10 +11,23 @@ export interface TodoCard {
   hint?: string
 }
 
+/** 2026-11-07 (client, Week 8): cards only a Manager can act on. Admins do not see them on Today; the Manager home
+ *  page shows them first. */
+export const MANAGER_DECIDES = ['extensions', 'urgent', 'additional-hours', 'long-bookings']
+
+/** The cards of Today for this role: an Admin's review work, or everything for a Manager. */
+export function cardsFor(data: StaffOverview): TodoCard[] {
+  return todoCards(data).filter((card) => data.role === 'MANAGER' || !MANAGER_DECIDES.includes(card.key))
+}
+
 /** One card per kind of waiting work, in the order staff usually handle them. Urgent requests say who decides. */
 export function todoCards(data: StaffOverview): TodoCard[] {
   const tone = (count: number, urgent = false): TodoCard['tone'] => (count === 0 ? 'grey' : urgent ? 'red' : 'amber')
+  const extensions = data.extension_requests?.length ?? 0
   return [
+    // 2026-11-07: the person is in the lab now, so these come first.
+    { key: 'extensions', count: extensions, label: 'Extension requests', to: '/manager/home?focus=extensions', tone: tone(extensions, true),
+      hint: 'Someone in the lab asks to stay longer' },
     { key: 'urgent', count: data.urgent_requests, label: 'Urgent requests', to: '/admin/bookings', tone: tone(data.urgent_requests, true),
       hint: data.can_decide_urgent ? 'Only a Manager decides these' : 'A Manager decides these' },
     { key: 'additional-hours', count: data.additional_hours_requests ?? 0, label: 'Additional-hours requests', to: '/admin/bookings?type=additional-hours', tone: tone(data.additional_hours_requests ?? 0),
@@ -26,7 +39,6 @@ export function todoCards(data: StaffOverview): TodoCard[] {
     { key: 'changes', count: data.changes_waiting, label: 'Change requests', to: '/admin/bookings', tone: tone(data.changes_waiting),
       hint: 'People asking to move a booking' },
     { key: 'inductions', count: data.pending_inductions, label: 'Induction evidence to review', to: '/admin/qualifications', tone: tone(data.pending_inductions) },
-    { key: 'unfreeze', count: data.unfreeze_requests, label: 'Unfreeze requests', to: '/admin/freezes', tone: tone(data.unfreeze_requests) },
     { key: 'waitlist', count: data.waitlisted, label: 'On the waitlist', to: '/admin/bookings', tone: 'grey' },
   ]
 }

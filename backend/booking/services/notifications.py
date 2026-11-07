@@ -3,7 +3,7 @@
 A notification is stored in the same transaction as the change it describes. Booking changes are noticed in one
 place (``_booking_changed``, called whenever a booking is saved), so every path that approves, rejects, promotes,
 cancels or reschedules a booking tells the person it is for. Other notices (someone booked for you, induction
-reviewed, missed check-in, freeze) are sent where they happen. Extra delivery channels (e.g. Outlook mail) are
+reviewed, missed check-in) are sent where they happen. Extra delivery channels (e.g. Outlook mail) are
 plugged in through booking/notification_channels.py.
 """
 from contextvars import ContextVar
@@ -24,14 +24,14 @@ NOTIFICATION_CATEGORIES = ("bookings", "reminders", "induction", "account", "res
 _CATEGORY_BY_KIND = {
     "BOOKING_APPROVED": "bookings", "BOOKING_REJECTED": "bookings", "BOOKING_PROMOTED": "bookings",
     "BOOKING_EXPIRED": "bookings", "BOOKING_CANCELLED": "bookings", "BOOKING_RESCHEDULED": "bookings",
+    "EXTENSION_REQUESTED": "bookings", "EXTENSION_APPROVED": "bookings", "EXTENSION_REJECTED": "bookings",  # 2026-11-07
     "BOOKING_SUBMITTED": "bookings", "BOOKING_CREATED_FOR_YOU": "bookings",
     "SERIES_CREATED": "bookings", "SERIES_CREATED_FOR_YOU": "bookings",
     "CHANGE_APPROVED": "bookings", "CHANGE_REJECTED": "bookings", "CHANGE_REQUESTED": "bookings",
     "BOOKING_REMINDER": "reminders", "INDUCTION_EXPIRING": "reminders",
     "QUALIFICATION_VERIFIED": "induction", "QUALIFICATION_REJECTED": "induction",
     "INDUCTION_SUBMITTED": "induction",
-    "NO_SHOW_RECORDED": "account", "ACCOUNT_FROZEN": "account", "ACCOUNT_UNFROZEN": "account",
-    "UNFREEZE_APPROVED": "account", "UNFREEZE_REJECTED": "account",
+    "NO_SHOW_RECORDED": "account",
     "RESOURCE_OUT_OF_SERVICE": "resources", "RESOURCE_REOPENED": "resources",
 }
 

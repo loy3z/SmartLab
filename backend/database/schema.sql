@@ -63,9 +63,6 @@ CREATE TABLE public.app_users (
     role text NOT NULL,
     university_email text CONSTRAINT app_users_email_not_null NOT NULL,
     active boolean DEFAULT true NOT NULL,
-    no_show_count integer DEFAULT 0 NOT NULL,
-    frozen_until timestamp with time zone,
-    CONSTRAINT app_users_no_show_count_check CHECK ((no_show_count >= 0)),
     CONSTRAINT app_users_role_check CHECK ((role = ANY (ARRAY['STUDENT'::text, 'ADMIN'::text, 'MANAGER'::text])))
 );
 
@@ -630,20 +627,6 @@ CREATE TABLE public.calendar_feed (
     created_at timestamp with time zone NOT NULL
 );
 
--- Requests to lift a booking freeze.
-CREATE TABLE public.unfreeze_request (
-    id uuid NOT NULL,
-    principal_id uuid NOT NULL,
-    reason text NOT NULL,
-    created_at timestamp with time zone NOT NULL,
-    status text DEFAULT 'PENDING'::text NOT NULL,
-    decided_by uuid,
-    decided_at timestamp with time zone,
-    decision_reason text
-);
-ALTER TABLE public.unfreeze_request ADD CONSTRAINT unfreeze_request_status_check
-    CHECK (((status = ANY (ARRAY['PENDING'::text, 'APPROVED'::text, 'REJECTED'::text])) AND (char_length(reason) <= 1000)));
-
 -- Keys.
 ALTER TABLE ONLY public.booking_series ADD CONSTRAINT booking_series_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.booking
@@ -673,16 +656,26 @@ ALTER TABLE ONLY public.calendar_feed ADD CONSTRAINT calendar_feed_token_unique 
 ALTER TABLE ONLY public.calendar_feed
     ADD CONSTRAINT calendar_feed_principal_fk FOREIGN KEY (principal_id) REFERENCES public.app_users(id) ON DELETE CASCADE;
 
-ALTER TABLE ONLY public.unfreeze_request ADD CONSTRAINT unfreeze_request_pkey PRIMARY KEY (id);
-ALTER TABLE ONLY public.unfreeze_request
-    ADD CONSTRAINT unfreeze_request_principal_fk FOREIGN KEY (principal_id) REFERENCES public.app_users(id) ON DELETE CASCADE;
-ALTER TABLE ONLY public.unfreeze_request
-    ADD CONSTRAINT unfreeze_request_decided_by_fk FOREIGN KEY (decided_by) REFERENCES public.app_users(id) ON DELETE RESTRICT;
--- At most one undecided request per person.
-CREATE UNIQUE INDEX unfreeze_request_one_pending_idx ON public.unfreeze_request USING btree (principal_id)
-    WHERE (status = 'PENDING'::text);
-
 CREATE INDEX booking_series_idx ON public.booking USING btree (series_id) WHERE (series_id IS NOT NULL);
+
+-- 2026-11-07 (client, Week 8): Manager-only internal information about a resource (migrations/015_resource_internal_info.sql).
+CREATE TABLE public.resource_internal_info (
+    resource_id uuid NOT NULL,
+    owner text DEFAULT ''::text NOT NULL,
+    asset_number text DEFAULT ''::text NOT NULL,
+    provided_by text DEFAULT ''::text NOT NULL,
+    specifications text DEFAULT ''::text NOT NULL,
+    updated_at timestamp with time zone,
+    updated_by uuid
+);
+ALTER TABLE ONLY public.resource_internal_info ADD CONSTRAINT resource_internal_info_pkey PRIMARY KEY (resource_id);
+ALTER TABLE ONLY public.resource_internal_info
+    ADD CONSTRAINT resource_internal_info_resource_fk FOREIGN KEY (resource_id) REFERENCES public.bookable_resource(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.resource_internal_info
+    ADD CONSTRAINT resource_internal_info_updated_by_fk FOREIGN KEY (updated_by) REFERENCES public.app_users(id) ON DELETE RESTRICT;
+ALTER TABLE public.resource_internal_info ADD CONSTRAINT resource_internal_info_length_check
+    CHECK (((char_length(owner) <= 120) AND (char_length(asset_number) <= 60) AND (char_length(provided_by) <= 120)
+            AND (char_length(specifications) <= 2000)));
 
 -- Sprint 3 (1.16.0): change requests and the lab's contact details (see migrations/007_change_requests_guidance_details_contact.sql).
 CREATE TABLE public.site_contact (

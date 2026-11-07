@@ -3,12 +3,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { EmptyState, PageHeader, RefreshStamp, Tabs } from '../../ui/components'
 import { useFeedback } from '../../ui/feedback-context'
-import { archiveResource, createResource, listAllResources, listRequirements, restoreResource, updateResource } from '../../api/index.ts'
+import { archiveResource, createResource, getResourceInternalInfo, listAllResources, listRequirements, restoreResource, updateResource,
+  updateResourceInternalInfo } from '../../api/index.ts'
 import { errorMessage, fmtDuration, fmtHours, fmtRange } from '../booking/format'
-import type { BookingOutsideRules, Requirement, Resource, ResourceDetail, ResourceInput, ResourceKind } from '../../api/types/index.ts' // Sprint 3 (1.16.0): ResourceDetail
+import type { BookingOutsideRules, Requirement, Resource, ResourceDetail, ResourceInput, ResourceInternalInput, ResourceKind } from '../../api/types/index.ts' // Sprint 3 (1.16.0): ResourceDetail
 import { changedFields, checkResource, describeHours, emptyResource, hoursFromMinutes, MAX_DETAILS, minutesFromHours, PROBLEM_TEXT, resourceToInput, SLOT_CHOICES } from './resource-form' // Sprint 3 (1.16.0): hours helpers, MAX_DETAILS
 
 type View = 'ROOM' | 'EQUIPMENT' | 'ARCHIVED'
+
+const EMPTY_INTERNAL: ResourceInternalInput = { owner: '', asset_number: '', provided_by: '', specifications: '' }
 
 const STATUS_TEXT: Record<Resource['status'], string> = { AVAILABLE: 'Available', MAINTENANCE: 'Maintenance', CLOSED: 'Closed' }
 const STATUS_TONE: Record<Resource['status'], string> = { AVAILABLE: 'is-green', MAINTENANCE: 'is-amber', CLOSED: 'is-red' }
@@ -226,6 +229,9 @@ function ResourceDialog({ editing, rooms, requirements, onClose, onSaved }: {
     [editing, requirements],
   )
   const [form, setForm] = useState<ResourceInput>(initial)
+  // 2026-11-07 (client, Week 8): Managers-only details, saved separately; only changed fields are sent.
+  const [internalSaved, setInternalSaved] = useState<ResourceInternalInput>(EMPTY_INTERNAL)
+  const [internal, setInternal] = useState<ResourceInternalInput>(EMPTY_INTERNAL)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const problems = checkResource(kind, form)
@@ -236,6 +242,15 @@ function ResourceDialog({ editing, rooms, requirements, onClose, onSaved }: {
     if (dialog && !dialog.open) dialog.showModal()
   }, [])
 
+  useEffect(() => {
+    if (editing.mode !== 'edit') return
+    getResourceInternalInfo(editing.resource.id).then((info) => {
+      const values = { owner: info.owner, asset_number: info.asset_number, provided_by: info.provided_by, specifications: info.specifications }
+      setInternalSaved(values)
+      setInternal(values)
+    }).catch(() => undefined) // the rest of the form still works; nothing is sent unless a field is typed in
+  }, [editing])
+
   const set = <K extends keyof ResourceInput>(key: K, value: ResourceInput[K]) => setForm((current) => ({ ...current, [key]: value }))
 
   async function submit(event: FormEvent) {
@@ -244,12 +259,19 @@ function ResourceDialog({ editing, rooms, requirements, onClose, onSaved }: {
     setBusy(true)
     setError('')
     try {
+      let saved: Resource
+      let outsideRules: BookingOutsideRules[] = []
       if (editing.mode === 'add') {
-        onSaved(await createResource(kind, form), [])
+        saved = await createResource(kind, form)
       } else {
         const result = await updateResource(editing.resource.id, changedFields(initial, form))
-        onSaved(result.resource, result.bookings_outside_rules)
+        saved = result.resource
+        outsideRules = result.bookings_outside_rules
       }
+      const internalChanges = Object.fromEntries(Object.entries(internal)
+        .filter(([key, value]) => value !== internalSaved[key as keyof ResourceInternalInput]))
+      if (Object.keys(internalChanges).length) await updateResourceInternalInfo(saved.id, internalChanges)
+      onSaved(saved, outsideRules)
     } catch (e) {
       setError(errorMessage(e))
     } finally {
@@ -326,6 +348,23 @@ function ResourceDialog({ editing, rooms, requirements, onClose, onSaved }: {
         )}
         <DetailsEditor details={form.details} onChange={(details) => set('details', details)}
           placeholder={kind === 'ROOM' ? 'e.g. Floor · Level 3' : 'e.g. Model · Rigol DS1054Z'} />
+        <fieldset className="mr-details">
+          <legend>Managers only</legend>
+          <small className="bk-muted">Not shown to students or Admins.</small>
+          <label className="ui-field"><span>Owner</span>
+            <input maxLength={120} value={internal.owner} onChange={(e) => setInternal({ ...internal, owner: e.target.value })} />
+          </label>
+          <label className="ui-field"><span>UNSW asset number</span>
+            <input maxLength={60} value={internal.asset_number} onChange={(e) => setInternal({ ...internal, asset_number: e.target.value })} />
+          </label>
+          <label className="ui-field"><span>Provided by</span>
+            <input maxLength={120} value={internal.provided_by} placeholder="e.g. School grant 2024"
+              onChange={(e) => setInternal({ ...internal, provided_by: e.target.value })} />
+          </label>
+          <label className="ui-field"><span>Specifications</span>
+            <textarea maxLength={2000} rows={2} value={internal.specifications} onChange={(e) => setInternal({ ...internal, specifications: e.target.value })} />
+          </label>
+        </fieldset>
         {firstProblem && <p className="bk-muted" role="status">{firstProblem}</p>}
         {error && <p className="bk-error" role="alert">{error}</p>}
         <div className="ui-dialog-actions">

@@ -118,7 +118,7 @@ export function bookingDetail(b: Booking): string {
           ? `This request was rejected automatically at the end of the review period${b.decision_reason ? `: ${b.decision_reason}` : '.'}`
           : `This request was rejected${b.decision_reason ? `: ${b.decision_reason}` : '.'}`
     case 'CANCELLED':
-      return b.reason_code === 'ACCOUNT_FROZEN' // Sprint 3: booking freeze
+      return b.reason_code === 'ACCOUNT_FROZEN' // older bookings: the freeze was removed on 2026-11-07
         ? 'Cancelled because booking was frozen after missed check-ins.'
         : b.reason_code === 'CANCELLED_BY_STAFF'
           ? 'This booking was cancelled by staff.'

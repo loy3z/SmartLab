@@ -65,6 +65,8 @@ docker compose --env-file .env.docker build
 # 3. 用新镜像临时跑一次新迁移（旧容器里没有新迁移文件，所以不能用 exec）；没有新迁移就跳过
 docker compose --env-file .env.docker run --rm api migrate database/migrations/012_additional_hours_requests.sql
 docker compose --env-file .env.docker run --rm api migrate database/migrations/013_long_booking_requests.sql
+docker compose --env-file .env.docker run --rm api migrate database/migrations/014_remove_booking_freeze.sql
+docker compose --env-file .env.docker run --rm api migrate database/migrations/015_resource_internal_info.sql
 # 4. 换上新容器
 docker compose --env-file .env.docker up -d
 ```
@@ -72,6 +74,13 @@ docker compose --env-file .env.docker up -d
 `api` 的入口就是 `entrypoint.sh`，所以第 3 步的参数直接写 `migrate <文件>`。先迁移再换代码，新代码启动时数据库已经是新结构；迁移只加列和表时，旧代码在迁移后的库上也照常运行，不会中断服务。
 
 上例适用于数据库已经执行到 011 的情况；若缺少更早迁移，先按编号补齐缺少的脚本。必须先执行 012，再执行 013；两者都可重复执行，并保留已有预约的时间、状态和审批结果。012 为额外每周小时申请增加四个字段及约束，该申请等待 Manager 决定时不占时段。013 为长时段请求增加标志、理由及约束，该请求沿用普通占位／候补流程。两种特殊请求都由 Manager 明确审批，不自动批准。首次建库已经包含 012 和 013，无需另跑。
+
+**014（1.25.0）会删列和表**（`app_users.no_show_count`、`frozen_until`，表 `unfreeze_request`），和前面只加不删的迁移不同：
+
+- 迁移后、换上新容器前的几秒里，旧容器读用户会报错；部署脚本两步紧挨着，影响很短。
+- 删掉的冻结数据只在部署前的备份里。
+- 要回滚到 1.25.0 之前的代码，先用新镜像重跑 006（可重复执行）补回列和表，再 `--rollback`：
+  `docker compose --env-file .env.docker run --rm api migrate database/migrations/006_calendar_notifications_attendance_series.sql`
 
 为什么不在每次启动时重跑全部迁移：迁移 005 会把两个演示员工账号的密码改回演示密码，重跑会冲掉 Manager 改过的密码。
 

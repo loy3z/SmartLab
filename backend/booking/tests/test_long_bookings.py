@@ -177,11 +177,8 @@ class LongBookingTests(BookingFixtureMixin, SimpleTestCase):
         self.assertEqual(self.long(days=28).status, BookingStatus.PENDING_APPROVAL)
         self.refused("BOOKING_TOO_FAR_AHEAD", self.long, days=29)
 
-    def test_qualification_freeze_and_resource_limit_are_rechecked_before_manager_approval(self):
+    def test_qualification_and_resource_limit_are_rechecked_before_manager_approval(self):
         booking = self.long()
-        self.repo.save_principal(replace(self.student, frozen_until=self.now + timedelta(days=3)))
-        self.refused("ACCOUNT_FROZEN", self.service.review_booking, self.manager, booking.id, "APPROVED")
-        self.repo.save_principal(self.student)
         self.repo.save_resource(replace(self.room, max_booking_minutes=180))
         self.refused("DURATION_LIMIT", self.service.review_booking, self.manager, booking.id, "APPROVED")
         self.repo.save_resource(self.room)

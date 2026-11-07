@@ -43,8 +43,6 @@ class BookingsMixin:
             raise DomainError("URGENT_REASON_REQUIRED", "Explain why the request is urgent (up to 500 characters).")
         beneficiary = self._beneficiary(actor, on_behalf_of_zid)
         bypass = booking_rules_bypassed(actor, beneficiary.id)
-        frozen = self.frozen_violation(  # Sprint 3: booking freeze
-            self.repo.get_principal(beneficiary.id) or beneficiary)
         if start.tzinfo is None or start.utcoffset() is None or end.tzinfo is None or end.utcoffset() is None:
             raise DomainError("INVALID_TIME", "Start and end require UTC offsets.")
         start, end = start.astimezone(UTC), end.astimezone(UTC)
@@ -69,8 +67,6 @@ class BookingsMixin:
             if actor.role == Role.MANAGER and replaces is None:  # 2026-11-06 (client, Week 8): Manager override
                 return self._create_manager_booking(actor, beneficiary, resource, booking_id, start, end, purpose,
                                                     urgent, urgent_reason)
-            if frozen:
-                raise frozen
             self._validate_period(resource, start, end)
             if urgent:
                 window = self._window_reason(resource, start)
@@ -130,7 +126,7 @@ class BookingsMixin:
         """2026-11-06 (client, Week 8): a Manager's booking, for themselves or someone else, is approved at once.
 
         The Manager overrides the person's rules: induction, booking window, the per-booking, weekly and
-        future-booking limits, and the freeze. The resource's own facts still apply: it is open for booking, the time
+        future-booking limits. The resource's own facts still apply: it is open for booking, the time
         is within its opening hours, its longest booking and its time steps, and the time is free (nobody is moved).
         """
         error = (self._account_violation(person.id) or self._resource_violation(resource)

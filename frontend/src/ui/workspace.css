@@ -325,3 +325,15 @@ input::placeholder, textarea::placeholder { color: #78837d; }
   .bookings-resource-filter label { width: 100%; }
   .bookings-resource-filter select { flex: 1; width: 0; }
 }
+
+/* 2026-11-07 (client, Week 8): role badge in the top bar and the Manager home page. */
+.app-role-badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: .02em; border: 1px solid transparent; }
+.app-role-badge.is-student { background: var(--blue-bg); color: var(--blue); border-color: #c9d9e7; }
+.app-role-badge.is-admin { background: var(--amber-bg); color: var(--amber); border-color: #ecd3a5; }
+.app-role-badge.is-manager { background: var(--ink); color: #fff; }
+.manager-home-heading { margin: 22px 0 0; font-size: 16px; }
+.manager-home-figures { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 8px 0 12px; }
+.manager-home-figures strong { font-size: 20px; margin-right: 4px; }
+.manager-home-links { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 6px; }
+@media (max-width: 760px) { .manager-home .today-grid { grid-template-columns: 1fr; } }
+

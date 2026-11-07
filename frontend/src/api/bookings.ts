@@ -33,7 +33,7 @@ export const extendBooking = (id: string, end: string) => post<Booking>(`booking
 export const requestTimeChange = (id: string, start: string, end: string) =>
   post<Booking>(`bookings/${id}/change/`, { start, end })
 
-// Sprint 3: check-in and booking freeze ---------------------------------------------------------------------------------
+// Sprint 3: check-in -----------------------------------------------------------------------------------------------
 export const checkIn = (bookingId: string) => post<Booking>(`bookings/${bookingId}/check-in/`, {})
 
 // Sprint 3: weekly series (staff) ---------------------------------------------------------------------------------------

@@ -77,7 +77,7 @@ if not 0 <= MIN_ADVANCE_DAYS <= MAX_ADVANCE_DAYS <= 365 or MAX_ADVANCE_DAYS < 1:
 # Fair-use rules confirmed by the client, validated by booking.rules.BookingRules. One quota slot is
 # 30 minutes; a normal request may use 6 slots, a person may hold 24 slots per local week,
 # and at most 8 active future bookings.
-# Check-in, missed-booking freezes and the longest weekly series remain configurable below.
+# Check-in and the longest weekly series remain configurable below (the booking freeze was removed on 2026-11-07).
 BOOKING_SLOT_MINUTES = int(os.getenv("BOOKING_SLOT_MINUTES", "30"))
 MAX_SLOTS_PER_BOOKING = int(os.getenv("MAX_SLOTS_PER_BOOKING", "6"))
 MAX_SLOTS_PER_WEEK = int(os.getenv("MAX_SLOTS_PER_WEEK", "24"))
@@ -85,8 +85,6 @@ MAX_ACTIVE_FUTURE_BOOKINGS = int(os.getenv("MAX_ACTIVE_FUTURE_BOOKINGS", "8"))
 ADDITIONAL_HOURS_APPROVAL_WINDOW_HOURS = int(os.getenv("ADDITIONAL_HOURS_APPROVAL_WINDOW_HOURS", "48"))
 CHECK_IN_OPENS_MINUTES = int(os.getenv("CHECK_IN_OPENS_MINUTES", "15"))
 CHECK_IN_CLOSES_MINUTES = int(os.getenv("CHECK_IN_CLOSES_MINUTES", "30"))
-FREEZE_AFTER_NO_SHOWS = int(os.getenv("FREEZE_AFTER_NO_SHOWS", "0"))  # 0 = never freeze (2026-11-06)
-FREEZE_DAYS = int(os.getenv("FREEZE_DAYS", "30"))
 MAX_SERIES_WEEKS = int(os.getenv("MAX_SERIES_WEEKS", "14"))
 # Sprint 3 reminders in the notification bell.
 REMINDER_HOURS_BEFORE = int(os.getenv("REMINDER_HOURS_BEFORE", "24"))

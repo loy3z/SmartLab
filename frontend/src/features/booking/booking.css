@@ -115,16 +115,12 @@
 .bk-mode { margin: 18px 0 6px; }
 .bk-find-check { display: flex; gap: 8px; align-items: center; margin: 4px 0 10px; font-size: 14px; }
 
-/* Sprint 3: calendar subscription, check-in, freeze */
+/* Sprint 3: calendar subscription, check-in */
 .bk-calsub { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; margin: 0 0 18px; border: 1px solid var(--app-border, #dfe3ea); border-radius: 8px; background: #fafbfd; }
 .bk-calsub > div:first-child { flex: 1 1 320px; }
 .bk-calsub p { margin: 4px 0 0; }
 .bk-calsub-link { display: flex; flex-wrap: wrap; gap: 8px; flex: 1 1 360px; }
 .bk-calsub-link input { flex: 1 1 220px; min-width: 0; padding: 7px 9px; border: 1px solid var(--app-border, #dfe3ea); border-radius: 8px; font-size: 12px; }
-.bk-freeze { margin: 0 0 18px; }
-.bk-freeze > div { display: flex; flex-direction: column; gap: 6px; }
-.bk-freeze-form { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
-.bk-freeze-form textarea { width: 100%; max-width: 520px; padding: 6px 8px; border: 1px solid var(--app-border, #dfe3ea); border-radius: 8px; font: inherit; }
 .bk-chip.is-series { background: #eef2ff; color: #3949ab; }
 .bk-chip.att-CHECKED_IN { background: #e8f5e9; color: #2e7d32; }
 .bk-chip.att-NO_SHOW { background: #fdecea; color: #b71c1c; }

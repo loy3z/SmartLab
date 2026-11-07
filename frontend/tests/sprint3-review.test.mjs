@@ -40,7 +40,6 @@ test('Find a free time: lengths stop at the longest normal booking allowed, and 
   assert.deepEqual(hiddenSummary(undefined), { text: '', needsInduction: false })
   assert.deepEqual(hiddenSummary({ MAINTENANCE: 1, NOT_SUBMITTED: 18 }),
     { text: '19 hidden: 18 induction not submitted, 1 under maintenance', needsInduction: true })
-  assert.deepEqual(hiddenSummary({ FROZEN: 3 }), { text: '3 hidden: 3 your booking is frozen', needsInduction: false })
 })
 
 test('booking-window errors show the configured limit without inventing a fallback', () => {
@@ -94,14 +93,13 @@ test('induction guidance and Lab setup edits', () => {
 
 test('Today page: cards and attendance labels', () => {
   const data = { role: 'ADMIN', pending_inductions: 2, pending_bookings: 3, urgent_requests: 1, waitlisted: 0, changes_waiting: 0,
-    due_soon: [booking()], due_soon_hours: 6, unfreeze_requests: 0, out_of_service: [], today: [], today_count: 0, missed_today: 0,
+    due_soon: [booking()], due_soon_hours: 6, out_of_service: [], today: [], today_count: 0, missed_today: 0,
     can_decide_urgent: false }
   const cards = Object.fromEntries(todoCards(data).map((card) => [card.key, card]))
   assert.equal(cards.urgent.tone, 'red')
   assert.equal(cards.urgent.hint, 'A Manager decides these')
   assert.equal(cards.bookings.tone, 'red')        // some are close to their deadline
   assert.equal(cards.inductions.tone, 'amber')
-  assert.equal(cards.unfreeze.tone, 'grey')
   assert.equal(attendanceLabel(booking({ attendance: 'NO_SHOW' }), NOW), 'Missed')
   assert.equal(attendanceLabel(booking(), NOW), 'Not started')
   assert.equal(attendanceLabel(booking({ start: '2030-01-01T00:00:00Z' }), NOW), 'Not checked in yet')

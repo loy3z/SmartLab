@@ -40,8 +40,7 @@ class LongBookingsMixin:
                     raise DomainError("IDEMPOTENCY_CONFLICT", "This Idempotency-Key was already used with different booking details.", 409)
                 return existing, False
             resource = self.resource(resource_id)
-            error = (self.rule_violation(beneficiary.id, resource, start, end, check_window=True, allow_long_booking=True)
-                     or self.frozen_violation(self.repo.get_principal(beneficiary.id) or beneficiary))
+            error = self.rule_violation(beneficiary.id, resource, start, end, check_window=True, allow_long_booking=True)
             if error:
                 raise error
             normal_maximum = self._normal_booking_limit(resource)[2]
@@ -100,7 +99,6 @@ class LongBookingsMixin:
             if decision == "APPROVED":
                 resource = self.resource(source.resource_id)
                 error = (self.rule_violation(source.student_id, resource, source.start, source.end, allow_long_booking=True)
-                         or self.frozen_violation(self.repo.get_principal(source.student_id))
                          or self._weekly_limit_violation(source.student_id, resource, source.start, source.end, source.id)
                          or self._future_booking_limit_violation(source.student_id, source.id))
                 if error:

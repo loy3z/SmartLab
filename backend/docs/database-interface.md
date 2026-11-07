@@ -17,17 +17,16 @@
 | Booking | `student_id`、`created_by: str \| None` | `student_id` 是预约属于谁（检查他的 induction，锁和重复检查都按它）；`created_by` 是谁创建的，员工代别人预约时与 `student_id` 不同 |
 | Booking | `urgent: bool`、`urgent_reason: str \| None` | 紧急申请标记和原因（≤500 字） |
 | Booking | `hold_until`、`review_due_at: datetime \| None` | 可空、带时区。普通申请进入 `PENDING_APPROVAL` 时两者写同一个值：`min(start, 当时 + pending_hold_minutes)`，不随资源规则变化重算。紧急申请 `review_due_at` 为空、`hold_until=start` |
+| ResourceInternalInfo | `resource_id`、`owner`、`asset_number`、`provided_by`、`specifications`、`updated_at`、`updated_by` | 1.26.0：表 `resource_internal_info`，主键 `resource_id`（外键，资源删除时级联）；只有 Manager 能读写，故意不放进 `Resource` |
 | Booking | `revision: int` | 默认 1，每次改期加 1 |
 | Booking | `series_id: str \| None` | 员工的重复预约（外键指向 `booking_series`）；单次预约为空 |
 | Booking | `attendance: str \| None`、`checked_in_at` | 到场标记，只对已批准的预约有意义：`CHECKED_IN`／`NO_SHOW`／`EXCUSED`／`NOT_TRACKED`，未决定时为空。迁移 006 把加列前已开始的已批准预约标为 `NOT_TRACKED`，避免被算成缺席 |
-| Principal | `no_show_count: int`、`frozen_until: datetime \| None` | 冻结后清零的缺席次数；冻结截止时间（带时区）。冻结只影响预约，不影响员工审批 |
 | Booking | `replaces_id: str \| None` | 1.16.0 申请改期：指向它要替换的已批准预约（外键指向 `booking`）。部分唯一索引 `booking_one_open_change_idx` 保证一个预约同时只有一个未决定的改期申请。改期申请被批准时，业务层在同一事务里取消原预约 |
 | Resource | `capacity: int \| None`、`details: tuple[ResourceDetail, ...]` | 1.16.0：房间容纳人数（只有房间，1–1000，检查约束 `bookable_resource_capacity_check`）；`details` 存成 `jsonb` 数组 `[{"label": …, "value": …}]`（检查约束要求是数组，默认 `[]`），适配器读出后转回 `ResourceDetail` |
 | QualificationRequirement | `how_to_complete`、`accepted_evidence`、`reviewer`、`contact: str` | 1.16.0：Manager 写的说明，`text NOT NULL DEFAULT ''` |
 | SiteContact | `id`、`email`、`phone`、`hours`、`note`、`updated_at`、`updated_by` | 1.16.0：表 `site_contact` 只有一行（`id` 固定为 `SITE_CONTACT_ID`，检查约束保证），没有这行时业务层返回空记录 |
 | Notification | `recipient_id`、`kind`、`title`、`body`、`created_at`、`link`、`booking_id`、`read_at` | 表 `notification`，和引起它的变化在同一事务里写入；按收件人、时间倒序读取 |
 | CalendarFeed | `principal_id`、`token`、`created_at` | 表 `calendar_feed`，每人一行，`token` 唯一。重新生成时覆盖 `token` |
-| UnfreezeRequest | `principal_id`、`reason`、`status`、`decided_by`、`decided_at`、`decision_reason` | 表 `unfreeze_request`；部分唯一索引保证每人最多一个 `PENDING` |
 | BookingSeries | `student_id`、`created_by`、`resource_id`、`weekdays`、`start_time`、`duration_minutes`、`first_date`、`last_date`、`purpose` | 表 `booking_series`；`weekdays` 是逗号分隔的 ISO 星期（`"1,3"` = 周一、周三），`start_time` 是资源当地时间 |
 | Booking | `status` | 七种：`WAITING_QUALIFICATION`、`PENDING_APPROVAL`、`WAITLISTED`、`APPROVED`、`REJECTED`、`CANCELLED`、`EXPIRED`。`WAITING_QUALIFICATION` 只出现在早期数据中，现在的流程不会产生 |
 | OutlookSyncRecord | `booking_revision`、`ical_uid`、`last_success_at` 等 | 事件对应关系、版本、重试和租约，均需持久化 |
@@ -104,10 +103,10 @@ WHERE resource_id = :resource_id
 
 ## 通知、订阅、到场确认和重复预约
 
-仓储新增方法：`save_notification`、`get_notification`、`list_notifications(recipient_id)`（最新在前）；邮件队列的 `save_email_delivery`、`get_email_delivery`、`list_email_deliveries`、`claim_email_deliveries`；`get_calendar_feed(principal_id)`、`get_calendar_feed_by_token(token)`、`save_calendar_feed`；`save_unfreeze_request`、`get_unfreeze_request`、`list_unfreeze_requests(principal_id=None)`（最早在前）；`save_series`、`get_series`；1.16.0：`get_site_contact()`（没有时返回 `None`）、`save_site_contact(contact)`。
+仓储新增方法：`save_notification`、`get_notification`、`list_notifications(recipient_id)`（最新在前）；邮件队列的 `save_email_delivery`、`get_email_delivery`、`list_email_deliveries`、`claim_email_deliveries`；`get_calendar_feed(principal_id)`、`get_calendar_feed_by_token(token)`、`save_calendar_feed`；`save_series`、`get_series`；1.16.0：`get_site_contact()`（没有时返回 `None`）、`save_site_contact(contact)`；1.26.0：`get_resource_internal_info(resource_id)`（没有时返回 `None`）、`save_resource_internal_info(info)`。
 
 - **通知和邮件 outbox** 在保存预约的同一个事务里写入，失败时一起回滚。SMTP 网络调用在提交后进行；`claim_email_deliveries` 必须用行锁／`SKIP LOCKED` 等原子方式设置租约，防止多个 worker 同时领取。
-- **缺席处理**在 `process_due_requests` 的最后一步（`attendance.py` 的 `_process_attendance`）：已批准、`attendance` 为空、到场窗口已结束的预约，在资源＋受益人锁内重读后标记。达到冻结次数时，在同一事务里更新这个人、取消他之后所有的有效预约（每个资源再加资源锁）并递补候补。PostgreSQL 适配器的全局 advisory lock 保证这些嵌套事务不会死锁。
+- **缺席处理**在 `process_due_requests` 的最后一步（`attendance.py` 的 `_process_attendance`）：已批准、`attendance` 为空、到场窗口已结束的预约，在资源＋受益人锁内重读后标记为 `NO_SHOW`／`EXCUSED`，不改其他预约（1.25.0 删除了冻结，`Principal` 不再有 `no_show_count`、`frozen_until`，也没有 `UnfreezeRequest`）。
 - **重复预约**在资源＋受益人锁内重新检查每个日期，然后一次写入系列和全部预约；任何一步失败都整体回滚。
 - **每周上限**在创建申请的资源＋受益人锁内统计这个人同一周的有效预约（`series_id` 为空的）。
 

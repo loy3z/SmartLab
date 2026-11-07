@@ -11,7 +11,6 @@ import { canAskForChange, openChangeText, replacesText } from './change-requests
 import { ContactLink } from '../contact/LabContact' // Sprint 3 (1.16.0)
 import { ExtendBox } from './ExtendBox' // 1.24.0
 import { canExtend } from './extend'
-import { FreezeNotice } from './FreezeNotice'
 import { bookingDetail, errorMessage, fmtDuration, fmtRange, fmtTime, minutesBetween, STATUS_TEXT } from './format'
 import { ACTIVE, canRemoveBookingHistory, groupBookings } from './my-bookings'
 import { RescheduleBox } from './RescheduleBox'
@@ -174,7 +173,6 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
     <div className="bookings-list">
       <h1>My bookings</h1>{/* Sprint 3 (internal-tool UI, AI-2): no introduction line */}
       {/* Sprint 3 */}
-      <FreezeNotice />
       <CalendarSubscribe />
       {!loading && !error && <div className="bookings-filters">
         <Tabs value={view} onChange={next => setFilter('view', next)} label="Booking status"

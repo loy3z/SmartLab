@@ -13,8 +13,9 @@ from .domain import (
     AuditRecord, Booking, BookingSeries, BookingStatus, CalendarFeed, EmailDelivery, Notification, NotificationPreference,
     OutlookSyncRecord, Principal,
     QualificationRequirement, QualificationStatus, QualificationSubmission,
-    Resource, ResourceKind, Role, StaffCredential, UnfreezeRequest, UnfreezeStatus,
+    Resource, ResourceKind, Role, StaffCredential,
     SITE_CONTACT_ID, SiteContact,  # Sprint 3 (1.16.0)
+    ResourceInternalInfo,  # 2026-11-07
 )
 from .storage import StoredFile
 
@@ -32,9 +33,9 @@ _TABLES = {
     Notification: 'notification',
     EmailDelivery: 'email_delivery',
     CalendarFeed: 'calendar_feed',
-    UnfreezeRequest: 'unfreeze_request',
     BookingSeries: 'booking_series',
     SiteContact: 'site_contact',  # Sprint 3 (1.16.0)
+    ResourceInternalInfo: 'resource_internal_info',  # 2026-11-07
     Announcement: 'announcement',  # Sprint 3 (1.19.0)
     NotificationPreference: 'notification_preference',  # Sprint 3 (2026-10-25)
 }
@@ -45,7 +46,6 @@ _ENUMS = {
     Resource: {'kind': ResourceKind},
     QualificationSubmission: {'status': QualificationStatus},
     Booking: {'status': BookingStatus},
-    UnfreezeRequest: {'status': UnfreezeStatus},
 }
 _ORDER = {
     Principal: 'id', Resource: 'id', QualificationRequirement: 'id',
@@ -54,13 +54,14 @@ _ORDER = {
     StoredFile: 'id', StaffCredential: 'principal_id',
     Notification: 'created_at DESC, id DESC', CalendarFeed: 'principal_id',
     EmailDelivery: 'created_at, notification_id',
-    UnfreezeRequest: 'created_at, id', BookingSeries: 'created_at, id',
+    BookingSeries: 'created_at, id',
     SiteContact: 'id',
+    ResourceInternalInfo: 'resource_id',
     Announcement: 'created_at DESC, id DESC',  # Sprint 3 (1.19.0)
     NotificationPreference: 'category',
 }
 _KEYS = {OutlookSyncRecord: 'booking_id', StaffCredential: 'principal_id', CalendarFeed: 'principal_id',
-         EmailDelivery: 'notification_id'}
+         EmailDelivery: 'notification_id', ResourceInternalInfo: 'resource_id'}
 _WRITE_LOCK = 0x534D4152544C4142
 
 
@@ -422,15 +423,6 @@ class PostgresRepository:
     def save_calendar_feed(self, feed):
         _insert(feed, upsert=True)
 
-    def save_unfreeze_request(self, request):
-        _insert(request, upsert=True)
-
-    def get_unfreeze_request(self, request_id):
-        return _get(UnfreezeRequest, request_id)
-
-    def list_unfreeze_requests(self, principal_id=None):
-        return _filtered(UnfreezeRequest, principal_id=principal_id)
-
     def save_series(self, series):
         _insert(series, upsert=True)
 
@@ -443,6 +435,13 @@ class PostgresRepository:
 
     def save_site_contact(self, contact):
         _insert(contact, upsert=True)
+
+    # 2026-11-07
+    def get_resource_internal_info(self, resource_id):
+        return _get(ResourceInternalInfo, resource_id)
+
+    def save_resource_internal_info(self, info):
+        _insert(info, upsert=True)
 
 
 class PostgresFileStorage:

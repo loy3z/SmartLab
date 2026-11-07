@@ -37,6 +37,20 @@ export interface Resource {
   details?: ResourceDetail[]
 }
 
+/** 2026-11-07 (client, Week 8): what only Managers see about a resource (GET/PATCH admin/resources/{id}/internal/). */
+export interface ResourceInternalInput {
+  owner: string
+  asset_number: string
+  provided_by: string
+  specifications: string
+}
+
+export interface ResourceInternalInfo extends ResourceInternalInput {
+  resource_id: string
+  updated_at: string | null
+  updated_by: string | null
+}
+
 /** Sprint 3 (1.16.0): one "label: value" line on a resource. */
 export interface ResourceDetail {
   label: string
@@ -152,8 +166,6 @@ export interface Availability {
   booking_for?: PersonBrief
   /** Urgent view: times inside the minimum advance window count as available. */
   urgent?: boolean
-  /** Sprint 3: set while the person's booking is frozen after missed check-ins. */
-  frozen_until?: string | null
 }
 
 export interface PersonBrief {

@@ -25,7 +25,3 @@ export function calendarUrl(path: string, origin: string): string {
   return `${origin.replace(/\/+$/, '')}${path}`
 }
 
-/** Local date of a timestamp in Sydney, e.g. "12 Dec 2026". */
-export function frozenUntilText(iso: string): string {
-  return new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Australia/Sydney' }).format(new Date(iso))
-}

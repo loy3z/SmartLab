@@ -130,8 +130,8 @@ class WaitlistMixin:
                 ids = []
                 _promoted_ids.set(ids)
             ids.extend(item.id for item in changed if item.status == BookingStatus.APPROVED)
-        # Sprint 3 check-in: approved bookings whose check-in time passed without one count as missed (may freeze).
-        changed.extend(self._process_attendance())
+        # Sprint 3 check-in: approved bookings whose check-in time passed without one count as missed.
+        self._process_attendance()
         # Sprint 3: reminders (booking tomorrow, induction expiring soon); each is sent once.
         self._send_reminders()
         return changed

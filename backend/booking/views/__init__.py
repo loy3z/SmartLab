@@ -11,6 +11,5 @@ from .outlook import *  # noqa: F401,F403
 from .notifications import *  # noqa: F401,F403
 from .calendar import *  # noqa: F401,F403
 from .series import *  # noqa: F401,F403
-from .unfreeze import *  # noqa: F401,F403
 from .misc import *  # noqa: F401,F403
 from .announcements import *  # noqa: F401,F403 - Sprint 3 (1.19.0)

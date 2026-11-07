@@ -2,7 +2,7 @@
 
 from ._common import *  # noqa: F401,F403 - shared imports, helpers and PublicView.
 
-__all__ = ["AdminQualificationListView", "AdminQualificationReviewView", "staff_booking_rows", "staff_booking_json", "AdminBookingListView", "AdminBookingExportView", "_csv_safe", "AdminResourceStatusView", "audit_json", "AdminAuditListView", "user_json", "AdminStaffCreateView", "AdminManagerCreateView", "AdminUserListView", "AdminUserDetailView", "AdminUserResetAccessView", "AdminBookingReviewView", "changed_resource_json", "AdminResourceListView", "AdminResourceDetailView", "AdminResourceArchiveView", "AdminResourceRestoreView", "AdminUsageReportView"]
+__all__ = ["AdminQualificationListView", "AdminQualificationReviewView", "staff_booking_rows", "staff_booking_json", "AdminBookingListView", "AdminBookingExportView", "_csv_safe", "AdminResourceStatusView", "audit_json", "AdminAuditListView", "user_json", "AdminStaffCreateView", "AdminManagerCreateView", "AdminUserListView", "AdminUserDetailView", "AdminUserResetAccessView", "AdminBookingReviewView", "changed_resource_json", "AdminResourceListView", "AdminResourceDetailView", "AdminResourceInternalInfoView", "AdminResourceArchiveView", "AdminResourceRestoreView", "AdminUsageReportView"]
 
 class AdminQualificationListView(APIView):
     def get(self, request):
@@ -223,6 +223,15 @@ class AdminResourceDetailView(APIView):
         data = validated(ResourceFieldsSerializer, request.data)
         resource, outside = service.update_resource(request.user, str(resource_id), data)
         return Response(changed_resource_json(service, resource, outside))
+
+class AdminResourceInternalInfoView(APIView):
+    """2026-11-07 (client, Week 8), Manager only: GET or PATCH the internal details of a resource."""
+    def get(self, request, resource_id):
+        return Response(json_value(get_service().resource_internal_info(request.user, str(resource_id))))
+
+    def patch(self, request, resource_id):
+        data = validated(ResourceInternalInfoSerializer, request.data)
+        return Response(json_value(get_service().update_resource_internal_info(request.user, str(resource_id), data)))
 
 class AdminResourceArchiveView(APIView):
     def post(self, request, resource_id):

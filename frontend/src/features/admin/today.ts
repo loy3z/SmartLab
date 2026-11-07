@@ -11,6 +11,15 @@ export interface TodoCard {
   hint?: string
 }
 
+/** 2026-11-07 (client, Week 8): cards only a Manager can act on. Admins do not see them on Today; the Manager home
+ *  page shows them first. */
+export const MANAGER_DECIDES = ['urgent', 'additional-hours', 'long-bookings']
+
+/** The cards of Today for this role: an Admin's review work, or everything for a Manager. */
+export function cardsFor(data: StaffOverview): TodoCard[] {
+  return todoCards(data).filter((card) => data.role === 'MANAGER' || !MANAGER_DECIDES.includes(card.key))
+}
+
 /** One card per kind of waiting work, in the order staff usually handle them. Urgent requests say who decides. */
 export function todoCards(data: StaffOverview): TodoCard[] {
   const tone = (count: number, urgent = false): TodoCard['tone'] => (count === 0 ? 'grey' : urgent ? 'red' : 'amber')
@@ -26,7 +35,6 @@ export function todoCards(data: StaffOverview): TodoCard[] {
     { key: 'changes', count: data.changes_waiting, label: 'Change requests', to: '/admin/bookings', tone: tone(data.changes_waiting),
       hint: 'People asking to move a booking' },
     { key: 'inductions', count: data.pending_inductions, label: 'Induction evidence to review', to: '/admin/qualifications', tone: tone(data.pending_inductions) },
-    { key: 'unfreeze', count: data.unfreeze_requests, label: 'Unfreeze requests', to: '/admin/freezes', tone: tone(data.unfreeze_requests) },
     { key: 'waitlist', count: data.waitlisted, label: 'On the waitlist', to: '/admin/bookings', tone: 'grey' },
   ]
 }

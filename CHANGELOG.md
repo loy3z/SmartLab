@@ -2,6 +2,21 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.26.0：三个角色看到的明显不同（2026-11-07，迁移 015）
+
+依据客户 Week 8 会议（02:33–04:48、19:49–20:56：面板可以相似，数据访问要完全不同；Admin 不需要全部历史，Manager 需要）。任务卡 `tasks-week8-2026-11-06.md` W5–W7。
+
+- **W5 Manager 首页**：Manager 登录后进 Lab overview（`/manager/home`）：只有 Manager 能决定的事、房间和设备状态、本周使用情况、按 zID 查一年历史、实验室管理入口。Admin 的 Today 只留审批工作（不再显示紧急、额外时数、超长三张 Manager 卡片）。页面顶部显示 Student／Admin／Manager view 标识。
+- **W6 Admin 只看近期历史**：Booking Records 和 CSV 对 Admin 只返回 7 天内结束及以后的预约；使用情况报表改为只有 Manager 能看。
+- **W7 只给 Manager 看的设备资料**：负责人、UNSW 资产编号、来源、规格。存在单独的表 `resource_internal_info`（迁移 015），Manager 在 Resources 编辑弹窗里填写，接口 `GET/PATCH admin/resources/{id}/internal/`；普通资源数据里没有这些字段。
+
+## 1.25.0：删除冻结（2026-11-07，迁移 014）
+
+- Loy 2026-11-07：客户 Week 8 会议不想用缺席处罚，1.24.0 的“默认关闭”改为整个删除。
+- 删除：缺席 N 次冻结、冻结时取消之后的预约、解冻申请和 Booking freezes 页面、5 个接口、用户的 `no_show_count`／`frozen_until`／`booking_frozen` 字段、`FREEZE_AFTER_NO_SHOWS`／`FREEZE_DAYS` 配置。
+- 保留：到场确认（I'm here）、每个预约的缺席标记和使用情况报表；缺席时通知本人以后来不了要取消。旧数据里因冻结取消的预约照常显示原因。
+- 迁移 014 删表 `unfreeze_request` 和两列，会删掉这些数据；回滚旧代码前要重跑 006（见 `DEPLOY.md`）。
+
 ## 1.24.0：客户 Week 8 会议的三项（2026-11-06，无迁移）
 
 依据：客户 11-04 会议（项目文档 `reports/2026-11-04-client-meeting-week8.md`）。任务卡 `tasks-week8-2026-11-06.md`。

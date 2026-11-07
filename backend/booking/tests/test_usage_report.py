@@ -34,7 +34,9 @@ class UsageReportTests(Sprint3Fixture, SimpleTestCase):
         self.assertIsNone(outside["results"][0]["attendance_rate"])
         with self.assertRaises(DomainError):
             self.service.usage_report(self.manager, self.today, self.today - timedelta(days=1))
-        self.assertEqual(self.service.usage_report(self.admin, self.today, self.today)["days"], 1)  # Admins too
+        with self.assertRaises(DomainError) as denied:  # 2026-11-07 (client, Week 8): reports are for Managers
+            self.service.usage_report(self.admin, self.today, self.today)
+        self.assertEqual(denied.exception.code, "FORBIDDEN")
         with self.assertRaises(DomainError) as denied:
             self.service.usage_report(self.student, self.today, self.today)
         self.assertEqual(denied.exception.code, "FORBIDDEN")
@@ -47,6 +49,6 @@ class UsageReportAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual((response.data["first_date"], response.data["days"]), ("2030-01-01", 31))
         self.assertEqual(len(response.data["results"]), 22)                      # 2 rooms and 20 devices
-        self.assertEqual(self.admin.get("/api/v1/admin/reports/usage/?first_date=2030-01-01&last_date=2030-01-31").status_code, 200)
+        self.assertEqual(self.admin.get("/api/v1/admin/reports/usage/?first_date=2030-01-01&last_date=2030-01-31").status_code, 403)  # Managers only since 2026-11-07
         self.assertEqual(self.verified.get("/api/v1/admin/reports/usage/?first_date=2030-01-01&last_date=2030-01-31").status_code, 403)
         self.assertEqual(self.manager.get("/api/v1/admin/reports/usage/?first_date=2030-01-01").status_code, 400)

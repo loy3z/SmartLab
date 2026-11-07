@@ -1,4 +1,4 @@
-"""Sprint 3: calendar subscription link, website notifications, check-in with booking freeze, weekly limit, weekly series."""
+"""Sprint 3: calendar subscription link, website notifications, check-in and missed bookings, weekly limit, weekly series."""
 
 from dataclasses import replace
 from datetime import datetime, time, timedelta
@@ -6,11 +6,10 @@ from uuid import uuid4
 
 from django.test import SimpleTestCase, override_settings
 
-from booking.domain import BookingStatus, Principal, QualificationStatus, ResourceStatus, Role, UnfreezeStatus
+from booking.domain import BookingStatus, Principal, QualificationStatus, ResourceStatus, Role
 from booking.exceptions import DomainError
 from booking.ics import render_calendar
 from booking.notification_channels import reset_channels
-from booking.rules import BookingRules
 from booking.tests.test_api import NOW, SYDNEY, BookingAPIFixtureMixin
 from booking.tests.test_services import BookingFixtureMixin
 
@@ -156,8 +155,7 @@ class NotificationTests(Sprint3Fixture, SimpleTestCase):
 class AttendanceTests(Sprint3Fixture, SimpleTestCase):
     def setUp(self):
         super().setUp()
-        # The freeze is off by default since 2026-11-06; these tests switch it on to check how it works.
-        self.service._override_rule(max_advance_days=60, max_slots_per_week=200, freeze_after_no_shows=4)
+        self.service._override_rule(max_advance_days=60, max_slots_per_week=200)
 
     def miss(self, booking):
         self.now = booking.start + timedelta(minutes=31)
@@ -175,102 +173,30 @@ class AttendanceTests(Sprint3Fixture, SimpleTestCase):
         self.assertEqual((checked.attendance, checked.checked_in_at), ("CHECKED_IN", self.now))
         self.assertEqual(self.service.check_in(self.student, booking.id).checked_in_at, checked.checked_in_at)
         self.assertEqual(self.miss(booking).attendance, "CHECKED_IN")
-        self.assertEqual(self.repo.get_principal(self.student.id).no_show_count, 0)
+        self.assertEqual(self.notices(self.student, "NO_SHOW_RECORDED"), [])
         late = self.approved(self.student, days=5)
         self.now = late.start + timedelta(minutes=30)
         self.refused("CHECK_IN_CLOSED", self.service.check_in, self.student, late.id)
 
-    def test_missed_booking_is_counted_and_notified(self):
-        booking = self.approved(self.student, days=3)
-        self.assertEqual(self.miss(booking).attendance, "NO_SHOW")
-        self.assertEqual(self.repo.get_principal(self.student.id).no_show_count, 1)
-        self.assertIn("1 of 4", self.notices(self.student, "NO_SHOW_RECORDED")[0].body)
-        self.service.process_due_requests()  # counted once
-        self.assertEqual(self.repo.get_principal(self.student.id).no_show_count, 1)
-
-    def test_freeze_is_off_by_default(self):
-        """2026-11-06 (client, Week 8): no freeze at first; missed bookings are still recorded."""
-        self.service._override_rule(freeze_after_no_shows=BookingRules().freeze_after_no_shows)
+    def test_missed_bookings_are_marked_and_notified_without_a_penalty(self):
+        """2026-11-07 (client, Week 8): the booking freeze was removed; a missed booking is only recorded."""
         missed = [self.approved(self.student, days=day) for day in (1, 2, 3, 4, 5)]
         later = self.approved(self.student, days=20)
         for booking in missed:
-            self.miss(booking)
-        person = self.repo.get_principal(self.student.id)
-        self.assertEqual((person.no_show_count, person.frozen_until), (5, None))
+            self.assertEqual(self.miss(booking).attendance, "NO_SHOW")
         self.assertEqual(self.repo.get_booking(later.id).status, BookingStatus.APPROVED)
-        self.assertEqual(self.notices(self.student, "ACCOUNT_FROZEN"), [])
-        self.assertIn("please cancel", self.notices(self.student, "NO_SHOW_RECORDED")[0].body)
+        self.assertEqual(self.request(self.student, days=30).status, BookingStatus.PENDING_APPROVAL)
+        notices = self.notices(self.student, "NO_SHOW_RECORDED")
+        self.assertEqual(len(notices), 5)
+        self.assertIn("please cancel", notices[0].body)
+        self.service.process_due_requests()  # each booking is marked once
+        self.assertEqual(len(self.notices(self.student, "NO_SHOW_RECORDED")), 5)
 
     def test_resource_under_maintenance_is_not_a_missed_booking(self):
         booking = self.approved(self.student, days=3)
         self.repo.save_resource(replace(self.room, status=ResourceStatus.MAINTENANCE, status_reason="Repair"))
         self.assertEqual(self.miss(booking).attendance, "EXCUSED")
-        self.assertEqual(self.repo.get_principal(self.student.id).no_show_count, 0)
-
-    def test_fourth_missed_booking_freezes_and_cancels_later_bookings(self):
-        missed = [self.approved(self.student, days=day) for day in (1, 2, 3, 4)]
-        later = self.approved(self.student, days=20)
-        pending = self.request(self.student, days=21)
-        held = self.request(self.other, days=22)
-        queued = self.request(self.student, days=22)
-        waiting_other = self.request(self.other, days=20)  # queued behind the student's approved booking
-        self.assertEqual((queued.status, waiting_other.status), (BookingStatus.WAITLISTED, BookingStatus.WAITLISTED))
-        for booking in missed[:3]:
-            self.miss(booking)
-        self.assertEqual(self.repo.get_principal(self.student.id).no_show_count, 3)
-        self.miss(missed[3])
-        person = self.repo.get_principal(self.student.id)
-        self.assertEqual((person.no_show_count, person.frozen_until), (0, self.now + timedelta(days=30)))
-        for item in (later, pending, queued):
-            current = self.repo.get_booking(item.id)
-            self.assertEqual((current.status, current.reason_code), (BookingStatus.CANCELLED, "ACCOUNT_FROZEN"))
-        self.assertIn(self.repo.get_booking(held.id).status, (BookingStatus.PENDING_APPROVAL, BookingStatus.APPROVED))
-        self.assertEqual(self.repo.get_booking(waiting_other.id).status, BookingStatus.PENDING_APPROVAL)  # freed time
-        self.assertEqual(len(self.notices(self.student, "ACCOUNT_FROZEN")), 1)
-        self.assertEqual(self.notices(self.student, "BOOKING_CANCELLED"), [])
-        # Frozen: nobody can book for this person, but a frozen staff member keeps reviewing rights.
-        self.refused("ACCOUNT_FROZEN", self.request, self.student, days=40)
-        self.refused("ACCOUNT_FROZEN", self.request, self.admin, days=40, on_behalf_of_zid=self.student.zid)
-        self.assertFalse(self.service.availability(self.student, self.room.id, self.today + timedelta(days=40), 60)["can_request"])
-        self.now += timedelta(days=31)
-        self.assertEqual(self.request(self.student, days=40).status, BookingStatus.PENDING_APPROVAL)
-
-    def test_frozen_staff_can_still_review(self):
-        self.repo.save_principal(replace(self.admin, frozen_until=self.now + timedelta(days=5)))
-        admin = self.repo.get_principal(self.admin.id)
-        booking = self.request(self.student, days=3)
-        self.assertEqual(self.service.review_booking(admin, booking.id, "APPROVED").status, BookingStatus.APPROVED)
-        self.qualification(self.admin)
-        self.refused("ACCOUNT_FROZEN", self.request, admin, days=4)
-
-    def test_unfreeze_request_flow(self):
-        self.refused("NOT_FROZEN", self.service.request_unfreeze, self.student, "Please")
-        self.repo.save_principal(replace(self.student, frozen_until=self.now + timedelta(days=30)))
-        request = self.service.request_unfreeze(self.student, "I was ill and could not cancel")
-        self.refused("UNFREEZE_ALREADY_REQUESTED", self.service.request_unfreeze, self.student, "Again")
-        self.refused("REASON_REQUIRED", self.service.review_unfreeze, self.admin, request.id, "REJECTED", " ")
-        self.refused("FORBIDDEN", self.service.list_unfreeze_requests, self.other)
-        self.assertEqual([item.id for item in self.service.list_unfreeze_requests(self.admin, "PENDING")], [request.id])
-        rejected = self.service.review_unfreeze(self.admin, request.id, "REJECTED", "Too many missed bookings")
-        self.assertEqual(rejected.status, UnfreezeStatus.REJECTED)
-        self.assertIn("Too many", self.notices(self.student, "UNFREEZE_REJECTED")[0].body)
-        self.refused("ALREADY_REVIEWED", self.service.review_unfreeze, self.admin, request.id, "APPROVED")
-        second = self.service.request_unfreeze(self.student, "Medical certificate attached")
-        self.service.review_unfreeze(self.manager, second.id, "APPROVED")
-        self.assertFalse(self.repo.get_principal(self.student.id).frozen_at(self.now))
-        self.assertEqual(len(self.notices(self.student, "UNFREEZE_APPROVED")), 1)
-
-    def test_staff_cannot_decide_their_own_request_but_can_unfreeze_directly(self):
-        self.repo.save_principal(replace(self.admin, frozen_until=self.now + timedelta(days=30)))
-        admin = self.repo.get_principal(self.admin.id)
-        request = self.service.request_unfreeze(admin, "Missed during exam week")
-        self.refused("SELF_REVIEW_FORBIDDEN", self.service.review_unfreeze, admin, request.id, "APPROVED")
-        self.refused("SELF_MODIFICATION_FORBIDDEN", self.service.unfreeze, admin, admin.id)
-        self.service.unfreeze(self.manager, admin.id, "Lifted")
-        self.assertIsNone(self.repo.get_principal(admin.id).frozen_until)
-        self.assertEqual(self.repo.get_unfreeze_request(request.id).status, UnfreezeStatus.APPROVED)
-        self.refused("NOT_FROZEN", self.service.unfreeze, self.manager, admin.id)
-
+        self.assertEqual(self.notices(self.student, "NO_SHOW_RECORDED"), [])
 
 class WeeklyLimitTests(Sprint3Fixture, SimpleTestCase):
     def test_at_most_twenty_four_half_hour_slots_in_one_week(self):
@@ -456,9 +382,6 @@ class SeriesTests(Sprint3Fixture, SimpleTestCase):
         actor, arguments = self.plan(start_time=time(19, 30))
         preview = self.service.preview_series(actor, **arguments)
         self.assertEqual({item["reason_code"] for item in preview["occurrences"]}, {"OUTSIDE_OPENING_HOURS"})
-        self.repo.save_principal(replace(self.student, frozen_until=self.now + timedelta(days=3)))
-        actor, arguments = self.plan(on_behalf_of_zid=self.student.zid)
-        self.refused("ACCOUNT_FROZEN", self.service.preview_series, actor, **arguments)
 
     def test_induction_must_cover_each_date(self):
         submission = next(item for item in self.repo.list_submissions(student_id=self.admin.id))
@@ -553,27 +476,7 @@ class Sprint3APITests(BookingAPIFixtureMixin, SimpleTestCase):
         checked = self.verified.post(f"/api/v1/bookings/{booking['id']}/check-in/", {}, format="json")
         self.assertEqual((checked.status_code, checked.data["attendance"], checked.data["check_in_open"]), (200, "CHECKED_IN", False))
         me = self.verified.get("/api/v1/auth/me/").data
-        self.assertEqual((me["no_show_count"], me["frozen_until"], me["booking_frozen"]), (0, None, False))
-
-    def test_unfreeze_api(self):
-        person = next(item for item in self.service.repo.list_principals() if item.zid == "z1000001")
-        self.service.repo.save_principal(replace(person, frozen_until=NOW + timedelta(days=10)))
-        refused = self.verified.post("/api/v1/bookings/", self.payload(), format="json")
-        self.assertEqual((refused.status_code, refused.data["error"]["code"]), (403, "ACCOUNT_FROZEN"))
-        created = self.verified.post("/api/v1/account/unfreeze-requests/", {"reason": "Sick"}, format="json")
-        self.assertEqual(created.status_code, 201, created.data)
-        self.assertEqual(self.verified.get("/api/v1/account/unfreeze-requests/").data["count"], 1)
-        self.assertEqual(self.student.get("/api/v1/admin/unfreeze-requests/").status_code, 403)
-        frozen = self.items(self.admin.get("/api/v1/admin/frozen-users/"))
-        self.assertEqual([(item["zid"], item["pending_request"]["id"]) for item in frozen], [("z1000001", created.data["id"])])
-        pending = self.items(self.admin.get("/api/v1/admin/unfreeze-requests/?status=PENDING"))
-        self.assertEqual(pending[0]["person"]["zid"], "z1000001")
-        decided = self.admin.post(f"/api/v1/admin/unfreeze-requests/{created.data['id']}/review/", {"decision": "APPROVED"}, format="json")
-        self.assertEqual((decided.status_code, decided.data["status"]), (200, "APPROVED"))
-        self.assertEqual(self.items(self.admin.get("/api/v1/admin/frozen-users/")), [])
-        self.service.repo.save_principal(replace(self.service.repo.get_principal(person.id), frozen_until=NOW + timedelta(days=3)))
-        lifted = self.manager.post(f"/api/v1/admin/users/{person.id}/unfreeze/", {"reason": "OK"}, format="json")
-        self.assertEqual((lifted.status_code, lifted.data["booking_frozen"]), (200, False))
+        self.assertNotIn("frozen_until", me)  # the booking freeze was removed on 2026-11-07
 
     def test_series_api(self):
         self.service.max_advance_days = 28  # This workflow exercises three weeks of dates.

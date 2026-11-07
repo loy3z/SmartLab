@@ -83,7 +83,7 @@ class ServiceBase:
         self._apply_time_change(previous, booking)  # Sprint 3 (1.16.0): approved change request replaces the old booking
 
     def _remember_changed(self, bookings):
-        """Sprint 3: bookings changed as a side effect of this request (promotion, freeze), so the HTTP layer syncs Outlook."""
+        """Sprint 3: bookings changed as a side effect of this request (waitlist promotion), so the HTTP layer syncs Outlook."""
         ids = _promoted_ids.get()
         if ids is None:
             ids = []

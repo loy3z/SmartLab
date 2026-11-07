@@ -8,7 +8,6 @@ import { FindTime } from './FindTime'
 import { listQualifications, listRequirements, listResources } from '../../api/index.ts'
 import { errorMessage, SEPARATE_BOOKING_TEXT } from './format' // Sprint 3 (1.16.0): SEPARATE_BOOKING_TEXT
 import { AlertIcon, CheckIcon, SearchIcon, UploadIcon } from './icons'
-import { FreezeNotice } from './FreezeNotice' // Sprint 3
 import { Modal } from './Modal'
 import { RecurringBookingForm } from './RecurringBookingForm' // Sprint 3
 import { ResourceCard, type InductionState } from './ResourceCard'
@@ -103,7 +102,6 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
   return (
     <>
       <h1>Book a resource</h1>{/* Sprint 3 (internal-tool UI, AI-2): no introduction line */}
-      <FreezeNotice />
 
       {/* Sprint 3 (compact page top): one line for all inductions instead of a large banner each.
           Sprint 3 (workspace UI): folded under "Training requirements"; review R2: open while any is not verified,

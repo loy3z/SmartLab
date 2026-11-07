@@ -2,7 +2,7 @@
 
 Every number the client may want to change later (how far ahead people may book, how long a verified
 induction stays valid, the default admin review window for new resources, the weekly and future-booking limits, check-in
-times, the missed-booking freeze and the longest weekly series) is read through a
+times and the longest weekly series) is read through a
 RulesProvider instead of being written into the booking code.
 
 * Today: SettingsRulesProvider reads environment variables (see config/settings.py and .env.example).
@@ -53,11 +53,6 @@ class BookingRules:
     # (never after the end). Not checking in by then is a missed booking (no-show).
     check_in_opens_minutes: int = 15
     check_in_closes_minutes: int = 30
-    # Booking is frozen for freeze_days when the missed-booking count reaches freeze_after_no_shows.
-    # 0 = never freeze (default since 2026-11-06: the client prefers easy cancelling to penalties, Week 8 meeting);
-    # missed bookings are still recorded.
-    freeze_after_no_shows: int = 0
-    freeze_days: int = 30
     # Longest weekly series pattern; every kept date must also fit the booking window.
     max_series_weeks: int = 14
     # Sprint 3 reminders: this many hours before an approved booking, and days before a verified induction expires.
@@ -78,8 +73,6 @@ class BookingRules:
         _bounded_int("additional_hours_approval_window_hours", self.additional_hours_approval_window_hours, 1, 168)
         _bounded_int("check_in_opens_minutes", self.check_in_opens_minutes, 0, 240)
         _bounded_int("check_in_closes_minutes", self.check_in_closes_minutes, 1, 480)
-        _bounded_int("freeze_after_no_shows", self.freeze_after_no_shows, 0, 100)
-        _bounded_int("freeze_days", self.freeze_days, 1, 365)
         _bounded_int("max_series_weeks", self.max_series_weeks, 1, 52)
         _bounded_int("reminder_hours_before", self.reminder_hours_before, 1, 168)
         _bounded_int("induction_reminder_days", self.induction_reminder_days, 1, 90)
@@ -117,8 +110,6 @@ class SettingsRulesProvider:
             additional_hours_approval_window_hours=settings.ADDITIONAL_HOURS_APPROVAL_WINDOW_HOURS,
             check_in_opens_minutes=settings.CHECK_IN_OPENS_MINUTES,
             check_in_closes_minutes=settings.CHECK_IN_CLOSES_MINUTES,
-            freeze_after_no_shows=settings.FREEZE_AFTER_NO_SHOWS,
-            freeze_days=settings.FREEZE_DAYS,
             max_series_weeks=settings.MAX_SERIES_WEEKS,
             reminder_hours_before=settings.REMINDER_HOURS_BEFORE,
             induction_reminder_days=settings.INDUCTION_REMINDER_DAYS,

@@ -139,11 +139,8 @@ class AdditionalHoursTests(BookingFixtureMixin, SimpleTestCase):
         self.repo.save_resource(replace(self.room, max_booking_minutes=60))
         self.refused("DURATION_LIMIT", self.extra, days=3, minutes=90)
 
-    def test_qualification_and_freeze_are_rechecked_at_approval(self):
+    def test_qualification_is_rechecked_at_approval(self):
         booking = self.extra(days=2)
-        self.repo.save_principal(replace(self.student, frozen_until=self.now + timedelta(days=4)))
-        self.refused("ACCOUNT_FROZEN", self.service.review_booking, self.manager, booking.id, "APPROVED")
-        self.repo.save_principal(self.student)
         submission = self.repo.list_submissions(student_id=self.student.id)[0]
         self.repo.save_submission(replace(submission, valid_until=booking.end - timedelta(minutes=1)))
         self.refused("QUALIFICATION_REQUIRED", self.service.review_booking, self.manager, booking.id, "APPROVED")

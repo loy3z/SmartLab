@@ -3,7 +3,7 @@
 How it works (agreed with Loy on 2026-10-25):
 
 - Only an approved, future booking can be changed, and only by the person it is for. The new time is on the same
-  resource and goes through the normal request rules (booking window, opening hours, length, induction, freeze,
+  resource and goes through the normal request rules (booking window, opening hours, length, induction,
   weekly limit). Urgent changes are not offered.
 - The change is a new booking request whose ``replaces_id`` points at the old booking. Free time: it waits for
   review like any request. Taken or held time: it joins the waitlist (the page warns about this before sending).

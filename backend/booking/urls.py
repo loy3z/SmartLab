@@ -51,11 +51,6 @@ urlpatterns = [
     path("notifications/preferences/", views.NotificationPreferencesView.as_view()),  # Sprint 3 (2026-10-25)
     path("notifications/read-all/", views.NotificationReadAllView.as_view()),  # Sprint 3
     path("notifications/<uuid:notification_id>/read/", views.NotificationReadView.as_view()),  # Sprint 3
-    path("account/unfreeze-requests/", views.MyUnfreezeRequestsView.as_view()),  # Sprint 3
-    path("admin/unfreeze-requests/", views.AdminUnfreezeRequestListView.as_view()),  # Sprint 3
-    path("admin/unfreeze-requests/<uuid:request_id>/review/", views.AdminUnfreezeReviewView.as_view()),  # Sprint 3
-    path("admin/frozen-users/", views.AdminFrozenUsersView.as_view()),  # Sprint 3
-    path("admin/users/<uuid:user_id>/unfreeze/", views.AdminUserUnfreezeView.as_view()),  # Sprint 3
     path("admin/qualifications/", views.AdminQualificationListView.as_view()),
     path("admin/qualifications/<uuid:submission_id>/review/", views.AdminQualificationReviewView.as_view()),
     path("admin/bookings/", views.AdminBookingListView.as_view()),
@@ -64,6 +59,7 @@ urlpatterns = [
     path("admin/resources/", views.AdminResourceListView.as_view()),  # Sprint 3
     path("admin/resources/<uuid:resource_id>/", views.AdminResourceDetailView.as_view()),  # Sprint 3
     path("admin/resources/<uuid:resource_id>/archive/", views.AdminResourceArchiveView.as_view()),  # Sprint 3
+    path("admin/resources/<uuid:resource_id>/internal/", views.AdminResourceInternalInfoView.as_view()),  # 2026-11-07
     path("admin/resources/<uuid:resource_id>/restore/", views.AdminResourceRestoreView.as_view()),  # Sprint 3
     path("admin/resources/<uuid:resource_id>/status/", views.AdminResourceStatusView.as_view()),
     path("admin/bookings/<uuid:booking_id>/review/", views.AdminBookingReviewView.as_view()),

@@ -14,13 +14,12 @@ class _DaySources:
     once (before: about 6 queries per resource, 130 for the 22 demo resources).
 
     Each part answers exactly what the single-resource path asks, filtered per resource in memory: the person's
-    eligibility records, their freeze state, their active requests, and the bookings or active holds overlapping
+    eligibility records, their active requests, and the bookings or active holds overlapping
     the day (the same rule as list_blocking_bookings, over the earliest opening to the latest closing).
     """
     def __init__(self, service, person, resources, day):
         repo, now = service.repo, service.now()
         self.eligibility = EligibilitySources(repo.list_submissions(student_id=person.id), repo.list_requirements())
-        self.frozen_person = repo.get_principal(person.id) or person
         self.own_requests = repo.list_bookings(student_id=person.id, statuses=ACTIVE_REQUEST_STATUSES)
         opens = min(datetime.combine(day, item.opening_time, ZoneInfo(item.timezone)) for item in resources)
         closes = max(datetime.combine(day, item.closing_time, ZoneInfo(item.timezone)) for item in resources)
@@ -84,7 +83,6 @@ class AvailabilityMixin:
         closing = datetime.combine(day, resource.closing_time, zone).astimezone(UTC)
         sources = shared.eligibility if shared else None
         eligibility, _ = self.qualification_state(person.id, resource, sources=sources)
-        frozen_person = shared.frozen_person if shared else (self.repo.get_principal(person.id) or person)  # Sprint 3: booking freeze
         mine = shared.own_requests if shared else self.repo.list_bookings(student_id=person.id, resource_id=resource.id)
         own_requests = [item for item in mine
                         if item.resource_id == resource.id and item.status in ACTIVE_REQUEST_STATUSES and item.id != exclude]
@@ -128,9 +126,8 @@ class AvailabilityMixin:
                 # Everyone follows the same rules: the person's induction (and its prerequisites) must be current.
                 "can_request": (person.active and resource.bookable) if override else (
                     person.active and eligibility == "VERIFIED" and resource.bookable
-                    and not frozen_person.frozen_at(self.now()) and (not long_booking or maximum > normal_maximum)),
+                    and (not long_booking or maximum > normal_maximum)),
                 "manager_override": override,
-                "frozen_until": frozen_person.frozen_until if frozen_person.frozen_at(self.now()) else None,
                 "qualification_status": eligibility,
                 "missing_prerequisite_id": (self.missing_prerequisite(person.id, resource.required_qualification_id,
                                                                       sources=sources) or (None,))[0]
@@ -153,7 +150,7 @@ class AvailabilityMixin:
         multiple of their time step) are left out and counted in ``too_long`` instead of failing the whole page
         (before, one such resource made the whole request fail with INVALID_DURATION).
         Rows hidden by bookable_only are counted by reason in ``not_bookable`` (resource status when it is out of
-        service, FROZEN when the person's booking is frozen, otherwise their induction status), so the page can say
+        service, otherwise their induction status), so the page can say
         why nothing is shown.
         """
         self.process_due_requests()
@@ -180,8 +177,7 @@ class AvailabilityMixin:
             result = self._availability(actor, resource, day, duration_minutes, shared=shared)
             if bookable_only and not result["can_request"]:
                 status, induction = result["resource_status"], result["qualification_status"]
-                reason = (status if status != "AVAILABLE" else "FROZEN" if result["frozen_until"]
-                          else induction if induction != "VERIFIED" else "NOT_AVAILABLE")
+                reason = status if status != "AVAILABLE" else induction if induction != "VERIFIED" else "NOT_AVAILABLE"
                 not_bookable[reason] = not_bookable.get(reason, 0) + 1  # Sprint 3 (1.16.0)
                 continue
             if free_at is not None:

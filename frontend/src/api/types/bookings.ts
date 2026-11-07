@@ -160,7 +160,7 @@ export interface BookingTimeRef {
   status: BookingStatus
 }
 
-// Sprint 3: check-in, notifications, calendar link, booking freeze, weekly series ----------------------------
+// Sprint 3: check-in, notifications, calendar link, weekly series -------------- ----------------------------
 
 export type Attendance = 'CHECKED_IN' | 'NO_SHOW' | 'EXCUSED' | 'NOT_TRACKED'
 

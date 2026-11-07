@@ -54,7 +54,7 @@ class UserManagementAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertTrue({"z1000001", "z9000001", "z9000002"} <= {item["zid"] for item in everyone})
         self.assertEqual(set(everyone[0]), {"id", "zid", "display_name", "role", "active", "university_email",
                                             "inductions", "induction_status", "is_staff",
-                                            "activation_status", "invite_code", "no_show_count", "frozen_until", "booking_frozen"})
+                                            "activation_status", "invite_code"})
         self.assertEqual({item["zid"]: item["is_staff"] for item in everyone}["z9000001"], True)
         self.assertEqual({item["zid"]: item["is_staff"] for item in everyone}["z1000001"], False)
         for role in (Role.STUDENT, Role.ADMIN, Role.MANAGER):

@@ -23,9 +23,6 @@ class SeriesMixin:
         """Validate the pattern and check every date. Returns (resource, person, [occurrence dict])."""
         self.require_staff(actor)
         person = self._beneficiary(actor, on_behalf_of_zid)
-        error = self.frozen_violation(self.repo.get_principal(person.id) or person)
-        if error and not booking_rules_bypassed(actor, person.id):
-            raise error
         resource = self.resource(resource_id)
         days = sorted({int(item) for item in weekdays})
         if not days or any(item < 1 or item > 7 for item in days):

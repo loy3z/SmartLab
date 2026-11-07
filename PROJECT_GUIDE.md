@@ -25,9 +25,9 @@ The staff menu groups pages by the task you are doing. Students see their person
 | Menu group | Pages | Use them for |
 | --- | --- | --- |
 | Personal bookings | Book a Resource, My Bookings, Induction & Training | Make bookings, follow requests and submit training evidence |
-| Daily work | Today, Qualification Review, Booking Review, Booking Freezes | See outstanding work, review evidence, decide requests and handle booking restrictions |
-| Lab management — Manager only | Room Management, Resources, User Management, Lab Setup | Run the lab and maintain its configuration |
-| Records & calendar | Booking Records, Calendar Sync | Look up history, export records, inspect usage and check Outlook sync |
+| Daily work | Today, Qualification Review, Booking Review | See outstanding work, review evidence and decide requests |
+| Lab management — Manager only | Lab Overview (Manager home), Room Management, Resources, User Management, Lab Setup | Run the lab, see what only a Manager decides, and keep internal equipment details |
+| Records & calendar | Booking Records, Calendar Sync | Look up history (Admins: last 7 days; Managers: everything and usage statistics), export records and check Outlook sync |
 
 Four similarly named pages have different jobs:
 

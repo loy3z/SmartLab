@@ -2,7 +2,7 @@
 import { request, requestBlob } from '../lib/api-client'
 import { post } from './client'
 import type { ListResponse } from './types/common'
-import type { Availability, DayOverview, DayOverviewQuery, Qualification, Requirement, RequirementInput, Resource, ResourceInput, ResourceKind, ResourceUpdateResult } from './types/resources'
+import type { Availability, DayOverview, DayOverviewQuery, Qualification, Requirement, RequirementInput, Resource, ResourceInput, ResourceInternalInfo, ResourceInternalInput, ResourceKind, ResourceUpdateResult } from './types/resources'
 
 export function listResources(params: { kind?: string; q?: string }) {
   const qs = new URLSearchParams()
@@ -73,6 +73,12 @@ export const createResource = (kind: ResourceKind, fields: ResourceInput) =>
 
 export const updateResource = (resourceId: string, fields: Partial<ResourceInput>) =>
   request<ResourceUpdateResult>(`admin/resources/${resourceId}/`, { method: 'PATCH', body: JSON.stringify(fields) })
+
+/** 2026-11-07 (client, Week 8), Manager only: owner, asset number, where it came from, specifications. */
+export const getResourceInternalInfo = (resourceId: string) => request<ResourceInternalInfo>(`admin/resources/${resourceId}/internal/`)
+
+export const updateResourceInternalInfo = (resourceId: string, fields: Partial<ResourceInternalInput>) =>
+  request<ResourceInternalInfo>(`admin/resources/${resourceId}/internal/`, { method: 'PATCH', body: JSON.stringify(fields) })
 
 export const archiveResource = (resourceId: string) => post<Resource>(`admin/resources/${resourceId}/archive/`, {})
 

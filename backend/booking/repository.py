@@ -16,6 +16,7 @@ from typing import ContextManager, Iterator, Protocol, Sequence
 
 from .domain import (
     SiteContact,  # Sprint 3 (1.16.0)
+    ResourceInternalInfo,  # 2026-11-07
     Announcement,  # Sprint 3 (1.19.0)
     NotificationPreference,  # Sprint 3 (2026-10-25)
     AuditRecord,
@@ -26,7 +27,6 @@ from .domain import (
     EmailDelivery,
     Notification,
     Principal,
-    UnfreezeRequest,
     OutlookSyncRecord,
     QualificationRequirement,
     QualificationStatus,
@@ -152,16 +152,15 @@ class Repository(Protocol):
     def get_calendar_feed(self, principal_id: str) -> CalendarFeed | None: ...
     def get_calendar_feed_by_token(self, token: str) -> CalendarFeed | None: ...
     def save_calendar_feed(self, feed: CalendarFeed) -> None: ...
-    # Requests to lift a booking freeze.
-    def save_unfreeze_request(self, request: UnfreezeRequest) -> None: ...
-    def get_unfreeze_request(self, request_id: str) -> UnfreezeRequest | None: ...
-    def list_unfreeze_requests(self, principal_id: str | None = None) -> list[UnfreezeRequest]: ...
     # Weekly series made by staff; the occurrences are ordinary bookings with series_id.
     def save_series(self, series: BookingSeries) -> None: ...
     def get_series(self, series_id: str) -> BookingSeries | None: ...
     # Sprint 3 (1.16.0): the lab's contact details (one record; None until a Manager saves it).
     def get_site_contact(self) -> SiteContact | None: ...
     def save_site_contact(self, contact: SiteContact) -> None: ...
+    # 2026-11-07: Manager-only internal information, one record per resource.
+    def get_resource_internal_info(self, resource_id: str) -> ResourceInternalInfo | None: ...
+    def save_resource_internal_info(self, info: ResourceInternalInfo) -> None: ...
 
 
 class MemoryRepository:
@@ -188,9 +187,9 @@ class MemoryRepository:
         self._notification_preferences: dict[str, NotificationPreference] = {}
         self._announcements: dict[str, Announcement] = {}  # Sprint 3 (1.19.0)
         self._calendar_feeds: dict[str, CalendarFeed] = {}
-        self._unfreeze_requests: dict[str, UnfreezeRequest] = {}
         self._series: dict[str, BookingSeries] = {}
         self._site_contact: SiteContact | None = None  # Sprint 3 (1.16.0)
+        self._resource_internal: dict[str, ResourceInternalInfo] = {}  # 2026-11-07
 
     @contextmanager
     def atomic(
@@ -212,9 +211,9 @@ class MemoryRepository:
                 self._notifications.copy(),
                 self._email_deliveries.copy(),
                 self._calendar_feeds.copy(),
-                self._unfreeze_requests.copy(),
                 self._series.copy(),
                 self._site_contact,  # Sprint 3 (1.16.0)
+                self._resource_internal.copy(),  # 2026-11-07
                 self._notification_preferences.copy(), self._announcements.copy(),  # Sprint 3 (1.19.0)
             )
             try:
@@ -233,9 +232,9 @@ class MemoryRepository:
                     self._notifications,
                     self._email_deliveries,
                     self._calendar_feeds,
-                    self._unfreeze_requests,
                     self._series,
                     self._site_contact,
+                    self._resource_internal,
                     self._notification_preferences, self._announcements,  # Sprint 3 (1.19.0)
                 ) = snapshot
                 raise
@@ -362,8 +361,8 @@ class MemoryRepository:
             self._notifications.clear()
             self._email_deliveries.clear()
             self._calendar_feeds.clear()
-            self._unfreeze_requests.clear()
             self._series.clear()
+            self._resource_internal.clear()
 
     def get_outlook_sync(self, booking_id: str) -> OutlookSyncRecord | None:
         with self._lock:
@@ -467,20 +466,6 @@ class MemoryRepository:
         with self._lock:
             self._calendar_feeds[feed.principal_id] = feed
 
-    def save_unfreeze_request(self, request: UnfreezeRequest) -> None:
-        with self._lock:
-            self._unfreeze_requests[request.id] = request
-
-    def get_unfreeze_request(self, request_id: str) -> UnfreezeRequest | None:
-        with self._lock:
-            return self._unfreeze_requests.get(request_id)
-
-    def list_unfreeze_requests(self, principal_id: str | None = None) -> list[UnfreezeRequest]:
-        with self._lock:
-            return sorted((item for item in self._unfreeze_requests.values()
-                           if principal_id is None or item.principal_id == principal_id),
-                          key=lambda item: (item.created_at, item.id))
-
     def save_series(self, series: BookingSeries) -> None:
         with self._lock:
             self._series[series.id] = series
@@ -497,6 +482,14 @@ class MemoryRepository:
     def save_site_contact(self, contact: SiteContact) -> None:
         with self._lock:
             self._site_contact = contact
+
+    def get_resource_internal_info(self, resource_id: str) -> ResourceInternalInfo | None:
+        with self._lock:
+            return self._resource_internal.get(resource_id)
+
+    def save_resource_internal_info(self, info: ResourceInternalInfo) -> None:
+        with self._lock:
+            self._resource_internal[info.resource_id] = info
 
     # Sprint 3 (1.19.0): records participate in the same rollback snapshot as resource status.
     def save_announcement(self, announcement: Announcement) -> None:

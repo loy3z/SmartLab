@@ -414,7 +414,7 @@ class PostgresAdapterTests(TransactionTestCase):
         self.assertIn("OUTLOOK_EVENT_RECREATED", [item.action for item in self.repo.list_audit() if item.entity_id == booking.id])
 
     def test_sprint3_records_round_trip(self):
-        from booking.domain import BookingSeries, CalendarFeed, Notification, UnfreezeRequest, UnfreezeStatus
+        from booking.domain import BookingSeries, CalendarFeed, Notification
         feed = CalendarFeed(self.a.id, "t" * 32, self.now)
         self.repo.save_calendar_feed(feed)
         self.assertEqual(self.repo.get_calendar_feed(self.a.id), feed)
@@ -433,24 +433,14 @@ class PostgresAdapterTests(TransactionTestCase):
         self.assertEqual((claimed[0].notification_id, claimed[0].status, claimed[0].attempts),
                          (older.id, "IN_PROGRESS", 1))
         self.assertEqual(self.repo.get_email_delivery(older.id), claimed[0])
-        request = UnfreezeRequest(str(uuid4()), self.a.id, "Sick", self.now)
-        self.repo.save_unfreeze_request(request)
-        stored = self.repo.get_unfreeze_request(request.id)
-        self.assertEqual((stored, type(stored.status)), (request, UnfreezeStatus))
-        with self.assertRaises(Exception):  # one waiting request per person (unique partial index)
-            self.repo.save_unfreeze_request(UnfreezeRequest(str(uuid4()), self.a.id, "Again", self.now))
-        self.assertEqual(self.repo.list_unfreeze_requests(self.a.id), [request])
         series = BookingSeries(str(uuid4()), self.a.id, self.admin.id, self.room.id, "1,3", time(9), 60,
                                self.start.date(), self.start.date() + timedelta(days=13), "Weekly", self.now)
         self.repo.save_series(series)
         self.assertEqual(self.repo.get_series(series.id), series)
-        frozen = replace(self.a, no_show_count=2, frozen_until=self.now + timedelta(days=30))
-        self.repo.save_principal(frozen)
-        self.assertEqual(self.repo.get_principal(self.a.id), frozen)
 
-    def test_weekly_series_check_in_and_freeze_are_persisted(self):
+    def test_weekly_series_check_in_and_missed_booking_are_persisted(self):
         self.verified(self.a)
-        self.service._override_rule(max_advance_days=30, freeze_after_no_shows=1)
+        self.service._override_rule(max_advance_days=30)
         first = self.start.date() + timedelta(days=(7 - self.start.weekday()) % 7)
         series, bookings = self.service.create_series(
             self.admin, self.room.id, [first.isoweekday()], time(10), 60, first, first + timedelta(days=13), "Weekly",
@@ -463,10 +453,8 @@ class PostgresAdapterTests(TransactionTestCase):
         self.now = bookings[1].start + timedelta(minutes=31)
         self.service.process_due_requests()
         self.assertEqual(self.repo.get_booking(bookings[1].id).attendance, "NO_SHOW")
-        person = self.repo.get_principal(self.a.id)
-        self.assertTrue(person.frozen_at(self.now))
         kinds = {item.kind for item in self.repo.list_notifications(self.a.id)}
-        self.assertIn("ACCOUNT_FROZEN", kinds)
+        self.assertIn("NO_SHOW_RECORDED", kinds)
 
     def test_resource_setup_is_persisted(self):
         # Sprint 3: a Manager adds, edits, archives and restores a resource on the website.
@@ -497,6 +485,15 @@ class PostgresAdapterTests(TransactionTestCase):
         self.assertEqual(self.repo.get_resource(self.room.id).details[1].label, "Projector")
         saved = self.service.update_site_contact(self.manager, {"email": "lab@unsw.example", "note": "Ask at the front desk"})
         self.assertEqual(self.repo.get_site_contact(), saved)
+
+    def test_resource_internal_info_is_persisted(self):
+        # 2026-11-07 (client, Week 8): table resource_internal_info, one row per resource, updated in place.
+        self.assertIsNone(self.repo.get_resource_internal_info(self.room.id))
+        first = self.service.update_resource_internal_info(self.manager, self.room.id, {"owner": "Dr Example", "asset_number": "A-1"})
+        self.assertEqual(self.repo.get_resource_internal_info(self.room.id), first)
+        second = self.service.update_resource_internal_info(self.manager, self.room.id, {"specifications": "Two screens"})
+        self.assertEqual((second.owner, second.specifications), ("Dr Example", "Two screens"))
+        self.assertEqual(self.repo.get_resource_internal_info(self.room.id), second)
 
     def test_change_request_is_persisted_and_replaces_the_old_booking(self):
         # Sprint 3 (1.16.0): replaces_id column, the one-open-change index and the automatic cancellation.

@@ -2,7 +2,7 @@
 
 from ._common import *  # noqa: F401,F403 - shared imports, helpers and PublicView.
 
-__all__ = ["BookingListView", "AdditionalHoursBookingView", "LongBookingView", "my_bookings", "PersonLookupView", "BookingDetailView", "BookingCancelView", "BookingRescheduleView", "BookingExtendView", "BookingChangeView", "DashboardView", "BookingCheckInView", "BookingHistoryRemoveView"]
+__all__ = ["BookingListView", "AdditionalHoursBookingView", "LongBookingView", "my_bookings", "PersonLookupView", "BookingDetailView", "BookingCancelView", "BookingRescheduleView", "BookingExtendView", "BookingExtensionReviewView", "BookingChangeView", "DashboardView", "BookingCheckInView", "BookingHistoryRemoveView"]
 
 class BookingListView(APIView):
     def get(self, request):
@@ -104,11 +104,20 @@ class BookingRescheduleView(APIView):
         return Response(json_value(booking))
 
 class BookingExtendView(APIView):
-    """2026-11-06 (client, Week 8): finish a booking in progress later (services/changes.py ``extend_booking``)."""
+    """2026-11-07 (client, Week 8): ask to finish a booking in progress later; a Manager's extension applies at once."""
     def post(self, request, booking_id):
         data = validated(BookingExtendSerializer, request.data)
         service = get_service()
         booking = service.extend_booking(request.user, str(booking_id), data["end"])
+        booking, = sync_after_write(service, booking)
+        return Response(json_value(booking))
+
+class BookingExtensionReviewView(APIView):
+    """2026-11-07, Manager: approve or reject an extension request (services/changes.py ``review_extension``)."""
+    def post(self, request, booking_id):
+        data = validated(ExtensionReviewSerializer, request.data)
+        service = get_service()
+        booking = service.review_extension(request.user, str(booking_id), data["decision"], data["reason"])
         booking, = sync_after_write(service, booking)
         return Response(json_value(booking))
 

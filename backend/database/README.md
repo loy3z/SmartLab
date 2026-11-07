@@ -7,7 +7,7 @@
 - `database/schema.sql`：18 张表（含 `resource_internal_info`、 `site_contact`、`notification_preference`、`announcement`、`booking_history_removal` 和持久化邮件队列 `email_delivery`）、约束、索引、序列和审计保护触发器。
 - `database/seed_resources.sql`：2 条培训要求（Advanced 要求先通过 General）、2 个房间、20 台设备（记录所在房间）。
 - `database/seed_users.sql`：6 个演示账号（与内存版演示数据相同的假 zID 和 id），以及 z1000001 一条已通过的 induction。全部是编造的数据，不要把真实学生的 zID 提交进 Git。
-- `database/migrations/`：已有数据库的升级脚本 001–015，按编号顺序执行，都可以重复执行（见第 2 节）。
+- `database/migrations/`：已有数据库的升级脚本 001–016，按编号顺序执行，都可以重复执行（见第 2 节）。
 - `booking/tests/test_postgres.py`：用真实 PostgreSQL 跑的适配器集成测试（见第 6 节）。
 - `booking/postgres.py`：数据库及上传文件存储适配器。
 - `requirements-postgres.txt`：后端依赖及 PostgreSQL 驱动。
@@ -74,6 +74,7 @@ Get-ChildItem .\database\migrations\*.sql | Sort-Object Name | ForEach-Object {
 | `013_long_booking_requests.sql` | `booking` 加长时段申请标志与理由；旧记录默认 false／null，保留普通及额外小时预约。长预约必须有理由，不能同时是紧急请求、额外小时申请或循环预约；保留正常待审占位和候补流程 |
 | `014_remove_booking_freeze.sql` | 1.25.0：删除冻结。删表 `unfreeze_request`，删 `app_users.no_show_count`、`frozen_until` 和对应约束。**会删数据**（解冻申请、冻结日期、缺席次数）；每个预约上的缺席标记 `booking.attendance` 保留。回滚到 1.25.0 之前的代码前先重跑 006，补回列和表（数据不会回来） |
 | `015_resource_internal_info.sql` | 1.26.0：新表 `resource_internal_info`（每个资源一行：负责人、UNSW 资产编号、来源、规格，只有 Manager 能看）；资源删除时级联删除。只加表，不改已有数据 |
+| `016_extension_requests.sql` | 1.27.0：`booking` 加 `extension_end`（学生申请的更晚结束时间，等 Manager 批准）和检查约束（必须晚于 `end`）；已有预约为 NULL |
 
 ### 已有数据库升级到长时段预约申请
 

@@ -19,6 +19,7 @@
 | Booking | `hold_until`、`review_due_at: datetime \| None` | 可空、带时区。普通申请进入 `PENDING_APPROVAL` 时两者写同一个值：`min(start, 当时 + pending_hold_minutes)`，不随资源规则变化重算。紧急申请 `review_due_at` 为空、`hold_until=start` |
 | ResourceInternalInfo | `resource_id`、`owner`、`asset_number`、`provided_by`、`specifications`、`updated_at`、`updated_by` | 1.26.0：表 `resource_internal_info`，主键 `resource_id`（外键，资源删除时级联）；只有 Manager 能读写，故意不放进 `Resource` |
 | Booking | `revision: int` | 默认 1，每次改期加 1 |
+| Booking | `extension_end: datetime \| None` | 1.27.0：进行中的预约，本人申请的更晚结束时间，等 Manager 批准；批准后移到 `end` 并清空，拒绝时清空。检查约束 `booking_extension_end_check` 要求晚于 `end` |
 | Booking | `series_id: str \| None` | 员工的重复预约（外键指向 `booking_series`）；单次预约为空 |
 | Booking | `attendance: str \| None`、`checked_in_at` | 到场标记，只对已批准的预约有意义：`CHECKED_IN`／`NO_SHOW`／`EXCUSED`／`NOT_TRACKED`，未决定时为空。迁移 006 把加列前已开始的已批准预约标为 `NOT_TRACKED`，避免被算成缺席 |
 | Booking | `replaces_id: str \| None` | 1.16.0 申请改期：指向它要替换的已批准预约（外键指向 `booking`）。部分唯一索引 `booking_one_open_change_idx` 保证一个预约同时只有一个未决定的改期申请。改期申请被批准时，业务层在同一事务里取消原预约 |

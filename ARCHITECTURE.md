@@ -196,7 +196,7 @@ sequenceDiagram
 | 到场窗口（开始前 15 分钟到开始后 30 分钟） | `services/attendance.py` `check_in_window` |
 | 什么算缺席（1.25.0 起只记录，没有冻结） | `services/attendance.py` `_process_attendance` |
 | Manager 预约越过哪些规则、哪些仍检查（1.24.0） | `services/bookings.py` `_create_manager_booking`、`reschedule_booking`；时段选择 `services/availability.py` `_availability`（`override`） |
-| 谁能延长、什么时候、检查什么（1.24.0） | `services/changes.py` `extend_booking`；前端 `features/booking/extend.ts` `canExtend`、`extendOptions` |
+| 谁能延长、什么时候、检查什么；学生的延长由 Manager 批准（1.27.0） | `services/changes.py` `extend_booking`、`review_extension`、`_check_extension`；前端 `features/booking/extend.ts`、`ExtendBox.tsx` |
 | 每周最多 3 个预约 | `services/checks.py` `_weekly_limit_violation` |
 | 重复预约每个日期的检查 | `services/series.py` `_series_check` |
 | 预约变化时通知谁 | `services/notifications.py` `_booking_changed` |

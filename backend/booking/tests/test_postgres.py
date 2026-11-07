@@ -486,6 +486,16 @@ class PostgresAdapterTests(TransactionTestCase):
         saved = self.service.update_site_contact(self.manager, {"email": "lab@unsw.example", "note": "Ask at the front desk"})
         self.assertEqual(self.repo.get_site_contact(), saved)
 
+    def test_extension_request_is_persisted(self):
+        # 2026-11-07: booking.extension_end, and the check that it is later than the end.
+        self.verified(self.a)
+        booking = self.service.review_booking(self.admin, self.book(self.a).id, "APPROVED")
+        asked = replace(booking, extension_end=booking.end + timedelta(hours=1))
+        self.repo.save_booking(asked)
+        self.assertEqual(self.repo.get_booking(booking.id), asked)
+        with self.assertRaises(Exception):
+            self.repo.save_booking(replace(booking, extension_end=booking.end))
+
     def test_resource_internal_info_is_persisted(self):
         # 2026-11-07 (client, Week 8): table resource_internal_info, one row per resource, updated in place.
         self.assertIsNone(self.repo.get_resource_internal_info(self.room.id))

@@ -24,6 +24,7 @@ class OverviewMixin:
         - out_of_service: resources under maintenance or closed, with how many future bookings or requests they still have.
         - today: approved bookings starting today (Sydney), in time order; missed_today counts those marked as missed.
         - changes_waiting: change requests (people asking to move a booking) still undecided.
+        - extension_requests (2026-11-07): bookings whose person asks to finish later; a Manager decides.
         """
         self.require_staff(actor)
         self.process_due_requests()
@@ -67,6 +68,8 @@ class OverviewMixin:
             "due_soon": due_soon[:LIST_LIMIT],
             "due_soon_hours": DUE_SOON_HOURS,
             "out_of_service": out_of_service,
+            "extension_requests": [item for item in self.repo.list_bookings(statuses=[BookingStatus.APPROVED], end_from=now)
+                                   if item.extension_end and item.extension_end > now][:LIST_LIMIT],
             "today": today[:LIST_LIMIT],
             "today_count": len(today),
             "missed_today": sum(1 for item in today if item.attendance == "NO_SHOW"),

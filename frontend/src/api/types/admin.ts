@@ -17,6 +17,8 @@ export interface StaffOverview {
   today: Booking[]
   today_count: number
   missed_today: number
+  /** 2026-11-07: bookings in progress whose person asks to finish later; a Manager decides. */
+  extension_requests?: Booking[]
   can_decide_urgent: boolean
   additional_hours_requests?: number
   additional_hours_ready?: number

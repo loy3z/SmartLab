@@ -455,3 +455,13 @@ Loy 定：客户不想用缺席处罚，冻结整个删除。任务卡：项目�
 | W5 Manager 首页、角色标识 | 新 `features/manager/ManagerHomePage.tsx`、`manager-home.ts`；`admin/today.ts` `MANAGER_DECIDES`、`cardsFor`；`TodayPage.tsx`；`app/routes.ts` `homePath`、`/manager/home`；`AppRouter.tsx`；`AppLayout.tsx` 菜单和 `app-role-badge`；`ui/workspace.css` | `frontend/tests/roles.test.mjs`；Playwright `a Manager starts on the Lab overview, sees the role badge and looks up a zID`、`staff start on Today…` |
 | W6 Admin 只看近期历史 | `services/resources.py` `booking_report`、`ADMIN_HISTORY_DAYS`；`services/reports.py` `usage_report` 改为 `require_manager`；前端 `records/records.ts` `defaultRecordFilters`、`BookingRecordsPage.tsx`；`routes.ts` `/manager/usage` | `test_roles.py` `AdminHistoryTests`；`test_usage_report.py`；`roles.test.mjs`；Playwright `a Manager reads the usage statistics…` |
 | W7 Manager 才能看的设备资料 | `domain.py` `ResourceInternalInfo`；两种仓储 `get/save_resource_internal_info`；`services/resources.py` `resource_internal_info`、`update_resource_internal_info`、`INTERNAL_FIELDS`；`views/admin.py` `AdminResourceInternalInfoView`；`serializers.py` `ResourceInternalInfoSerializer`；`migrations/015_resource_internal_info.sql`、`schema.sql`；前端 `api/resources.ts`、`ManagerResourcesPage.tsx`（Managers only 一栏） | `test_roles.py` `InternalInfoTests`、`InternalInfoAPITests`；`test_postgres.py` `test_resource_internal_info_is_persisted` |
+
+## 33. 延长改为拖动时间轴、由 Manager 批准（2026-11-07，1.27.0，迁移 016）
+
+取代第 30 节 W2 的“立即生效”。任务卡：项目文档 `claude/tasks-week8-2026-11-06.md` W8。
+
+| 部分 | 文件和入口 | 测试 |
+| --- | --- | --- |
+| 数据 | `domain.py` `Booking.extension_end`；`migrations/016_extension_requests.sql`（加列和检查约束 `booking_extension_end_check`）、`schema.sql` | `test_postgres.py` `test_extension_request_is_persisted` |
+| 后端 | `services/changes.py` `extend_booking`（学生申请，Manager 立即生效）、`review_extension`、`_check_extension`、`_apply_extension`；`services/overview.py` `extension_requests`；`views/bookings.py` `BookingExtensionReviewView`；`serializers.py` `ExtensionReviewSerializer`；`urls.py`；通知 `EXTENSION_REQUESTED`／`APPROVED`／`REJECTED`（`notifications.py`、`settings.py` 邮件类型） | `test_change_requests.py` `ExtendBookingTests`（3 个）、`test_extend_a_booking_in_progress` |
+| 前端 | `features/booking/ExtendBox.tsx`（时间轴、拖动和方向键）、`extend.ts` `timelineCells`、`latestEnd`、`waitingExtension`、`sydneyDate`；`MyBookings.tsx` 等待提示；`admin/today.ts` `extensions` 卡片；`manager/ManagerHomePage.tsx` `ExtensionRow`；`api/bookings.ts` `reviewExtension`；`ui/workspace.css` `.ext-*` | `tests/extend.test.mjs`；Playwright `a student drags the end of a booking in progress…`、`a Manager approves an extension request on the Lab overview` |

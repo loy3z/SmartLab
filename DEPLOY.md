@@ -67,6 +67,7 @@ docker compose --env-file .env.docker run --rm api migrate database/migrations/0
 docker compose --env-file .env.docker run --rm api migrate database/migrations/013_long_booking_requests.sql
 docker compose --env-file .env.docker run --rm api migrate database/migrations/014_remove_booking_freeze.sql
 docker compose --env-file .env.docker run --rm api migrate database/migrations/015_resource_internal_info.sql
+docker compose --env-file .env.docker run --rm api migrate database/migrations/016_extension_requests.sql
 # 4. 换上新容器
 docker compose --env-file .env.docker up -d
 ```

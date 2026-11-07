@@ -98,6 +98,8 @@ export interface Booking {
   urgent_reason?: string | null
   long_booking?: boolean
   long_booking_reason?: string | null
+  /** 2026-11-07: a later end the person asked for; waits for a Manager (null when nothing is waiting). */
+  extension_end?: string | null
   /** Separate request for unused capacity beyond the normal weekly allowance. */
   additional_hours?: boolean
   additional_hours_reason?: string | null

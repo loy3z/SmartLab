@@ -10,7 +10,7 @@ import { ChangeTimeBox } from './ChangeTimeBox' // Sprint 3 (1.16.0)
 import { canAskForChange, openChangeText, replacesText } from './change-requests' // Sprint 3 (1.16.0)
 import { ContactLink } from '../contact/LabContact' // Sprint 3 (1.16.0)
 import { ExtendBox } from './ExtendBox' // 1.24.0
-import { canExtend } from './extend'
+import { canExtend, waitingExtension } from './extend'
 import { bookingDetail, errorMessage, fmtDuration, fmtRange, fmtTime, minutesBetween, STATUS_TEXT } from './format'
 import { ACTIVE, canRemoveBookingHistory, groupBookings } from './my-bookings'
 import { RescheduleBox } from './RescheduleBox'
@@ -288,6 +288,9 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
               </div>
             )}
             {/* 1.24.0 (client, Week 8): stay longer while the booking is in progress */}
+            {waitingExtension(b, now) && extending !== b.id && (
+              <p className="bk-change-note">You asked to finish at {fmtTime(waitingExtension(b, now)!)}. Waiting for a Manager.</p>
+            )}
             {canExtend(b, user?.id, isManager, now) && res && extending !== b.id && (
               <div className="bk-card-actions">
                 <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setExtending(b.id)}>Extend</button>
@@ -295,7 +298,12 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
             )}
             {extending === b.id && res && (
               <ExtendBox booking={b} resource={res} isManager={isManager} onClose={() => setExtending(null)}
-                onDone={(updated) => { setExtending(null); feedback.success(`Now until ${fmtTime(updated.end)}.`, 'Booking extended'); void load() }} />
+                onDone={(updated) => {
+                  setExtending(null)
+                  if (updated.extension_end) feedback.success(`Finish at ${fmtTime(updated.extension_end)} once a Manager approves it.`, 'Request sent')
+                  else feedback.success(`Now until ${fmtTime(updated.end)}.`, 'Booking extended')
+                  void load()
+                }} />
             )}
             {rescheduling === b.id && res && (
               <RescheduleBox booking={b} resource={res} onDone={rescheduled} onClose={() => setRescheduling(null)} />

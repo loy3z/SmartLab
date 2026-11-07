@@ -122,7 +122,9 @@ EMAIL_NOTIFICATION_KINDS = [x.strip() for x in os.getenv("EMAIL_NOTIFICATION_KIN
     "BOOKING_APPROVED", "BOOKING_REJECTED", "BOOKING_EXPIRED", "BOOKING_PROMOTED", "BOOKING_RESCHEDULED",
     "BOOKING_CANCELLED", "BOOKING_REMINDER", "INDUCTION_EXPIRING",
     # Sprint 3 (1.16.0): change requests and resources going out of / back into service.
-    "CHANGE_REQUESTED", "CHANGE_APPROVED", "CHANGE_REJECTED", "RESOURCE_OUT_OF_SERVICE", "RESOURCE_REOPENED"])).split(",") if x.strip()]
+    "CHANGE_REQUESTED", "CHANGE_APPROVED", "CHANGE_REJECTED", "RESOURCE_OUT_OF_SERVICE", "RESOURCE_REOPENED",
+    # 2026-11-07: the decision on an extension request (the person may already be in the lab).
+    "EXTENSION_APPROVED", "EXTENSION_REJECTED"])).split(",") if x.strip()]
 # Address of the web app, used for links in emails.
 SITE_URL = os.getenv("SITE_URL", "http://localhost:5173").strip()
 if EMAIL_ENABLED and "booking.email_channel.EmailChannel" not in NOTIFICATION_CHANNELS:

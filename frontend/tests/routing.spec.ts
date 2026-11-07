@@ -2324,3 +2324,68 @@ test('1.19 resource status keeps errors inside the form and sends the optional S
   await expect(dialog).toHaveCount(0)
   expect(writes[1]).toEqual({ status: 'MAINTENANCE', reason: 'Repairing the air conditioning', expected_back: '2030-01-10T01:00:00.000Z' })
 })
+
+// 2026-11-07 (client, Week 8): drag the end of a booking in progress, as in a calendar; it asks a Manager.
+test('a student drags the end of a booking in progress to ask a Manager for more time', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2030-01-09T23:30:00Z')) // 10:30 in Sydney
+  const room = { ...recurringRoom, closing_time: '13:00:00' }
+  const booking = approvedBooking({ id: 'b-ext', start: '2030-01-09T23:00:00Z', end: '2030-01-10T00:00:00Z', check_in_open: false })
+  let current: Record<string, unknown> = booking
+  const sent: Record<string, unknown>[] = []
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname.replace('/api/v1/', '')
+    if (path === 'bookings/' && request.method() === 'GET') return route.fulfill({ json: { count: 1, results: [current] } })
+    if (path === 'resources/' && request.method() === 'GET') return route.fulfill({ json: { count: 1, results: [room] } })
+    if (path === 'resources/room-1/availability/') {
+      return route.fulfill({ json: { slots: [{ start: '2030-01-10T01:00:00Z', end: '2030-01-10T01:30:00Z', available: false,
+        reason_code: 'BOOKED', hold_until: null, held_by_me: false, requested_by_me: false }] } }) // someone from 12:00
+    }
+    if (path === 'bookings/b-ext/extend/' && request.method() === 'POST') {
+      const body = request.postDataJSON()
+      sent.push(body)
+      current = { ...booking, extension_end: body.end }
+      return route.fulfill({ json: current })
+    }
+    return route.fallback()
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'STUDENT')
+  await page.goto('/#/bookings')
+  await page.getByRole('button', { name: 'Extend', exact: true }).click()
+  const handle = page.getByRole('slider', { name: 'New end time' })
+  await expect(handle).toBeEnabled()
+  // Drag far to the right: it stops at 12:00, where the next booking starts.
+  const track = (await page.locator('.ext-track').boundingBox())!
+  await page.mouse.move(track.x + track.width * 0.4, track.y + track.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(track.x + track.width * 0.95, track.y + track.height / 2, { steps: 5 })
+  await page.mouse.up()
+  await expect(handle).toHaveAttribute('aria-valuetext', /12:00/)
+  await handle.press('ArrowLeft') // keyboard: back one step, to 11:30
+  await expect(handle).toHaveAttribute('aria-valuetext', /11:30/)
+  await page.getByRole('button', { name: 'Ask a Manager', exact: true }).click()
+  await expect(page.getByText(/Waiting for a Manager/)).toBeVisible()
+  expect(sent).toEqual([{ end: '2030-01-10T00:30:00.000Z' }])
+})
+
+test('a Manager approves an extension request on the Lab overview', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2030-01-09T23:30:00Z'))
+  const waiting = approvedBooking({ id: 'b-ext', start: '2030-01-09T23:00:00Z', end: '2030-01-10T00:00:00Z', extension_end: '2030-01-10T01:00:00Z' })
+  const decisions: Record<string, unknown>[] = []
+  await page.route('**/api/v1/admin/overview/', (route) => route.fulfill({ json: {
+    ...emptyOverview('MANAGER'), extension_requests: decisions.length ? [] : [waiting] } }))
+  await page.route('**/api/v1/bookings/b-ext/extend/review/', (route) => {
+    decisions.push(route.request().postDataJSON())
+    return route.fulfill({ json: { ...waiting, end: waiting.extension_end, extension_end: null } })
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'MANAGER')
+  await expect(page.getByRole('link', { name: /1\s*Extension requests/ })).toBeVisible()
+  const panel = page.getByRole('heading', { name: 'Extension requests', exact: true }).locator('..')
+  await expect(panel).toContainText('Test Student')
+  await panel.getByRole('button', { name: 'Approve', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Extension requests', exact: true })).toHaveCount(0)
+  expect(decisions).toEqual([{ decision: 'APPROVED', reason: '' }])
+})
+

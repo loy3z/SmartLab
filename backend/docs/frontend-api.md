@@ -2,6 +2,13 @@
 
 API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 [openapi.json](openapi.json)，启动后的 `GET /api/schema/` 返回相同定义。
 
+## 1.27.0：延长由 Manager 批准（迁移 016）
+
+- `POST bookings/{id}/extend/ {end}`：本人申请时不再立即生效，返回的预约带 `extension_end`（`end` 不变），Manager 收到 `EXTENSION_REQUESTED`；再次申请会替换。Manager 调用仍立即生效。申请时只检查开放时间、资源自身最长时长、时间步长和后面是否空闲，单次 3 小时和每周时数由 Manager 决定。
+- `POST bookings/{id}/extend/review/ {decision, reason}`：仅 Manager。批准时再查一次后面是否空闲，`end` 改为 `extension_end`；拒绝要写原因。错误：`NO_EXTENSION_REQUEST`、`EXTENSION_EXPIRED`、`BOOKING_CONFLICT`（都是 409）。本人收到 `EXTENSION_APPROVED`／`EXTENSION_REJECTED`（也发邮件）。
+- `GET admin/overview/` 增加 `extension_requests`（要求的结束时间还没过的预约，最多 10 个）。Booking 增加 `extension_end`。
+- 页面：My bookings 的 Extend 打开一条时间轴（开始到关门），拖动结束线或用方向键选新的结束时间，到下一个预约前为止；学生按 Ask a Manager，Manager 按 Extend now。时间轴读取 `resources/{id}/availability/`（学生加 `urgent=true`，这样当天被占用的时段能显示出来）。
+
 ## 1.26.0：三个角色看到的明显不同（迁移 015）
 
 - **首页**：`homePath` 把 Manager 送到 `/manager/home`（Lab overview），Admin 仍是 `/admin/today`。Lab overview 用现有接口：`admin/overview/`、`resources/`、`admin/reports/usage/`（本周）。Admin 的 Today 不显示 `urgent`、`additional-hours`、`long-bookings` 三张卡片（`today.ts` `cardsFor`）。顶部栏显示 `Student view`／`Admin view`／`Manager view`。
@@ -245,7 +252,8 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | GET | `qualifications/{id}/file/` | 带权限的附件下载 |
 | GET / POST | `bookings/` | 我的预约列表（员工还包括替别人建的）／创建预约（可带 `on_behalf_of_zid`、`urgent`、`urgent_reason`） |
 | POST | `bookings/{id}/change/` | 1.16.0：预约人申请把自己已批准的预约改到新时间（见下文“申请改期”） |
-| POST | `bookings/{id}/extend/` | 1.24.0：本人或 Manager 延长进行中的已批准预约：`end`，空闲时立即生效 |
+| POST | `bookings/{id}/extend/` | 本人申请延长进行中的已批准预约（`end`，1.27.0 起等 Manager 批准）；Manager 调用立即生效 |
+| POST | `bookings/{id}/extend/review/` | 1.27.0，仅 Manager：批准或拒绝延长申请 `decision`、`reason` |
 | GET / PATCH | `site/contact/` | 1.16.0：实验室联系方式；所有人可读，Manager 修改 |
 | POST | `admin/qualification-requirements/` | 1.16.0：Manager 新建 induction |
 | GET | `admin/overview/` | 1.16.0：员工首页 Today 的数字和清单 |

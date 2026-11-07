@@ -94,6 +94,10 @@ class BookingRescheduleSerializer(StrictSerializer):
 class BookingExtendSerializer(StrictSerializer):  # 2026-11-06 (client, Week 8)
     end = AwareDateTimeField()
 
+class ExtensionReviewSerializer(StrictSerializer):  # 2026-11-07: a Manager decides an extension request
+    decision = serializers.ChoiceField(choices=["APPROVED", "REJECTED"])
+    reason = serializers.CharField(required=False, allow_blank=True, default="", max_length=2000)
+
 class QualificationCreateSerializer(StrictSerializer):
     requirement_id = serializers.UUIDField()
     title = serializers.CharField(max_length=160)

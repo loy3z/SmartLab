@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Smart Lab and Room Booking API",
-    "version": "1.26.0",
+    "version": "1.27.0",
     "description": "Booking backend with Microsoft Graph one-way creation, rescheduling and cancellation of confirmed bookings. Confirmed events can invite the person the booking is for (OUTLOOK_INVITE_MODE); room and equipment availability remains managed by the booking system. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z. Identity includes university_email. Students, Admins and Managers book under the same rules; an Admin or Manager may also book on behalf of someone (student_id is the person the booking is for, created_by who created it), and only a Manager decides urgent requests and reschedules. A student may submit a request only when the induction for the resource, and any prerequisite induction it lists (for example Advanced needs General), is verified and current through the booking end. Every ordinary request starts as PENDING_APPROVAL and holds its slot during a review window (pending_hold_minutes, default 1440 = 24 hours, Manager-configurable per resource, capped at the booking start). An Admin or Manager approves or rejects it within the window; if nobody decides, the system approves it when it still follows the rules (AUTO_APPROVED_AFTER_REVIEW_WINDOW) and rejects it otherwise (AUTO_REJECTED_*). Requests for time that is already taken or held are WAITLISTED in submission order and, when the time frees up, become PENDING_APPROVAL with a fresh review window. Induction evidence is always reviewed manually. Bookings must start at least 7 and at most 28 days (4 weeks) ahead by default, including each staff weekly-series occurrence and bookings made on behalf of someone else; these values come from a RulesProvider (booking/rules.py, environment variables by default) so they can be changed without code changes. Authentication and resource-specific eligibility are separate. Verified induction expires a fixed number of days after approval (qualification_validity_days from the RulesProvider, default 120, one term); reviewers do not supply an expiry. Admin and Manager can query the audit trail of requests, approvals, changes and cancellations. The prototype seed has 2 labs and 20 independently bookable devices. A Manager has every Admin permission and can also configure booking policies, add staff accounts and deactivate accounts. Admins cannot use any Manager endpoint. Students, Admins and Managers are separate accounts whose role is fixed when created: students are never promoted to staff, and Admin and Manager do not switch. Creating, approving, automatically deciding, promoting from the waitlist and rescheduling all use one shared rule check (account active, resource available, valid time, booking window on create and reschedule, induction and prerequisites). A Manager can mark a resource MAINTENANCE or CLOSED (new requests paused, existing bookings kept) and list or export every booking. Staff accounts are created with Add staff (POST /admin/users/staff/). Equipment records the room it is kept in (room_id); a room's maintenance does not affect its equipment. Two sign-in entry points: students use university sign-in (demo: POST /auth/demo-login/, which refuses staff with USE_STAFF_SIGN_IN); Admins and Managers use the staff page with zID and password (POST /auth/staff-sign-in/). A Manager's Add staff issues an invite code that the staff member uses once to choose a password (POST /auth/staff-activate/); Reset access issues a new code. Password hashes never appear in responses. Outlook sync is one way. The system never reads changes made in Outlook, so nothing done there can bypass the rules or become an approved booking; if a person deleted the event, a Manager's reschedule writes it again at the new time. Invitations follow OUTLOOK_INVITE_MODE (default allowlist: only OUTLOOK_ALLOWED_ATTENDEES are invited). POST /admin/outlook/check/ tests the Microsoft sign-in. Resources have an equipment category, and GET /resources/day-overview/ returns every matching resource's free and taken times on one day for the booking page filter and grid. Demo staff accounts use the password 123. Each person has a private calendar subscription link (GET calendar/link/, feed GET calendar/{token}.ics) that Outlook, Google or Apple Calendar read by themselves. Website notifications (GET notifications/) tell people about decisions and changes. Approved bookings need a check-in (POST bookings/{id}/check-in/) around the start; a missed check-in is only recorded (1.25.0: the booking freeze was removed). A person may hold at most 24 half-hour slots per local week (configurable), including pending, waitlisted, approved and weekly-series dates. Staff can book a weekly series (bookings/series/), approved at once. Managers add, edit, archive and restore rooms and equipment (admin/resources/) and read a usage report (admin/reports/usage/). Staff change their own password (auth/change-password/). Reminders appear in the notification bell the day before an approved booking and when a verified induction expires soon. Additional-hours requests use a separate endpoint and never hold capacity while pending. Managers may approve only within a configurable window before the requested start (48 hours by default), after rechecking capacity, eligibility and priority/FIFO order. These exact-slot grants are separate from the ordinary weekly allowance, retain the normal single-booking duration, future-booking count and maximum advance limits, and cannot be moved or automatically approved."
   },
   "servers": [
@@ -5106,8 +5106,8 @@
         "tags": [
           "Bookings"
         ],
-        "summary": "Extend a booking in progress (1.24.0)",
-        "description": "The person the booking is for, or a Manager, moves the end of an APPROVED booking that has started and not ended. It applies at once (no review) when the extra time is free and the whole booking still fits the resource's opening hours, maximum length and time steps; for everyone but a Manager also the normal per-booking limit, the weekly limit and an induction valid until the new end. A student asking for someone else's booking gets 404; an Admin gets 403 FORBIDDEN. Not started, ended, not approved, additional-hours or longer bookings: 409 EXTENSION_NOT_AVAILABLE. A new end not after the current end: 400 VALIDATION_ERROR. Time after taken or held: 409 BOOKING_CONFLICT. Managers receive a BOOKING_EXTENDED notification. revision increases, so Outlook updates the event.",
+        "summary": "Ask to extend a booking in progress (1.27.0: a Manager decides)",
+        "description": "1.27.0. The person the booking is for asks for a later end of an APPROVED booking that has started and not ended (the page lets them drag the end on a timeline). The request is stored as extension_end and waits for a Manager (POST bookings/{id}/extend/review/); Managers receive EXTENSION_REQUESTED. Asking again replaces the requested end. A Manager calling this extends at once (end moves, revision increases, the person receives EXTENSION_APPROVED). Checked now and again at approval: the new end fits the resource's opening hours, its own maximum length and time steps, and the time after is free (it is not held while the request waits). A student asking for someone else's booking gets 404; an Admin gets 403 FORBIDDEN. Not started, ended, not approved, additional-hours or longer bookings: 409 EXTENSION_NOT_AVAILABLE. A new end not after the current end: 400 VALIDATION_ERROR. Time after taken or held: 409 BOOKING_CONFLICT.",
         "security": [
           {
             "BearerAuth": []
@@ -5145,7 +5145,7 @@
             }
           },
           "403": {
-            "description": "Not the person the booking is for (Admin), or no valid induction until the new end (QUALIFICATION_REQUIRED).",
+            "description": "Not the person the booking is for (Admin).",
             "content": {
               "application/json": {
                 "schema": {
@@ -5165,7 +5165,7 @@
             }
           },
           "409": {
-            "description": "EXTENSION_NOT_AVAILABLE, BOOKING_CONFLICT, WEEKLY_LIMIT_REACHED or RESOURCE_UNAVAILABLE.",
+            "description": "EXTENSION_NOT_AVAILABLE, BOOKING_CONFLICT or RESOURCE_UNAVAILABLE.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5192,6 +5192,104 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/BookingExtend"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bookings/{id}/extend/review/": {
+      "post": {
+        "operationId": "post__api_v1_bookings_id_extend_review_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "Approve or reject an extension request (Manager only)",
+        "description": "1.27.0. Active Manager only (others 403 FORBIDDEN). APPROVED moves the end to extension_end when it has not passed (409 EXTENSION_EXPIRED) and the time after is still free (409 BOOKING_CONFLICT); revision increases and Outlook updates the event. REJECTED needs a reason (400) and clears the request. Either way the person is notified (EXTENSION_APPROVED / EXTENSION_REJECTED). Nothing waiting: 409 NO_EXTENSION_REQUEST.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A rejection without a reason, or an invalid decision.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only an active Manager decides extension requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Booking not found or not accessible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "NO_EXTENSION_REQUEST, EXTENSION_EXPIRED or BOOKING_CONFLICT.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtensionReview"
               }
             }
           }
@@ -7070,6 +7168,12 @@
           "long_booking_reason": {
             "type": "string",
             "nullable": true
+          },
+          "extension_end": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "1.27.0: the later end the person asked for while the booking is in progress; waits for a Manager. Null when nothing is waiting."
           }
         },
         "additionalProperties": false
@@ -7145,6 +7249,27 @@
             "type": "string",
             "format": "date-time",
             "description": "New end with a UTC offset, later than the current end."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExtensionReview": {
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "APPROVED",
+              "REJECTED"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "Required when REJECTED; shown to the person."
           }
         },
         "additionalProperties": false
@@ -9977,6 +10102,12 @@
           },
           "additional_hours_review": {
             "$ref": "#/components/schemas/AdditionalHoursReview"
+          },
+          "extension_end": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "1.27.0: the later end the person asked for while the booking is in progress; waits for a Manager. Null when nothing is waiting."
           }
         },
         "additionalProperties": false,
@@ -10301,6 +10432,13 @@
           "can_decide_long_bookings": {
             "type": "boolean",
             "description": "True only for a Manager; self/creator review remains forbidden."
+          },
+          "extension_requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Booking"
+            },
+            "description": "1.27.0: approved bookings whose person asks to finish later and whose requested end has not passed (at most 10)."
           }
         }
       },

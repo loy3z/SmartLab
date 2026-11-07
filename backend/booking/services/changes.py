@@ -14,7 +14,8 @@ How it works (agreed with Loy on 2026-10-25):
 
 Managers can still move a booking directly (``reschedule_booking`` in bookings.py).
 
-2026-11-06 (client, Week 8): a booking in progress can be extended at once (``extend_booking``).
+2026-11-07 (client, Week 8): the person asks to extend a booking in progress and a Manager decides
+(``extend_booking``, ``review_extension``); a Manager's own extension applies at once.
 """
 from dataclasses import replace
 from datetime import UTC
@@ -53,13 +54,13 @@ class ChangesMixin:
                                    replaces=source)
 
     def extend_booking(self, actor, booking_id, end):
-        """2026-11-06 (client, Week 8): stay longer when an experiment runs over and nobody has booked the time after.
+        """2026-11-07 (client, Week 8): finish a booking in progress later.
 
-        The person a booking is for, or a Manager, moves the end of an approved booking that is in progress. It applies
-        at once (no request to review) when the extra time is free and the whole booking still fits the resource's
-        opening hours and longest booking. For everyone but a Manager the normal limits apply too: the 3-hour booking,
-        the weekly hours and an induction valid until the new end; when they do not allow it, a Manager can extend
-        it. Managers are told about every extension, so they know the lab stays in use.
+        The person the booking is for asks for a later end (by dragging it on the page). It waits for a Manager, as when
+        they emailed the Manager, who checked that nobody had booked the time after. A Manager extending a booking
+        applies it at once. Checked now and again when a Manager approves: the booking is approved and in progress, the
+        new end fits the resource's opening hours, longest booking and time steps, and the time after is free (it is
+        not held while the request waits). Asking again replaces the requested end.
         """
         self.process_due_requests()
         source = self.booking_for(actor, booking_id)
@@ -78,26 +79,60 @@ class ChangesMixin:
                 raise DomainError("EXTENSION_NOT_AVAILABLE", "Only an approved booking that is in progress can be extended.", 409)
             if end <= source.end:
                 raise DomainError("VALIDATION_ERROR", "Choose an end later than the current end.")
-            resource = self.resource(source.resource_id)
-            error = (self._account_violation(source.student_id) or self._resource_violation(resource)
-                     or self._period_violation(resource, source.start, end, allow_long_booking=manager, started=True))
-            if not error and not manager:
-                error = (self._qualification_violation(source.student_id, resource, end)
-                         or self._weekly_limit_violation(source.student_id, resource, source.start, end, source.id))
-            if error:
-                raise error
-            self._reject_duplicate_request(source.student_id, source.resource_id, source.end, end, source.id)
-            if self._overlaps(source.resource_id, source.end, end, source.id):
-                raise DomainError("BOOKING_CONFLICT", "Someone has already booked or is holding the time after this booking.", 409)
-            extended = replace(source, end=end, updated_at=now, revision=source.revision + 1)
-            self._save_booking(extended)
-            self._audit(actor.id, "BOOKING_EXTENDED", "booking", extended.id,
-                        old_end=source.end.isoformat(), new_end=end.isoformat())
-            person = self.repo.get_principal(source.student_id)
-            self._notify_managers("BOOKING_EXTENDED", "Booking extended",
-                                  f"{person.display_name} ({person.zid}) now has {self._booking_label(extended)}.",
-                                  extended, link="/admin/bookings", except_ids={actor.id})
-            return extended
+            self._check_extension(source, end)
+            if manager:
+                return self._apply_extension(actor, source, end)
+            requested = replace(source, extension_end=end, updated_at=now)
+            self._save_booking(requested)
+            self._audit(actor.id, "EXTENSION_REQUESTED", "booking", source.id, current_end=source.end.isoformat(), requested_end=end.isoformat())
+            self._notify_managers("EXTENSION_REQUESTED", "Extension requested",
+                                  f"{actor.display_name} ({actor.zid}) asks to finish {self._booking_label(source)} later, "
+                                  f"at {self.describe_moment(end, source)}.", source, link="/manager/home", except_ids={actor.id})
+            return requested
+
+    def review_extension(self, actor, booking_id, decision, reason=""):
+        """Manager: approve (the end moves, if the time after is still free) or reject (with a reason) a waiting request."""
+        self.require_manager(actor)
+        if decision not in ("APPROVED", "REJECTED"):
+            raise DomainError("VALIDATION_ERROR", "Choose APPROVED or REJECTED.")
+        if decision == "REJECTED" and not reason.strip():
+            raise DomainError("REASON_REQUIRED", "A rejection reason is required.")
+        self.process_due_requests()
+        source = self.booking_for(actor, booking_id)
+        with self.repo.atomic(resource_ids=[source.resource_id], student_ids=[source.student_id]):
+            source = self.booking_for(actor, booking_id)
+            if source.extension_end is None or source.status != BookingStatus.APPROVED:
+                raise DomainError("NO_EXTENSION_REQUEST", "This booking has no extension request waiting.", 409)
+            if decision == "REJECTED":
+                rejected = replace(source, extension_end=None, updated_at=self.now())
+                self._save_booking(rejected)
+                self._audit(actor.id, "EXTENSION_REJECTED", "booking", source.id, reason=reason.strip())
+                self._notify(source.student_id, "EXTENSION_REJECTED", "Extension not approved",
+                             f"Your request to finish {self._booking_label(source)} later was not approved. Reason: {reason.strip()}", source)
+                return rejected
+            if source.extension_end <= self.now():
+                raise DomainError("EXTENSION_EXPIRED", "The requested end has already passed.", 409)
+            self._check_extension(source, source.extension_end)
+            return self._apply_extension(actor, source, source.extension_end)
+
+    def _check_extension(self, booking, end):
+        """The booking with its new end still fits the resource, and nobody has booked or is holding the time after."""
+        resource = self.resource(booking.resource_id)
+        error = (self._account_violation(booking.student_id) or self._resource_violation(resource)
+                 or self._period_violation(resource, booking.start, end, allow_long_booking=True, started=True))
+        if error:
+            raise error
+        if self._overlaps(booking.resource_id, booking.end, end, booking.id):
+            raise DomainError("BOOKING_CONFLICT", "Someone has already booked or is holding the time after this booking.", 409)
+
+    def _apply_extension(self, actor, booking, end):
+        extended = replace(booking, end=end, extension_end=None, updated_at=self.now(), revision=booking.revision + 1)
+        self._save_booking(extended)
+        self._audit(actor.id, "BOOKING_EXTENDED", "booking", booking.id, old_end=booking.end.isoformat(), new_end=end.isoformat())
+        if actor.id != booking.student_id:
+            self._notify(booking.student_id, "EXTENSION_APPROVED", "Booking extended",
+                         f"{self._booking_label(extended)} now ends at {self.describe_moment(end, extended)}.", extended)
+        return extended
 
     def open_change_for(self, booking):
         """The undecided change request (pending or waitlisted) that would replace this booking, if any."""

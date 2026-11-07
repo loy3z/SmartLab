@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { PageHeader, RefreshStamp } from '../../ui/components'
-import { getStaffOverview, getUsageReport, listResources } from '../../api/index.ts'
-import { errorMessage, todaySydney } from '../booking/format'
-import type { Resource, StaffOverview, UsageReport } from '../../api/types/index.ts'
+import { getStaffOverview, getUsageReport, listResources, reviewExtension } from '../../api/index.ts'
+import { errorMessage, fmtTime, todaySydney } from '../booking/format'
+import type { Booking, Resource, StaffOverview, UsageReport } from '../../api/types/index.ts'
 import { MANAGER_DECIDES, todoCards } from '../admin/today'
 import { percent } from './usage'
 import { cleanZid, currentWeek, statusCounts } from './manager-home'
@@ -78,6 +78,18 @@ export function ManagerHomePage() {
           </div>
 
           <div className="today-grid">
+            {(overview.extension_requests ?? []).length > 0 && (
+              <article className="today-panel is-wide">
+                <h2>Extension requests</h2>
+                <p className="bk-muted">People in the lab now who ask to finish later. Approving moves the end if the time after is still free.</p>
+                <ul className="today-list">
+                  {(overview.extension_requests ?? []).map((booking) => (
+                    <ExtensionRow key={booking.id} booking={booking}
+                      resourceName={resources.find((item) => item.id === booking.resource_id)?.name ?? 'Resource'} onDecided={() => void load()} />
+                  ))}
+                </ul>
+              </article>
+            )}
             <article className="today-panel">
               <h2>Rooms and equipment</h2>
               <p className="manager-home-figures">
@@ -137,5 +149,46 @@ export function ManagerHomePage() {
         </>
       )}
     </section>
+  )
+}
+
+/** 2026-11-07: one extension request with Approve, or Reject with a reason (shown to the person). */
+function ExtensionRow({ booking, resourceName, onDecided }: { booking: Booking; resourceName: string; onDecided: () => void }) {
+  const [rejecting, setRejecting] = useState(false)
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  async function decide(decision: 'APPROVED' | 'REJECTED') {
+    setBusy(true)
+    setError('')
+    try {
+      await reviewExtension(booking.id, decision, reason.trim())
+      onDecided()
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <li className="manager-home-request">
+      <span><strong>{resourceName}</strong> · {booking.booked_for?.display_name ?? 'Someone'}
+        <span className="today-meta">until {fmtTime(booking.end)}, asks until {fmtTime(booking.extension_end!)}</span></span>
+      {rejecting ? (
+        <span className="ui-actions">
+          <input aria-label="Reason for not approving" placeholder="Reason" maxLength={2000} value={reason} onChange={(e) => setReason(e.target.value)} />
+          <button type="button" className="ui-btn ui-btn-reject ui-btn-sm" disabled={busy || !reason.trim()} onClick={() => void decide('REJECTED')}>Reject</button>
+          <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setRejecting(false)}>Back</button>
+        </span>
+      ) : (
+        <span className="ui-actions">
+          <button type="button" className="ui-btn ui-btn-primary ui-btn-sm" disabled={busy} onClick={() => void decide('APPROVED')}>Approve</button>
+          <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => setRejecting(true)}>Reject…</button>
+        </span>
+      )}
+      {error && <span className="bk-error" role="alert">{error}</span>}
+    </li>
   )
 }

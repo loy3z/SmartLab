@@ -288,6 +288,9 @@ class Booking:
     # A separate Manager decision exempts only this booking's normal single-booking duration cap.
     long_booking: bool = False
     long_booking_reason: str | None = None
+    # 2026-11-07 (client, Week 8): the later end the person asked for while the booking is in progress; it waits for
+    # a Manager (extend_booking / review_extension in services/changes.py). None when nothing is waiting.
+    extension_end: datetime | None = None
 
     def __post_init__(self) -> None:
         if self.long_booking:
@@ -315,6 +318,7 @@ class Booking:
             reviewed_at=self.reviewed_at,
             updated_at=self.updated_at,
             hold_until=self.hold_until,
+            extension_end=self.extension_end,
         )
 
     def hold_is_active(self, at: datetime) -> bool:

@@ -169,7 +169,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
 
   function blockedBetween(from: number, to: number): string {
     // An urgent request or a reschedule needs free time: it never joins the waitlist.
-    const strict = urgent || allowEarly || data?.test_bypass
+    const strict = urgent || allowEarly || data?.test_bypass || data?.manager_override // 1.24.0: a Manager booking too
     const bad = kinds.slice(from, to + 1).findIndex((k) => k === 'closed' || k === 'mine' || (strict && (k === 'taken' || k === 'held')))
     if (bad < 0) return ''
     const kind = kinds[from + bad]
@@ -218,7 +218,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
     if (why) return setProblem(why)
     commit(from, to)
   }
-  const strictInputs = urgent || allowEarly || data?.test_bypass
+  const strictInputs = urgent || allowEarly || data?.test_bypass || data?.manager_override
   const startOptions = slots
     .map((slot, index) => ({ index, label: fmtTime(slot.start), kind: kinds[index] }))
     .filter((item) => item.kind !== 'closed' && item.kind !== 'mine' && !(strictInputs && (item.kind === 'taken' || item.kind === 'held')))
@@ -277,6 +277,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
         {urgent && earliestDate && latestDate && !noUrgentDays && <> Urgent: {fmtDate(earliestDate)} to {fmtDate(latestDate)}, before the normal booking window. Only free times can be chosen.</>}
         {noUrgentDays && <> You can already book from today, so an urgent request is not needed.</>}
         {allowEarly && earliestDate && latestDate && <> Manager reschedule: {fmtDate(earliestDate)} to {fmtDate(latestDate)}. Only free times can be chosen.</>}
+        {data?.manager_override && <> Manager booking: any day from today. Induction, booking window and hour limits do not apply; only free times can be chosen.</>}
         {!urgent && !allowEarly && data?.earliest_date && data.latest_date && <> Bookable from {fmtDate(data.earliest_date)} to {fmtDate(data.latest_date)} ({data.min_advance_days}–{data.max_advance_days} days ahead).</>}
         {longBooking && <> Long-booking requests: {fmtDuration(minimumMinutes)} to {fmtDuration(maximumMinutes)}. A Manager must decide before the review deadline.</>}
       </p>

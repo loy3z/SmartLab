@@ -194,7 +194,9 @@ sequenceDiagram
 | 编辑后哪些未来预约不再符合 | `services/resources.py` `_bookings_outside_rules` |
 | 什么时候不能下架 | `services/resources.py` `archive_resource` |
 | 到场窗口（开始前 15 分钟到开始后 30 分钟） | `services/attendance.py` `check_in_window` |
-| 什么算缺席、第几次冻结、冻结时取消哪些预约 | `services/attendance.py` `_process_attendance`、`_freeze` |
+| 什么算缺席、第几次冻结（默认 0 = 不冻结，1.24.0）、冻结时取消哪些预约 | `services/attendance.py` `_process_attendance`、`_freeze` |
+| Manager 预约越过哪些规则、哪些仍检查（1.24.0） | `services/bookings.py` `_create_manager_booking`、`reschedule_booking`；时段选择 `services/availability.py` `_availability`（`override`） |
+| 谁能延长、什么时候、检查什么（1.24.0） | `services/changes.py` `extend_booking`；前端 `features/booking/extend.ts` `canExtend`、`extendOptions` |
 | 被冻结的人不能被预约 | `services/attendance.py` `frozen_violation`（在 `bookings.py` `create_booking` 和 `series.py` 里调用） |
 | 每周最多 3 个预约 | `services/checks.py` `_weekly_limit_violation` |
 | 重复预约每个日期的检查 | `services/series.py` `_series_check` |

@@ -3,7 +3,8 @@
 An approved booking can be checked in by the person it is for from shortly before its start until shortly after
 it (BookingRules.check_in_opens_minutes / check_in_closes_minutes, never after the end). If nobody checks in by
 then, the booking counts as missed, unless the resource was under maintenance or closed. When a person's missed
-count reaches BookingRules.freeze_after_no_shows, their booking is frozen for freeze_days: every later booking and
+count reaches BookingRules.freeze_after_no_shows (0 = never, the default since 2026-11-06), their booking is frozen
+for freeze_days: every later booking and
 request of theirs is cancelled and they cannot be booked for (by themselves or by staff). Staff keep their
 reviewing rights while frozen. A frozen person can ask to be unfrozen; an Admin or Manager decides, or unfreezes
 them directly. The check-in button can be pressed from anywhere, so this discourages forgetting rather than
@@ -81,13 +82,15 @@ class AttendanceMixin:
                 count = person.no_show_count + 1
                 limit = self.rules().freeze_after_no_shows
                 self._audit("SYSTEM", "BOOKING_NO_SHOW", "booking", current.id, no_show_count=count)
-                if count >= limit:
+                if limit and count >= limit:  # 2026-11-06: limit 0 means the freeze is off
                     cancelled += self._freeze(person, now)
                 else:
                     self.repo.save_principal(replace(person, no_show_count=count))
+                    consequence = (f"Missed bookings: {count} of {limit}; at {limit} your booking is frozen for "
+                                   f"{self.rules().freeze_days} days." if limit else
+                                   "If you cannot come, please cancel the booking so someone else can use the time.")
                     self._notify(person.id, "NO_SHOW_RECORDED", "Missed booking recorded",
-                                 f"You did not check in for {self._booking_label(current)}. Missed bookings: {count} of "
-                                 f"{limit}; at {limit} your booking is frozen for {self.rules().freeze_days} days.", current)
+                                 f"You did not check in for {self._booking_label(current)}. {consequence}", current)
         return cancelled
 
     def _freeze(self, person, now):

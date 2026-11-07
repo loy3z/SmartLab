@@ -66,6 +66,9 @@ class BookingsMixin:
             if bypass:
                 return create_test_booking(self, actor, resource, booking_id, start, end, purpose,
                                            urgent, urgent_reason, replaces)
+            if actor.role == Role.MANAGER and replaces is None:  # 2026-11-06 (client, Week 8): Manager override
+                return self._create_manager_booking(actor, beneficiary, resource, booking_id, start, end, purpose,
+                                                    urgent, urgent_reason)
             if frozen:
                 raise frozen
             self._validate_period(resource, start, end)
@@ -122,6 +125,35 @@ class BookingsMixin:
                         booked_for=beneficiary.id if on_behalf else None, replaces=replaced_id)
             self._created_notices(actor, beneficiary, booking)
             return booking, True
+
+    def _create_manager_booking(self, actor, person, resource, booking_id, start, end, purpose, urgent, urgent_reason):
+        """2026-11-06 (client, Week 8): a Manager's booking, for themselves or someone else, is approved at once.
+
+        The Manager overrides the person's rules: induction, booking window, the per-booking, weekly and
+        future-booking limits, and the freeze. The resource's own facts still apply: it is open for booking, the time
+        is within its opening hours, its longest booking and its time steps, and the time is free (nobody is moved).
+        """
+        error = (self._account_violation(person.id) or self._resource_violation(resource)
+                 or self._period_violation(resource, start, end, allow_long_booking=True))
+        if error:
+            raise error
+        self._reject_duplicate_request(person.id, resource.id, start, end)
+        if self._overlaps(resource.id, start, end):
+            raise DomainError("BOOKING_CONFLICT", "This time is already booked or held. A Manager booking needs free time.", 409)
+        now = self.now()
+        booking = Booking(booking_id, person.id, resource.id, start, end, purpose.strip(), now, BookingStatus.APPROVED,
+                          "MANAGER_OVERRIDE", reviewed_by=actor.id, reviewed_at=now, updated_at=now, created_by=actor.id,
+                          urgent=bool(urgent), urgent_reason=urgent_reason or None)
+        self._save_booking(booking)
+        on_behalf = person.id != actor.id
+        self._audit(actor.id, "BOOKING_CREATED", "booking", booking.id, status=booking.status.value,
+                    reason_code=booking.reason_code, booked_for=person.id if on_behalf else None)
+        if on_behalf:
+            self._notify(person.id, "BOOKING_CREATED_FOR_YOU", "Booking made for you",
+                         f"{actor.display_name} booked {self._booking_label(booking)} for you. It is approved.", booking)
+        else:
+            self._notify(person.id, "BOOKING_APPROVED", "Booking approved", f"{self._booking_label(booking)} is approved.", booking)
+        return booking, True
 
     def _created_notices(self, actor, beneficiary, booking):
         """Sprint 3: confirm a new request to the person it is for (also emailed when email is on)."""
@@ -235,10 +267,11 @@ class BookingsMixin:
             return revised
 
     def reschedule_booking(self, actor, booking_id, start, end):
-        """Manager only: move someone's approved future booking to another valid free time.
+        """Manager only: move someone's approved future booking to another free time.
 
-        Induction, opening hours, length, the latest booking date and conflicts still apply; the minimum
-        advance window does not (a Manager may move a booking to an earlier date, as with an urgent request).
+        2026-11-06 (client, Week 8): the Manager overrides the person's rules (induction, booking window, weekly and
+        future-booking limits), as for a Manager booking. The resource's opening hours, longest booking, time steps
+        and conflicts still apply.
         """
         self.require_manager(actor)
         self.process_due_requests()
@@ -258,18 +291,10 @@ class BookingsMixin:
                 raise DomainError("REQUEST_NOT_RESCHEDULABLE", "Only a future approved booking can be rescheduled.", 409)
             resource = self.resource(source.resource_id)
             bypass = booking_rules_bypassed(actor, source.student_id)
-            if not bypass:
-                self._validate_period(resource, start, end)
-                if self._window_reason(resource, start) == "BOOKING_TOO_FAR_AHEAD":
-                    self._validate_horizon(resource, start)
             self._reject_duplicate_request(source.student_id, source.resource_id, start, end, source.id)
             error = test_period_violation(self, resource, start, end) if bypass else (
-                self.rule_violation(source.student_id, resource, start, end)
-                or self._weekly_limit_violation(source.student_id, resource, start, end, source.id)
-                or self._future_booking_limit_violation(source.student_id, source.id))
-            if error and error.code == "QUALIFICATION_REQUIRED":
-                raise DomainError("QUALIFICATION_NOT_VERIFIED", "A current qualification covering the new booking period is required.",
-                                  409, error.details)
+                self._account_violation(source.student_id) or self._resource_violation(resource)
+                or self._period_violation(resource, start, end, allow_long_booking=True))
             if error:
                 raise error
             blockers = self._overlaps(source.resource_id, start, end, source.id)

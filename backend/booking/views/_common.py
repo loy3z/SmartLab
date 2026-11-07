@@ -16,7 +16,7 @@ from ..authentication import issue_demo_token, require_demo_mode
 from ..domain import Booking, BookingStatus, Principal, QualificationStatus, ResourceKind, Role
 from ..exceptions import DomainError
 from ..runtime import get_service
-from ..serializers import (AvailabilityQuerySerializer, DayOverviewQuerySerializer, BookingCreateSerializer, BookingRescheduleSerializer, BookingReviewSerializer,
+from ..serializers import (AvailabilityQuerySerializer, DayOverviewQuerySerializer, BookingCreateSerializer, BookingRescheduleSerializer, BookingExtendSerializer, BookingReviewSerializer,
                           DemoLoginSerializer, DemoRegisterSerializer, StaffActivateSerializer, StaffSignInSerializer, QualificationCreateSerializer, QualificationReviewSerializer,
                           OutlookProcessSerializer, BookingPolicySerializer, AuditQuerySerializer,
                           UserListQuerySerializer, UserUpdateSerializer, ManagerCreateSerializer, ResourceStatusSerializer,

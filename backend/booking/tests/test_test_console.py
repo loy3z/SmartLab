@@ -170,8 +170,9 @@ class TestConsoleAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(self.authorized(tampered).get('/api/v1/auth/me/').status_code, 401)
 
     def test_test_override_does_not_extend_to_bookings_for_someone_else(self):
-        manager = self.switch('MANAGER')
-        response = manager.post('/api/v1/bookings/', {**self.payload(day_offset=8), 'on_behalf_of_zid': 'z1000002'}, format='json')
+        # An Admin: since 2026-11-06 a Manager overrides the rules for anyone (Manager override, not the test one).
+        admin = self.switch('ADMIN')
+        response = admin.post('/api/v1/bookings/', {**self.payload(day_offset=8), 'on_behalf_of_zid': 'z1000002'}, format='json')
         self.assertEqual(response.status_code, 403, response.data)
         self.assertEqual(response.data['error']['code'], 'QUALIFICATION_REQUIRED')
 

@@ -24,6 +24,7 @@ NOTIFICATION_CATEGORIES = ("bookings", "reminders", "induction", "account", "res
 _CATEGORY_BY_KIND = {
     "BOOKING_APPROVED": "bookings", "BOOKING_REJECTED": "bookings", "BOOKING_PROMOTED": "bookings",
     "BOOKING_EXPIRED": "bookings", "BOOKING_CANCELLED": "bookings", "BOOKING_RESCHEDULED": "bookings",
+    "BOOKING_EXTENDED": "bookings",  # 2026-11-06: to Managers
     "BOOKING_SUBMITTED": "bookings", "BOOKING_CREATED_FOR_YOU": "bookings",
     "SERIES_CREATED": "bookings", "SERIES_CREATED_FOR_YOU": "bookings",
     "CHANGE_APPROVED": "bookings", "CHANGE_REJECTED": "bookings", "CHANGE_REQUESTED": "bookings",

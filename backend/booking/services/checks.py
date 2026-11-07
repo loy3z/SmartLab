@@ -68,11 +68,14 @@ class ChecksMixin:
         if error:
             raise error
 
-    def _period_violation(self, resource, start, end, allow_long_booking=False):
-        """Time rules of one resource: future start, maximum length, one local day within opening hours, increments."""
+    def _period_violation(self, resource, start, end, allow_long_booking=False, started=False):
+        """Time rules of one resource: future start, maximum length, one local day within opening hours, increments.
+
+        started (2026-11-06): extending a booking in progress, so the start may already have passed.
+        """
         if start.tzinfo is None or start.utcoffset() is None or end.tzinfo is None or end.utcoffset() is None:
             return DomainError("INVALID_TIME", "Start and end require UTC offsets.")
-        if start >= end or start <= self.now():
+        if start >= end or (start <= self.now() and not started):
             return DomainError("INVALID_TIME", "Use a future start time and an end later than start.")
         duration = (end - start).total_seconds() / 60
         max_slots, slot_minutes, maximum = (self._long_booking_limit(resource) if allow_long_booking

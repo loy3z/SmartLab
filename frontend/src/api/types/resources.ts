@@ -56,6 +56,7 @@ export interface DayOverviewRow {
 
 export interface DayOverview {
   test_bypass?: boolean
+  manager_override?: boolean // 1.24.0: a Manager's window starts today with no last date
   date: string
   duration_minutes: number
   timezone: string
@@ -123,6 +124,8 @@ export interface Availability {
   additional_hours?: boolean
   additional_hours_approval_window_hours?: number
   test_bypass?: boolean
+  /** 1.24.0: a Manager overrides the booking window, induction and limits; only free times can be booked. */
+  manager_override?: boolean
   max_booking_minutes?: number
   booking_slot_minutes?: number
   max_booking_slots?: number

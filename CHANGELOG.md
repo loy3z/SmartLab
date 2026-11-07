@@ -2,6 +2,15 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.24.0：客户 Week 8 会议的三项（2026-11-06，无迁移）
+
+依据：客户 11-04 会议（项目文档 `reports/2026-11-04-client-meeting-week8.md`）。任务卡 `tasks-week8-2026-11-06.md`。
+
+- **Manager 可以越过规则**（会议 00:41–02:28、07:15–08:42）：Manager 给自己或代别人预约时直接批准，不检查 induction、提前 7–28 天、单次 3 小时、每周 12 小时、8 个未来预约和冻结；资源可预约、开放时间、资源自身最长时长和时段空闲照常检查，不挤掉别人。Manager 改期同样不再查 induction 和这些限额。这推翻了 10-17 “induction 不能绕过”的决定。Admin 不变。
+- **延长进行中的预约**（14:19–15:53）：新接口 `POST bookings/{id}/extend/`；My bookings 和 Manager 的 Room bookings 有 Extend 按钮。后面空闲就立即生效，Manager 收到通知；学生超过 3 小时或周额度时请 Manager 延长。
+- **冻结默认关闭**（15:56–17:27）：客户不想第一阶段就处罚。`FREEZE_AFTER_NO_SHOWS` 默认改为 0（不冻结），缺席仍记录，通知改为提醒及时取消。功能保留，设为正数即恢复。
+- 按实验室分别配置规则（会议第 1 项）这次没有做，方案和要问客户的问题在任务卡。
+
 ## 1.23.0：Dashboard 显示本周还剩多少小时（2026-11-03）
 
 - Loy 2026-11-03：学生看不到自己本周还能约多少小时，只有超额被拒时才知道。学生 Dashboard 加第四个框“Hours left this week”，显示剩余小时和“已约 x / 12 h”，点框进入 Book a resource，并提示可以申请额外时数。8 个未来预约不另加显示：Upcoming bookings 加 Pending requests 就是这个数。

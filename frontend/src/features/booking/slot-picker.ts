@@ -12,7 +12,7 @@ export function addDays(ymd: string, days: number): string {
 /** First and last selectable dates: normal window, urgent (the days before it) or Manager reschedule (from today). */
 export function dateRange(d: Availability | null, urgent: boolean, allowEarly: boolean): { earliest?: string; latest?: string } {
   if (!d) return {}
-  if (d.test_bypass) return { earliest: d.earliest_date }
+  if (d.test_bypass || d.manager_override) return { earliest: d.earliest_date } // 1.24.0: Manager override
   if (urgent) return { earliest: todaySydney(), latest: d.earliest_date ? addDays(d.earliest_date, -1) : undefined }
   if (allowEarly) return { earliest: todaySydney(), latest: d.latest_date ?? undefined }
   return { earliest: d.earliest_date, latest: d.latest_date ?? undefined }

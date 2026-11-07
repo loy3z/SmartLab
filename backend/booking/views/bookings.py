@@ -2,7 +2,7 @@
 
 from ._common import *  # noqa: F401,F403 - shared imports, helpers and PublicView.
 
-__all__ = ["BookingListView", "AdditionalHoursBookingView", "LongBookingView", "my_bookings", "PersonLookupView", "BookingDetailView", "BookingCancelView", "BookingRescheduleView", "BookingChangeView", "DashboardView", "BookingCheckInView", "BookingHistoryRemoveView"]
+__all__ = ["BookingListView", "AdditionalHoursBookingView", "LongBookingView", "my_bookings", "PersonLookupView", "BookingDetailView", "BookingCancelView", "BookingRescheduleView", "BookingExtendView", "BookingChangeView", "DashboardView", "BookingCheckInView", "BookingHistoryRemoveView"]
 
 class BookingListView(APIView):
     def get(self, request):
@@ -100,6 +100,15 @@ class BookingRescheduleView(APIView):
         data = validated(BookingRescheduleSerializer, request.data)
         service = get_service()
         booking = service.reschedule_booking(request.user, str(booking_id), data["start"], data["end"])
+        booking, = sync_after_write(service, booking)
+        return Response(json_value(booking))
+
+class BookingExtendView(APIView):
+    """2026-11-06 (client, Week 8): finish a booking in progress later (services/changes.py ``extend_booking``)."""
+    def post(self, request, booking_id):
+        data = validated(BookingExtendSerializer, request.data)
+        service = get_service()
+        booking = service.extend_booking(request.user, str(booking_id), data["end"])
         booking, = sync_after_write(service, booking)
         return Response(json_value(booking))
 

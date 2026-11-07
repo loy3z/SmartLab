@@ -10,6 +10,7 @@ import {
 import { errorMessage, fmtDuration, fmtRange, minutesBetween } from '../booking/format'
 import { Modal } from '../booking/Modal'
 import { RescheduleBox } from '../booking/RescheduleBox'
+import { ExtendBox } from '../booking/ExtendBox' // 1.24.0
 import type { Booking, Resource, ResourceStatus } from '../../api/types/index.ts'
 
 const STATUS_LABELS: Record<ResourceStatus, string> = {
@@ -36,6 +37,7 @@ export function ManagerBookingsPage() {
   const [refresh, setRefresh] = useState(0)
   const [roomFilter, setRoomFilter] = useState('')
   const [moving, setMoving] = useState<Booking | null>(null)
+  const [extending, setExtending] = useState<Booking | null>(null) // 1.24.0 (client, Week 8)
 
   useEffect(() => {
     let active = true
@@ -195,6 +197,11 @@ export function ManagerBookingsPage() {
                             {!booking.additional_hours && !booking.long_booking && <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy !== null || started || !room} title={started ? 'Already started' : undefined} onClick={() => setMoving(booking)}>
                               Reschedule
                             </button>}
+                            {started && !booking.additional_hours && !booking.long_booking && room && (
+                              <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy !== null} onClick={() => setExtending(booking)}>
+                                Extend
+                              </button>
+                            )}
                             <button type="button" className="ui-btn ui-btn-reject ui-btn-sm" disabled={busy !== null || started} title={started ? 'Already started' : undefined} onClick={() => void handleCancel(booking)}>
                               {busy === booking.id ? 'Cancelling…' : 'Cancel'}
                             </button>
@@ -225,7 +232,7 @@ export function ManagerBookingsPage() {
             <h2>Reschedule booking</h2>
             <p className="bk-muted">
               {roomName(moving.resource_id)} · {who(moving)} ({moving.student?.zid}) · now {fmtRange(moving.start, moving.end)}.
-              Only Managers can reschedule. The induction, opening-hours and conflict rules still apply; the minimum advance window does not.
+              Only Managers can reschedule. Opening hours and conflicts still apply; the person's induction, booking window and hour limits do not.
             </p>
             <RescheduleBox
               booking={moving}
@@ -237,6 +244,23 @@ export function ManagerBookingsPage() {
                 reload()
               }}
             />
+          </div>
+        </Modal>
+      )}
+      {extending && rooms.some((room) => room.id === extending.resource_id) && (
+        <Modal label="Extend booking" onClose={() => setExtending(null)}>
+          <div className="bk-form">
+            <h2>Extend booking</h2>
+            <p className="bk-muted">
+              {roomName(extending.resource_id)} · {who(extending)} ({extending.student?.zid}) · now {fmtRange(extending.start, extending.end)}.
+            </p>
+            <ExtendBox booking={extending} resource={rooms.find((room) => room.id === extending.resource_id)!} isManager
+              onClose={() => setExtending(null)}
+              onDone={(updated) => {
+                setExtending(null)
+                feedback.success(`New time: ${fmtRange(updated.start, updated.end)}.`, 'Booking extended')
+                reload()
+              }} />
           </div>
         </Modal>
       )}

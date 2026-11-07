@@ -10,6 +10,7 @@ from booking.domain import BookingStatus, Principal, QualificationStatus, Resour
 from booking.exceptions import DomainError
 from booking.ics import render_calendar
 from booking.notification_channels import reset_channels
+from booking.rules import BookingRules
 from booking.tests.test_api import NOW, SYDNEY, BookingAPIFixtureMixin
 from booking.tests.test_services import BookingFixtureMixin
 
@@ -155,7 +156,8 @@ class NotificationTests(Sprint3Fixture, SimpleTestCase):
 class AttendanceTests(Sprint3Fixture, SimpleTestCase):
     def setUp(self):
         super().setUp()
-        self.service._override_rule(max_advance_days=60, max_slots_per_week=200)
+        # The freeze is off by default since 2026-11-06; these tests switch it on to check how it works.
+        self.service._override_rule(max_advance_days=60, max_slots_per_week=200, freeze_after_no_shows=4)
 
     def miss(self, booking):
         self.now = booking.start + timedelta(minutes=31)
@@ -185,6 +187,19 @@ class AttendanceTests(Sprint3Fixture, SimpleTestCase):
         self.assertIn("1 of 4", self.notices(self.student, "NO_SHOW_RECORDED")[0].body)
         self.service.process_due_requests()  # counted once
         self.assertEqual(self.repo.get_principal(self.student.id).no_show_count, 1)
+
+    def test_freeze_is_off_by_default(self):
+        """2026-11-06 (client, Week 8): no freeze at first; missed bookings are still recorded."""
+        self.service._override_rule(freeze_after_no_shows=BookingRules().freeze_after_no_shows)
+        missed = [self.approved(self.student, days=day) for day in (1, 2, 3, 4, 5)]
+        later = self.approved(self.student, days=20)
+        for booking in missed:
+            self.miss(booking)
+        person = self.repo.get_principal(self.student.id)
+        self.assertEqual((person.no_show_count, person.frozen_until), (5, None))
+        self.assertEqual(self.repo.get_booking(later.id).status, BookingStatus.APPROVED)
+        self.assertEqual(self.notices(self.student, "ACCOUNT_FROZEN"), [])
+        self.assertIn("please cancel", self.notices(self.student, "NO_SHOW_RECORDED")[0].body)
 
     def test_resource_under_maintenance_is_not_a_missed_booking(self):
         booking = self.approved(self.student, days=3)
@@ -298,14 +313,15 @@ class WeeklyLimitTests(Sprint3Fixture, SimpleTestCase):
         next_monday = 8 - week_day
         self.assertEqual(self.request(self.student, days=next_monday).status, BookingStatus.PENDING_APPROVAL)
 
-    def test_reschedule_into_a_full_week_is_refused(self):
+    def test_a_manager_may_reschedule_into_a_full_week(self):
+        """2026-11-06 (client, Week 8): the Manager overrides the weekly limit (before: WEEKLY_LIMIT_REACHED)."""
         self.service.max_advance_days = 30
         week_day = self.today.isoweekday()
         moved = self.approved(self.student, days=8 - week_day + 2, minutes=30)  # next week
         for day in (1, 2, 3, 4):
             self.request(self.student, days=day, minutes=180)
         start, end = self.at(5, minutes=30)
-        self.refused("WEEKLY_LIMIT_REACHED", self.service.reschedule_booking, self.manager, moved.id, start, end)
+        self.assertEqual(self.service.reschedule_booking(self.manager, moved.id, start, end).start, start)
 
 
 class FutureBookingLimitTests(Sprint3Fixture, SimpleTestCase):

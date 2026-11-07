@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Smart Lab and Room Booking API",
-    "version": "1.23.0",
+    "version": "1.24.0",
     "description": "Booking backend with Microsoft Graph one-way creation, rescheduling and cancellation of confirmed bookings. Confirmed events can invite the person the booking is for (OUTLOOK_INVITE_MODE); room and equipment availability remains managed by the booking system. Outlook credentials must be configured locally; sync status is independent of booking status. University SSO and durable database remain adapter integration points. Demo authentication and memory data are local-development-only. All paths retain trailing slashes; request timestamps require offsets and responses use UTC Z. Identity includes university_email. Students, Admins and Managers book under the same rules; an Admin or Manager may also book on behalf of someone (student_id is the person the booking is for, created_by who created it), and only a Manager decides urgent requests and reschedules. A student may submit a request only when the induction for the resource, and any prerequisite induction it lists (for example Advanced needs General), is verified and current through the booking end. Every ordinary request starts as PENDING_APPROVAL and holds its slot during a review window (pending_hold_minutes, default 1440 = 24 hours, Manager-configurable per resource, capped at the booking start). An Admin or Manager approves or rejects it within the window; if nobody decides, the system approves it when it still follows the rules (AUTO_APPROVED_AFTER_REVIEW_WINDOW) and rejects it otherwise (AUTO_REJECTED_*). Requests for time that is already taken or held are WAITLISTED in submission order and, when the time frees up, become PENDING_APPROVAL with a fresh review window. Induction evidence is always reviewed manually. Bookings must start at least 7 and at most 28 days (4 weeks) ahead by default, including each staff weekly-series occurrence and bookings made on behalf of someone else; these values come from a RulesProvider (booking/rules.py, environment variables by default) so they can be changed without code changes. Authentication and resource-specific eligibility are separate. Verified induction expires a fixed number of days after approval (qualification_validity_days from the RulesProvider, default 120, one term); reviewers do not supply an expiry. Admin and Manager can query the audit trail of requests, approvals, changes and cancellations. The prototype seed has 2 labs and 20 independently bookable devices. A Manager has every Admin permission and can also configure booking policies, add staff accounts and deactivate accounts. Admins cannot use any Manager endpoint. Students, Admins and Managers are separate accounts whose role is fixed when created: students are never promoted to staff, and Admin and Manager do not switch. Creating, approving, automatically deciding, promoting from the waitlist and rescheduling all use one shared rule check (account active, resource available, valid time, booking window on create and reschedule, induction and prerequisites). A Manager can mark a resource MAINTENANCE or CLOSED (new requests paused, existing bookings kept) and list or export every booking. Staff accounts are created with Add staff (POST /admin/users/staff/). Equipment records the room it is kept in (room_id); a room's maintenance does not affect its equipment. Two sign-in entry points: students use university sign-in (demo: POST /auth/demo-login/, which refuses staff with USE_STAFF_SIGN_IN); Admins and Managers use the staff page with zID and password (POST /auth/staff-sign-in/). A Manager's Add staff issues an invite code that the staff member uses once to choose a password (POST /auth/staff-activate/); Reset access issues a new code. Password hashes never appear in responses. Outlook sync is one way. The system never reads changes made in Outlook, so nothing done there can bypass the rules or become an approved booking; if a person deleted the event, a Manager's reschedule writes it again at the new time. Invitations follow OUTLOOK_INVITE_MODE (default allowlist: only OUTLOOK_ALLOWED_ATTENDEES are invited). POST /admin/outlook/check/ tests the Microsoft sign-in. Resources have an equipment category, and GET /resources/day-overview/ returns every matching resource's free and taken times on one day for the booking page filter and grid. Demo staff accounts use the password 123. Each person has a private calendar subscription link (GET calendar/link/, feed GET calendar/{token}.ics) that Outlook, Google or Apple Calendar read by themselves. Website notifications (GET notifications/) tell people about decisions and changes. Approved bookings need a check-in (POST bookings/{id}/check-in/) around the start; at the fourth missed check-in (configurable) booking is frozen for 30 days, later bookings are cancelled, and staff decide unfreeze requests. A person may hold at most 24 half-hour slots per local week (configurable), including pending, waitlisted, approved and weekly-series dates. Staff can book a weekly series (bookings/series/), approved at once. Managers add, edit, archive and restore rooms and equipment (admin/resources/) and read a usage report (admin/reports/usage/). Staff change their own password (auth/change-password/). Reminders appear in the notification bell the day before an approved booking and when a verified induction expires soon. Additional-hours requests use a separate endpoint and never hold capacity while pending. Managers may approve only within a configurable window before the requested start (48 hours by default), after rechecking capacity, eligibility and priority/FIFO order. These exact-slot grants are separate from the ordinary weekly allowance, retain the normal single-booking duration, future-booking count and maximum advance limits, and cannot be moved or automatically approved."
   },
   "servers": [
@@ -1230,7 +1230,7 @@
           "Bookings"
         ],
         "summary": "Create a room or individual equipment booking request",
-        "description": "Any active account: Admins and Managers book under the same rules as students and may book on behalf of someone else with on_behalf_of_zid; the booking belongs to that person (student_id, whose induction is checked) and created_by records the creator. Urgent requests (urgent=true, urgent_reason) may start inside the minimum advance window; they are PENDING_APPROVAL with reason URGENT_AWAITING_MANAGER, review_due_at null and hold_until = start, only a Manager can decide them (URGENT_NEEDS_MANAGER) and they expire at the start if undecided. Requires a VERIFIED, unexpired induction for the selected resource, and for each of its prerequisite inductions, through the booking end; otherwise 403 QUALIFICATION_REQUIRED (details.qualification_status, requirement_id; PREREQUISITE_REQUIRED adds prerequisite_id and prerequisite_status), including while evidence is still PENDING. The local start date must be from today + MIN_ADVANCE_DAYS (default 7) to today + MAX_ADVANCE_DAYS (default 28, or 4 weeks): BOOKING_TOO_SOON / BOOKING_TOO_FAR_AHEAD (400, details.earliest_date, latest_date, min_advance_days, max_advance_days). A user who already has an overlapping active request for this same resource receives DUPLICATE_BOOKING (409); terminal requests do not block rebooking and different resources remain independent. If no APPROVED booking or active pending request overlaps, the request becomes PENDING_APPROVAL (reason AWAITING_REVIEW) with review_due_at = hold_until = min(start, now + pending_hold_minutes, default 1440). An Admin/Manager decides within that window; when it ends undecided the system re-checks the rules and sets APPROVED (AUTO_APPROVED_AFTER_REVIEW_WINDOW) or REJECTED (AUTO_REJECTED_ACCOUNT_INACTIVE, AUTO_REJECTED_QUALIFICATION, AUTO_REJECTED_RESOURCE_UNAVAILABLE, AUTO_REJECTED_BOOKING_RULES or AUTO_REJECTED_CONFLICT), reviewed_by SYSTEM. If an APPROVED booking or active pending request overlaps, the request becomes WAITLISTED (reason TIME_CONFLICT or TEMPORARY_HOLD_CONFLICT) with waitlist_position. When time frees up (cancellation, rejection, expiry, rescheduling, an automatic rejection or a resource reopening) the earliest waitlisted request that now fits becomes PENDING_APPROVAL (PROMOTED_FROM_WAITLIST) with a fresh review window, or REJECTED with the failing rule's code (for example QUALIFICATION_REQUIRED or ACCOUNT_INACTIVE). Only APPROVED creates an Outlook event. Undecided and waitlisted requests expire at their start time. HTTP 201 never means approved. Interval semantics are [start, end). Booking frozen after missed check-ins: 403 ACCOUNT_FROZEN (details.frozen_until). At most MAX_SLOTS_PER_WEEK (default 24) half-hour slots per person per local week (Monday to Sunday), counting pending, waitlisted, approved and staff-created series bookings: 409 WEEKLY_LIMIT_REACHED (details.limit_slots, used_slots, requested_slots, remaining_slots, slot_minutes, week_start). At most MAX_ACTIVE_FUTURE_BOOKINGS (default 8) pending, waitlisted or approved bookings that have not started per person: 409 FUTURE_BOOKING_LIMIT_REACHED (details.limit, used, requested, remaining). An explicitly enabled self-only test session may bypass booking policy; see auth/test-session/. Bypass availability uses latest_date=null, test_bypass=true and no review wait.",
+        "description": "1.24.0 Manager override: a Manager's booking (for themselves or on behalf, not a change request) is APPROVED at once with reason_code MANAGER_OVERRIDE. It skips the induction, booking window, per-booking (normal 3 h), weekly and future-booking limits and the freeze; the resource must still be bookable, the time within its opening hours, its own maximum length and time steps, and free (BOOKING_CONFLICT 409 instead of a waitlist place). Everything below applies to everyone else. Any active account: Admins book under the same rules as students and Admins and Managers may book on behalf of someone else with on_behalf_of_zid; the booking belongs to that person (student_id, whose induction is checked) and created_by records the creator. Urgent requests (urgent=true, urgent_reason) may start inside the minimum advance window; they are PENDING_APPROVAL with reason URGENT_AWAITING_MANAGER, review_due_at null and hold_until = start, only a Manager can decide them (URGENT_NEEDS_MANAGER) and they expire at the start if undecided. Requires a VERIFIED, unexpired induction for the selected resource, and for each of its prerequisite inductions, through the booking end; otherwise 403 QUALIFICATION_REQUIRED (details.qualification_status, requirement_id; PREREQUISITE_REQUIRED adds prerequisite_id and prerequisite_status), including while evidence is still PENDING. The local start date must be from today + MIN_ADVANCE_DAYS (default 7) to today + MAX_ADVANCE_DAYS (default 28, or 4 weeks): BOOKING_TOO_SOON / BOOKING_TOO_FAR_AHEAD (400, details.earliest_date, latest_date, min_advance_days, max_advance_days). A user who already has an overlapping active request for this same resource receives DUPLICATE_BOOKING (409); terminal requests do not block rebooking and different resources remain independent. If no APPROVED booking or active pending request overlaps, the request becomes PENDING_APPROVAL (reason AWAITING_REVIEW) with review_due_at = hold_until = min(start, now + pending_hold_minutes, default 1440). An Admin/Manager decides within that window; when it ends undecided the system re-checks the rules and sets APPROVED (AUTO_APPROVED_AFTER_REVIEW_WINDOW) or REJECTED (AUTO_REJECTED_ACCOUNT_INACTIVE, AUTO_REJECTED_QUALIFICATION, AUTO_REJECTED_RESOURCE_UNAVAILABLE, AUTO_REJECTED_BOOKING_RULES or AUTO_REJECTED_CONFLICT), reviewed_by SYSTEM. If an APPROVED booking or active pending request overlaps, the request becomes WAITLISTED (reason TIME_CONFLICT or TEMPORARY_HOLD_CONFLICT) with waitlist_position. When time frees up (cancellation, rejection, expiry, rescheduling, an automatic rejection or a resource reopening) the earliest waitlisted request that now fits becomes PENDING_APPROVAL (PROMOTED_FROM_WAITLIST) with a fresh review window, or REJECTED with the failing rule's code (for example QUALIFICATION_REQUIRED or ACCOUNT_INACTIVE). Only APPROVED creates an Outlook event. Undecided and waitlisted requests expire at their start time. HTTP 201 never means approved. Interval semantics are [start, end). Booking frozen after missed check-ins: 403 ACCOUNT_FROZEN (details.frozen_until). At most MAX_SLOTS_PER_WEEK (default 24) half-hour slots per person per local week (Monday to Sunday), counting pending, waitlisted, approved and staff-created series bookings: 409 WEEKLY_LIMIT_REACHED (details.limit_slots, used_slots, requested_slots, remaining_slots, slot_minutes, week_start). At most MAX_ACTIVE_FUTURE_BOOKINGS (default 8) pending, waitlisted or approved bookings that have not started per person: 409 FUTURE_BOOKING_LIMIT_REACHED (details.limit, used, requested, remaining). An explicitly enabled self-only test session may bypass booking policy; see auth/test-session/. Bypass availability uses latest_date=null, test_bypass=true and no review wait.",
         "security": [
           {
             "BearerAuth": []
@@ -1495,7 +1495,7 @@
           "Bookings"
         ],
         "summary": "Reschedule an approved booking (Manager only)",
-        "description": "Manager only (others receive 403 FORBIDDEN). Moves anyone's future approved booking after rechecking resource rules, the latest booking date (BOOKING_TOO_FAR_AHEAD), qualification validity and conflicts; the minimum advance window does not apply. reason_code becomes RESCHEDULED_BY_MANAGER and the booking stays APPROVED. The old period is released and offered to the waitlist. A successful Outlook sync updates the existing event rather than creating another event. The new length may differ from the old one within the normal six-slot limit. Moving a booking into a week where it would exceed MAX_SLOTS_PER_WEEK returns 409 WEEKLY_LIMIT_REACHED; its old duration is excluded before the new duration is checked. Rescheduling keeps the same future-booking place and does not consume an additional one. Approved additional-hours grants cannot be moved: ADDITIONAL_HOURS_NEW_REQUEST_REQUIRED (409). Cancel and submit a fresh request for the new slot. Longer-booking exemptions cannot be moved: LONG_BOOKING_NEW_REQUEST_REQUIRED (409); cancel and submit a new longer-booking request.",
+        "description": "Manager only (others receive 403 FORBIDDEN). Moves anyone's future approved booking to another free time. 1.24.0 Manager override: induction, booking window, weekly and future-booking limits no longer apply; the resource must be bookable and the new time within its opening hours, its own maximum length and time steps. reason_code becomes RESCHEDULED_BY_MANAGER and the booking stays APPROVED. The old period is released and offered to the waitlist. A successful Outlook sync updates the existing event rather than creating another event. Approved additional-hours grants cannot be moved: ADDITIONAL_HOURS_NEW_REQUEST_REQUIRED (409). Longer-booking exemptions cannot be moved: LONG_BOOKING_NEW_REQUEST_REQUIRED (409).",
         "security": [
           {
             "BearerAuth": []
@@ -1513,7 +1513,7 @@
             }
           },
           "400": {
-            "description": "The supplied time range is invalid or after the latest booking date (BOOKING_TOO_FAR_AHEAD).",
+            "description": "The supplied time range is invalid.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5362,6 +5362,104 @@
         }
       }
     },
+    "/api/v1/bookings/{id}/extend/": {
+      "post": {
+        "operationId": "post__api_v1_bookings_id_extend_",
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "Extend a booking in progress (1.24.0)",
+        "description": "The person the booking is for, or a Manager, moves the end of an APPROVED booking that has started and not ended. It applies at once (no review) when the extra time is free and the whole booking still fits the resource's opening hours, maximum length and time steps; for everyone but a Manager also the normal per-booking limit, the weekly limit and an induction valid until the new end. A student asking for someone else's booking gets 404; an Admin gets 403 FORBIDDEN. Not started, ended, not approved, additional-hours or longer bookings: 409 EXTENSION_NOT_AVAILABLE. A new end not after the current end: 400 VALIDATION_ERROR. Time after taken or held: 409 BOOKING_CONFLICT. Managers receive a BOOKING_EXTENDED notification. revision increases, so Outlook updates the event.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid end, or a rule check failed (DURATION_LIMIT, OUTSIDE_OPENING_HOURS, INVALID_TIME_INCREMENT).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not the person the booking is for (Admin), or no valid induction until the new end (QUALIFICATION_REQUIRED).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Booking not found or not accessible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "EXTENSION_NOT_AVAILABLE, BOOKING_CONFLICT, WEEKLY_LIMIT_REACHED or RESOURCE_UNAVAILABLE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingExtend"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/qualification-requirements/": {
       "post": {
         "operationId": "post__api_v1_admin_qualification_requirements_",
@@ -7317,6 +7415,20 @@
         },
         "additionalProperties": false
       },
+      "BookingExtend": {
+        "type": "object",
+        "required": [
+          "end"
+        ],
+        "properties": {
+          "end": {
+            "type": "string",
+            "format": "date-time",
+            "description": "New end with a UTC offset, later than the current end."
+          }
+        },
+        "additionalProperties": false
+      },
       "Availability": {
         "type": "object",
         "required": [
@@ -7426,7 +7538,7 @@
           },
           "can_request": {
             "type": "boolean",
-            "description": "Whether the active beneficiary has current induction, is not frozen and the resource is bookable. Staff requests use for_zid when provided. In longer-booking mode, false if the resource has no selectable duration above the normal cap. Submission rechecks the selected period and all limits."
+            "description": "Whether the active beneficiary has current induction, is not frozen and the resource is bookable. Staff requests use for_zid when provided. In longer-booking mode, false if the resource has no selectable duration above the normal cap. Submission rechecks the selected period and all limits. 1.24.0: for a Manager only an active person and a bookable resource."
           },
           "qualification_status": {
             "type": "string",
@@ -7498,6 +7610,10 @@
           "test_bypass": {
             "type": "boolean",
             "description": "Development-only test console metadata."
+          },
+          "manager_override": {
+            "type": "boolean",
+            "description": "1.24.0: true for a Manager (not in additional-hours or longer-booking mode): the booking window, induction and freeze do not apply, latest_date is null, max_booking_minutes is the resource's own maximum and can_request only needs an active person and a bookable resource."
           },
           "additional_hours": {
             "type": "boolean",
@@ -9133,6 +9249,10 @@
           "test_bypass": {
             "type": "boolean",
             "description": "Development-only test console metadata."
+          },
+          "manager_override": {
+            "type": "boolean",
+            "description": "1.24.0: present (true) for a Manager: the window starts today and has no last date."
           }
         },
         "additionalProperties": false

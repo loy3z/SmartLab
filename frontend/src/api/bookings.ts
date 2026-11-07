@@ -26,6 +26,9 @@ export const removeBookingHistory = (id: string) => post<void>(`bookings/${id}/r
 export const rescheduleBooking = (id: string, start: string, end: string) =>
   post<Booking>(`bookings/${id}/reschedule/`, { start, end })
 
+/** 1.24.0 (client, Week 8): finish a booking in progress later; applies at once when the time after is free. */
+export const extendBooking = (id: string, end: string) => post<Booking>(`bookings/${id}/extend/`, { end })
+
 /** Sprint 3 (1.16.0): the person a booking is for asks for a new time; returns the new request (the old booking stays until it is approved). */
 export const requestTimeChange = (id: string, start: string, end: string) =>
   post<Booking>(`bookings/${id}/change/`, { start, end })

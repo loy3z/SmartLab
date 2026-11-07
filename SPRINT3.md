@@ -75,7 +75,7 @@
 
 - **规则**：
   - 开始前 15 分钟到开始后 30 分钟内，本人要点 I'm here，否则记一次缺席。资源当时在维修或关闭的不算。
-  - 第 4 次缺席冻结 30 天：期间不能被预约，之后的预约和申请全部取消。
+  - 第 4 次缺席冻结 30 天：期间不能被预约，之后的预约和申请全部取消。**1.24.0 起默认关闭**（`FREEZE_AFTER_NO_SHOWS=0`），缺席照常记录。
   - 冻结只看 zID，员工被冻结仍然能审批别人的申请。
   - 被冻结的人可以申请解冻，由 Admin／Manager 同意或拒绝，也可以直接解冻。
 - **后端**：`booking/services/attendance.py`：
@@ -440,3 +440,13 @@ No API, schema or booking-rule change. Review: project docs `claude/reports/2026
 ## 29. 压力测试（2026-10-29）
 
 脚本和结果都在 [load-test/README.md](load-test/README.md)。性能修复的代码改动见 CHANGELOG 的压力测试三轮。
+
+## 30. 客户 Week 8 会议（2026-11-06，1.24.0，无迁移）
+
+任务卡：项目文档 `claude/tasks-week8-2026-11-06.md`。
+
+| 项 | 文件和入口 | 测试 |
+| --- | --- | --- |
+| W1 Manager 越过规则 | `services/bookings.py` `_create_manager_booking`（`create_booking` 调用）、`reschedule_booking`；`services/availability.py` `_availability`、`day_overview` 的 `manager_override`；前端 `BookingForm.tsx`、`SlotPicker.tsx`、`slot-picker.ts` `dateRange`、`ManagerBookingsPage.tsx` 说明文字 | `test_approval_flow.py` `test_a_manager_booking_overrides_the_rules_but_needs_free_time`；`test_staff_booking.py` `test_a_manager_sees_times_inside_the_window_and_the_full_length`；`test_booking_window.py`、`test_sprint3.py` 改期用例 |
+| W2 延长进行中的预约 | `services/changes.py` `extend_booking`；`checks.py` `_period_violation`（参数 `started`）；`views/bookings.py` `BookingExtendView`；`urls.py`；`serializers.py` `BookingExtendSerializer`；前端 `api/bookings.ts` `extendBooking`、`features/booking/extend.ts`、`ExtendBox.tsx`、`MyBookings.tsx`、`ManagerBookingsPage.tsx` | `test_change_requests.py` `ExtendBookingTests`、`test_extend_a_booking_in_progress`；`frontend/tests/extend.test.mjs` |
+| W3 冻结默认关闭 | `rules.py` `freeze_after_no_shows=0`；`config/settings.py`；`.env.example`；`services/attendance.py` `_process_attendance` | `test_sprint3.py` `test_freeze_is_off_by_default`；原冻结用例改为显式打开 |

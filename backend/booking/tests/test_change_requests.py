@@ -2,13 +2,13 @@
 Find a free time hides resources (too long for them, or not bookable by this person)."""
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from uuid import uuid4
 
 from django.test import SimpleTestCase, override_settings
 
 from booking.domain import BookingStatus, Principal, Role
-from booking.tests.test_api import BookingAPIFixtureMixin
+from booking.tests.test_api import SYDNEY, BookingAPIFixtureMixin
 from booking.tests.test_sprint3 import Sprint3Fixture
 
 
@@ -111,6 +111,37 @@ class ChangeRequestTests(Sprint3Fixture, SimpleTestCase):
                      days=5, hour=8, minutes=30)
 
 
+class ExtendBookingTests(Sprint3Fixture, SimpleTestCase):
+    """2026-11-06 (client, Week 8): extend a booking in progress when the time after is free."""
+
+    def extend(self, booking, hour, minute=0, actor=None):
+        end = datetime.combine(booking.start.astimezone(SYDNEY).date(), time(hour, minute), SYDNEY)
+        return self.service.extend_booking(actor or self.student, booking.id, end)
+
+    def test_a_booking_in_progress_is_extended_at_once_and_managers_are_told(self):
+        booking = self.approved(days=3, hour=10)  # 10:00-11:00
+        self.refused("EXTENSION_NOT_AVAILABLE", self.extend, booking, 12)  # not started yet
+        self.now = booking.start + timedelta(minutes=40)
+        extended = self.extend(booking, 12)
+        self.assertEqual((extended.status, extended.end, extended.revision),
+                         (BookingStatus.APPROVED, booking.start + timedelta(hours=2), booking.revision + 1))
+        self.assertEqual(len(self.notices(self.manager, "BOOKING_EXTENDED")), 1)
+        self.assertIn("BOOKING_EXTENDED", [item.action for item in self.repo.list_audit()])
+        self.refused("VALIDATION_ERROR", self.extend, booking, 11)
+        self.refused("NOT_FOUND", self.extend, booking, 13, actor=self.other)
+
+    def test_the_rules_apply_except_for_a_manager(self):
+        booking = self.approved(days=3, hour=10)
+        theirs = self.approved(self.other, days=3, hour=15)  # 15:00-16:00
+        self.now = booking.start + timedelta(minutes=10)
+        self.refused("DURATION_LIMIT", self.extend, booking, 14)  # 4 h is over the normal 3 h
+        self.service._override_rule(max_slots_per_week=3)  # 1.5 h a week
+        self.refused("WEEKLY_LIMIT_REACHED", self.extend, booking, 12)
+        self.refused("BOOKING_CONFLICT", self.extend, booking, 15, 30, actor=self.manager)
+        self.refused("DURATION_LIMIT", self.extend, booking, 19, actor=self.manager)  # the room's longest booking is 8 h
+        self.assertEqual(self.extend(booking, 15, actor=self.manager).end, theirs.start)  # 5 h, up to the next booking
+
+
 class MaintenanceNoticeTests(Sprint3Fixture, SimpleTestCase):
     def test_people_with_bookings_are_told_when_a_room_goes_out_of_service_and_reopens(self):
         booked = self.approved(days=3, hour=10)
@@ -155,6 +186,19 @@ class ChangeRequestAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         other = self.student.post(f"/api/v1/bookings/{created.data['id']}/change/",
                                   {"start": new_time["start"], "end": new_time["end"]}, format="json")
         self.assertEqual(other.status_code, 404)
+
+    def test_extend_a_booking_in_progress(self):
+        """2026-11-06 (client, Week 8)."""
+        payload = self.payload(day_offset=3, hour=10)
+        created = self.verified.post("/api/v1/bookings/", payload, format="json")
+        self.admin.post(f"/api/v1/admin/bookings/{created.data['id']}/review/", {"decision": "APPROVED"}, format="json")
+        self.service.clock = lambda: datetime.fromisoformat(payload["start"]) + timedelta(minutes=5)
+        later = self.payload(day_offset=3, hour=11)["end"]  # 12:00
+        response = self.verified.post(f"/api/v1/bookings/{created.data['id']}/extend/", {"end": later}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(datetime.fromisoformat(response.data["end"].replace("Z", "+00:00")), datetime.fromisoformat(later))
+        extra = self.verified.post(f"/api/v1/bookings/{created.data['id']}/extend/", {"end": later, "start": later}, format="json")
+        self.assertEqual(extra.status_code, 400)
 
 
 class DayOverviewCountTests(Sprint3Fixture, SimpleTestCase):

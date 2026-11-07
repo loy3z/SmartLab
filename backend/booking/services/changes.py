@@ -13,10 +13,13 @@ How it works (agreed with Loy on 2026-10-25):
 - One open change request per booking at a time.
 
 Managers can still move a booking directly (``reschedule_booking`` in bookings.py).
+
+2026-11-06 (client, Week 8): a booking in progress can be extended at once (``extend_booking``).
 """
 from dataclasses import replace
+from datetime import UTC
 
-from ..domain import BookingStatus
+from ..domain import BookingStatus, Role
 from ..errors import DomainError
 from .base import UNDECIDED_STATUSES
 
@@ -48,6 +51,53 @@ class ChangesMixin:
                               409, {"booking_id": open_change.id})
         return self.create_booking(actor, source.resource_id, start, end, source.purpose, idempotency_key,
                                    replaces=source)
+
+    def extend_booking(self, actor, booking_id, end):
+        """2026-11-06 (client, Week 8): stay longer when an experiment runs over and nobody has booked the time after.
+
+        The person a booking is for, or a Manager, moves the end of an approved booking that is in progress. It applies
+        at once (no request to review) when the extra time is free and the whole booking still fits the resource's
+        opening hours and longest booking. For everyone but a Manager the normal limits apply too: the 3-hour booking,
+        the weekly hours and an induction valid until the new end; when they do not allow it, a Manager can extend
+        it. Managers are told about every extension, so they know the lab stays in use.
+        """
+        self.process_due_requests()
+        source = self.booking_for(actor, booking_id)
+        manager = actor.role == Role.MANAGER
+        if source.student_id != actor.id and not manager:
+            raise DomainError("FORBIDDEN", "Only the person a booking is for, or a Manager, can extend it.", 403)
+        if source.additional_hours or source.long_booking:
+            raise DomainError("EXTENSION_NOT_AVAILABLE", "This booking was approved for one exact time; ask a Manager to change it.", 409)
+        if end.tzinfo is None or end.utcoffset() is None:
+            raise DomainError("INVALID_TIME", "The new end requires a UTC offset.")
+        end = end.astimezone(UTC)
+        with self.repo.atomic(resource_ids=[source.resource_id], student_ids=[source.student_id]):
+            source = self.booking_for(actor, booking_id)
+            now = self.now()
+            if source.status != BookingStatus.APPROVED or not source.start <= now < source.end:
+                raise DomainError("EXTENSION_NOT_AVAILABLE", "Only an approved booking that is in progress can be extended.", 409)
+            if end <= source.end:
+                raise DomainError("VALIDATION_ERROR", "Choose an end later than the current end.")
+            resource = self.resource(source.resource_id)
+            error = (self._account_violation(source.student_id) or self._resource_violation(resource)
+                     or self._period_violation(resource, source.start, end, allow_long_booking=manager, started=True))
+            if not error and not manager:
+                error = (self._qualification_violation(source.student_id, resource, end)
+                         or self._weekly_limit_violation(source.student_id, resource, source.start, end, source.id))
+            if error:
+                raise error
+            self._reject_duplicate_request(source.student_id, source.resource_id, source.end, end, source.id)
+            if self._overlaps(source.resource_id, source.end, end, source.id):
+                raise DomainError("BOOKING_CONFLICT", "Someone has already booked or is holding the time after this booking.", 409)
+            extended = replace(source, end=end, updated_at=now, revision=source.revision + 1)
+            self._save_booking(extended)
+            self._audit(actor.id, "BOOKING_EXTENDED", "booking", extended.id,
+                        old_end=source.end.isoformat(), new_end=end.isoformat())
+            person = self.repo.get_principal(source.student_id)
+            self._notify_managers("BOOKING_EXTENDED", "Booking extended",
+                                  f"{person.display_name} ({person.zid}) now has {self._booking_label(extended)}.",
+                                  extended, link="/admin/bookings", except_ids={actor.id})
+            return extended
 
     def open_change_for(self, booking):
         """The undecided change request (pending or waitlisted) that would replace this booking, if any."""

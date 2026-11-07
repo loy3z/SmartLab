@@ -54,7 +54,9 @@ class BookingRules:
     check_in_opens_minutes: int = 15
     check_in_closes_minutes: int = 30
     # Booking is frozen for freeze_days when the missed-booking count reaches freeze_after_no_shows.
-    freeze_after_no_shows: int = 4
+    # 0 = never freeze (default since 2026-11-06: the client prefers easy cancelling to penalties, Week 8 meeting);
+    # missed bookings are still recorded.
+    freeze_after_no_shows: int = 0
     freeze_days: int = 30
     # Longest weekly series pattern; every kept date must also fit the booking window.
     max_series_weeks: int = 14
@@ -76,7 +78,7 @@ class BookingRules:
         _bounded_int("additional_hours_approval_window_hours", self.additional_hours_approval_window_hours, 1, 168)
         _bounded_int("check_in_opens_minutes", self.check_in_opens_minutes, 0, 240)
         _bounded_int("check_in_closes_minutes", self.check_in_closes_minutes, 1, 480)
-        _bounded_int("freeze_after_no_shows", self.freeze_after_no_shows, 1, 100)
+        _bounded_int("freeze_after_no_shows", self.freeze_after_no_shows, 0, 100)
         _bounded_int("freeze_days", self.freeze_days, 1, 365)
         _bounded_int("max_series_weeks", self.max_series_weeks, 1, 52)
         _bounded_int("reminder_hours_before", self.reminder_hours_before, 1, 168)

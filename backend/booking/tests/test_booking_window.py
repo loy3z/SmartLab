@@ -128,15 +128,14 @@ class BookingWindowServiceTests(BookingFixtureMixin, SimpleTestCase):
         _, bookings = self.service.create_series(self.admin, purpose="Weekly lab", **arguments)
         self.assertEqual(len(bookings), 1)
 
-    def test_a_manager_reschedule_may_move_earlier_but_not_past_the_last_day(self):
+    def test_a_manager_reschedule_overrides_the_booking_window(self):
+        """2026-11-06 (client, Week 8): before, a Manager could move earlier but not past the last day."""
         manager = Principal(str(uuid4()), "z9888888", "Manager", Role.MANAGER, "z9888888@ad.unsw.edu.au")
         self.repo.save_principal(manager)
         booking = self.book_on(10)
         booking = self.service.review_booking(self.admin, booking.id, "APPROVED")
         start, end = self.at(29)
-        with self.assertRaises(DomainError) as denied:
-            self.service.reschedule_booking(manager, booking.id, start, end)
-        self.assertEqual(denied.exception.code, "BOOKING_TOO_FAR_AHEAD")
+        self.assertEqual(self.service.reschedule_booking(manager, booking.id, start, end).start, start)
         start, end = self.at(3)  # inside the coming week: allowed for a Manager
         self.assertEqual(self.service.reschedule_booking(manager, booking.id, start, end).start, start)
         start, end = self.at(8)
@@ -211,13 +210,16 @@ class BookingWindowAPITests(BookingAPIFixtureMixin, SimpleTestCase):
 
     def test_api_enforces_day_28_and_29_for_single_on_behalf_and_series_requests(self):
         for client, extra, hour in ((self.verified, {}, 8),
-                                    (self.admin, {"on_behalf_of_zid": "z1000001"}, 10),
-                                    (self.manager, {"on_behalf_of_zid": "z1000001"}, 12)):
+                                    (self.admin, {"on_behalf_of_zid": "z1000001"}, 10)):
             with self.subTest(hour=hour):
                 accepted = client.post("/api/v1/bookings/", {**self.payload(day_offset=28, hour=hour), **extra}, format="json")
                 self.assertEqual(accepted.status_code, 201, accepted.data)
                 denied = client.post("/api/v1/bookings/", {**self.payload(day_offset=29, hour=hour), **extra}, format="json")
                 self.assertEqual((denied.status_code, denied.data["error"]["code"]), (400, "BOOKING_TOO_FAR_AHEAD"))
+        # 2026-11-06 (client, Week 8): a Manager overrides the booking window.
+        managed = self.manager.post("/api/v1/bookings/", {**self.payload(day_offset=29, hour=12), "on_behalf_of_zid": "z1000001"},
+                                    format="json")
+        self.assertEqual((managed.status_code, managed.data["status"]), (201, "APPROVED"))
 
         today = NOW.astimezone(SYDNEY).date()
         first, last = today + timedelta(days=28), today + timedelta(days=29)

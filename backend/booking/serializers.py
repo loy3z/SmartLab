@@ -91,6 +91,9 @@ class BookingRescheduleSerializer(StrictSerializer):
     start = AwareDateTimeField()
     end = AwareDateTimeField()
 
+class BookingExtendSerializer(StrictSerializer):  # 2026-11-06 (client, Week 8)
+    end = AwareDateTimeField()
+
 class QualificationCreateSerializer(StrictSerializer):
     requirement_id = serializers.UUIDField()
     title = serializers.CharField(max_length=160)

@@ -157,28 +157,45 @@ class ApprovalFlowServiceTests(BookingFixtureMixin, SimpleTestCase):
         self.service.reschedule_booking(self.manager, first.id, later, later + timedelta(hours=1))
         self.assertEqual(self.state(waiting)[0], BookingStatus.PENDING_APPROVAL)
 
-    def test_staff_book_under_the_same_rules(self):
-        """Client, 17 Oct: Admins and Managers may book for themselves; induction is never bypassed."""
-        for staff in (self.manager, self.admin):
-            with self.subTest(role=staff.role), self.assertRaises(DomainError) as denied:
-                self.book(staff, start=self.start + timedelta(hours=4), end=self.start + timedelta(hours=5))
-            self.assertEqual(denied.exception.code, "QUALIFICATION_REQUIRED")
-        self.qualification(self.manager)
-        own = self.book(self.manager, start=self.start + timedelta(hours=4), end=self.start + timedelta(hours=5))
-        self.assertEqual((own.status, own.student_id, own.created_by), (BookingStatus.PENDING_APPROVAL, self.manager.id, self.manager.id))
+    def test_admins_book_under_the_same_rules(self):
+        """Client, 17 Oct: Admins and Managers may book for themselves; induction is never bypassed.
+        2026-11-06 (client, Week 8): Managers now override the rules (next test); Admins still follow them."""
         with self.assertRaises(DomainError) as denied:
-            self.service.review_booking(self.manager, own.id, "APPROVED")
+            self.book(self.admin, start=self.start + timedelta(hours=4), end=self.start + timedelta(hours=5))
+        self.assertEqual(denied.exception.code, "QUALIFICATION_REQUIRED")
+        self.qualification(self.admin)
+        own = self.book(self.admin, start=self.start + timedelta(hours=4), end=self.start + timedelta(hours=5))
+        self.assertEqual((own.status, own.student_id, own.created_by), (BookingStatus.PENDING_APPROVAL, self.admin.id, self.admin.id))
+        with self.assertRaises(DomainError) as denied:
+            self.service.review_booking(self.admin, own.id, "APPROVED")
         self.assertEqual(denied.exception.code, "SELF_REVIEW_FORBIDDEN")
-        self.assertEqual(self.service.review_booking(self.admin, own.id, "APPROVED").status, BookingStatus.APPROVED)
+        self.assertEqual(self.service.review_booking(self.manager, own.id, "APPROVED").status, BookingStatus.APPROVED)
         # A routine request still follows the normal review window and is approved automatically if nobody decides.
-        later = self.book(self.manager, start=self.start + timedelta(hours=6), end=self.start + timedelta(hours=7))
+        later = self.book(self.admin, start=self.start + timedelta(hours=6), end=self.start + timedelta(hours=7))
         self.now = later.review_due_at
         self.service.process_due_requests()
         self.assertEqual(self.state(later), (BookingStatus.APPROVED, "AUTO_APPROVED_AFTER_REVIEW_WINDOW"))
         # Conflicts: a staff request for a taken time queues like everyone else's.
         self.book(self.a, start=self.start + timedelta(hours=8), end=self.start + timedelta(hours=9))
-        queued = self.book(self.manager, start=self.start + timedelta(hours=8), end=self.start + timedelta(hours=9))
+        queued = self.book(self.admin, start=self.start + timedelta(hours=8), end=self.start + timedelta(hours=9))
         self.assertEqual(queued.status, BookingStatus.WAITLISTED)
+
+    def test_a_manager_booking_overrides_the_rules_but_needs_free_time(self):
+        """2026-11-06 (client, Week 8): no induction, approved at once; nobody is displaced."""
+        own = self.book(self.manager, start=self.start + timedelta(hours=2), end=self.start + timedelta(hours=3))
+        self.assertEqual((own.status, own.reason_code, own.reviewed_by), (BookingStatus.APPROVED, "MANAGER_OVERRIDE", self.manager.id))
+        unqualified = self.make_student("z5555555")
+        for_them = self.book(self.manager, start=self.start + timedelta(hours=4), end=self.start + timedelta(hours=5),
+                             on_behalf_of_zid=unqualified.zid)
+        self.assertEqual((for_them.status, for_them.student_id, for_them.created_by),
+                         (BookingStatus.APPROVED, unqualified.id, self.manager.id))
+        self.book(self.a, start=self.start + timedelta(hours=8), end=self.start + timedelta(hours=9))
+        with self.assertRaises(DomainError) as denied:
+            self.book(self.manager, start=self.start + timedelta(hours=8), end=self.start + timedelta(hours=9))
+        self.assertEqual(denied.exception.code, "BOOKING_CONFLICT")
+        with self.assertRaises(DomainError) as denied:  # opening hours still apply
+            self.book(self.manager, start=self.start + timedelta(hours=10), end=self.start + timedelta(hours=11))
+        self.assertEqual(denied.exception.code, "OUTSIDE_OPENING_HOURS")
 
     def test_adjacent_periods_and_other_resources_do_not_conflict(self):
         first = self.book(self.a)
@@ -315,9 +332,10 @@ class ApprovalFlowAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.verified.post(f"/api/v1/bookings/{first['id']}/cancel/", {}, format="json")
         moved = self.admin.get("/api/v1/admin/bookings/").data["results"]
         self.assertEqual([(item["id"], item["reason_code"]) for item in moved], [(queued.data["id"], "PROMOTED_FROM_WAITLIST")])
-        for staff in (self.admin, self.manager):
-            with self.subTest(staff=staff):
-                self.assert_error(self.create_booking(staff, self.payload(hour=14)), 403)
+        self.assert_error(self.create_booking(self.admin, self.payload(hour=14)), 403)  # no induction
+        # 2026-11-06 (client, Week 8): a Manager overrides the induction rule and is approved at once.
+        managed = self.create_booking(self.manager, self.payload(hour=14))
+        self.assertEqual((managed.status_code, managed.data["status"]), (201, "APPROVED"))
 
 
 @override_settings(DEBUG=True, ENABLE_DEMO_AUTH=True, SEED_DEMO_DATA=True, OUTLOOK_ENABLED=True, OUTLOOK_SYNC_ON_WRITE=True)

@@ -48,8 +48,8 @@ class NewFeatureSyncTests(SyncFixture):
         payload = {**self.payload(), "on_behalf_of_zid": "z1000001"}
         created = self.manager.post("/api/v1/bookings/", payload, format="json")
         self.assertEqual(created.status_code, 201, created.data)
-        self.assertEqual(self.provider.creates, [])  # still waits for approval
-        self.assertEqual(self.approve(created.data["id"]).data["outlook_sync"]["status"], "SYNCED")
+        # 2026-11-06 (client, Week 8): a Manager's booking is approved at once, so it reaches Outlook straight away.
+        self.assertEqual(created.data["outlook_sync"]["status"], "SYNCED")
         booking_id, attendee, _, _ = self.provider.creates[0]
         self.assertEqual(booking_id, created.data["id"])
         self.assertEqual(attendee, "z1000001@ad.unsw.edu.au")  # the person the booking is for

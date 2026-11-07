@@ -2,6 +2,13 @@
 
 API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 [openapi.json](openapi.json)，启动后的 `GET /api/schema/` 返回相同定义。
 
+## 1.24.0：客户 Week 8 会议（无迁移）
+
+- **Manager 覆盖规则**：Manager 的 `POST bookings/`（给自己或 `on_behalf_of_zid` 代约，不含改期申请）直接 `APPROVED`，`reason_code=MANAGER_OVERRIDE`。不检查 induction、提前 7–28 天、单次 3 小时、每周 12 小时、8 个未来预约和冻结；仍检查资源可预约、开放时间、资源自身最长时长、时间步长，时段必须空闲（冲突 409 `BOOKING_CONFLICT`，不进候补）。Admin 不变。`POST bookings/{id}/reschedule/` 同样不再检查 induction、日期窗口、每周和未来预约数。
+- **Manager 的可用时段**：availability（非额外时数、非超长模式）和 day overview 返回 `manager_override: true`；日期从今天起、`latest_date=null`，`max_booking_minutes` 为资源自身最长时长，`can_request` 只看人是否在用、资源是否可约。
+- **延长进行中的预约**：`POST bookings/{id}/extend/`，请求 `{end}`。预约人本人或 Manager，预约须已批准、已开始、未结束；后面空闲就立即生效（不审批），`revision` 加 1，Outlook 更新原事件，Manager 收到 `BOOKING_EXTENDED` 通知。非 Manager 还要满足单次 3 小时、每周时数和 induction 到新结束时间。错误：未开始／已结束／额外时数／超长 409 `EXTENSION_NOT_AVAILABLE`；新结束不晚于原结束 400 `VALIDATION_ERROR`；后面被占 409 `BOOKING_CONFLICT`；其余同普通规则（`DURATION_LIMIT`、`OUTSIDE_OPENING_HOURS`、`WEEKLY_LIMIT_REACHED`）。
+- **冻结默认关闭**：`FREEZE_AFTER_NO_SHOWS` 默认 0（不冻结），缺席仍记录，`NO_SHOW_RECORDED` 通知改为提醒及时取消。设为正数即恢复原冻结规则。
+
 ## 1.22.0：超长预约申请（迁移 013）
 
 - **独立提交**：`POST bookings/long-bookings/`，请求为 `{resource_id,start,end,purpose,long_booking_reason,on_behalf_of_zid?}`。用途和超长理由必填，理由最多 1000 字。支持 `Idempotency-Key`：相同请求重试为 `200`，首次创建为 `201`；理由、受益人、时段或申请类型改变须换 key。客户端不能传审批状态、`urgent`、`additional_hours`、`series_id` 等字段。
@@ -74,7 +81,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 - 预约响应带 `created_by`、`booked_for`、`created_by_user`（`id`、`zid`、`display_name`、`role`）、`on_behalf`。`GET bookings/` 对员工返回“给我的”加“我替别人建的”；被预约人自己也能看到并取消。
 - 不能审批“给自己的”或“自己创建的”申请（403 `SELF_REVIEW_FORBIDDEN`）。
 - **紧急申请**：`urgent: true` 加 `urgent_reason`（必填，≤500 字）。只用于开始时间早于最短提前期（默认 7 天）的申请，落在正常窗口内返回 400 `URGENT_NOT_NEEDED`；最晚日期照常检查。时段必须空闲（有冲突 409 `BOOKING_CONFLICT`，不进候补）。状态 `PENDING_APPROVAL`、`reason_code=URGENT_AWAITING_MANAGER`、`review_due_at=null`、`hold_until=start`：**只能由 Manager 决定**（Admin 403 `URGENT_NEEDS_MANAGER`），不会自动批准，开始前没人决定就过期。availability 加 `urgent=true` 时，提前期内的时段显示为可选。
-- **改期仅 Manager**：`POST bookings/{id}/reschedule/` 其他角色 403 `FORBIDDEN`。Manager 可改任何人已批准的未来预约，不受最短提前期限制（最晚日期、induction、开放时间、冲突照常检查），`reason_code=RESCHEDULED_BY_MANAGER`。
+- **改期仅 Manager**：`POST bookings/{id}/reschedule/` 其他角色 403 `FORBIDDEN`。Manager 可改任何人已批准的未来预约，不受日期窗口、induction、每周和未来预约数限制（1.24.0；开放时间、资源最长时长、冲突照常检查），`reason_code=RESCHEDULED_BY_MANAGER`。
 - 待客户确认：“override an existing booking”具体指什么；紧急申请是否只允许某些角色提交（目前所有人都可以提交，只有 Manager 能批）。
 - 人员列表（`admin/users/`）中的用户带 `is_staff`（Admin 或 Manager 为 `true`）；前端按 `auth/me/` 的 `role` 判断。
 
@@ -225,6 +232,7 @@ API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 
 | GET | `qualifications/{id}/file/` | 带权限的附件下载 |
 | GET / POST | `bookings/` | 我的预约列表（员工还包括替别人建的）／创建预约（可带 `on_behalf_of_zid`、`urgent`、`urgent_reason`） |
 | POST | `bookings/{id}/change/` | 1.16.0：预约人申请把自己已批准的预约改到新时间（见下文“申请改期”） |
+| POST | `bookings/{id}/extend/` | 1.24.0：本人或 Manager 延长进行中的已批准预约：`end`，空闲时立即生效 |
 | GET / PATCH | `site/contact/` | 1.16.0：实验室联系方式；所有人可读，Manager 修改 |
 | POST | `admin/qualification-requirements/` | 1.16.0：Manager 新建 induction |
 | GET | `admin/overview/` | 1.16.0：员工首页 Today 的数字和清单 |

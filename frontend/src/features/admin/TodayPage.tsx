@@ -9,6 +9,7 @@ import { errorMessage, fmtRelative, fmtTime } from '../booking/format'
 import type { Booking, Resource, StaffOverview } from '../../api/types/index.ts'
 import { attendanceLabel, cardsFor } from './today'
 import { CheckIcon } from '../booking/icons'
+import { useAutoRefresh } from '../../lib/use-auto-refresh' // 2026-11-07
 
 export function TodayPage() {
   const announcements = useAnnouncements()
@@ -37,6 +38,7 @@ export function TodayPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load()
   }, [load])
+  useAutoRefresh(() => void load())
 
   const now = loadedAt ?? 0
   const who = (b: Booking) => b.booked_for?.display_name ?? 'Someone'

@@ -11,7 +11,8 @@ import { canAskForChange, openChangeText, replacesText } from './change-requests
 import { ContactLink } from '../contact/LabContact' // Sprint 3 (1.16.0)
 import { ExtendBox } from './ExtendBox' // 1.24.0
 import { canExtend, waitingExtension } from './extend'
-import { bookingDetail, errorMessage, fmtDuration, fmtRange, fmtTime, minutesBetween, STATUS_TEXT } from './format'
+import { useAutoRefresh } from '../../lib/use-auto-refresh' // 2026-11-07
+import { bookingDetail, errorMessage, fmtDuration, fmtRange, fmtTime, minutesBetween, statusText } from './format'
 import { ACTIVE, canRemoveBookingHistory, groupBookings } from './my-bookings'
 import { RescheduleBox } from './RescheduleBox'
 import { SeriesCard } from './SeriesCard'
@@ -71,6 +72,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load()
   }, [load, refreshKey])
+  useAutoRefresh(() => void load()) // 2026-11-07: an approval shows without F5
 
   async function cancel(b: Booking) {
     const name = resources[b.resource_id]?.name ?? 'this resource'
@@ -218,7 +220,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
           <div key={b.id} className="bk-bcard">
             <div className="bk-bhead">
               <h3>{res?.name ?? 'Resource'}</h3>
-              <span className={`bk-chip st-${b.status}`}>{(b.additional_hours || b.long_booking) && b.status === 'PENDING_APPROVAL' ? 'Waiting for Manager approval' : STATUS_TEXT[b.status]}{b.status === 'WAITLISTED' && b.waitlist_position ? ` · #${b.waitlist_position}` : ''}</span>
+              <span className={`bk-chip st-${b.status}`}>{statusText(b)}{b.status === 'WAITLISTED' && b.waitlist_position ? ` · #${b.waitlist_position}` : ''}</span>
               {b.additional_hours && <span className="bk-chip">Additional hours</span>}
               {b.long_booking && <span className="bk-chip">Longer booking</span>}
               {b.urgent && <span className="bk-chip is-urgent">URGENT</span>}

@@ -1,7 +1,7 @@
 // 2026-11-07 (client, Week 8): the Manager home page. Admins land on Today (the review queue); a Manager lands here and
 // sees the whole lab: what only a Manager decides, rooms and equipment, this week's use, and the booking history lookup.
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { PageHeader, RefreshStamp } from '../../ui/components'
 import { getStaffOverview, getUsageReport, listResources, reviewExtension } from '../../api/index.ts'
 import { errorMessage, fmtTime, todaySydney } from '../booking/format'
@@ -9,6 +9,7 @@ import type { Booking, Resource, StaffOverview, UsageReport } from '../../api/ty
 import { MANAGER_DECIDES, todoCards } from '../admin/today'
 import { percent } from './usage'
 import { cleanZid, currentWeek, statusCounts } from './manager-home'
+import { useAutoRefresh } from '../../lib/use-auto-refresh' // 2026-11-07
 
 export function ManagerHomePage() {
   const navigate = useNavigate()
@@ -20,6 +21,10 @@ export function ManagerHomePage() {
   const [loading, setLoading] = useState(true)
   const [zid, setZid] = useState('')
   const [zidError, setZidError] = useState('')
+  // 2026-11-07: the Extension requests card (here or on Today) brings the approval list into view, also on phones.
+  const [params] = useSearchParams()
+  const requestsPanel = useRef<HTMLElement>(null)
+  const focusRequests = params.get('focus') === 'extensions'
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -42,6 +47,11 @@ export function ManagerHomePage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load()
   }, [load])
+  useAutoRefresh(() => void load())
+  const hasRequests = (overview?.extension_requests ?? []).length > 0
+  useEffect(() => {
+    if (focusRequests && hasRequests) requestsPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [focusRequests, hasRequests])
 
   function lookUp(event: FormEvent) {
     event.preventDefault()
@@ -65,7 +75,8 @@ export function ManagerHomePage() {
           <h2 className="manager-home-heading">Only a Manager decides</h2>
           <div className="today-cards">
             {decisions.map((card) => (
-              <Link key={card.key} to={card.to} className={`today-card is-${card.tone}`}>
+              <Link key={card.key} to={card.to} className={`today-card is-${card.tone}`}
+                onClick={card.key === 'extensions' ? () => requestsPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) : undefined}>
                 <span className="today-count">{card.count}</span>
                 <span className="today-label">{card.label}</span>
               </Link>
@@ -79,7 +90,7 @@ export function ManagerHomePage() {
 
           <div className="today-grid">
             {(overview.extension_requests ?? []).length > 0 && (
-              <article className="today-panel is-wide">
+              <article className="today-panel is-wide" ref={requestsPanel}>
                 <h2>Extension requests</h2>
                 <p className="bk-muted">People in the lab now who ask to finish later. Approving moves the end if the time after is still free.</p>
                 <ul className="today-list">

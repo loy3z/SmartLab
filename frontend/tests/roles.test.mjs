@@ -5,6 +5,7 @@ import { cardsFor, MANAGER_DECIDES } from '../src/features/admin/today.ts'
 import { cleanZid, currentWeek, statusCounts } from '../src/features/manager/manager-home.ts'
 import { ADMIN_HISTORY_DAYS, defaultRecordFilters } from '../src/features/records/records.ts'
 import { homePath } from '../src/app/routes.ts'
+import { statusText } from '../src/features/booking/format.ts'
 
 const overview = (role) => ({ role, pending_inductions: 1, pending_bookings: 2, urgent_requests: 1, waitlisted: 0, changes_waiting: 0,
   due_soon: [], due_soon_hours: 6, out_of_service: [], today: [], today_count: 0, missed_today: 0, can_decide_urgent: role === 'MANAGER',
@@ -41,3 +42,19 @@ test('Manager home helpers: week, status counts, zID', () => {
   assert.equal(cleanZid(' Z5123456 '), 'z5123456')
   assert.equal(cleanZid('5123456'), null)
 })
+
+test('waiting requests name who decides: a Manager for urgent, additional-hours and longer requests', () => {
+  const pending = { status: 'PENDING_APPROVAL' }
+  assert.equal(statusText(pending), 'Waiting for admin approval')
+  for (const kind of ['urgent', 'additional_hours', 'long_booking']) {
+    assert.equal(statusText({ ...pending, [kind]: true }), 'Waiting for Manager approval', kind)
+  }
+  assert.equal(statusText({ status: 'APPROVED', urgent: true }), 'Approved')
+})
+
+test('the Extension requests card opens the approval list', async () => {
+  const { todoCards } = await import('../src/features/admin/today.ts')
+  const card = todoCards(overview('MANAGER')).find((item) => item.key === 'extensions')
+  assert.equal(card.to, '/manager/home?focus=extensions')
+})
+

@@ -40,16 +40,22 @@ interface Props {
   onAdditionalHours?: () => void
   onLongBooking?: () => void
   testOverride?: boolean
+  /** 2026-11-07: a Manager's booking skips induction and the normal length limit. */
+  managerOverride?: boolean
+  /** 2026-11-07: replaces "View availability" (e.g. when the page was opened to request additional hours). */
+  openLabel?: string
 }
 
-export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEquipment, roomName, prerequisiteName, onRepeat, onAdditionalHours, onLongBooking, testOverride }: Props) {
+export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEquipment, roomName, prerequisiteName, onRepeat, onAdditionalHours, onLongBooking, testOverride, managerOverride, openLabel }: Props) {
   const chip = testOverride ? { text: 'Test override enabled', ok: true }
+    : managerOverride ? { text: 'Manager booking: no induction needed', ok: true }
     : state === 'PREREQUISITE_REQUIRED' && prerequisiteName ? { text: `${prerequisiteName} needed first`, ok: false } : CHIP[state]
   const note = state === 'PREREQUISITE_REQUIRED'
     ? `Complete ${prerequisiteName ?? 'the earlier induction'} first, then the induction for this resource.`
     : NOTE[state]
   const unavailable = resource.status !== 'AVAILABLE'
-  const blocked = !testOverride && state === 'NOT_CONFIGURED'
+  const blocked = !testOverride && !managerOverride && state === 'NOT_CONFIGURED'
+  const longest = managerOverride ? resource.max_booking_minutes : resource.effective_max_booking_minutes ?? resource.max_booking_minutes
   return (
     <article className={`bk-rcard${unavailable ? ' is-unavailable' : ''}`}>
       <header className="resource-card-head">
@@ -75,16 +81,16 @@ export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEq
           <span className={`bk-chip ${chip.ok ? 'is-ok' : 'is-warn'}`}>
             {chip.ok ? <CheckIcon size={16} /> : <AlertIcon size={16} />} {chip.text}
           </span>
-          {!testOverride && !unavailable && note && <p className="bk-note">{note}</p>}
+          {!testOverride && !managerOverride && !unavailable && note && <p className="bk-note">{note}</p>}
           {equipmentCount !== undefined && onShowEquipment && (
             <button type="button" className="bk-linkbtn" onClick={onShowEquipment}>
               {equipmentCount} {equipmentCount === 1 ? 'device' : 'devices'} in this room →
             </button>
           )}
         </div>
-        <div className="resource-hours"><ClockIcon size={13} /><span>{fmtHours(resource.opening_time, resource.closing_time)}</span><span>Up to {(resource.effective_max_booking_minutes ?? resource.max_booking_minutes) / 60} h</span></div>
+        <div className="resource-hours"><ClockIcon size={13} /><span>{fmtHours(resource.opening_time, resource.closing_time)}</span><span>Up to {longest / 60} h</span></div>
         <div className="bk-rcard-actions">
-          <button type="button" className="bk-btn-outline bk-rcard-primary" disabled={blocked} onClick={onOpen}>View availability</button>
+          <button type="button" className="bk-btn-outline bk-rcard-primary" disabled={blocked} onClick={onOpen}>{openLabel ?? 'View availability'}</button>
           {onAdditionalHours && <button type="button" className="bk-btn-outline" disabled={blocked || unavailable} onClick={onAdditionalHours}>Request additional hours</button>}
           {onLongBooking && resource.max_booking_minutes > (resource.effective_max_booking_minutes ?? resource.max_booking_minutes) &&
             <button type="button" className="bk-btn-outline" disabled={blocked || unavailable} onClick={onLongBooking}>Request a longer booking</button>}

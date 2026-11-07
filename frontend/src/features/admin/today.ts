@@ -26,7 +26,7 @@ export function todoCards(data: StaffOverview): TodoCard[] {
   const extensions = data.extension_requests?.length ?? 0
   return [
     // 2026-11-07: the person is in the lab now, so these come first.
-    { key: 'extensions', count: extensions, label: 'Extension requests', to: '/manager/home', tone: tone(extensions, true),
+    { key: 'extensions', count: extensions, label: 'Extension requests', to: '/manager/home?focus=extensions', tone: tone(extensions, true),
       hint: 'Someone in the lab asks to stay longer' },
     { key: 'urgent', count: data.urgent_requests, label: 'Urgent requests', to: '/admin/bookings', tone: tone(data.urgent_requests, true),
       hint: data.can_decide_urgent ? 'Only a Manager decides these' : 'A Manager decides these' },

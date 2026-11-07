@@ -1417,7 +1417,7 @@ test('booking dashboard uses distinct metrics and a compact next session on desk
   await expect(metrics.nth(3)).toContainText('4.5 h')
   await expect(metrics.nth(3)).toContainText('7.5 of 12 h booked')
   await expect(page.locator('.dash-more-hours')).toContainText('Need more than 12 h this week?')
-  await expect(page.getByRole('link', { name: 'Request additional hours' })).toHaveAttribute('href', '#/resources')
+  await expect(page.getByRole('link', { name: 'Request additional hours' })).toHaveAttribute('href', '#/resources?for=additional-hours')
   expect(await metrics.first().evaluate(el => getComputedStyle(el).borderRadius)).not.toBe('0px')
   expect((await page.locator('.dash-session').boundingBox())!.height).toBeLessThan(240)
   await expect(page.getByRole('heading', { name: 'More upcoming', exact: true })).toBeVisible()
@@ -2409,5 +2409,37 @@ test('a Manager approves an extension request on the Lab overview', async ({ pag
   await panel.getByRole('button', { name: 'Approve', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Extension requests', exact: true })).toHaveCount(0)
   expect(decisions).toEqual([{ decision: 'APPROVED', reason: '', expected_end: waiting.extension_end }])
+})
+
+// 2026-11-07 (three-role walkthrough): what another person decides shows without F5.
+test('Today shows a new request when the Admin comes back to the tab', async ({ page }) => {
+  let pending = 0
+  await page.route('**/api/v1/admin/overview/', (route) => route.fulfill({ json: { ...emptyOverview('ADMIN'), pending_bookings: pending } }))
+  await page.goto('/#/login')
+  await signIn(page, 'ADMIN')
+  await expect(page.getByText('Nothing waiting for review')).toBeVisible()
+  pending = 1 // a student submits a request in another window
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(page.getByRole('link', { name: /Booking requests to decide/ })).toBeVisible()
+})
+
+test('a Manager sees Manager rules on resource cards; a student opens additional hours straight from a card', async ({ page }) => {
+  const room = { ...recurringRoom, max_booking_minutes: 480, effective_max_booking_minutes: 180 }
+  await page.route('**/api/v1/resources/?**', (route) => route.fulfill({ json: { count: 1, results: [room] } }))
+  await page.goto('/#/login')
+  await signIn(page, 'MANAGER')
+  await page.goto('/#/resources')
+  const card = page.locator('.bk-rcard').first()
+  await expect(card).toContainText('Manager booking: no induction needed')
+  await expect(card).toContainText('Up to 8 h')
+  await expect(card).not.toContainText('Submit induction')
+  await signOut(page)
+  await signIn(page, 'STUDENT')
+  await page.goto('/#/resources?for=additional-hours')
+  await expect(page.getByText('Choose a room or equipment to request additional hours.')).toBeVisible()
+  const studentCard = page.locator('.bk-rcard').first()
+  await expect(studentCard).toContainText('Up to 3 h')
+  await expect(studentCard.getByRole('button', { name: 'View availability' })).toHaveCount(0)
+  await expect(studentCard.getByRole('button', { name: 'Request additional hours' })).toHaveCount(1)
 })
 

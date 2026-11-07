@@ -2,6 +2,16 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.27.0 之后：三角色走查的五处修改（2026-11-07，只改前端，接口不变）
+
+依据 Loy 的走查 `claude/reports/2026-11-07-three-role-walkthrough.md`。
+
+- **页面自己刷新**：Today、Lab overview、My bookings、Dashboard 每 30 秒、以及切回这个标签页时重新读取（`lib/use-auto-refresh.ts`）。学生提交后 Admin 不用 F5 就能看到，Admin 批准后学生也能看到。
+- **写对审批人**：紧急、额外时数、超长申请在 My bookings、Dashboard、Booking review 都显示 Waiting for Manager approval（`format.ts` `statusText`）。之前紧急申请写 admin。
+- **Manager 的资源卡片**：显示 Manager booking: no induction needed 和资源自身最长时长，不再提示先交 induction、最多 3 小时。
+- **额外时数入口**：Dashboard 的 Request additional hours 打开 `/resources?for=additional-hours`，每张卡片的主按钮直接打开额外时数申请。
+- **延长申请卡片**：链接到 `/manager/home?focus=extensions`，页面滚到审批列表（手机上也是）。
+
 ## 1.27.0：延长改为拖动时间轴、由 Manager 批准（2026-11-07，迁移 016）
 
 - Loy 2026-11-07 按会议 14:11–15:53 的原意定：学生在时间轴上拖动预约的结束时间（像在日历里拖），发出延长申请，由 Manager 批准；不再立即生效。Manager 自己延长仍然立即生效。

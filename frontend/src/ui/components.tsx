@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
+/** 2026-11-09 (Loy feedback): a form dialog's title with a close button; Esc still closes the dialog too. */
+export function DialogTitle({ id, title, onClose }: { id: string; title: string; onClose: () => void }) {
+  return (
+    <div className="ui-dialog-head">
+      <h2 id={id}>{title}</h2>
+      <button type="button" className="ui-icon-btn" aria-label="Close" onClick={onClose}>×</button>
+    </div>
+  )
+}
+
 /** Segmented tabs with an optional count badge, e.g. "Awaiting approval (3)". */
 export function Tabs<T extends string>({ value, onChange, items, label }: {
   value: T

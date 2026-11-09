@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { EmptyState, PageHeader, RefreshStamp, Tabs } from '../../ui/components'
+import { DialogTitle, EmptyState, PageHeader, RefreshStamp, Tabs } from '../../ui/components'
 import { useFeedback } from '../../ui/feedback-context'
 import { useAuth } from '../auth/auth-context'
 import { createStaff, listManagerUsers, resetStaffAccess, setUserActive } from '../../api/index.ts'
@@ -306,7 +306,7 @@ function AddStaffDialog({ onClose, onCreated }: { onClose: () => void; onCreated
   return (
     <dialog ref={ref} className="ui-dialog" aria-labelledby="add-staff-title" onCancel={(e) => { e.preventDefault(); onClose() }}>
       <form className="ui-dialog-card" onSubmit={submit}>
-        <h2 id="add-staff-title">Add staff</h2>
+        <DialogTitle id="add-staff-title" title="Add staff" onClose={onClose} />
         <p className="ui-dialog-message">Creates a new staff account and an invite code. They activate it on the Staff sign-in page by choosing a password. The role cannot be changed later: to replace someone, add a new account and deactivate the old one. Staff book under the same induction rules as students, and existing student accounts cannot be turned into staff.</p>
         <label className="ui-field"><span>Role</span>
           <select value={role} onChange={(e) => setRole(e.target.value as StaffRole)}>

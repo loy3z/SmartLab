@@ -2,6 +2,14 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.27.0 之后：Lab overview 和长表单弹窗（2026-11-09，只改前端，接口不变）
+
+依据 Loy 的反馈 `claude/reports/2026-11-09-loy-feedback-lab-rules-overview.md`：Lab overview “太丑”，编辑资源的弹窗“竖着一溜”而且没有退出按钮。
+
+- **Lab overview**（`ManagerHomePage.tsx`）：只有 Manager 决定的四种申请和给 Admin 的待办，从五张大卡片改成一行小标签，全是 0 时写 Nothing is waiting for your decision.；房间和设备的开放／维修／关闭、本周签到／缺席／请假改成分段条加图例；本周预约最多的 6 个资源改成横向条形图。数据和以前一样，没有新接口。
+- **长表单弹窗**：编辑资源和 Lab setup 编辑 induction 的弹窗加宽到 960px；资源表单分左右两栏（资源信息｜Booking rules，Details｜Managers only），induction 的四个说明框两两一行，手机上变回一栏；中间内容滚动时，标题和底部的 Cancel／Save 保持可见。
+- **关闭按钮**：这两个弹窗和 Add staff 弹窗的标题旁加了 ×（`DialogTitle`），Esc 照样能关。
+
 ## 1.27.0 之后：GitLab CI（2026-11-09，不改网站）
 
 依据课程 Week 9 团队协作评估要看工程实践（CI/CD）。

@@ -1,5 +1,22 @@
 // 2026-11-07 (client, Week 8): helpers of the Manager home page (ManagerHomePage.tsx), kept here so they can be tested.
-import type { Resource } from '../../api/types/index.ts'
+import type { Resource, UsageRow } from '../../api/types/index.ts'
+
+/** 2026-11-09: one part of a split bar, e.g. "18 open"; `share` is its width as a percentage. */
+export interface Segment { label: string; count: number; color: string; share: number }
+
+/** The parts of a split bar with their widths; empty parts are left out, and nothing is returned when all are 0. */
+export function segments(parts: { label: string; count: number; color: string }[]): Segment[] {
+  const total = parts.reduce((sum, part) => sum + part.count, 0)
+  if (total === 0) return []
+  return parts.filter((part) => part.count > 0).map((part) => ({ ...part, share: (part.count / total) * 100 }))
+}
+
+/** 2026-11-09: the rooms and equipment booked most this week, with each bar's width relative to the busiest. */
+export function busiest(rows: UsageRow[], limit = 6): { id: string; name: string; hours: number; share: number }[] {
+  const booked = rows.filter((row) => row.booked_hours > 0).sort((a, b) => b.booked_hours - a.booked_hours || a.name.localeCompare(b.name))
+  const most = booked[0]?.booked_hours ?? 0
+  return booked.slice(0, limit).map((row) => ({ id: row.resource_id, name: row.name, hours: row.booked_hours, share: (row.booked_hours / most) * 100 }))
+}
 
 /** Monday and Sunday (YYYY-MM-DD) of the Sydney week that contains `today`. */
 export function currentWeek(today: string): { first: string; last: string } {

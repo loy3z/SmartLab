@@ -2,7 +2,7 @@
 // The client fills these in themselves; nothing here is fixed in code. Rules live in the backend
 // (services/qualifications.py create/update_requirement, services/site_contact.py).
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { PageHeader, Tabs } from '../../ui/components'
+import { DialogTitle, PageHeader, Tabs } from '../../ui/components'
 import { useFeedback } from '../../ui/feedback-context'
 import { createRequirement, getSiteContact, listRequirements, updateRequirement, updateSiteContact } from '../../api/index.ts'
 import { errorMessage } from '../booking/format'
@@ -105,15 +105,15 @@ function InductionDialog({ requirement, all, onClose, onSaved }: {
   }
 
   return (
-    <dialog ref={ref} className="ui-dialog ui-dialog-wide" aria-labelledby="induction-dialog-title" onCancel={(e) => { e.preventDefault(); onClose() }}>
+    <dialog ref={ref} className="ui-dialog ui-dialog-form" aria-labelledby="induction-dialog-title" onCancel={(e) => { e.preventDefault(); onClose() }}>
       <form className="ui-dialog-card" onSubmit={submit}>
-        <h2 id="induction-dialog-title">{requirement ? `Edit ${requirement.name}` : 'Add induction'}</h2>
+        <DialogTitle id="induction-dialog-title" title={requirement ? `Edit ${requirement.name}` : 'Add induction'} onClose={onClose} />
         {requirement && <p className="ui-dialog-message">People who already hold this induction keep it.</p>}
         <label className="ui-field"><span>Name</span><input required maxLength={120} value={form.name} onChange={(e) => set('name', e.target.value)} /></label>
         <label className="ui-field"><span>Description (optional)</span>
           <textarea maxLength={1000} rows={2} value={form.description} onChange={(e) => set('description', e.target.value)} />
         </label>
-        <fieldset className="mr-details">
+        <fieldset className="mr-details mr-two-columns">
           <legend>For people who do not have it yet (shown on Induction &amp; training)</legend>
           {(Object.keys(GUIDE_LABELS) as (keyof typeof GUIDE_LABELS)[]).map((key) => (
             <label key={key} className="ui-field"><span>{GUIDE_LABELS[key]}</span>

@@ -1,7 +1,7 @@
 // Sprint 3: Manager page to add, edit, archive and restore rooms and equipment.
 // The rules live in the backend (booking/services/resources.py); resource-form.ts gives quicker messages.
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { EmptyState, PageHeader, RefreshStamp, Tabs } from '../../ui/components'
+import { DialogTitle, EmptyState, PageHeader, RefreshStamp, Tabs } from '../../ui/components'
 import { useFeedback } from '../../ui/feedback-context'
 import { archiveResource, createResource, getResourceInternalInfo, listAllResources, listRequirements, restoreResource, updateResource,
   updateResourceInternalInfo } from '../../api/index.ts'
@@ -297,92 +297,100 @@ function ResourceDialog({ editing, rooms, requirements, onClose, onSaved }: {
 
   const title = editing.mode === 'add' ? `Add ${kind === 'ROOM' ? 'room' : 'equipment'}` : `Edit ${editing.resource.name}`
   return (
-    <dialog ref={ref} className="ui-dialog" aria-labelledby="resource-dialog-title" onCancel={(e) => { e.preventDefault(); onClose() }}>
+    <dialog ref={ref} className="ui-dialog ui-dialog-form" aria-labelledby="resource-dialog-title" onCancel={(e) => { e.preventDefault(); onClose() }}>
       <form className="ui-dialog-card" onSubmit={submit}>
-        <h2 id="resource-dialog-title">{title}</h2>
+        <DialogTitle id="resource-dialog-title" title={title} onClose={onClose} />
         {editing.mode === 'edit' && (
           <p className="ui-dialog-message">The type ({kind === 'ROOM' ? 'room' : 'equipment'}) cannot change. Existing bookings are kept.</p>
         )}
-        <label className="ui-field"><span>Name</span>
-          <input required maxLength={120} value={form.name} onChange={(e) => set('name', e.target.value)} />
-        </label>
-        <label className="ui-field"><span>Location</span>
-          <input required maxLength={120} value={form.location} placeholder="Building and room number" onChange={(e) => set('location', e.target.value)} />
-        </label>
-        {kind === 'EQUIPMENT' && (
-          <>
-            <label className="ui-field"><span>Kept in room</span>
-              <select value={form.room_id ?? ''} onChange={(e) => set('room_id', e.target.value || null)}>
-                <option value="">Not in a room</option>
-                {rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}
+        {/* 2026-11-09 (Loy feedback): two columns, the resource on the left and its booking rules on the right. */}
+        <div className="mr-columns">
+          <div className="mr-column">
+            <label className="ui-field"><span>Name</span>
+              <input required maxLength={120} value={form.name} onChange={(e) => set('name', e.target.value)} />
+            </label>
+            <label className="ui-field"><span>Location</span>
+              <input required maxLength={120} value={form.location} placeholder="Building and room number" onChange={(e) => set('location', e.target.value)} />
+            </label>
+            {kind === 'EQUIPMENT' && (
+              <>
+                <label className="ui-field"><span>Kept in room</span>
+                  <select value={form.room_id ?? ''} onChange={(e) => set('room_id', e.target.value || null)}>
+                    <option value="">Not in a room</option>
+                    {rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}
+                  </select>
+                </label>
+                <label className="ui-field"><span>Equipment type</span>
+                  <input maxLength={60} value={form.category ?? ''} placeholder="e.g. Microscopy" onChange={(e) => set('category', e.target.value || null)} />
+                </label>
+              </>
+            )}
+            <label className="ui-field"><span>Induction needed to book</span>
+              <select required value={form.required_qualification_id} onChange={(e) => set('required_qualification_id', e.target.value)}>
+                <option value="" disabled>Choose an induction</option>
+                {requirements.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>
             </label>
-            <label className="ui-field"><span>Equipment type</span>
-              <input maxLength={60} value={form.category ?? ''} placeholder="e.g. Microscopy" onChange={(e) => set('category', e.target.value || null)} />
+            <label className="ui-field"><span>Description (optional)</span>
+              <textarea maxLength={1000} rows={2} value={form.description} onChange={(e) => set('description', e.target.value)} />
             </label>
-          </>
-        )}
-        <label className="ui-field"><span>Induction needed to book</span>
-          <select required value={form.required_qualification_id} onChange={(e) => set('required_qualification_id', e.target.value)}>
-            <option value="" disabled>Choose an induction</option>
-            {requirements.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
-        </label>
-        <div className="mr-grid">
-          <label className="ui-field"><span>Opens</span>
-            <input type="time" required step={form.slot_minutes * 60} value={form.opening_time} onChange={(e) => set('opening_time', e.target.value)} />
-          </label>
-          <label className="ui-field"><span>Closes</span>
-            <input type="time" required step={form.slot_minutes * 60} value={form.closing_time} onChange={(e) => set('closing_time', e.target.value)} />
-          </label>
-          <label className="ui-field"><span>Time steps</span>
-            <select value={form.slot_minutes} onChange={(e) => set('slot_minutes', Number(e.target.value))}>
-              {SLOT_CHOICES.map((minutes) => <option key={minutes} value={minutes}>{minutes} minutes</option>)}
-            </select>
-          </label>
-          {/* Sprint 3 (1.16.0): hours instead of minutes (480 → 8, 1440 → 24); sent to the API as minutes. */}
-          <label className="ui-field"><span>Longest booking (hours)</span>
-            <input type="number" min={hoursFromMinutes(form.slot_minutes)} step={hoursFromMinutes(form.slot_minutes)}
-              value={hoursFromMinutes(form.max_booking_minutes)}
-              onChange={(e) => set('max_booking_minutes', minutesFromHours(Number(e.target.value)))} />
-          </label>
-          <label className="ui-field"><span>Review window (hours)</span>
-            <input type="number" min={0.5} max={336} step={0.5} value={hoursFromMinutes(form.pending_hold_minutes)}
-              onChange={(e) => set('pending_hold_minutes', minutesFromHours(Number(e.target.value)))} />
-            <small className="bk-muted">If no admin decides, the system decides {describeHours(form.pending_hold_minutes)} after a request is sent.</small>
-          </label>
+            {/* Sprint 3 (1.16.0): what people need to choose the right resource. */}
+            {kind === 'ROOM' && (
+              <label className="ui-field"><span>Capacity (people, optional)</span>
+                <input type="number" min={1} max={1000} step={1} value={form.capacity ?? ''}
+                  onChange={(e) => set('capacity', e.target.value === '' ? null : Number(e.target.value))} />
+              </label>
+            )}
+          </div>
+          <fieldset className="mr-details mr-rules">
+            <legend>Booking rules</legend>
+            <div className="mr-grid">
+              <label className="ui-field"><span>Opens</span>
+                <input type="time" required step={form.slot_minutes * 60} value={form.opening_time} onChange={(e) => set('opening_time', e.target.value)} />
+              </label>
+              <label className="ui-field"><span>Closes</span>
+                <input type="time" required step={form.slot_minutes * 60} value={form.closing_time} onChange={(e) => set('closing_time', e.target.value)} />
+              </label>
+              <label className="ui-field"><span>Time steps</span>
+                <select value={form.slot_minutes} onChange={(e) => set('slot_minutes', Number(e.target.value))}>
+                  {SLOT_CHOICES.map((minutes) => <option key={minutes} value={minutes}>{minutes} minutes</option>)}
+                </select>
+              </label>
+              {/* Sprint 3 (1.16.0): hours instead of minutes (480 → 8, 1440 → 24); sent to the API as minutes. */}
+              <label className="ui-field"><span>Longest booking (hours)</span>
+                <input type="number" min={hoursFromMinutes(form.slot_minutes)} step={hoursFromMinutes(form.slot_minutes)}
+                  value={hoursFromMinutes(form.max_booking_minutes)}
+                  onChange={(e) => set('max_booking_minutes', minutesFromHours(Number(e.target.value)))} />
+              </label>
+              <label className="ui-field"><span>Review window (hours)</span>
+                <input type="number" min={0.5} max={336} step={0.5} value={hoursFromMinutes(form.pending_hold_minutes)}
+                  onChange={(e) => set('pending_hold_minutes', minutesFromHours(Number(e.target.value)))} />
+                <small className="bk-muted">If no admin decides, the system decides {describeHours(form.pending_hold_minutes)} after a request is sent.</small>
+              </label>
+            </div>
+          </fieldset>
+          <DetailsEditor details={form.details} onChange={(details) => set('details', details)}
+            placeholder={kind === 'ROOM' ? 'e.g. Floor · Level 3' : 'e.g. Model · Rigol DS1054Z'} />
+          <fieldset className="mr-details" disabled={internalStatus !== 'ready'}>
+            <legend>Managers only</legend>
+            <small className="bk-muted">Not shown to students or Admins.</small>
+            {internalStatus === 'loading' && <p role="status">Loading internal details…</p>}
+            {internalStatus === 'failed' && <p role="status">Could not load internal details. Reopen this form to try again.</p>}
+            <label className="ui-field"><span>Owner</span>
+              <input maxLength={120} value={internal.owner} onChange={(e) => setInternal({ ...internal, owner: e.target.value })} />
+            </label>
+            <label className="ui-field"><span>UNSW asset number</span>
+              <input maxLength={60} value={internal.asset_number} onChange={(e) => setInternal({ ...internal, asset_number: e.target.value })} />
+            </label>
+            <label className="ui-field"><span>Provided by</span>
+              <input maxLength={120} value={internal.provided_by} placeholder="e.g. School grant 2024"
+                onChange={(e) => setInternal({ ...internal, provided_by: e.target.value })} />
+            </label>
+            <label className="ui-field"><span>Specifications</span>
+              <textarea maxLength={2000} rows={2} value={internal.specifications} onChange={(e) => setInternal({ ...internal, specifications: e.target.value })} />
+            </label>
+          </fieldset>
         </div>
-        <label className="ui-field"><span>Description (optional)</span>
-          <textarea maxLength={1000} rows={2} value={form.description} onChange={(e) => set('description', e.target.value)} />
-        </label>
-        {/* Sprint 3 (1.16.0): what people need to choose the right resource. */}
-        {kind === 'ROOM' && (
-          <label className="ui-field"><span>Capacity (people, optional)</span>
-            <input type="number" min={1} max={1000} step={1} value={form.capacity ?? ''}
-              onChange={(e) => set('capacity', e.target.value === '' ? null : Number(e.target.value))} />
-          </label>
-        )}
-        <DetailsEditor details={form.details} onChange={(details) => set('details', details)}
-          placeholder={kind === 'ROOM' ? 'e.g. Floor · Level 3' : 'e.g. Model · Rigol DS1054Z'} />
-        <fieldset className="mr-details" disabled={internalStatus !== 'ready'}>
-          <legend>Managers only</legend>
-          <small className="bk-muted">Not shown to students or Admins.</small>
-          {internalStatus === 'loading' && <p role="status">Loading internal details…</p>}
-          {internalStatus === 'failed' && <p role="status">Could not load internal details. Reopen this form to try again.</p>}
-          <label className="ui-field"><span>Owner</span>
-            <input maxLength={120} value={internal.owner} onChange={(e) => setInternal({ ...internal, owner: e.target.value })} />
-          </label>
-          <label className="ui-field"><span>UNSW asset number</span>
-            <input maxLength={60} value={internal.asset_number} onChange={(e) => setInternal({ ...internal, asset_number: e.target.value })} />
-          </label>
-          <label className="ui-field"><span>Provided by</span>
-            <input maxLength={120} value={internal.provided_by} placeholder="e.g. School grant 2024"
-              onChange={(e) => setInternal({ ...internal, provided_by: e.target.value })} />
-          </label>
-          <label className="ui-field"><span>Specifications</span>
-            <textarea maxLength={2000} rows={2} value={internal.specifications} onChange={(e) => setInternal({ ...internal, specifications: e.target.value })} />
-          </label>
-        </fieldset>
         {firstProblem && <p className="bk-muted" role="status">{firstProblem}</p>}
         {error && <p className="bk-error" role="alert">{error}</p>}
         <div className="ui-dialog-actions">

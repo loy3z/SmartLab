@@ -2411,6 +2411,77 @@ test('a Manager approves an extension request on the Lab overview', async ({ pag
   expect(decisions).toEqual([{ decision: 'APPROVED', reason: '', expected_end: waiting.extension_end }])
 })
 
+// 2026-11-09 (Loy feedback): the Lab overview reads as a row of counts and small bars, on a laptop and on a phone.
+const overviewRoom = (id: string, name: string, status: string) => ({ id, name, kind: 'ROOM', location: 'Demo laboratory', description: '',
+  active: true, required_qualification_id: 'req-1', slot_minutes: 30, max_booking_minutes: 480, opening_time: '08:00:00', closing_time: '20:00:00',
+  timezone: 'Australia/Sydney', pending_hold_minutes: 1440, status, status_reason: null, room_id: null, category: null })
+const overviewRooms = [overviewRoom('room-1', 'Lab Room 1', 'AVAILABLE'), overviewRoom('room-2', 'Lab Room 2', 'AVAILABLE'), overviewRoom('room-3', 'Lab Room 3', 'MAINTENANCE')]
+
+test('the Lab overview shows waiting counts as chips and this week as bars', async ({ page }) => {
+  const figures = { approved: 4, booked_hours: 10.5, open_hours: 840, utilisation: 0.0125, checked_in: 3, no_show: 1, excused: 0,
+    not_tracked: 0, attendance_rate: 0.75, cancelled: 0, rejected: 0 }
+  const row = (resource_id: string, name: string, booked_hours: number) => ({ ...figures, resource_id, name, kind: 'ROOM', category: null,
+    room_name: null, active: true, booked_hours })
+  await page.route('**/api/v1/resources/**', (route) => route.fulfill({ json: { count: overviewRooms.length, results: overviewRooms } }))
+  await page.route('**/api/v1/admin/reports/usage/**', (route) => route.fulfill({ json: { first_date: '2030-01-07', last_date: '2030-01-13',
+    days: 7, totals: figures, results: [row('room-1', 'Lab Room 1', 8), row('room-2', 'Lab Room 2', 2.5), row('room-3', 'Lab Room 3', 0)] } }))
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.goto('/#/login')
+  await signIn(page, 'MANAGER')
+  await expect(page.getByText('Nothing is waiting for your decision.')).toBeVisible()
+  await expect(page.getByRole('link', { name: /0\s*Urgent requests/ })).toBeVisible()
+  await expect(page.locator('.mh-legend').first()).toContainText('2 open')
+  await expect(page.locator('.mh-legend').first()).toContainText('1 under maintenance')
+  const most = page.getByRole('list', { name: 'Most booked this week' }).getByRole('listitem')
+  await expect(most).toHaveCount(2)
+  await expect(most.first()).toContainText('Lab Room 1')
+  await expect(most.first()).toContainText('8 h')
+  await expect(page.getByText('10.5 h', { exact: true })).toBeVisible()
+  await expect(page.locator('.mh-legend').last()).toContainText('3 checked in')
+  await expect(page.locator('.mh-legend').last()).toContainText('1 missed')
+  await page.screenshot({ path: '../../output/manager-ui-2026-11-09/lab-overview-1440.png', fullPage: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.screenshot({ path: '../../output/manager-ui-2026-11-09/lab-overview-390.png', fullPage: true })
+})
+
+// 2026-11-09 (Loy feedback): the resource form is wide, in two columns, and has a close button; title and Save stay in view.
+test('the resource form opens wide in two columns and closes with the close button', async ({ page }) => {
+  await page.route('**/api/v1/**', (route) => {
+    const path = new URL(route.request().url()).pathname.replace('/api/v1/', '')
+    if (path === 'qualification-requirements/') {
+      return route.fulfill({ json: { count: 1, results: [{ id: 'req-1', name: 'General laboratory induction', description: '', prerequisite_ids: [] }] } })
+    }
+    if (path === 'admin/resources/') return route.fulfill({ json: { count: overviewRooms.length, results: overviewRooms } })
+    if (path === 'admin/resources/room-1/internal/') {
+      return route.fulfill({ json: { resource_id: 'room-1', owner: '', asset_number: '', provided_by: '', specifications: '', updated_at: null, updated_by: null } })
+    }
+    return route.fallback()
+  })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/#/login')
+  await signIn(page, 'MANAGER')
+  await page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'Resources', exact: true }).click()
+  await page.getByRole('button', { name: 'Edit Lab Room 1', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Edit Lab Room 1' })
+  const name = (await dialog.getByLabel('Name', { exact: true }).boundingBox())!
+  const rules = (await dialog.getByRole('group', { name: 'Booking rules' }).boundingBox())!
+  expect(rules.x).toBeGreaterThan(name.x + name.width) // the rules sit beside the resource, not below it
+  expect((await dialog.boundingBox())!.width).toBeGreaterThan(900)
+  await page.screenshot({ path: '../../output/manager-ui-2026-11-09/resource-dialog-1440.png', animations: 'disabled' })
+  await dialog.getByLabel('Specifications').scrollIntoViewIfNeeded()
+  await expect(dialog.getByRole('button', { name: 'Close', exact: true })).toBeInViewport()
+  await expect(dialog.getByRole('button', { name: 'Save changes', exact: true })).toBeInViewport()
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: 'Edit Lab Room 1', exact: true }).click()
+  const narrow = (await dialog.getByLabel('Name', { exact: true }).boundingBox())!
+  expect((await dialog.getByRole('group', { name: 'Booking rules' }).boundingBox())!.y).toBeGreaterThan(narrow.y) // one column on a phone
+  await page.screenshot({ path: '../../output/manager-ui-2026-11-09/resource-dialog-390.png', animations: 'disabled' })
+})
+
 // 2026-11-07 (three-role walkthrough): what another person decides shows without F5.
 test('Today shows a new request when the Admin comes back to the tab', async ({ page }) => {
   let pending = 0

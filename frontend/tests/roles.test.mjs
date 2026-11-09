@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { cardsFor, MANAGER_DECIDES } from '../src/features/admin/today.ts'
-import { cleanZid, currentWeek, statusCounts } from '../src/features/manager/manager-home.ts'
+import { busiest, cleanZid, currentWeek, segments, statusCounts } from '../src/features/manager/manager-home.ts'
 import { ADMIN_HISTORY_DAYS, defaultRecordFilters } from '../src/features/records/records.ts'
 import { homePath } from '../src/app/routes.ts'
 import { statusText } from '../src/features/booking/format.ts'
@@ -56,5 +56,24 @@ test('the Extension requests card opens the approval list', async () => {
   const { todoCards } = await import('../src/features/admin/today.ts')
   const card = todoCards(overview('MANAGER')).find((item) => item.key === 'extensions')
   assert.equal(card.to, '/manager/home?focus=extensions')
+})
+
+// 2026-11-09 (Loy feedback): the Lab overview shows split bars and the most booked resources.
+test('a split bar leaves out empty parts and shows nothing when everything is 0', () => {
+  const parts = [{ label: 'open', count: 3, color: 'g' }, { label: 'under maintenance', count: 0, color: 'a' }, { label: 'closed', count: 1, color: 'r' }]
+  assert.deepEqual(segments(parts).map(({ label, share }) => [label, share]), [['open', 75], ['closed', 25]])
+  assert.deepEqual(segments(parts.map((part) => ({ ...part, count: 0 }))), [])
+})
+
+test('the most booked resources come first, scaled to the busiest, and unbooked ones are left out', () => {
+  const row = (resource_id, name, booked_hours) => ({ resource_id, name, booked_hours })
+  const rows = [row('a', 'Microscope', 2), row('b', 'Lab Room 1', 8), row('c', 'Printer', 0), row('d', 'Bench', 2)]
+  assert.deepEqual(busiest(rows), [
+    { id: 'b', name: 'Lab Room 1', hours: 8, share: 100 },
+    { id: 'd', name: 'Bench', hours: 2, share: 25 },
+    { id: 'a', name: 'Microscope', hours: 2, share: 25 },
+  ])
+  assert.equal(busiest(rows, 1).length, 1)
+  assert.deepEqual(busiest([]), [])
 })
 

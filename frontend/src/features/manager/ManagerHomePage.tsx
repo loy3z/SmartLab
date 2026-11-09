@@ -1,14 +1,14 @@
 // 2026-11-07 (client, Week 8): the Manager home page. Admins land on Today (the review queue); a Manager lands here and
 // sees the whole lab: what only a Manager decides, rooms and equipment, this week's use, and the booking history lookup.
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { PageHeader, RefreshStamp } from '../../ui/components'
 import { getStaffOverview, getUsageReport, listResources, reviewExtension } from '../../api/index.ts'
-import { errorMessage, fmtTime, todaySydney } from '../booking/format'
+import { errorMessage, fmtDuration, fmtTime, todaySydney } from '../booking/format'
 import type { Booking, Resource, StaffOverview, UsageReport } from '../../api/types/index.ts'
 import { MANAGER_DECIDES, todoCards } from '../admin/today'
 import { percent } from './usage'
-import { cleanZid, currentWeek, statusCounts } from './manager-home'
+import { busiest, cleanZid, currentWeek, segments, statusCounts } from './manager-home'
 import { useAutoRefresh } from '../../lib/use-auto-refresh' // 2026-11-07
 
 export function ManagerHomePage() {
@@ -63,6 +63,7 @@ export function ManagerHomePage() {
   const counts = statusCounts(resources)
   const decisions = overview ? todoCards(overview).filter((card) => MANAGER_DECIDES.includes(card.key)) : []
   const totals = usage?.totals
+  const mostBooked = usage ? busiest(usage.results) : []
 
   return (
     <section className="today manager-home">
@@ -72,19 +73,18 @@ export function ManagerHomePage() {
       {!overview && loading && <p role="status">Loading…</p>}
       {overview && (
         <>
+          {/* 2026-11-09 (Loy feedback): one row of small counts instead of a wall of big cards that are mostly 0. */}
           <h2 className="manager-home-heading">Only a Manager decides</h2>
-          <div className="today-cards">
+          {decisions.every((card) => card.count === 0) && <p className="mh-clear">Nothing is waiting for your decision.</p>}
+          <div className="mh-chips">
             {decisions.map((card) => (
-              <Link key={card.key} to={card.to} className={`today-card is-${card.tone}`}
+              <Link key={card.key} to={card.to} className={`mh-chip is-${card.tone}`}
                 onClick={card.key === 'extensions' ? () => requestsPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) : undefined}>
-                <span className="today-count">{card.count}</span>
-                <span className="today-label">{card.label}</span>
+                <strong>{card.count}</strong> {card.label}
               </Link>
             ))}
-            <Link to="/admin/today" className="today-card is-grey">
-              <span className="today-count">{overview.pending_bookings + overview.pending_inductions}</span>
-              <span className="today-label">Requests and inductions for Admins</span>
-              <small>Open Today to review them too</small>
+            <Link to="/admin/today" className="mh-chip is-grey mh-chip-admin">
+              <strong>{overview.pending_bookings + overview.pending_inductions}</strong> Requests and inductions for Admins →
             </Link>
           </div>
 
@@ -103,11 +103,11 @@ export function ManagerHomePage() {
             )}
             <article className="today-panel">
               <h2>Rooms and equipment</h2>
-              <p className="manager-home-figures">
-                <span><strong>{counts.AVAILABLE}</strong> open</span>
-                <span><strong>{counts.MAINTENANCE}</strong> under maintenance</span>
-                <span><strong>{counts.CLOSED}</strong> closed</span>
-              </p>
+              <SplitBar parts={[
+                { label: 'open', count: counts.AVAILABLE, color: 'var(--green)' },
+                { label: 'under maintenance', count: counts.MAINTENANCE, color: 'var(--amber)' },
+                { label: 'closed', count: counts.CLOSED, color: 'var(--red)' },
+              ]} empty="No rooms or equipment yet." />
               {overview.out_of_service.length > 0 && (
                 <ul className="today-list">
                   {overview.out_of_service.map(({ resource, affected_bookings }) => (
@@ -126,12 +126,29 @@ export function ManagerHomePage() {
             <article className="today-panel">
               <h2>This week</h2>
               {totals ? (
-                <p className="manager-home-figures">
-                  <span><strong>{totals.booked_hours}</strong> h booked</span>
-                  <span><strong>{percent(totals.utilisation)}</strong> of opening hours</span>
-                  <span><strong>{percent(totals.attendance_rate)}</strong> checked in</span>
-                  <span><strong>{totals.no_show}</strong> missed</span>
-                </p>
+                <>
+                  <p className="manager-home-figures">
+                    <span><strong>{fmtDuration(totals.booked_hours * 60)}</strong> booked</span>
+                    {totals.utilisation !== null && <span><strong>{percent(totals.utilisation)}</strong> of opening hours</span>}
+                  </p>
+                  {mostBooked.length > 0 ? (
+                    <ul className="mh-usage" aria-label="Most booked this week">
+                      {mostBooked.map((row) => (
+                        <li key={row.id}>
+                          <span className="mh-usage-name">{row.name}</span>
+                          <span className="mh-usage-track" aria-hidden="true"><span className="mh-usage-fill" style={{ width: `${row.share}%` }} /></span>
+                          <span className="mh-usage-hours">{fmtDuration(row.hours * 60)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="today-empty">Nothing booked this week yet.</p>}
+                  <h3 className="mh-subheading">Check-ins so far</h3>
+                  <SplitBar parts={[
+                    { label: 'checked in', count: totals.checked_in, color: 'var(--green)' },
+                    { label: 'missed', count: totals.no_show, color: 'var(--red)' },
+                    { label: 'excused', count: totals.excused, color: 'var(--muted)' },
+                  ]} empty="No check-ins to count yet this week." />
+                </>
               ) : <p className="today-empty">No figures yet.</p>}
               <p>{overview.today_count} booking{overview.today_count === 1 ? '' : 's'} today · <Link to="/admin/records?tab=usage">Usage statistics</Link></p>
             </article>
@@ -160,6 +177,24 @@ export function ManagerHomePage() {
         </>
       )}
     </section>
+  )
+}
+
+/** 2026-11-09: a split bar with its legend, e.g. 20 open · 1 under maintenance · 1 closed. The legend carries the numbers. */
+function SplitBar({ parts, empty }: { parts: { label: string; count: number; color: string }[]; empty: string }) {
+  const shown = segments(parts)
+  if (shown.length === 0) return <p className="today-empty">{empty}</p>
+  return (
+    <>
+      <div className="mh-bar" aria-hidden="true">
+        {shown.map((part) => <span key={part.label} style={{ width: `${part.share}%`, background: part.color }} />)}
+      </div>
+      <ul className="mh-legend">
+        {shown.map((part) => (
+          <li key={part.label} style={{ '--dot': part.color } as CSSProperties}><strong>{part.count}</strong> {part.label}</li>
+        ))}
+      </ul>
+    </>
   )
 }
 

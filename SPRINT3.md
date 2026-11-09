@@ -476,3 +476,12 @@ Loy 定：客户不想用缺席处罚，冻结整个删除。任务卡：项目�
 | `frontend-checks` | `node:22-alpine` | `npm ci`，`npm test`、`npm run lint`、`npm run build` | Playwright e2e（`check-local.sh e2e`） |
 
 配置在仓库根目录 `.gitlab-ci.yml`；结果在 GitLab 的 Build → Pipelines 和每个 MR 页面。
+
+## 35. Lab overview 和长表单弹窗（2026-11-09，只改前端，接口不变）
+
+Loy 反馈：`claude/reports/2026-11-09-loy-feedback-lab-rules-overview.md`。
+
+| 部分 | 文件和入口 | 测试 |
+| --- | --- | --- |
+| Lab overview | `features/manager/ManagerHomePage.tsx`（`mh-chips` 一行标签、`SplitBar`、本周 `mh-usage` 条形图）；`manager-home.ts` `segments`、`busiest`；样式 `ui/workspace.css` 的 `.mh-*` 段 | `tests/roles.test.mjs` 两个 2026-11-09 用例；Playwright `the Lab overview shows waiting counts as chips and this week as bars`（截图 `output/manager-ui-2026-11-09/lab-overview-*.png`） |
+| 长表单弹窗 | `ui/components.tsx` `DialogTitle`（标题加 ×）；`ui/ui.css` `.ui-dialog-form`（960px，标题和按钮固定）、`.mr-columns`、`.mr-two-columns`；`ManagerResourcesPage.tsx` `ResourceDialog` 两栏和 Booking rules 分组；`LabSetupPage.tsx`、`ManagerUsersPage.tsx` 用 `DialogTitle` | Playwright `the resource form opens wide in two columns and closes with the close button`（截图 `resource-dialog-*.png`）；原有的 `a Manager adds equipment…` 照常通过 |

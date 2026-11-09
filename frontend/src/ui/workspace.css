@@ -337,6 +337,31 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .manager-home-links { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 6px; }
 @media (max-width: 760px) { .manager-home .today-grid { grid-template-columns: 1fr; } }
 
+/* 2026-11-09 (Loy feedback): Lab overview counts as one row of chips, and small bars instead of bare numbers. */
+.mh-clear { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+.mh-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 24px; }
+.mh-chip { display: inline-flex; align-items: baseline; gap: 6px; padding: 7px 14px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink); font-size: 14px; text-decoration: none; }
+.mh-chip strong { font-size: 16px; font-variant-numeric: tabular-nums; }
+.mh-chip:hover { border-color: var(--ink); }
+.mh-chip.is-grey { color: var(--muted); }
+.mh-chip.is-grey strong { color: var(--ink); }
+.mh-chip.is-amber { border-color: #ecd3a5; background: var(--amber-bg); }
+.mh-chip.is-red { border-color: var(--red); background: var(--red-bg); color: var(--red); }
+.mh-chip-admin { margin-left: auto; }
+.mh-bar { display: flex; height: 10px; margin: 12px 0 8px; overflow: hidden; border-radius: 999px; background: var(--line); }
+.mh-bar > span { height: 100%; }
+.mh-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 12px; padding: 0; list-style: none; color: var(--muted); font-size: 12px; }
+.mh-legend li::before { content: ''; display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 999px; background: var(--dot); vertical-align: -1px; }
+.mh-legend strong { color: var(--ink); }
+.mh-subheading { margin: 16px 0 0; font-size: 12px; font-weight: 700; color: var(--muted); }
+.mh-usage { display: grid; gap: 8px; margin: 12px 0 4px; padding: 0; list-style: none; }
+.mh-usage li { display: grid; grid-template-columns: minmax(0, 10rem) minmax(0, 1fr) 3.5rem; align-items: center; gap: 10px; font-size: 12px; }
+.mh-usage-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mh-usage-track { height: 8px; border-radius: 999px; background: var(--surface-sub); }
+.mh-usage-fill { display: block; height: 100%; min-width: 4px; border-radius: 999px; background: var(--ink); }
+.mh-usage-hours { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) { .mh-chip-admin { margin-left: 0; } .mh-usage li { grid-template-columns: minmax(0, 7rem) minmax(0, 1fr) 3rem; } }
+
 /* 2026-11-07: drag the end of a booking in progress (ExtendBox) and extension requests on the Manager home. */
 .ext-track { position: relative; display: grid; gap: 2px; height: 34px; margin: 10px 0 4px; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-sub); touch-action: none; cursor: ew-resize; }
 .ext-cell { border-radius: 0; background: var(--card); }

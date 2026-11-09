@@ -2,6 +2,14 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.27.0 之后：GitLab CI（2026-11-09，不改网站）
+
+依据课程 Week 9 团队协作评估要看工程实践（CI/CD）。
+
+- **新增 `.gitlab-ci.yml`**：每次 push 和 MR 都跑两个 job：`backend-tests`（`python:3.12-slim`，`manage.py test booking`，内存存储）和 `frontend-checks`（`node:22-alpine`，`npm test`、`npm run lint`、`npm run build`）。镜像和装依赖的方式与两个 Dockerfile 一致。2026-11-09 首次在学校 GitLab 上跑通。
+- **不自动部署**：部署仍用 `claude-tools/deploy-ec2` 先 `--dry-run` 再人工确认（`DEPLOY.md` 第三节），因为有的迁移会删数据（如 014），而且自动部署要把服务器 SSH 密钥放进 GitLab。
+- PostgreSQL 集成测试和 Playwright e2e 没放进 CI，仍在本地用 `check-local.sh` 跑。
+
 ## 1.27.0 之后：三角色走查的五处修改（2026-11-07，只改前端，接口不变）
 
 依据 Loy 的走查 `claude/reports/2026-11-07-three-role-walkthrough.md`。

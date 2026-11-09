@@ -1,5 +1,7 @@
 # SmartLab：实验室与房间预约
 
+**在线演示（Sprint 3 部署版）：** http://3.24.73.197/#/login，用下面「演示账号」里的 zID 登录。
+
 Start here: [Project guide — workflows, pages and local startup](PROJECT_GUIDE.md).
 
 UNSW COMP9900 小组项目（9900-F15E-BREAD）。学生、Admin、Manager 在网站上预约实验室房间和单台设备。系统会检查 induction 资格、开放时间、预约窗口和时间冲突，按审批流程处理申请，已批准的预约单向同步到 Outlook 日历。
@@ -8,9 +10,24 @@ UNSW COMP9900 小组项目（9900-F15E-BREAD）。学生、Admin、Manager 在�
 - 前端：React + TypeScript + Vite，目录 [frontend/](frontend/)
 - 数据库：默认用内存演示数据；也可以接本地 PostgreSQL，见 [backend/database/README.md](backend/database/README.md)
 
-## 快速启动（Windows PowerShell，内存演示模式）
+## 演示账号
+
+| zID | 角色 | 登录方式 |
+| --- | --- | --- |
+| `z1000001` | Student（已有 General induction） | 大学登录（演示版，只填 zID） |
+| `z1000002` | Student（还没有 induction） | 大学登录（演示版） |
+| `z9000001` | Admin | Staff sign-in，演示密码 `123` |
+| `z9000002` | Manager | Staff sign-in，演示密码 `123` |
+
+全部是编造的演示账号，线上版和本地内存演示模式都能用。
+
+## 本地开发（内存演示模式）
+
+要改代码或跑测试时用。只想看效果的话，直接打开上面的在线演示。
 
 后端（在 `backend` 目录）：
+
+Windows PowerShell：
 
 ```powershell
 py -m venv .venv
@@ -21,6 +38,15 @@ $env:DJANGO_SECRET_KEY = "local-demo-only-change-this-key"
 .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000 --noreload
 ```
 
+macOS / Linux：
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+export DEBUG=true ENABLE_DEMO_AUTH=true DJANGO_SECRET_KEY=local-demo-only-change-this-key
+.venv/bin/python manage.py runserver 127.0.0.1:8000 --noreload
+```
+
 前端（另开一个终端，在 `frontend` 目录）：
 
 ```powershell
@@ -29,15 +55,6 @@ npm run dev
 ```
 
 打开 Vite 显示的网址（通常是 `http://localhost:5173`）。
-
-| zID | 角色 | 登录方式 |
-| --- | --- | --- |
-| `z1000001` | Student（已有 General induction） | 大学登录（演示版，只填 zID） |
-| `z1000002` | Student（还没有 induction） | 大学登录（演示版） |
-| `z9000001` | Admin | Staff sign-in，演示密码 `123` |
-| `z9000002` | Manager | Staff sign-in，演示密码 `123` |
-
-全部是编造的演示账号。
 
 ## 测试
 
@@ -53,6 +70,12 @@ npm run test:e2e
 
 PostgreSQL 集成测试的运行方法见 [backend/database/README.md](backend/database/README.md) 第 6 节。
 
+push 代码或开 MR 时，GitLab CI 会自动跑 `manage.py test booking`、`npm test`、`npm run lint` 和 `npm run build`（配置在 [.gitlab-ci.yml](.gitlab-ci.yml)），结果在 MR 的 Pipelines 页查看。CI 不跑 `test:e2e` 和 PostgreSQL 集成测试，这两项仍要在本地跑。
+
+## 部署
+
+线上版本用 Docker Compose 手动部署和更新，步骤见 [DEPLOY.md](DEPLOY.md)。CI 只跑测试，不会自动部署：有些迁移会删数据，需要人工确认。
+
 ## 文档
 
 | 文档 | 内容 |
@@ -60,6 +83,7 @@ PostgreSQL 集成测试的运行方法见 [backend/database/README.md](backend/d
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 整体结构、一次请求怎么走、加功能改哪里 |
 | [CHANGELOG.md](CHANGELOG.md) | 历次改动和原因 |
 | [SPRINT3.md](SPRINT3.md) | Sprint 3 新增的功能和代码清单 |
+| [DEPLOY.md](DEPLOY.md) | 服务器部署和更新（手动） |
 | [backend/README.md](backend/README.md) | 功能与规则、配置、登录方式、交接说明 |
 | [frontend/README.md](frontend/README.md) | 前端路由、登录流程、检查命令 |
 | [backend/docs/frontend-api.md](backend/docs/frontend-api.md) | 前端调用接口的说明和错误码 |

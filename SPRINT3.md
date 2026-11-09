@@ -465,3 +465,14 @@ Loy 定：客户不想用缺席处罚，冻结整个删除。任务卡：项目�
 | 数据 | `domain.py` `Booking.extension_end`；`migrations/016_extension_requests.sql`（加列和检查约束 `booking_extension_end_check`）、`schema.sql` | `test_postgres.py` `test_extension_request_is_persisted` |
 | 后端 | `services/changes.py` `extend_booking`（学生申请，Manager 立即生效）、`review_extension`、`_check_extension`、`_apply_extension`；`services/overview.py` `extension_requests`；`views/bookings.py` `BookingExtensionReviewView`；`serializers.py` `ExtensionReviewSerializer`；`urls.py`；通知 `EXTENSION_REQUESTED`／`APPROVED`／`REJECTED`（`notifications.py`、`settings.py` 邮件类型） | `test_change_requests.py` `ExtendBookingTests`（3 个）、`test_extend_a_booking_in_progress` |
 | 前端 | `features/booking/ExtendBox.tsx`（时间轴、拖动和方向键）、`extend.ts` `timelineCells`、`latestEnd`、`waitingExtension`、`sydneyDate`；`MyBookings.tsx` 等待提示；`admin/today.ts` `extensions` 卡片；`manager/ManagerHomePage.tsx` `ExtensionRow`；`api/bookings.ts` `reviewExtension`；`ui/workspace.css` `.ext-*` | `tests/extend.test.mjs`；Playwright `a student drags the end of a booking in progress…`、`a Manager approves an extension request on the Lab overview` |
+
+## 34. GitLab CI（2026-11-09，不改网站）
+
+只做持续集成，不自动部署（原因见 CHANGELOG 同名一节）。
+
+| job | 镜像 | 跑什么 | 没包括 |
+| --- | --- | --- | --- |
+| `backend-tests` | `python:3.12-slim` | 装 `backend/requirements-postgres.txt`，`python manage.py test booking`（内存存储，PostgreSQL 用例自动跳过） | PostgreSQL 集成测试（`check-local.sh pg`） |
+| `frontend-checks` | `node:22-alpine` | `npm ci`，`npm test`、`npm run lint`、`npm run build` | Playwright e2e（`check-local.sh e2e`） |
+
+配置在仓库根目录 `.gitlab-ci.yml`；结果在 GitLab 的 Build → Pipelines 和每个 MR 页面。

@@ -1,0 +1,27 @@
+# Sprint 3 (2026-11-09): CI pipeline. Runs the tests on every push and merge request; it does not deploy.
+# Deployment stays manual with claude-tools/deploy-ec2 (DEPLOY.md section 3), because some migrations delete data.
+stages:
+  - test
+
+backend-tests:
+  stage: test
+  image: python:3.12-slim
+  variables:
+    DEBUG: "true"
+    DJANGO_SECRET_KEY: "ci-only-not-secret"
+  before_script:
+    - pip install --no-cache-dir -r backend/requirements-postgres.txt
+  script:
+    - cd backend
+    - python manage.py test booking
+
+frontend-checks:
+  stage: test
+  image: node:22-alpine
+  before_script:
+    - cd frontend
+    - npm ci
+  script:
+    - npm test
+    - npm run lint
+    - npm run build

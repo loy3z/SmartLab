@@ -1,6 +1,7 @@
 import { Link } from 'react-router'
 import type { User } from '../api/types/index.ts'
 import { homePath } from './routes'
+import { BOOKING_RULES } from './booking-rules' // 2026-11-10 (U6)
 import { ChangePassword } from '../features/auth/ChangePassword' // Sprint 3
 import { LabContactCard } from '../features/contact/LabContact' // Sprint 3 (1.16.0)
 // Sprint 3 (1.19.0): settings now have a dedicated navigation entry.
@@ -17,7 +18,8 @@ export function HelpPage({ user }: { user: User }) {
     {student ? <>
       <article className="app-card"><h2>1. Check your induction</h2><p>Each resource has its own training requirement. Submit the relevant evidence and follow its review status.</p><Link to="/induction">Open induction & training →</Link></article>
       <article className="app-card"><h2>2. Find and book a resource</h2><p>Choose a room or piece of equipment, check its time slots, and submit your request. Only an Approved status confirms a booking.</p><Link to="/resources">Browse resources →</Link></article>
-      <article className="app-card"><h2>3. Keep track of requests</h2><p>View approval and waitlist updates in My bookings. You can cancel future requests. To move an approved booking, use Change time: your booking stays until the new time is approved. Refresh the page to see the latest status.</p><Link to="/bookings">View my bookings →</Link></article>
+      <article className="app-card"><h2>3. Keep track of requests</h2><p>View approval and waitlist updates in My bookings. You can cancel future requests. To move an approved booking, use Change time: your booking stays until the new time is approved.</p><Link to="/bookings">View my bookings →</Link></article>
+      <article className="app-card"><h2>Booking rules</h2><ul>{BOOKING_RULES.map((rule) => <li key={rule}>{rule}</li>)}</ul></article>
     </> : <>
       <article className="app-card"><h2>Review induction evidence</h2><p>Review submitted documents, approve qualifications or explain why a student needs to resubmit. Induction review is separate from booking approval.</p><Link to="/admin/qualifications">Open induction review →</Link></article>
       <article className="app-card"><h2>Review booking requests</h2><p>Approve or reject requests before their review deadline; if nobody decides in time, the system approves requests that still follow the rules and rejects the rest. When a time frees up, the next waitlisted request moves to Awaiting approval.</p><Link to="/admin/bookings">Open booking review →</Link></article>

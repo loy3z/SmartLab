@@ -7,6 +7,10 @@ export function badgeText(unread: number): string {
   return unread > 99 ? '99+' : String(unread)
 }
 
+/** React keys for the bell icon and the badge. 2026-11-10 (U2): both were the number 1, which stacked two bells. */
+export const ringIconKey = (ringKey: number) => `ring-${ringKey}`
+export const badgeKey = (badge: string) => `badge-${badge}`
+
 /** App route to open for a notification (only internal paths; anything else falls back to My Bookings). */
 export function notificationTarget(item: Pick<AppNotification, 'link'>): string {
   const link = item.link ?? ''

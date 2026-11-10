@@ -179,7 +179,7 @@ const ERROR_TEXT: Record<string, string> = {
   INVALID_CREDENTIALS: 'The zID or password is not correct.',
   ACCOUNT_NOT_ACTIVATED: 'This account is not activated yet. Choose "First time? Activate your account" and use the invite code from your Manager.',
   INVALID_INVITE_CODE: 'The zID or invite code is not correct. Ask your Manager for a new code.',
-  ACCOUNT_DEACTIVATED: 'This account has been deactivated. Contact a Manager.',
+  ACCOUNT_DEACTIVATED: 'This account has been deactivated. Contact the lab.',
   LAST_MANAGER: 'At least one active Manager must remain. Add another Manager before deactivating this one.',
   SELF_MODIFICATION_FORBIDDEN: 'You cannot deactivate your own account. Ask another Manager.',
   ROLE_CHANGE_NOT_ALLOWED: 'Roles are fixed when an account is created. Add a new staff account instead.',

@@ -53,9 +53,11 @@ class DemoLoginView(PublicView):
     def post(self, request):
         require_demo_mode()
         data = validated(DemoLoginSerializer, request.data)
-        principal = next((item for item in get_service().repo.list_principals() if item.zid == data["zid"] and item.active), None)
+        principal = next((item for item in get_service().repo.list_principals() if item.zid == data["zid"]), None)
         if principal is None:
             raise DomainError("INVALID_DEMO_USER", "Create this demo student account first or use a seeded demo zID.", 401)
+        if not principal.active:  # 2026-11-10 (U4): say so, instead of asking them to create an account that exists
+            raise DomainError("ACCOUNT_DEACTIVATED", "This account has been deactivated. Contact the lab.", 403)
         if principal.is_staff:
             # University (student) sign-in is for students only; staff use the staff sign-in page.
             raise DomainError("USE_STAFF_SIGN_IN", "Admins and Managers sign in on the staff sign-in page.", 403)

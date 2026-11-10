@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router'
 import { listNotifications, markAllNotificationsRead, markNotificationRead } from '../../api/index.ts'
 import { errorMessage, fmtRelative } from '../booking/format'
 import type { AppNotification } from '../../api/types/index.ts'
-import { badgeText, groupNotifications, notificationIcon, notificationTarget, shouldRing, type NotificationIcon } from './notifications'
+import { badgeKey, badgeText, groupNotifications, ringIconKey, notificationIcon, notificationTarget, shouldRing, type NotificationIcon } from './notifications'
 import './notifications.css'
 
 const REFRESH_MS = 60_000
@@ -88,11 +88,11 @@ export function NotificationBell() {
         onClick={() => { setOpen((value) => !value); if (!open) void load() }}
       >
         {/* Sprint 3 (1.15.0): key restarts the swing; nt-ring only after a new notification (ringKey > 0). */}
-        <svg key={ringKey} className={ringKey ? 'nt-bell-icon nt-ring' : 'nt-bell-icon'} width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+        <svg key={ringIconKey(ringKey)} className={ringKey ? 'nt-bell-icon nt-ring' : 'nt-bell-icon'} width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
           <path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9" /><path d="M10 20a2 2 0 0 0 4 0" />
         </svg>
         {/* key={badge}: a new number re-mounts the badge, so it pops. */}
-        {badge && <span key={badge} className="nt-badge" aria-hidden="true">{badge}</span>}
+        {badge && <span key={badgeKey(badge)} className="nt-badge" aria-hidden="true">{badge}</span>}
       </button>
       {open && (
         <div className="nt-panel" id="nt-panel" role="region" aria-label="Notifications">

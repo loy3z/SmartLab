@@ -104,14 +104,14 @@ class AccountStatusTests(BookingFixtureMixin, SimpleTestCase):
         self.assertEqual((self.repo.get_booking(queued.id).status, self.repo.get_booking(queued.id).reason_code),
                          (BookingStatus.REJECTED, "ACCOUNT_INACTIVE"))
 
-    def test_deactivation_rejects_undecided_requests_and_keeps_approved_bookings(self):
+    def test_deactivation_rejects_undecided_requests_and_cancels_future_approved_bookings(self):  # 2026-11-10 (U3): approved ones used to stay
         manager = Principal(str(uuid4()), "z9888888", "Manager", Role.MANAGER, "z9888888@ad.unsw.edu.au")
         self.repo.save_principal(manager)
         approved = self.service.review_booking(self.admin, self.book().id, "APPROVED")
         pending = self.book(start=self.end, end=self.end + timedelta(hours=1))
         queued = self.book(self.other, start=self.end, end=self.end + timedelta(hours=1))
         self.service.update_user(manager, self.student.id, active=False)
-        self.assertEqual(self.repo.get_booking(approved.id).status, BookingStatus.APPROVED)
+        self.assertEqual(self.repo.get_booking(approved.id).status, BookingStatus.CANCELLED)
         self.assertEqual(self.repo.get_booking(pending.id).reason_code, "ACCOUNT_DEACTIVATED")
         self.assertEqual(self.repo.get_booking(queued.id).status, BookingStatus.PENDING_APPROVAL)  # time passed on
 

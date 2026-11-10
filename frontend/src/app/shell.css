@@ -151,6 +151,7 @@
 .app-help-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .app-help-grid > .app-card { display: flex; flex-direction: column; align-items: flex-start; }
 .app-help-grid h2 { font-size: 20px; font-weight: 650; line-height: 1.4; }
+.app-help-grid ul { margin: 12px 0 0; padding-left: 20px; color: #647084; font-size: 14px; line-height: 1.7; }
 .app-help-grid p { margin-top: 12px; margin-bottom: 24px; color: #647084; font-size: 14px; line-height: 1.7; }
 .app-help-grid a { margin-top: auto; text-underline-offset: 4px; font-size: 14px; font-weight: 650; }
 

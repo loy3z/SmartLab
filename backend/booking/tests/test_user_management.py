@@ -114,6 +114,16 @@ class UserManagementAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         booking = self.service.repo.get_booking(pending["id"])
         self.assertEqual((booking.status.value, booking.reason_code), ("REJECTED", "ACCOUNT_DEACTIVATED"))
 
+    def test_deactivating_a_student_cancels_their_future_approved_bookings(self):
+        # 2026-11-10 (U3): an approved booking of a deactivated person no longer holds the time; they are told.
+        approved = self.create_approved()
+        self.assertEqual(approved["status"], "APPROVED")
+        self.patch("z1000001", {"active": False})
+        booking = self.service.repo.get_booking(approved["id"])
+        self.assertEqual((booking.status.value, booking.reason_code), ("CANCELLED", "CANCELLED_BY_STAFF"))
+        told = [item for item in self.service.repo.list_notifications(self.user("z1000001").id) if item.kind == "BOOKING_CANCELLED"]
+        self.assertEqual(len(told), 1)
+
     def test_list_shows_each_persons_induction_status(self):
         people = {item["zid"]: item for item in self.items(self.manager.get(USERS))}
         self.assertEqual(people["z1000001"]["induction_status"], "INCOMPLETE")
@@ -134,6 +144,16 @@ class UserManagementAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual([item["zid"] for item in self.items(self.manager.get(USERS, {"active": "false"}))], ["z1000001"])
         self.patch("z1000001", {"active": True})
         self.assertEqual(self.verified.get("/api/v1/auth/me/").status_code, 200)
+
+    def test_a_deactivated_student_is_told_so_at_sign_in(self):
+        # 2026-11-10 (U4): before, they were told to create the account first, and creating it said the zID existed.
+        self.patch("z1000001", {"active": False})
+        response = self.client.post("/api/v1/auth/demo-login/", {"zid": "z1000001"}, format="json")
+        self.assert_error(response, 403)
+        self.assertEqual(response.data["error"]["code"], "ACCOUNT_DEACTIVATED")
+        self.assertEqual(response.data["error"]["message"], "This account has been deactivated. Contact the lab.")
+        unknown = self.client.post("/api/v1/auth/demo-login/", {"zid": "z7777777"}, format="json")
+        self.assertEqual(unknown.data["error"]["code"], "INVALID_DEMO_USER")
 
     def test_manager_cannot_change_themselves(self):
         response = self.patch("z9000002", {"role": "STUDENT"})

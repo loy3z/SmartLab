@@ -7470,6 +7470,16 @@
               "max_advance_days": { "type": "integer" }
             }
           },
+          "week_hours": {
+            "type": "object",
+            "description": "2026-11-10: weekly allowance used in the Sydney week (Monday to Sunday) of `date`, for the person booked for. Single-resource availability only, not the day overview.",
+            "required": ["week_start", "used_hours", "limit_hours"],
+            "properties": {
+              "week_start": { "type": "string", "format": "date" },
+              "used_hours": { "type": "number", "minimum": 0 },
+              "limit_hours": { "type": "number", "minimum": 0 }
+            }
+          },
           "additional_hours": {
             "type": "boolean",
             "default": false

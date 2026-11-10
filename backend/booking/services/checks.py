@@ -219,12 +219,15 @@ class ChecksMixin:
                    if item.id != exclude_id and item.status in ACTIVE_REQUEST_STATUSES and not item.additional_hours
                    and week_start <= item.start.astimezone(zone).date() < week_end)
 
-    def week_hours(self, student_id):
-        """Dashboard (2026-11-03): this Sydney week's hours booked against the weekly allowance."""
+    def week_hours(self, student_id, day=None):
+        """Hours booked against the weekly allowance in the Sydney week of ``day`` (default: this week).
+
+        Dashboard (2026-11-03) shows this week; the booking window (2026-11-10, U1) shows the week being booked.
+        """
         rules = self.rules()
         zone = ZoneInfo("Australia/Sydney")
-        today = self.now().astimezone(zone).date()
-        week_start = today - timedelta(days=today.weekday())
+        day = day or self.now().astimezone(zone).date()
+        week_start = day - timedelta(days=day.weekday())
         hours = lambda slots: slots * rules.booking_slot_minutes / 60  # noqa: E731
         return {"week_start": week_start.isoformat(), "used_hours": hours(self._week_slots_used(student_id, zone, week_start)),
                 "limit_hours": hours(rules.max_slots_per_week)}

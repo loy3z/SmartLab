@@ -39,8 +39,8 @@ class AccountsMixin:
         are different levels of staff that do not switch. Staff accounts come from Add staff (create_staff)
         or, later, from the university identity provider; to replace someone, add the new account and
         deactivate the old one. ``role`` is accepted only when it equals the current role.
-        Deactivating a student rejects their undecided requests at once; approved bookings are kept for
-        the Manager to review.
+        Deactivating a student rejects their undecided requests and cancels their approved bookings that have
+        not started (2026-11-10, U3); the time is released and they are told.
         """
         self.require_manager(actor)
         if role is None and active is None:
@@ -73,7 +73,25 @@ class AccountsMixin:
         if current.active and not updated.active:
             self._reject_undecided_requests(updated.id, actor.id, "ACCOUNT_DEACTIVATED",
                                             "The account was deactivated.")
+            self._cancel_future_approved(updated.id, actor.id)
         return updated
+
+    def _cancel_future_approved(self, student_id, actor_id):
+        """2026-11-10 (U3): a deactivated person's approved bookings that have not started stop holding the time.
+
+        Cancelled as by staff, so the person gets the usual "Booking cancelled by staff" notification.
+        """
+        for booking in self.repo.list_bookings(student_id=student_id, statuses=[BookingStatus.APPROVED]):
+            if booking.start <= self.now():
+                continue
+            with self.repo.atomic(resource_ids=[booking.resource_id], student_ids=[student_id]):
+                current = self.repo.get_booking(booking.id)
+                if current.status != BookingStatus.APPROVED:
+                    continue
+                self._save_booking(replace(current, status=BookingStatus.CANCELLED, reason_code="CANCELLED_BY_STAFF",
+                                           updated_at=self.now()))
+                self._audit(actor_id, "BOOKING_CANCELLED", "booking", current.id, reason_code="ACCOUNT_DEACTIVATED")
+                self._promote_waitlist(current.resource_id)
 
     def _reject_undecided_requests(self, student_id, actor_id, reason_code, note):
         """Reject a person's undecided requests (pending and waitlisted) and pass the time on."""

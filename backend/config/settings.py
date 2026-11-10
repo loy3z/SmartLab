@@ -53,7 +53,7 @@ AUTH_PROVIDER = os.getenv("AUTH_PROVIDER", "booking.authentication.DemoIdentityP
 REPOSITORY_FACTORY = os.getenv("REPOSITORY_FACTORY", "booking.repository.MemoryRepository")
 FILE_STORAGE_FACTORY = os.getenv("FILE_STORAGE_FACTORY", "booking.storage.MemoryFileStorage")
 SEED_DEMO_DATA = DEBUG and os.getenv("SEED_DEMO_DATA", "true").lower() == "true"
-DEMO_TOKEN_TTL_SECONDS = 3600
+DEMO_TOKEN_TTL_SECONDS = 8 * 3600  # 2026-11-10 (U5): one hour ended the session in the middle of a form
 # Review window for the demo resources: a pending request holds its slot this long while an Admin decides;
 # if nobody does, the system approves it when it still follows the rules and rejects it otherwise.
 # Default 24 hours (client meeting); a Manager may change it per resource (1 to 20160 minutes).

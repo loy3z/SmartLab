@@ -513,6 +513,19 @@ class Sprint3APITests(BookingAPIFixtureMixin, SimpleTestCase):
         week = self.verified.get("/api/v1/dashboard/").data["week_hours"]
         self.assertEqual((week["used_hours"], week["limit_hours"]), (3, 12))
 
+    def test_availability_reports_hours_left_in_the_week_of_the_chosen_day(self):
+        # 2026-11-10 (U1): the booking window shows the allowance of the week being booked, not of the current week.
+        self.create(self.verified, day_offset=1, minutes=180)
+        self.create(self.verified, day_offset=2, minutes=120)
+        day = self.payload(day_offset=2)["start"][:10]
+        url = f"/api/v1/resources/{self.room['id']}/availability/"
+        week = self.verified.get(url, {"date": day, "duration_minutes": 60}).data["week_hours"]
+        week_start = datetime.fromisoformat(week["week_start"])
+        self.assertEqual(week_start.weekday(), 0)
+        self.assertEqual((week["used_hours"], week["limit_hours"]), (5, 12))
+        other_week = (datetime.fromisoformat(day) + timedelta(days=7)).date().isoformat()
+        self.assertEqual(self.verified.get(url, {"date": other_week, "duration_minutes": 60}).data["week_hours"]["used_hours"], 0)
+
     def test_future_booking_limit_api_error(self):
         for hour in range(8, 16):
             self.create(self.verified, day_offset=1, hour=hour, minutes=30)

@@ -45,8 +45,11 @@ class AvailabilityMixin:
         long_booking: show the technical resource limit, but keep the normal lead time and horizon.
         """
         self.process_due_requests()
-        return self._availability(actor, self.resource(resource_id), day, duration_minutes, exclude_booking_id,
-                                  for_zid, urgent, additional_hours=additional_hours, long_booking=long_booking)
+        result = self._availability(actor, self.resource(resource_id), day, duration_minutes, exclude_booking_id,
+                                    for_zid, urgent, additional_hours=additional_hours, long_booking=long_booking)
+        # 2026-11-10 (U1): the allowance of the week being booked (not in the day overview: one extra read per resource).
+        result["week_hours"] = self.week_hours(result["booking_for"]["id"], day)
+        return result
 
     def _availability(self, actor, resource, day, duration_minutes=30, exclude_booking_id=None, for_zid=None,
                       urgent=False, shared=None, additional_hours=False, long_booking=False):

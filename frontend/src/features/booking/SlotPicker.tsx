@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { getAvailability } from '../../api/index.ts'
 import { errorMessage, fmtDate, fmtDuration, fmtRange, fmtTime, QUAL_TEXT, todaySydney, TZ } from './format'
+import { weekLeftText } from './week-left' // 2026-11-10 (U1)
 import { addDays, dateRange } from './slot-picker' // Sprint 3 (2026-10-25 cleanup): moved out of this file
 import { cellTitle, kindOf } from './slot-cells'
 import { NowLegend, NowLine } from './NowLine' // Sprint 3 (1.15.0)
@@ -279,6 +280,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
         {allowEarly && earliestDate && latestDate && <> Manager reschedule: {fmtDate(earliestDate)} to {fmtDate(latestDate)}. Only free times can be chosen.</>}
         {data?.manager_override && <> Manager booking: any day from today. Induction, booking window and hour limits do not apply; only free times can be chosen.</>}
         {!urgent && !allowEarly && data?.earliest_date && data.latest_date && <> Bookable from {fmtDate(data.earliest_date)} to {fmtDate(data.latest_date)} ({data.min_advance_days}–{data.max_advance_days} days ahead).</>}
+        {!urgent && !allowEarly && !forZid && weekLeftText(data) &&<> {weekLeftText(data)}</>}
         {longBooking && <> Long-booking requests: {fmtDuration(minimumMinutes)} to {fmtDuration(maximumMinutes)}. A Manager must decide before the review deadline.</>}
       </p>
       {/* Sprint 3 (1.16.0): someone who wants an earlier day used to see only a disabled "previous day" button. */}

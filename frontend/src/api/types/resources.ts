@@ -140,6 +140,8 @@ export interface Availability {
   test_bypass?: boolean
   /** 1.24.0: a Manager overrides the booking window, induction and limits; only free times can be booked. */
   manager_override?: boolean
+  /** 2026-11-10: weekly allowance used in the Sydney week of `date` (single-resource availability only). */
+  week_hours?: { week_start: string; used_hours: number; limit_hours: number }
   max_booking_minutes?: number
   booking_slot_minutes?: number
   max_booking_slots?: number

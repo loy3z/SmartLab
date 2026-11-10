@@ -2,6 +2,17 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.27.0 之后：以用户身份走查的六处修改（2026-11-10，接口只加一个字段，版本号不变）
+
+依据 `claude/reports/2026-11-10-user-perspective-audit.md` 第一节 U1–U6。
+
+- **U1**：预约窗口在日期下面写“Week of 16 Nov: 2 h left of your 12 h.”，是所选日期那一周的剩余；单个资源的 `availability` 响应加 `week_hours`（只加字段）。首页卡片没改。
+- **U2**：铃铛图标和角标的 React key 都是数字 1，同时出现时叠成两个铃铛；加了不同前缀（`ring-`、`badge-`）。
+- **U3**：停用学生时，除了拒绝待审批申请，也取消他还没开始的已批准预约（按“staff 取消”处理，学生收到通知，时段释放）；重新启用不恢复。
+- **U4**：被停用的学生登录时看到 “This account has been deactivated. Contact the lab.”（403 `ACCOUNT_DEACTIVATED`），不再被叫去创建账号。
+- **U5**：登录有效期从 1 小时改成 8 小时（`DEMO_TOKEN_TTL_SECONDS`）。
+- **U6**：学生的 Help 页加 Booking rules 一段，删掉“Refresh the page to see the latest status.”。规则里的 7–28 天、3 h、12 h 是默认值，写在 `frontend/src/app/booking-rules.ts`；Manager 改了限额不会自动跟着变。
+
 ## 1.27.0 之后：Lab overview 和长表单弹窗（2026-11-09，只改前端，接口不变）
 
 依据 Loy 的反馈 `claude/reports/2026-11-09-loy-feedback-lab-rules-overview.md`：Lab overview “太丑”，编辑资源的弹窗“竖着一溜”而且没有退出按钮。

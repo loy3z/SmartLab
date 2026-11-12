@@ -2,6 +2,7 @@
 the lab's contact details, room capacity and resource details; and the staff "Today" overview."""
 
 from datetime import timedelta
+from uuid import uuid4
 
 from django.test import SimpleTestCase, override_settings
 
@@ -106,6 +107,63 @@ class StaffOverviewTests(Sprint3Fixture, SimpleTestCase):
 
 @override_settings(DEBUG=True, ENABLE_DEMO_AUTH=True, SEED_DEMO_DATA=True)
 class LabSetupAPITests(BookingAPIFixtureMixin, SimpleTestCase):
+    def test_cycle_rejection_rolls_back_texts_and_audit_before_retry(self):
+        requirements = self.items(self.manager.get("/api/v1/qualification-requirements/"))
+        original = next(item for item in requirements if item["id"] == self.requirement_id)
+        advanced = next(item for item in requirements if self.requirement_id in item["prerequisite_ids"])
+        audit_before = self.service.repo.list_audit()
+        submissions_before = self.service.repo.list_submissions()
+        texts = {
+            "name": "Updated general induction", "description": "Updated description",
+            "how_to_complete": "Attend the Friday session", "accepted_evidence": "Attendance certificate",
+            "reviewer": "Training manager", "contact": "training@example.edu",
+        }
+        url = f"/api/v1/admin/qualification-requirements/{self.requirement_id}/"
+
+        refused = self.manager.patch(url, {**texts, "prerequisite_ids": [advanced["id"]]}, format="json")
+
+        self.assert_error(refused, 409)
+        self.assertEqual(refused.data["error"]["code"], "PREREQUISITE_CYCLE")
+        reloaded = self.items(self.manager.get("/api/v1/qualification-requirements/"))
+        self.assertEqual(next(item for item in reloaded if item["id"] == self.requirement_id), original)
+        self.assertEqual(self.service.repo.list_audit(), audit_before)
+        self.assertEqual(self.service.repo.list_submissions(), submissions_before)
+
+        retried = self.manager.patch(url, {**texts, "prerequisite_ids": []}, format="json")
+        self.assertEqual(retried.status_code, 200, retried.data)
+        self.assertEqual(retried.data, {**original, **texts, "prerequisite_ids": []})
+        reloaded = self.items(self.manager.get("/api/v1/qualification-requirements/"))
+        self.assertEqual(next(item for item in reloaded if item["id"] == self.requirement_id), retried.data)
+        self.assertEqual(self.service.repo.list_submissions(), submissions_before)
+
+    def test_unknown_prerequisite_rolls_back_name_and_keeps_existing_prerequisites(self):
+        requirements = self.items(self.manager.get("/api/v1/qualification-requirements/"))
+        original = next(item for item in requirements if self.requirement_id in item["prerequisite_ids"])
+        audit_before = self.service.repo.list_audit()
+
+        refused = self.manager.patch(f"/api/v1/admin/qualification-requirements/{original['id']}/",
+                                     {"name": "Updated advanced induction", "prerequisite_ids": [str(uuid4())]}, format="json")
+
+        self.assert_error(refused, 400)
+        self.assertEqual(refused.data["error"]["code"], "VALIDATION_ERROR")
+        reloaded = self.items(self.manager.get("/api/v1/qualification-requirements/"))
+        self.assertEqual(next(item for item in reloaded if item["id"] == original["id"]), original)
+        self.assertEqual(self.service.repo.list_audit(), audit_before)
+
+    def test_text_update_can_clear_existing_prerequisites(self):
+        requirements = self.items(self.manager.get("/api/v1/qualification-requirements/"))
+        original = next(item for item in requirements if self.requirement_id in item["prerequisite_ids"])
+        submissions_before = self.service.repo.list_submissions()
+
+        saved = self.manager.patch(f"/api/v1/admin/qualification-requirements/{original['id']}/",
+                                   {"reviewer": "New training manager", "prerequisite_ids": []}, format="json")
+
+        self.assertEqual(saved.status_code, 200, saved.data)
+        self.assertEqual(saved.data, {**original, "reviewer": "New training manager", "prerequisite_ids": []})
+        reloaded = self.items(self.manager.get("/api/v1/qualification-requirements/"))
+        self.assertEqual(next(item for item in reloaded if item["id"] == original["id"]), saved.data)
+        self.assertEqual(self.service.repo.list_submissions(), submissions_before)
+
     def test_endpoints(self):
         created = self.manager.post("/api/v1/admin/qualification-requirements/", {"name": "Laser safety", "reviewer": "Lab"}, format="json")
         self.assertEqual(created.status_code, 201, created.data)

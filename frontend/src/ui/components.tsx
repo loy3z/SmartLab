@@ -37,14 +37,16 @@ export function Tabs<T extends string>({ value, onChange, items, label }: {
 }
 
 /** Small "Updated 10s ago" label with a refresh icon button. */
-export function RefreshStamp({ at, onRefresh, busy }: { at: number | null; onRefresh: () => void; busy?: boolean }) {
+export function RefreshStamp({ at, onRefresh, busy, emptyText = 'Loading…' }: {
+  at: number | null; onRefresh: () => void; busy?: boolean; emptyText?: string
+}) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 5000)
     return () => window.clearInterval(timer)
   }, [])
   const seconds = at ? Math.max(0, Math.round((now - at) / 1000)) : null
-  const text = seconds == null ? 'Loading…' : seconds < 10 ? 'Updated just now' : seconds < 60 ? `Updated ${seconds}s ago` : `Updated ${Math.round(seconds / 60)} min ago`
+  const text = seconds == null ? emptyText : seconds < 10 ? 'Updated just now' : seconds < 60 ? `Updated ${seconds}s ago` : `Updated ${Math.round(seconds / 60)} min ago`
   return (
     <div className="ui-stamp">
       <span>{busy ? 'Refreshing…' : text}</span>

@@ -125,6 +125,16 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
       </p>
       {/* Sprint 3 (1.16.0): everything the Manager wrote about it, and what the booking does not include.
           Sprint 3 (workspace UI): folded under "Resource details". */}
+      {resource.kind === 'EQUIPMENT' && (
+        <div className="bk-loan-box">
+          <b>Borrowing conditions</b>
+          <ul>
+            <li>A valid induction covering the whole borrowing period is required.</li>
+            <li>Borrowing period: up to {fmtDuration(normalMaximum)} per booking, within {fmtHours(resource.opening_time, resource.closing_time)}.</li>
+            <li>Return the equipment by the end of your booked time{range ? ` (${fmtRange(range.start, range.end)})` : ''}.</li>
+          </ul>
+        </div>
+      )}
       <details className="bk-resource-details"><summary>Resource details</summary>
         {resource.description && <p className="bk-muted">{resource.description}</p>}
         <ResourceFacts resource={resource} />

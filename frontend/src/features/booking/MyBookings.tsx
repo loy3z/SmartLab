@@ -12,7 +12,7 @@ import { ContactLink } from '../contact/LabContact' // Sprint 3 (1.16.0)
 import { ExtendBox } from './ExtendBox' // 1.24.0
 import { canExtend, waitingExtension } from './extend'
 import { useAutoRefresh } from '../../lib/use-auto-refresh' // 2026-11-07
-import { bookingDetail, bookingRef, errorMessage, fmtDuration, fmtRange, fmtTime, minutesBetween, statusText } from './format'
+import { bookingDetail, bookingRef, fmtDateTime, errorMessage, fmtDuration, fmtRange, fmtTime, minutesBetween, statusText } from './format'
 import { ACTIVE, canRemoveBookingHistory, groupBookings } from './my-bookings'
 import { RescheduleBox } from './RescheduleBox'
 import { SeriesCard } from './SeriesCard'
@@ -261,6 +261,11 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
               {b.status === 'APPROVED' && future(b) && <p className="bk-muted">Additional hours apply only to this time. To choose another time, cancel and submit a new request.</p>}
             </>}
             <p><b>{fmtRange(b.start, b.end)}</b> <span className="bk-muted">· {fmtDuration(minutesBetween(b.start, b.end))}</span></p>
+            {res?.kind === 'EQUIPMENT' && b.status === 'APPROVED' && Date.parse(b.end) > now && (
+              <p className={Date.parse(b.end) - now < 24 * 3600 * 1000 ? 'bk-due-soon' : 'bk-muted'}>
+                Return by <b>{fmtDateTime(b.end)}</b>{Date.parse(b.end) - now < 24 * 3600 * 1000 ? ' — due within 24 hours' : ''}
+              </p>
+            )}
             <p className="bk-muted">{bookingDetail(b)}</p>
             <p className="bk-muted" title={b.id}>Reference: <b>{bookingRef(b.id)}</b></p>
             {b.purpose && !(b.urgent && b.purpose === b.urgent_reason) && <p className="bk-muted">Purpose: {b.purpose}</p>}

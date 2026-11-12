@@ -102,13 +102,15 @@ class RequirementDetailView(APIView):
         service.require_manager(request.user)
         data = validated(RequirementUpdateSerializer, request.data)
         prerequisites = data.pop("prerequisite_ids", None)
-        updated = service.repo.get_requirement(str(requirement_id))
-        if data:
-            updated = service.update_requirement(request.user, str(requirement_id), data)
-        if prerequisites is not None:
-            updated = service.set_prerequisites(request.user, str(requirement_id), [str(item) for item in prerequisites])
-        if updated is None:
-            raise DomainError("NOT_FOUND", "Qualification requirement not found.", 404)
+        # A rejected prerequisite change must also roll back the text edits and their audit records.
+        with service.repo.atomic():
+            updated = service.repo.get_requirement(str(requirement_id))
+            if data:
+                updated = service.update_requirement(request.user, str(requirement_id), data)
+            if prerequisites is not None:
+                updated = service.set_prerequisites(request.user, str(requirement_id), [str(item) for item in prerequisites])
+            if updated is None:
+                raise DomainError("NOT_FOUND", "Qualification requirement not found.", 404)
         return Response(json_value(updated))
 
 class RequirementCreateView(APIView):

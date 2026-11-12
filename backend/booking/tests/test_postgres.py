@@ -154,6 +154,32 @@ class PostgresAdapterTests(TransactionTestCase):
             self.service.submit_qualification(self.a, advanced.id, "Advanced", "", b"x", "a.pdf", "application/pdf")
         self.assertEqual(denied.exception.code, "PREREQUISITE_REQUIRED")
 
+    def test_induction_patch_rolls_back_text_and_audit_when_prerequisites_are_rejected(self):
+        from rest_framework.test import APIClient
+        from booking.postgres import PostgresRepository
+
+        self.enterContext(self.runtime_service())
+        client = APIClient()
+        client.force_authenticate(user=self.manager)
+        advanced = QualificationRequirement(str(uuid4()), "Advanced", "", prerequisite_ids=(self.requirement.id,))
+        self.repo.save_requirement(advanced)
+        audit_before = self.repo.list_audit()
+        url = f"/api/v1/admin/qualification-requirements/{self.requirement.id}/"
+        changes = {"name": f"Updated induction {uuid4().hex}", "description": "Updated guidance"}
+
+        refused = client.patch(url, {**changes, "prerequisite_ids": [advanced.id]}, format="json", HTTP_HOST="localhost")
+        self.assertEqual(refused.status_code, 409, refused.data)
+        self.assertEqual(refused.data["error"]["code"], "PREREQUISITE_CYCLE")
+        reloaded = PostgresRepository()
+        self.assertEqual(reloaded.get_requirement(self.requirement.id), self.requirement)
+        self.assertEqual(reloaded.list_audit(), audit_before)
+
+        corrected = client.patch(url, {**changes, "prerequisite_ids": []}, format="json", HTTP_HOST="localhost")
+        self.assertEqual(corrected.status_code, 200, corrected.data)
+        self.assertEqual(reloaded.get_requirement(self.requirement.id), replace(self.requirement, **changes))
+        new_audit = [item for item in reloaded.list_audit() if item not in audit_before]
+        self.assertCountEqual([item.action for item in new_audit], ["REQUIREMENT_UPDATED", "REQUIREMENT_PREREQUISITES_UPDATED"])
+
     # Sprint 3 (1.20.0): persisted personal visibility and atomic rollback, on a real database.
     def test_history_removal_persists_per_person_without_deleting_the_booking(self):
         from booking.postgres import PostgresRepository

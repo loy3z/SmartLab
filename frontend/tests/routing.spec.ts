@@ -2194,10 +2194,15 @@ test('a Manager starts on the Lab overview, sees the role badge and looks up a z
   await expect(page.getByText('Manager view', { exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Only a Manager decides', exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: /Urgent requests/ })).toBeVisible()
-  await page.getByLabel('zID to look up').fill('z12')
+  const zid = page.getByRole('textbox', { name: /^zID/ })
+  await zid.fill('z12')
   await page.getByRole('button', { name: 'Look up', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('z followed by 7 digits')
-  await page.getByLabel('zID to look up').fill('Z1000001')
+  await expect(zid).toBeFocused()
+  await expect(zid).toHaveAttribute('aria-invalid', 'true')
+  await expect(zid).toHaveAccessibleDescription(/z followed by 7 digits/)
+  await zid.fill('Z1000001')
+  await expect(zid).not.toHaveAttribute('aria-invalid', 'true')
   await page.getByRole('button', { name: 'Look up', exact: true }).click()
   await expect(page).toHaveURL(/#\/admin\/records\?q=z1000001$/)
   await expect(page.getByLabel('Name or zID')).toHaveValue('z1000001')
@@ -2497,12 +2502,20 @@ test('a student drags the end of a booking in progress to ask a Manager for more
   expect(sent).toEqual([{ end: '2030-01-10T00:30:00.000Z' }])
 })
 
-test('a Manager approves an extension request on the Lab overview', async ({ page }) => {
+test('a Manager sees an approved extension clear even if the weekly report fails to refresh', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2030-01-09T23:30:00Z'))
   const waiting = approvedBooking({ id: 'b-ext', start: '2030-01-09T23:00:00Z', end: '2030-01-10T00:00:00Z', extension_end: '2030-01-10T01:00:00Z' })
   const decisions: Record<string, unknown>[] = []
-  await page.route('**/api/v1/admin/overview/', (route) => route.fulfill({ json: {
-    ...emptyOverview('MANAGER'), extension_requests: decisions.length ? [] : [waiting] } }))
+  let releaseOverview!: () => void
+  const overviewRefresh = new Promise<void>((resolve) => { releaseOverview = resolve })
+  await page.route('**/api/v1/admin/overview/', async (route) => {
+    const reviewed = decisions.length > 0
+    if (reviewed) await overviewRefresh
+    return route.fulfill({ json: { ...emptyOverview('MANAGER'), extension_requests: reviewed ? [] : [waiting] } })
+  })
+  await page.route('**/api/v1/admin/reports/usage/**', (route) => decisions.length
+    ? route.fulfill({ status: 503, json: { error: { message: 'Usage service unavailable.' } } })
+    : route.fulfill({ json: emptyUsage }))
   await page.route('**/api/v1/bookings/b-ext/extend/review/', (route) => {
     decisions.push(route.request().postDataJSON())
     return route.fulfill({ json: { ...waiting, end: waiting.extension_end, extension_end: null } })
@@ -2512,9 +2525,73 @@ test('a Manager approves an extension request on the Lab overview', async ({ pag
   await expect(page.getByRole('link', { name: /1\s*Extension requests/ })).toBeVisible()
   const panel = page.getByRole('heading', { name: 'Extension requests', exact: true }).locator('..')
   await expect(panel).toContainText('Test Student')
-  await panel.getByRole('button', { name: 'Approve', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Extension requests', exact: true })).toHaveCount(0)
+  try {
+    await panel.getByRole('button', { name: 'Approve', exact: true }).click()
+    await expect(page.getByText('Extension approved', { exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Extension requests', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: /0\s*Extension requests/ })).toBeVisible()
+    await expect(page.getByRole('alert').filter({ hasText: 'weekly usage' })).toContainText('Showing the previous results.')
+  } finally {
+    releaseOverview()
+  }
   expect(decisions).toEqual([{ decision: 'APPROVED', reason: '', expected_end: waiting.extension_end }])
+})
+
+test('the Lab overview keeps approvals and history available when weekly usage fails', async ({ page, api }) => {
+  let usageUnavailable = true
+  await page.route('**/api/v1/admin/overview/', (route) => route.fulfill({ json: {
+    ...emptyOverview('MANAGER'), urgent_requests: 1,
+  } }))
+  await page.route('**/api/v1/admin/reports/usage/**', (route) => usageUnavailable
+    ? route.fulfill({ status: 503, json: { error: { message: 'Usage service unavailable.' } } })
+    : route.fulfill({ json: emptyUsage }))
+  await page.goto('/#/login')
+  await signIn(page, 'MANAGER')
+  const week = page.getByRole('heading', { name: 'This week', exact: true }).locator('..')
+  await expect(page.getByRole('link', { name: /1\s*Urgent requests/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Booking history' })).toBeVisible()
+  await expect(week.getByRole('alert')).toContainText('weekly usage')
+  await expect(page.getByRole('button', { name: 'Refresh now' })).toBeEnabled()
+  const resourceLoads = api.requests.filter((path) => path === 'resources/').length
+  usageUnavailable = false
+  await week.getByRole('button', { name: 'Try again', exact: true }).click()
+  await expect(week.getByText('Nothing booked this week yet.')).toBeVisible()
+  await expect(week.getByRole('alert')).toHaveCount(0)
+  expect(api.requests.filter((path) => path === 'resources/')).toHaveLength(resourceLoads)
+})
+
+test('jumping to extension requests moves keyboard focus and respects reduced motion', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.addInitScript(() => {
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function (options) {
+      if (typeof options === 'object' && options.behavior) this.setAttribute('data-test-scroll-behavior', options.behavior)
+      return original.call(this, options)
+    }
+  })
+  const waiting = approvedBooking({ id: 'b-ext', end: '2030-01-10T00:00:00Z', extension_end: '2030-01-10T01:00:00Z' })
+  let pending = [waiting]
+  await page.route('**/api/v1/admin/overview/', (route) => route.fulfill({ json: {
+    ...emptyOverview('MANAGER'), extension_requests: pending,
+  } }))
+  await page.goto('/#/login')
+  await signIn(page, 'MANAGER')
+  await page.getByRole('link', { name: /1\s*Extension requests/ }).press('Enter')
+  const heading = page.getByRole('heading', { name: 'Extension requests', exact: true })
+  await expect(heading).toBeFocused()
+  await expect(heading).toHaveAttribute('data-test-scroll-behavior', 'auto')
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeFocused()
+
+  const zid = page.getByRole('textbox', { name: 'zID', exact: true })
+  await zid.fill('z1')
+  pending = []
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(heading).toHaveCount(0)
+  pending = [waiting]
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(heading).toBeVisible()
+  await expect(zid).toBeFocused()
 })
 
 // 2026-11-09 (Loy feedback): the Lab overview reads as a row of counts and small bars, on a laptop and on a phone.
@@ -2524,13 +2601,14 @@ const overviewRoom = (id: string, name: string, status: string) => ({ id, name, 
 const overviewRooms = [overviewRoom('room-1', 'Lab Room 1', 'AVAILABLE'), overviewRoom('room-2', 'Lab Room 2', 'AVAILABLE'), overviewRoom('room-3', 'Lab Room 3', 'MAINTENANCE')]
 
 test('the Lab overview shows waiting counts as chips and this week as bars', async ({ page }) => {
+  const longName = 'Materials Characterisation Laboratory 2'
   const figures = { approved: 4, booked_hours: 10.5, open_hours: 840, utilisation: 0.0125, checked_in: 3, no_show: 1, excused: 0,
     not_tracked: 0, attendance_rate: 0.75, cancelled: 0, rejected: 0 }
   const row = (resource_id: string, name: string, booked_hours: number) => ({ ...figures, resource_id, name, kind: 'ROOM', category: null,
     room_name: null, active: true, booked_hours })
   await page.route('**/api/v1/resources/**', (route) => route.fulfill({ json: { count: overviewRooms.length, results: overviewRooms } }))
   await page.route('**/api/v1/admin/reports/usage/**', (route) => route.fulfill({ json: { first_date: '2030-01-07', last_date: '2030-01-13',
-    days: 7, totals: figures, results: [row('room-1', 'Lab Room 1', 8), row('room-2', 'Lab Room 2', 2.5), row('room-3', 'Lab Room 3', 0)] } }))
+    days: 7, totals: figures, results: [row('room-1', 'Lab Room 1', 8), row('room-2', longName, 2.5), row('room-3', 'Lab Room 3', 0)] } }))
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto('/#/login')
   await signIn(page, 'MANAGER')
@@ -2548,6 +2626,7 @@ test('the Lab overview shows waiting counts as chips and this week as bars', asy
   await page.screenshot({ path: '../../output/manager-ui-2026-11-09/lab-overview-1440.png', fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  expect(await most.getByText(longName, { exact: true }).evaluate((name) => name.scrollWidth <= name.clientWidth)).toBe(true)
   await page.screenshot({ path: '../../output/manager-ui-2026-11-09/lab-overview-390.png', fullPage: true })
 })
 

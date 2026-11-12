@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
-# Sprint 3：在 EC2 上另起一套临时测试副本做压力测试（2026-10-29）。Git Bash 运行；保持 LF 换行。说明见 README.md。
+# Sprint 3: Load-test a temporary EC2 deployment (2026-10-29). Run in Git Bash and keep LF line endings. See README.md.
 #
-# 用法（先设 EC2_HOST=ubuntu@<服务器地址>；密钥默认 ~/.ssh/smartlab-ec2，可用 EC2_KEY 改）：
-#   bash load-test/stress-ec2.sh                # 正式规模：200 学生 + 10 Admin + 2 Manager，约 15 分钟
-#   bash load-test/stress-ec2.sh --small        # 试跑：20 学生 + 2 Admin + 1 Manager，各阶段缩短，约 5 分钟
-#   bash load-test/stress-ec2.sh --no-fill      # 不导入 fill.sql 的一学期历史数据（只有演示数据和压测账号）
-#   bash load-test/stress-ec2.sh --keep ...     # 跑完不删测试副本（之后用 --teardown 删）
-#   bash load-test/stress-ec2.sh --profile      # 不压测：在空闲的测试副本里跑 profile.py（单个请求的耗时和 SQL 数），再删副本
-#   bash load-test/stress-ec2.sh --teardown     # 只删测试副本
-#   bash load-test/stress-ec2.sh --worktree ... # 测工作区里还没提交的改动（git stash create 生成临时提交对象，
-#                                               # 不动工作区和 stash 列表；没跟踪的新文件不包括在内）
-# 注意：脚本运行中不要改这个文件（bash 边执行边读，改了会读错位置）。
+# Usage (set EC2_HOST=ubuntu@<server-address> first; EC2_KEY defaults to ~/.ssh/smartlab-ec2):
+#   bash load-test/stress-ec2.sh                # Full run: 200 students, 10 Admins, 2 Managers, about 15 minutes
+#   bash load-test/stress-ec2.sh --small        # Short run: 20 students, 2 Admins, 1 Manager, about 5 minutes
+#   bash load-test/stress-ec2.sh --no-fill      # Skip the term of history in fill.sql and use only demo data and load-test accounts
+#   bash load-test/stress-ec2.sh --keep ...     # Keep the test deployment after the run and remove it later with --teardown
+#   bash load-test/stress-ec2.sh --profile      # Run profile.py on the idle test deployment to measure request time and SQL count, then remove it
+#   bash load-test/stress-ec2.sh --teardown     # Only remove the test deployment
+#   bash load-test/stress-ec2.sh --worktree ... # Test uncommitted changes via a temporary commit created with git stash create.
+#                                             # This leaves the worktree and stash list untouched and excludes untracked files.
+# Edit this file between runs. Bash reads it as it executes and can lose its place if the file changes.
 #
-# 做什么：
-#   1. 把已提交的 HEAD 打包上传到 ~/smartlab-stress，用全新的 .env.stress 起一套独立的 compose 项目 smartlab-stress：
-#      自己的数据库卷、随机生成的数据库密码和 Django 密钥、邮件关闭、只监听服务器的 127.0.0.1:8080（公网访问不到）。
-#      DEBUG=true 和线上一致：演示登录（学生 zID、员工密码）只在 DEBUG 和 ENABLE_DEMO_AUTH 都开时可用。
-#      不读、不复制线上的 .env.docker；线上 smartlab 项目的容器和数据库不动。
-#   2. 新库自动建表并加载演示数据，再导入 fill.sql（约 5000 条历史预约）和 seed.sql（200 学生、9+1 名员工）。
-#   3. 服务器每几秒记录 CPU（vmstat）和容器占用（docker stats）；本机开 SSH 隧道 127.0.0.1:18080 → 服务器 8080。
-#   4. 本机跑 load.py（日常 / 高峰 / 逐步加人），再跑 report.py。结果在仓库外的 ../output/stress/<时间>/（可用 STRESS_OUT 改）。
-#   5. 删掉测试副本：容器、数据库卷、镜像和 ~/smartlab-stress（除非 --keep）。
-# 测试期间线上网站和测试副本共用 2 核 CPU，线上会变慢。
+# What the script does
+#   1. Upload committed HEAD to ~/smartlab-stress and start the separate smartlab-stress Compose project with a fresh .env.stress.
+#      It uses its own database volume, random database password and Django secret key, disables email, and binds to 127.0.0.1:8080.
+#      DEBUG=true matches production. Demo sign-in (student zIDs and staff passwords) requires both DEBUG and ENABLE_DEMO_AUTH.
+#      The test deployment is isolated from the production .env.docker, containers, and database.
+#   2. Create the database and load demo data, then import fill.sql (about 5,000 past bookings) and seed.sql (200 students and 9 + 1 staff).
+#   3. Sample CPU usage (vmstat) and container usage (docker stats) every few seconds. Open an SSH tunnel from local port 18080 to port 8080.
+#   4. Run load.py locally (everyday use, peak, and ramp-up), then report.py. Set STRESS_OUT to override ../output/stress/<timestamp>/.
+#   5. Remove the test containers, database volume, images, and ~/smartlab-stress unless --keep was passed.
+# Production can slow down during the test because both deployments share the same two CPU cores.
 set -euo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -67,7 +67,7 @@ TREE=HEAD
 if [ "$WORKTREE" = 1 ]; then
   STAMP+=-worktree
   TREE=$(git -C "$REPO" stash create)
-  if [ -z "$TREE" ]; then TREE=HEAD; fi   # 工作区干净时 stash create 不输出
+  if [ -z "$TREE" ]; then TREE=HEAD; fi   # git stash create prints nothing when the worktree is clean.
 fi
 OUT="${STRESS_OUT:-$REPO/../output/stress}/$STAMP"
 mkdir -p "$OUT"
@@ -75,7 +75,7 @@ SHA=$(git -C "$REPO" rev-parse --short HEAD)
 if [ "$TREE" != HEAD ]; then SHA+="+工作区($(git -C "$REPO" rev-parse --short "$TREE"))"; fi
 say "版本 $SHA；结果目录 $OUT"
 
-# --- 1. 起测试副本 ------------------------------------------------------------------------------------------------
+# --- 1. Start the test deployment ---
 git -C "$REPO" archive --format=tar.gz -o "$OUT/smartlab-stress.tar.gz" "$TREE"
 scp -q -i "$KEY" -o BatchMode=yes "$OUT/smartlab-stress.tar.gz" "$HERE/fill.sql" "$HERE/seed.sql" "$HOST:~/"
 rm -f "$OUT/smartlab-stress.tar.gz"
@@ -133,7 +133,7 @@ if [ "$PROFILE" = 1 ]; then
   exit 0
 fi
 
-# --- 2. 隧道 + 压测 -------------------------------------------------------------------------------------------------
+# --- 2. Open the tunnel and run the load test ---
 "${SSH[@]}" -N -o ExitOnForwardFailure=yes -L "127.0.0.1:$LOCAL_PORT:127.0.0.1:8080" &
 TUNNEL=$!
 cleanup() {
@@ -153,7 +153,7 @@ ARGS=(--base "http://127.0.0.1:$LOCAL_PORT" --out "$OUT")
 python -u "$HERE/load.py" "${ARGS[@]}" 2>&1 | tee "$OUT/load.txt"
 [ "${PIPESTATUS[0]}" = 0 ] || { say "load.py 失败（见上）"; exit 1; }
 
-# 先停记录、取回日志再出报告（cleanup 里会再取一次，无害）
+# Stop monitoring and collect the logs before generating the report. Cleanup can safely collect them again.
 "${SSH[@]}" 'rm -f ~/stress-sampling'; sleep 8
 scp -q -i "$KEY" -o BatchMode=yes "$HOST:~/stress-stats.log" "$OUT/server-stats.log"
 python "$HERE/report.py" "$OUT"

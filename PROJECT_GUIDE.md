@@ -49,13 +49,13 @@ Submit a booking → wait for approval or a place → receive approval → check
 
 The [current business rules](backend/README.md) explain deadlines, limits and exceptions. Use that document for exact policy values; this guide explains where to go.
 
-## 通知和公告（Sprint 3，1.19.0）
+## Notifications and announcements (Sprint 3, 1.19.0)
 
-从侧栏 **Notifications** 设置个人更新：五类分别选择 **In the bell** 和 **By email**，自动保存。只开邮件时铃铛不显示该条，邮件未在网站启用时该列不可操作，并显示为不勾选（保存的选择不变，启用后恢复）。Account 页的 **Notification settings** 也可进入。
+Use **Notifications** in the sidebar to configure personal updates. Each of the five categories has separate **In the bell** and **By email** options, which save automatically. When only email is enabled, the item does not appear in the bell. If email is not enabled for the site, that column is disabled and appears unchecked; the saved choices remain unchanged and return when email is enabled. The same settings can be opened through **Notification settings** on the Account page.
 
-所有人的首页顶部显示生效公告和发布人署名。员工从 **Daily work → Announcements** 发布公告：Title、Message 必填，Remove at 可选，按悉尼时间填写。作者能修改和下架自己的，Manager 还能下架别人的。已结束公告仍可在管理页查到。
+Every home page displays active announcements at the top together with the publisher's name. Staff publish announcements through **Daily work → Announcements**. Title and Message are required, while Remove at is optional and uses Sydney time. Authors can edit and remove their own announcements; Managers can also remove announcements created by others. Ended announcements remain available on the management page.
 
-Manager 在 **Room management** 维修或关闭房间时，原因自动成为状态公告，可填预计恢复时间 **Expected back**。到时间不会自行重开；由 Manager 选择 Reopen，公告才自动下架。状态公告标有 **From room status**，不能当作手动公告编辑。设备的相同规则已在接口实现，设备状态的界面入口仍待后续任务。
+When a Manager places a room under maintenance or closes it in **Room management**, the reason automatically becomes a status announcement. The optional **Expected back** field records an estimated recovery time. The room does not reopen automatically at that time; the announcement is removed only when a Manager selects Reopen. Status announcements are labelled **From room status** and cannot be edited as manual announcements. The API already implements the same rules for equipment, but a user-interface entry point for equipment status remains a future task.
 
 ## Where does the code live?
 

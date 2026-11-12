@@ -1972,6 +1972,25 @@ test('slot picker clears a stale period when a longer selection crosses an exist
   await expect(dialog.getByRole('button', { name: 'Request 3 h', exact: true })).toBeEnabled()
 })
 
+test('slot picker keeps the refused Start and Length on screen, and a shorter Length recovers', async ({ page }) => {
+  const { dialog, sent } = await openSlotPickerReview(page)
+  const start = dialog.getByLabel('Start time', { exact: true })
+  const length = dialog.getByLabel('Length', { exact: true })
+  await length.selectOption('6')
+  await start.selectOption('14') // 15:00–18:00
+  await start.selectOption('22') // 19:00 + 3 h runs past closing
+  await expect(dialog.getByRole('alert')).toContainText('A 3 h booking starting then would run past closing time.')
+  await expect(start).toHaveValue('22')
+  await expect(length).toHaveValue('6')
+  await expect(dialog.getByRole('button', { name: 'Request booking', exact: true })).toBeDisabled()
+
+  await length.selectOption('2') // 19:00–20:00 fits
+  await expect(dialog.getByRole('alert')).toHaveCount(0)
+  await dialog.getByRole('button', { name: 'Request 1 h', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  expect(sent).toEqual([{ resource_id: 'room-1', start: '2030-01-10T08:00:00.000Z', end: '2030-01-10T09:00:00.000Z', purpose: 'Slot picker regression' }])
+})
+
 test('slot picker keeps Length in sync when switching from dropdowns to the timeline', async ({ page }) => {
   const { dialog, sent } = await openSlotPickerReview(page)
   await dialog.getByLabel('Length', { exact: true }).selectOption('6')

@@ -260,6 +260,12 @@ class BookingsMixin:
             revised = replace(source, status=BookingStatus.CANCELLED, reason_code=reason, updated_at=self.now())
             self._save_booking(revised)
             self._audit(actor.id, "BOOKING_CANCELLED", "booking", revised.id)
+            # 2026-11-12: a change request still waiting for this booking is withdrawn with it; otherwise it could be
+            # approved later and leave the person with a booking they thought they had cancelled.
+            change = self.open_change_for(source) if source.status == BookingStatus.APPROVED else None
+            if change:
+                self._save_booking(replace(change, status=BookingStatus.CANCELLED, reason_code=reason, updated_at=self.now()))
+                self._audit(actor.id, "BOOKING_CANCELLED", "booking", change.id, cancelled_with=source.id)
             self._promote_waitlist(revised.resource_id)
             return revised
 

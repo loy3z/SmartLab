@@ -540,7 +540,7 @@ Book a Resource 页面有两个标签：**Browse resources**（资源卡片）�
 
 - 已批准、还没开始的预约，预约人本人可以在 My Bookings 点 **Change time**，选新时间后 `POST bookings/{id}/change/` `{"start": "…", "end": "…"}`（可带 `Idempotency-Key`）。同一资源，用途沿用原预约。Manager 仍然用 Reschedule 直接改。
 - 后端新建一个申请，`replaces_id` 指向原预约。新时间空闲：`PENDING_APPROVAL`，正常审批；新时间已被别人预约或占着：`WAITLISTED`。前端在选到被占用的时间时先提示“只能进候补”，按钮和确认框也会写明。
-- **原预约在新申请批准前一直有效。** 新申请被批准（Admin 手动、审批期到了系统自动、或候补转正后批准）的那一刻，原预约自动取消（`reason_code=REPLACED_BY_CHANGE`），它的时间交给候补队列。新申请被拒、撤回或过期，原预约不变。
+- **原预约在新申请批准前一直有效。** 新申请被批准（Admin 手动、审批期到了系统自动、或候补转正后批准）的那一刻，原预约自动取消（`reason_code=REPLACED_BY_CHANGE`），它的时间交给候补队列。新申请被拒、撤回或过期，原预约不变。反过来，原预约被取消（本人或员工）时，还在等的改期申请一并取消，`reason_code` 和原预约相同（2026-11-12）。
 - 规则和普通申请相同（预约窗口、开放时间、时长、induction、每周上限）；原预约本身不算冲突、不算重复、也不在每周上限里多算一次。不支持紧急改期。
 - 一个预约同时只能有一个待处理的改期（409 `CHANGE_ALREADY_REQUESTED`，`details.booking_id` 是那个申请）；不是自己的预约 404／403；不是已批准的未来预约 409 `REQUEST_NOT_CHANGEABLE`；时间和现在一样 400。
 - 预约 JSON 新字段：`replaces_id`、`replaces_booking`（改期申请指向的原预约：`id`、`start`、`end`、`status`）、`open_change`（原预约上还在等的改期申请，同样四个字段）。My Bookings 用它们在两张卡片上互相说明；Booking Review 在时间下面显示“Change from …”。

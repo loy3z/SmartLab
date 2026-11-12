@@ -2699,3 +2699,76 @@ test('a Manager sees Manager rules on resource cards; a student opens additional
   await expect(studentCard.getByRole('button', { name: 'Request additional hours' })).toHaveCount(1)
 })
 
+// 2026-11-12 (delivery acceptance): a successful decision or change shows at once, also when the refresh after it fails.
+const unavailable = { status: 503, json: { error: { code: 'UNAVAILABLE', message: 'Service unavailable.' } } }
+
+test('an approved request leaves Booking review even if the list fails to refresh', async ({ page }) => {
+  const pending = approvedBooking({ id: 'p-1', status: 'PENDING_APPROVAL', reason_code: 'AWAITING_REVIEW', review_due_at: '2030-01-09T00:00:00Z',
+    student: { id: 'test-student', zid: 'z1000001', display_name: 'Test Student' } })
+  let decided = 0
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const path = url.pathname.replace('/api/v1/', '')
+    if (path === 'admin/bookings/' && request.method() === 'GET') {
+      if (decided) return route.fulfill(unavailable)
+      return route.fulfill({ json: url.searchParams.get('status') === 'PENDING_APPROVAL' ? { count: 1, results: [pending] } : { count: 0, results: [] } })
+    }
+    if (path === 'resources/' && request.method() === 'GET') return route.fulfill({ json: { count: 1, results: [reviewRoom] } })
+    if (path.startsWith('admin/bookings/p-1/') && request.method() === 'POST') {
+      decided += 1
+      return route.fulfill({ json: { ...pending, status: 'APPROVED' } })
+    }
+    return route.fallback()
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'ADMIN')
+  await page.goto('/#/admin/bookings')
+  await page.getByRole('button', { name: '✓ Approve', exact: true }).click()
+  await expect(page.getByText('Booking approved', { exact: true })).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: 'Could not refresh the requests.' })).toContainText('Showing the previous results.')
+  await expect(page.getByRole('button', { name: '✓ Approve', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('tab', { name: /Awaiting approval/ })).toContainText('0')
+  expect(decided).toBe(1)
+})
+
+test('My bookings shows a sent change request even if the list fails to refresh', async ({ page }) => {
+  let sent = 0
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname.replace('/api/v1/', '')
+    if (path === 'bookings/' && request.method() === 'GET') {
+      return sent ? route.fulfill(unavailable) : route.fulfill({ json: { count: 1, results: [approvedBooking({ check_in_open: false })] } })
+    }
+    if (path === 'resources/' && request.method() === 'GET') return route.fulfill({ json: { count: 1, results: [reviewRoom] } })
+    if (path === 'resources/room-1/availability/') {
+      return route.fulfill({ json: {
+        resource_id: 'room-1', date: '2030-01-10', timezone: 'Australia/Sydney', duration_minutes: 30, can_request: true, qualification_status: 'VERIFIED',
+        earliest_date: '2030-01-03', latest_date: '2030-02-02', min_advance_days: 7, max_advance_days: 30, resource_status: 'AVAILABLE', status_reason: null,
+        slots: [reviewSlot('2030-01-09T21:00:00Z', '2030-01-09T21:30:00Z'), reviewSlot('2030-01-09T21:30:00Z', '2030-01-09T22:00:00Z')],
+      } })
+    }
+    if (path === 'bookings/bk-1/change/' && request.method() === 'POST') {
+      sent += 1
+      return route.fulfill({ status: 201, json: approvedBooking({ id: 'bk-2', status: 'PENDING_APPROVAL', reason_code: 'AWAITING_REVIEW',
+        start: '2030-01-09T21:00:00Z', end: '2030-01-09T21:30:00Z', check_in_open: false,
+        replaces_id: 'bk-1', replaces_booking: { id: 'bk-1', start: '2030-01-10T00:00:00Z', end: '2030-01-10T01:00:00Z', status: 'APPROVED' } }) })
+    }
+    return route.fallback()
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'STUDENT')
+  await page.goto('/#/bookings')
+  await page.getByRole('button', { name: 'Change time', exact: true }).click()
+  await page.getByLabel('Length').selectOption({ label: '0.5 h' })
+  await page.getByLabel('Start time').selectOption({ label: '8:00 am' })
+  await page.getByRole('button', { name: 'Ask for this time', exact: true }).click()
+  await page.getByRole('button', { name: 'Send change request', exact: true }).click()
+  await expect(page.getByText('Change requested', { exact: true })).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: 'Could not refresh your bookings.' })).toContainText('Showing the previous results.')
+  await expect(page.getByText(/^Change requested: .* · Waiting for admin approval$/)).toBeVisible()
+  await expect(page.getByText(/^Change request for your booking /)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Change time', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('tablist', { name: 'Booking status' })).toBeVisible()
+  expect(sent).toBe(1)
+})

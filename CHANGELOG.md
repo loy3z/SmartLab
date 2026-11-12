@@ -2,6 +2,13 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.27.0 之后：操作成功后刷新失败时不再停在旧状态（2026-11-12，只改前端）
+
+依据 `claude/reports/2026-11-12-delivery-acceptance.md` 第 2、3 条。
+
+- **Booking review**：批准或拒绝成功后，这一行立即从列表里拿掉，不再等刷新；刷新失败时写明“Showing the previous results.”（`BookingReviewPage.tsx`）。
+- **My bookings**：改期、取消、延长、签到成功后，用接口返回的结果直接更新卡片；刷新失败时保留筛选和已有卡片，并写明显示的是旧数据（`MyBookings.tsx`、`ChangeTimeBox.tsx`）。
+
 ## 1.27.0 之后：Lab overview 审查修复（2026-11-12，只改前端）
 
 - 待办、资源状态和周报独立加载，失败时可就地重试。审批延长后立即更新待办并显示确认。修正延长申请跳转和 zID 报错的键盘焦点，手机上允许长资源名换行。

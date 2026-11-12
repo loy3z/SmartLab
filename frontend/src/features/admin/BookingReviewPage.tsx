@@ -60,6 +60,12 @@ export function BookingReviewPage() {
     setRefresh((n) => n + 1)
   }, [])
 
+  // 2026-11-12: a decided request leaves the lists at once, also when the refresh after it fails.
+  const removeDecided = (id: string) => {
+    setPending((list) => list.filter((item) => item.id !== id))
+    setWaitlisted((list) => list.filter((item) => item.id !== id))
+  }
+
   const resourceName = useCallback((b: Booking) => b.resource_name ?? resources.find((r) => r.id === b.resource_id)?.name ?? 'Resource', [resources])
   const now = loadedAt ?? 0
 
@@ -102,6 +108,7 @@ export function BookingReviewPage() {
       await reviewBooking(b.id, 'APPROVED', '', b.additional_hours && b.active_data_collection ? true : undefined)
       feedback.success(`${who(b)} · ${resourceName(b)} · ${fmtRange(b.start, b.end)}`, 'Booking approved')
       setOpenId(null)
+      removeDecided(b.id)
     } catch (e) {
       feedback.error(errorMessage(e), 'Could not approve')
     } finally {
@@ -129,6 +136,7 @@ export function BookingReviewPage() {
       await reviewBooking(b.id, 'REJECTED', answer.reason)
       feedback.success(`${who(b)} · ${resourceName(b)}. The student will see your reason.`, 'Request rejected')
       setOpenId(null)
+      removeDecided(b.id)
     } catch (e) {
       feedback.error(errorMessage(e), 'Could not reject')
     } finally {
@@ -202,7 +210,7 @@ export function BookingReviewPage() {
         </ul>
       </InfoDisclosure>
 
-      {loadError && <p className="bk-error" role="alert">{loadError}</p>}
+      {loadError && <p className="bk-error" role="alert">{loadedAt === null ? loadError : `Could not refresh the requests. ${loadError} Showing the previous results.`}</p>}
       {loading && loadedAt === null && <p role="status">Loading requests…</p>}
 
       {loadedAt !== null && rows.length === 0 && (

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { useAuth } from '../auth/auth-context'
 import { useFeedback } from '../../ui/feedback-context'
 import { createBooking, lookupPerson } from '../../api/index.ts'
-import { errorMessage, fmtDuration, fmtHours, fmtRange, newIdempotencyKey, SEPARATE_BOOKING_TEXT, submitBlocker, submittedMessage } from './format'
+import { bookingRef, errorMessage, fmtDuration, fmtHours, fmtRange, newIdempotencyKey, SEPARATE_BOOKING_TEXT, submitBlocker, submittedMessage } from './format'
 import { ResourceFacts } from './ResourceCard' // Sprint 3 (1.16.0)
 import { SlotPicker, type SlotRange } from './SlotPicker'
 import type { PersonBrief, Resource } from '../../api/types/index.ts'
@@ -100,7 +100,7 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
       )
       keyRef.current = newIdempotencyKey()
       const { title, message } = submittedMessage(b)
-      feedback.success(message, title)
+      feedback.success(`${message} Reference: ${bookingRef(b.id)}.`, title)
       onBooked()
     } catch (err) {
       const text = errorMessage(err)

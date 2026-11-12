@@ -79,6 +79,9 @@ export function statusText(b: Booking): string {
     ? 'Waiting for Manager approval' : STATUS_TEXT[b.status]
 }
 
+/** Short, readable booking reference (first 8 characters of the booking id). */
+export const bookingRef = (id: string) => id.slice(0, 8).toUpperCase()
+
 export function bookingDetail(b: Booking): string {
   switch (b.status) {
     case 'APPROVED':

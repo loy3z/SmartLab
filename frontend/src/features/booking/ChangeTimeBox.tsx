@@ -16,7 +16,7 @@ import type { Booking, Resource } from '../../api/types/index.ts'
 export function ChangeTimeBox({ booking, resource, onDone, onClose }: {
   booking: Booking
   resource: Resource
-  onDone: () => void
+  onDone: (created: Booking) => void
   onClose: () => void
 }) {
   const feedback = useFeedback()
@@ -45,7 +45,7 @@ export function ChangeTimeBox({ booking, resource, onDone, onClose }: {
       const created = await requestTimeChange(booking.id, range.start, range.end)
       const { title, message } = changeSentMessage(created)
       feedback.success(message, title)
-      onDone()
+      onDone(created)
     } catch (e) {
       feedback.error(errorMessage(e), 'Change not sent')
     } finally {

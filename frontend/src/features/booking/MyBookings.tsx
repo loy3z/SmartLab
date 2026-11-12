@@ -55,9 +55,9 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
   const [extending, setExtending] = useState<string | null>(null) // 1.24.0: booking whose extend box is open
 
   const load = useCallback(async () => {
-    setError('')
     try {
       const [b, r] = await Promise.all([listBookings(), listResources({})])
+      setError('')
       setNow(Date.now())
       setBookings([...b.results].sort((x, y) => Date.parse(y.created_at) - Date.parse(x.created_at)))
       setResources(Object.fromEntries(r.results.map((x) => [x.id, x])))
@@ -74,6 +74,10 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
   }, [load, refreshKey])
   useAutoRefresh(() => void load()) // 2026-11-07: an approval shows without F5
 
+  // 2026-11-12: show what the server just returned on the card, also when the refresh after it fails.
+  const put = (saved: Booking) => setBookings((list) =>
+    list.some((item) => item.id === saved.id) ? list.map((item) => (item.id === saved.id ? saved : item)) : [saved, ...list])
+
   async function cancel(b: Booking) {
     const name = resources[b.resource_id]?.name ?? 'this resource'
     const ok = await feedback.confirm({
@@ -86,7 +90,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
     })
     if (!ok.confirmed) return
     try {
-      await cancelBooking(b.id)
+      put(await cancelBooking(b.id))
       feedback.success(`${name}, ${fmtRange(b.start, b.end)}`, b.status === 'APPROVED' ? 'Booking cancelled' : 'Request withdrawn')
     } catch (e) {
       feedback.error(errorMessage(e), 'Could not cancel')
@@ -119,7 +123,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
   // Sprint 3: check-in and cancelling a weekly series
   async function arrived(b: Booking) {
     try {
-      await checkIn(b.id)
+      put(await checkIn(b.id))
       feedback.success(`${resources[b.resource_id]?.name ?? 'Booking'}, ${fmtRange(b.start, b.end)}`, 'Checked in')
     } catch (e) {
       feedback.error(errorMessage(e), 'Could not check in')
@@ -154,6 +158,14 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
     await load()
   }
 
+  function changeRequested(old: Booking, created: Booking) {
+    setChanging(null)
+    put(created)
+    if (created.status !== 'APPROVED') put({ ...old, open_change: { id: created.id, start: created.start, end: created.end, status: created.status } })
+    void load()
+  }
+
+  const loaded = now !== 0
   const future = (b: Booking) => new Date(b.start).getTime() > now
   const cancellable = (b: Booking) => future(b) && ACTIVE.includes(b.status)
   // Sprint 3 (1.20.0): include historical/archived resources even if the catalogue omits them.
@@ -176,7 +188,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
       <h1>My bookings</h1>{/* Sprint 3 (internal-tool UI, AI-2): no introduction line */}
       {/* Sprint 3 */}
       <CalendarSubscribe />
-      {!loading && !error && <div className="bookings-filters">
+      {loaded && <div className="bookings-filters">
         <Tabs value={view} onChange={next => setFilter('view', next)} label="Booking status"
           items={BOOKING_VIEWS.map(item => ({ ...item, count: matchingResource.filter(booking => inView(booking, item.key, now)).length }))} />
         <div className="bookings-resource-filter">
@@ -191,13 +203,13 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
         </div>
       </div>}
       {loading && <p role="status">Loading…</p>}
-      {error && <p className="bk-error" role="alert">{error}</p>}
-      {!loading && !error && bookings.length === 0 && (
+      {error && <p className="bk-error" role="alert">{loaded ? `Could not refresh your bookings. ${error} Showing the previous results.` : error}</p>}
+      {loaded && bookings.length === 0 && (
         <EmptyState icon="+" title="No bookings to show">
           <Link to="/resources">Browse rooms and equipment</Link> to make a booking.
         </EmptyState>
       )}
-      {!loading && !error && bookings.length > 0 && shown.length === 0 && <EmptyState title="Nothing here right now">No bookings match these filters.</EmptyState>}
+      {loaded && bookings.length > 0 && shown.length === 0 && <EmptyState title="Nothing here right now">No bookings match these filters.</EmptyState>}
       {groupBookings(shown).map((group) => {
         if (group.kind === 'series') {
           const moving = group.bookings.find((item) => item.id === rescheduling)
@@ -304,6 +316,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
                   setExtending(null)
                   if (updated.extension_end) feedback.success(`Finish at ${fmtTime(updated.extension_end)} once a Manager approves it.`, 'Request sent')
                   else feedback.success(`Now until ${fmtTime(updated.end)}.`, 'Booking extended')
+                  put(updated)
                   void load()
                 }} />
             )}
@@ -311,7 +324,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
               <RescheduleBox booking={b} resource={res} onDone={rescheduled} onClose={() => setRescheduling(null)} />
             )}
             {changing === b.id && res && (
-              <ChangeTimeBox booking={b} resource={res} onDone={() => { setChanging(null); void load() }} onClose={() => setChanging(null)} />
+              <ChangeTimeBox booking={b} resource={res} onDone={(created) => changeRequested(b, created)} onClose={() => setChanging(null)} />
             )}
             {canRemoveBookingHistory(b, now) && <div className="bk-card-actions">
               <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={removing !== null} onClick={() => void removeHistory(b)}>

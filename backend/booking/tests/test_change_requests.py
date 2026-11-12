@@ -74,6 +74,20 @@ class ChangeRequestTests(Sprint3Fixture, SimpleTestCase):
         self.service.cancel_booking(self.student, again.id)
         self.assertEqual(self.repo.get_booking(old.id).status, BookingStatus.APPROVED)
 
+    def test_cancelling_the_old_booking_withdraws_its_waiting_change(self):
+        for who, reason in (("student", "CANCELLED_BY_USER"), ("manager", "CANCELLED_BY_STAFF")):
+            with self.subTest(reason=reason):
+                self.setUp()
+                old = self.approved(days=3, hour=10)
+                change = self.change(old, days=4, hour=14)
+                self.service.cancel_booking(getattr(self, who), old.id)
+                withdrawn = self.repo.get_booking(change.id)
+                self.assertEqual((withdrawn.status, withdrawn.reason_code), (BookingStatus.CANCELLED, reason))
+                self.refused("REQUEST_NOT_REVIEWABLE", self.service.review_booking, self.admin, change.id, "APPROVED")
+                self.assertEqual(self.service.week_hours(self.student.id, self.today + timedelta(days=4))["used_hours"], 0)
+                # The time the change was holding is free for someone else straight away.
+                self.assertEqual(self.request(self.other, days=4, hour=14).status, BookingStatus.PENDING_APPROVAL)
+
     def test_the_system_approval_at_the_end_of_the_review_window_also_replaces(self):
         old = self.approved(days=3, hour=10)
         change = self.change(old, days=4, hour=14)

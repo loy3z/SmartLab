@@ -2,6 +2,10 @@
 
 这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
 
+## 1.27.0 之后：CI 加上 PostgreSQL 和浏览器测试（2026-11-12，不改网站）
+
+- `.gitlab-ci.yml` 新增两个 job：`postgres-tests`（PostgreSQL 集成测试，连 job 自带的临时数据库）和 `e2e-tests`（Playwright）。原因：这两类测试以前只在本机跑，直接合进 `main` 的改动没人拦。仍然不自动部署。
+
 ## 1.27.0 之后：取消原预约时一并撤回改期申请（2026-11-12，只改后端，接口不变）
 
 依据 `claude/reports/2026-11-12-delivery-acceptance.md` 第 1 条，Loy 2026-11-12 定。

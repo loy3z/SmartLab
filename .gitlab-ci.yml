@@ -15,6 +15,28 @@ backend-tests:
     - cd backend
     - python manage.py test booking
 
+# 2026-11-12: the PostgreSQL adapter against a real database (the job above skips these tests).
+# The password exists only inside this job's throwaway database container.
+postgres-tests:
+  stage: test
+  image: python:3.12-slim
+  services:
+    - postgres:16-alpine
+  variables:
+    POSTGRES_PASSWORD: "ci-only-not-secret"
+    DEBUG: "true"
+    DJANGO_SECRET_KEY: "ci-only-not-secret"
+    REPOSITORY_FACTORY: "booking.postgres.PostgresRepository"
+    DB_HOST: "postgres"
+    DB_USER: "postgres"
+    DB_PASSWORD: "ci-only-not-secret"
+    DB_NAME: "smartlab_ci"
+  before_script:
+    - pip install --no-cache-dir -r backend/requirements-postgres.txt
+  script:
+    - cd backend
+    - python manage.py test booking.tests.test_postgres --noinput
+
 frontend-checks:
   stage: test
   image: node:22-alpine
@@ -25,3 +47,18 @@ frontend-checks:
     - npm test
     - npm run lint
     - npm run build
+
+# 2026-11-12: the browser tests. The image tag must match @playwright/test in frontend/package-lock.json.
+e2e-tests:
+  stage: test
+  image: mcr.microsoft.com/playwright:v1.64.0-noble
+  before_script:
+    - cd frontend
+    - npm ci
+  script:
+    - npx playwright test --reporter=line
+  artifacts:
+    when: on_failure
+    paths:
+      - frontend/test-results/
+    expire_in: 1 week

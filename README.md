@@ -70,7 +70,7 @@ npm run test:e2e
 
 PostgreSQL 集成测试的运行方法见 [backend/database/README.md](backend/database/README.md) 第 6 节。
 
-push 代码或开 MR 时，GitLab CI 会自动跑 `manage.py test booking`、`npm test`、`npm run lint` 和 `npm run build`（配置在 [.gitlab-ci.yml](.gitlab-ci.yml)），结果在 MR 的 Pipelines 页查看。CI 不跑 `test:e2e` 和 PostgreSQL 集成测试，这两项仍要在本地跑。
+push 代码或开 MR 时，GitLab CI 会自动跑 `manage.py test booking`、`npm test`、`npm run lint` 和 `npm run build`（配置在 [.gitlab-ci.yml](.gitlab-ci.yml)），结果在 MR 的 Pipelines 页查看。2026-11-12 起 CI 也跑 PostgreSQL 集成测试和 Playwright（`test:e2e`）。
 
 ## 部署
 

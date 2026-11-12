@@ -472,8 +472,12 @@ Loy 定：客户不想用缺席处罚，冻结整个删除。任务卡：项目�
 
 | job | 镜像 | 跑什么 | 没包括 |
 | --- | --- | --- | --- |
-| `backend-tests` | `python:3.12-slim` | 装 `backend/requirements-postgres.txt`，`python manage.py test booking`（内存存储，PostgreSQL 用例自动跳过） | PostgreSQL 集成测试（`check-local.sh pg`） |
-| `frontend-checks` | `node:22-alpine` | `npm ci`，`npm test`、`npm run lint`、`npm run build` | Playwright e2e（`check-local.sh e2e`） |
+| `backend-tests` | `python:3.12-slim` | 装 `backend/requirements-postgres.txt`，`python manage.py test booking`（内存存储，PostgreSQL 用例自动跳过） | PostgreSQL 集成测试（见下一行） |
+| `postgres-tests`（2026-11-12） | `python:3.12-slim` + 服务 `postgres:16-alpine` | `python manage.py test booking.tests.test_postgres`，连 job 自带的临时数据库 | 新旧库结构对比（`check-local.sh schema`） |
+| `frontend-checks` | `node:22-alpine` | `npm ci`，`npm test`、`npm run lint`、`npm run build` | Playwright e2e（见下一行） |
+| `e2e-tests`（2026-11-12） | `mcr.microsoft.com/playwright:v1.64.0-noble` | `npm ci`，`npx playwright test`；失败时保留 `frontend/test-results/` 一周 | — |
+
+升级 `@playwright/test` 时，`e2e-tests` 的镜像版本号要一起改。
 
 配置在仓库根目录 `.gitlab-ci.yml`；结果在 GitLab 的 Build → Pipelines 和每个 MR 页面。
 

@@ -63,6 +63,8 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
   const [showTimeline, setShowTimeline] = useState(!initialStart)
   // Sprint 3 (1.16.0): length used by the "Start / Length" selects (cells of `step` minutes); 1 hour by default.
   const [wantedCells, setWantedCells] = useState<number | null>(null)
+  // 2026-11-12: the Start the inputs asked for when that time was refused, so another Length can retry from it.
+  const [inputStart, setInputStart] = useState<number | null>(null)
   // Sprint 3 (2026-10-25): the day timeline scrolls sideways; a desktop mouse wheel scrolls it too.
   const timelineRef = useRef<HTMLDivElement>(null)
   // Applied once, on the first load of the initial day; later days and refreshes start empty as before.
@@ -117,6 +119,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
         onEligibilityRef.current?.(d.can_request)
         setError('')
         setRange(null)
+        setInputStart(null)
         setProblem('')
         onSelectRef.current(null)
         const wanted = pendingInitial.current
@@ -146,6 +149,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
   function changeDate(next: string) {
     if (next === date) return
     setRange(null)
+    setInputStart(null)
     setProblem('')
     setData(null)
     onSelectRef.current(null)
@@ -158,6 +162,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
 
   function commit(from: number, to: number) {
     setRange({ from, to })
+    setInputStart(null)
     // A timeline selection must also update the Length input.
     setWantedCells(null)
     if (to - from + 1 < minCells) {
@@ -184,6 +189,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
 
   function clear() {
     setRange(null)
+    setInputStart(null)
     setProblem('')
     onSelectRef.current(null)
   }
@@ -191,6 +197,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
   function invalidateSelection(message: string) {
     // Clear both the highlighted range and the value the parent form can submit.
     setRange(null)
+    setInputStart(null)
     setProblem(message)
     onSelectRef.current(null)
   }
@@ -223,10 +230,12 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
   const lengthCells = fixedCells ?? Math.max(minCells, wantedCells ?? (range ? range.to - range.from + 1 : defaultCells))
   function chooseByInputs(from: number, cells: number) {
     const to = from + cells - 1
-    if (to >= slots.length) return invalidateSelection(`A ${fmtDuration(cells * step)} booking starting then would run past closing time.`)
-    const why = blockedBetween(from, to)
-    if (why) return invalidateSelection(why)
-    commit(from, to)
+    const why = to >= slots.length ? `A ${fmtDuration(cells * step)} booking starting then would run past closing time.` : blockedBetween(from, to)
+    if (!why) return commit(from, to)
+    invalidateSelection(why)
+    // Keep showing the Start and Length the message is about; choosing another Length tries again from that Start.
+    setInputStart(from)
+    setWantedCells(cells)
   }
   const strictInputs = urgent || allowEarly || data?.test_bypass || data?.manager_override
   const startOptions = slots
@@ -359,7 +368,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
       {data && slots.length > 0 && canRequest && startOptions.length > 0 && (
         <div className="ui-tl-inputs">
           <label>Start
-            <select aria-label="Start time" value={range ? range.from : ''} onChange={(e) => e.target.value !== '' && chooseByInputs(Number(e.target.value), lengthCells)}>
+            <select aria-label="Start time" value={range?.from ?? inputStart ?? ''} onChange={(e) => e.target.value !== '' && chooseByInputs(Number(e.target.value), lengthCells)}>
               <option value="" disabled>Choose</option>
               {startOptions.map((item) => <option key={item.index} value={item.index}>{item.label}{item.kind === 'free' ? '' : additionalHours ? ' (currently taken)' : ' (waitlist)'}</option>)}
             </select>
@@ -369,7 +378,8 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
               <select aria-label="Length" value={lengthCells} onChange={(e) => {
                 const cells = Number(e.target.value)
                 setWantedCells(cells)
-                if (range) chooseByInputs(range.from, cells)
+                const from = range?.from ?? inputStart
+                if (from != null) chooseByInputs(from, cells)
               }}>
                 {lengthOptions.map((cells) => <option key={cells} value={cells}>{fmtDuration(cells * step)}</option>)}
               </select>

@@ -158,6 +158,8 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
 
   function commit(from: number, to: number) {
     setRange({ from, to })
+    // A timeline selection must also update the Length input.
+    setWantedCells(null)
     if (to - from + 1 < minCells) {
       setProblem(`Choose an end time for at least ${fmtDuration(minimumMinutes)}. Shorter sessions use the normal booking form.`)
       onSelectRef.current(null)
@@ -186,26 +188,33 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
     onSelectRef.current(null)
   }
 
+  function invalidateSelection(message: string) {
+    // Clear both the highlighted range and the value the parent form can submit.
+    setRange(null)
+    setProblem(message)
+    onSelectRef.current(null)
+  }
+
   function pick(index: number) {
     if (fixedCells) {
       const to = index + fixedCells - 1
-      if (to >= slots.length) return setProblem(`A ${fmtDuration(fixedMinutes!)} booking starting then would run past closing time.`)
+      if (to >= slots.length) return invalidateSelection(`A ${fmtDuration(fixedMinutes!)} booking starting then would run past closing time.`)
       const why = blockedBetween(index, to)
-      if (why) return setProblem(why)
+      if (why) return invalidateSelection(why)
       return commit(index, to)
     }
     // Click a start, then click an end. Clicking before or inside the selection starts again.
     if (range && index > range.to) {
       if (index - range.from + 1 > maxCells) {
-        return setProblem(`${longBooking ? 'Long-booking requests' : 'Normal bookings'} can be up to ${fmtDuration(maximumMinutes)}.`)
+        return invalidateSelection(`${longBooking ? 'Long-booking requests' : 'Normal bookings'} can be up to ${fmtDuration(maximumMinutes)}.`)
       }
       const why = blockedBetween(range.from, index)
-      if (why) return setProblem(why)
+      if (why) return invalidateSelection(why)
       return commit(range.from, index)
     }
     if (range && range.from === index && range.to === index) return clear()
     const why = blockedBetween(index, index)
-    if (why) return setProblem(why)
+    if (why) return invalidateSelection(why)
     commit(index, index)
   }
 
@@ -214,9 +223,9 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
   const lengthCells = fixedCells ?? Math.max(minCells, wantedCells ?? (range ? range.to - range.from + 1 : defaultCells))
   function chooseByInputs(from: number, cells: number) {
     const to = from + cells - 1
-    if (to >= slots.length) return setProblem(`A ${fmtDuration(cells * step)} booking starting then would run past closing time.`)
+    if (to >= slots.length) return invalidateSelection(`A ${fmtDuration(cells * step)} booking starting then would run past closing time.`)
     const why = blockedBetween(from, to)
-    if (why) return setProblem(why)
+    if (why) return invalidateSelection(why)
     commit(from, to)
   }
   const strictInputs = urgent || allowEarly || data?.test_bypass || data?.manager_override

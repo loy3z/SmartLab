@@ -17,7 +17,8 @@ class WaitlistMixin:
         if booking.long_booking:
             return BookingStatus.EXPIRED, "LONG_BOOKING_REVIEW_EXPIRED", "No Manager approved the longer booking before its review deadline."
         resource = self.repo.get_resource(booking.resource_id)
-        error = self.rule_violation(booking.student_id, resource, booking.start, booking.end)
+        error = (self.rule_violation(booking.student_id, resource, booking.start, booking.end)
+                 or self._change_approval_quota_violation(booking))
         if error:
             return (BookingStatus.REJECTED, _AUTO_REJECT_CODES.get(error.code, "AUTO_REJECTED_BOOKING_RULES"),
                     error.message)
@@ -48,8 +49,9 @@ class WaitlistMixin:
                 # A closed resource keeps its queue until it reopens.
                 if resource is None or not resource.bookable or self._overlaps(booking.resource_id, booking.start, booking.end, booking.id, booking.replaces_id):
                     continue
-                error = self.rule_violation(booking.student_id, resource, booking.start, booking.end,
-                                            allow_long_booking=booking.long_booking)
+                error = (self.rule_violation(booking.student_id, resource, booking.start, booking.end,
+                                             allow_long_booking=booking.long_booking)
+                         or self._change_approval_quota_violation(booking))
                 if error is None:
                     deadline = self._review_deadline(resource, booking.start)
                     status, reason, action = BookingStatus.PENDING_APPROVAL, "PROMOTED_FROM_WAITLIST", "BOOKING_PROMOTED"

@@ -1,43 +1,43 @@
-# Sprint 2：可演示的 MVP
+# Sprint 2: Demonstrable MVP
 
-> deepseek修改（Loy已审核），2026-10-25。
-> 定位：Sprint 2 是下一次交付，目标是把已经实现的预约系统收拾到「能完整演示、能本地部署、能交付」，不再新增业务功能。
-> 现状：1.10–1.17.1 的功能已经实现（代码里标 `Sprint 3`，那是团队内部命名）。Sprint 2 的重点是收口、文档和演示。
+> Revised with DeepSeek (reviewed by Loy), 25 October 2026.
+> Positioning: Sprint 2 is the next delivery. Its goal is to refine the implemented booking system until it can be demonstrated end to end, deployed locally and handed over, without adding more business features.
+> Current state: versions 1.10–1.17.1 have been implemented. The code labels them `Sprint 3`, which is the team's internal naming. Sprint 2 focuses on consolidation, documentation and the demonstration.
 
-## 目标
+## Goal
 
-一个人在本地 10 分钟内跑起来，5 分钟演示完主流程，不卡壳、不空白、不报错。
+One person should be able to run the project locally within 10 minutes and demonstrate the main workflow in 5 minutes without getting stuck, seeing blank screens or encountering errors.
 
-## 范围
+## Scope
 
-| 编号 | 项 | 现状 | 要做到 | 验收 | 状态 |
+| ID | Item | Current state | Required outcome | Acceptance criterion | Status |
 | --- | --- | --- | --- | --- | --- |
-| S2-1 | 演示主流程 | 功能齐 | 写一份 5 分钟演示脚本：学生登录 → 找资源 → 预约 → 审批 → 签到 → 日历订阅 → 冻结/解冻 | 按脚本走一遍不卡 | ○ |
-| S2-2 | 模拟 SSO | 已有 `MockSsoPage`、`mock-sso.css`、`staff-sign-in` | 补说明文档，写明「这是模拟，不是学校真实 SSO」；覆盖学生、员工、Admin、Manager 四个入口 | 四个角色都能从登录页进入 | ◐ |
-| S2-3 | 模拟 Outlook 日历 | `.ics` 订阅已有；主账号 Graph 单向已有 | 演示统一用 `.ics`（零授权、零合规风险）；页面说清「复制链接到 Outlook → 从 Internet 订阅」 | 学生在 Outlook 里订阅后能看到自己的预约 | ◐ |
-| S2-4 | 流程收口 | 有已知缺陷 | 修：SlotPicker 换日期空白、17 处按钮忙碌跳版、5 处死代码（铃铛摆动、页面淡入两份、dialog 双层进场、reduced-motion 两条规则、未引用的 `App.css`） | 换日期有 `Loading times…` 提示；按钮忙碌时宽度不变；铃铛行为明确（要么摇，要么删干净） | ○ |
-| S2-5 | 去 AI 味剩余 | 第一批（文案、字号、字体、命名）已完成 | 装饰换信息、演示数据换成像真的、按任务验收 | 对照 `claude/reports/2026-10-25-ai-flavor-sources.md` 第 4 节逐条核对 | ◐ |
-| S2-6 | 本地部署 | `start-backend.ps1`（迁移 + 启动）、内存/PostgreSQL 双模式、前端 `npm run dev` | 补「零基础启动」文档：装什么、跑什么、种子数据、演示账号、常见错误 | 新机器照文档能跑起来并登录 | ◐ |
-| S2-7 | 稳定 | 未知 | 跑一次全套 `claude-tools/check-local.sh`，修失败项 | env、backend、pg、openapi、unit、lint、build、e2e 全部 PASS 或写明 SKIP 原因 | ○ |
+| S2-1 | Main demonstration workflow | Features complete | Write a five-minute demonstration script: student sign-in → find a resource → make a booking → approval → check-in → calendar subscription → freeze/unfreeze | Complete the script without interruptions | ○ |
+| S2-2 | Simulated SSO | `MockSsoPage`, `mock-sso.css` and `staff-sign-in` exist | Add documentation that clearly states this is a simulation, not real university SSO; cover the Student, staff, Admin and Manager entry points | All four roles can enter from the sign-in page | ◐ |
+| S2-3 | Simulated Outlook Calendar | `.ics` subscription exists; one-way Graph sync through the main account exists | Use `.ics` consistently in the demonstration (no authorisation or compliance risk); explain on the page: "Copy the link into Outlook → subscribe from the Internet" | A student can subscribe in Outlook and see their bookings | ◐ |
+| S2-4 | Workflow refinement | Known defects exist | Fix the blank state after changing dates in SlotPicker, layout shifts on 17 busy buttons, and five pieces of dead code (bell movement, two page fade-ins, double dialog entrance, two reduced-motion rules and the unused `App.css`) | Changing dates displays `Loading times…`; button width stays fixed while busy; bell behaviour is explicit (either it rings or is removed completely) | ○ |
+| S2-5 | Remove remaining AI-like presentation | First pass (copy, font size, font and naming) complete | Replace decoration with information, replace demonstration data with realistic data, and accept work by task | Check each item against Section 4 of `claude/reports/2026-10-25-ai-flavor-sources.md` | ◐ |
+| S2-6 | Local deployment | `start-backend.ps1` (migration + startup), in-memory/PostgreSQL modes and frontend `npm run dev` exist | Add a beginner-friendly startup guide covering what to install, commands to run, seed data, demonstration accounts and common errors | A new machine can run the project and sign in by following the guide | ◐ |
+| S2-7 | Stability | Unknown | Run the complete `claude-tools/check-local.sh` suite and fix failures | env, backend, pg, OpenAPI, unit, lint, build and e2e all PASS, or the reason for each SKIP is documented | ○ |
 
-## 不在 Sprint 2 范围（明确不做）
+## Explicitly out of Sprint 2 scope
 
-- 真实 SSO、真实 Outlook OAuth：等客户确认账号类型和权限（见 `claude/reports/2026-10-25-outlook-personal-calendar.md`）。
-- 云部署、压力测试：放进 Sprint 3。
-- 图表类可视化（Usage statistics 加图、Today 图形、Room Management 时间轴、My Bookings 进度条）：放进 Sprint 3。
+- Real SSO and real Outlook OAuth: wait for the client to confirm account types and permissions (see `claude/reports/2026-10-25-outlook-personal-calendar.md`).
+- Cloud deployment and load testing: move to Sprint 3.
+- Chart-based visualisation (charts in Usage statistics, graphics on Today, the Room Management timeline and progress bars in My Bookings): move to Sprint 3.
 
-## 与代码的对应
+## Code mapping
 
-| 项 | 代码位置 |
+| Item | Code location |
 | --- | --- |
-| 模拟 SSO | `frontend/src/features/auth/MockSsoPage.tsx`、`auth/mock-sso.css`；后端 `auth/staff-sign-in/`、`auth/demo-login/` |
-| 日历订阅 | `backend/booking/ics.py`、`features/booking/CalendarSubscribe.tsx` |
-| 主账号 Outlook | `backend/booking/outlook.py`、`calendar_sync.py`、`OUTLOOK_INVITE_MODE` |
-| 本地启动 | `backend/start-backend.ps1`（本机文件，不进 git）、`frontend` 的 `npm run dev` |
-| 测试 | `claude-tools/check-local.sh` |
+| Simulated SSO | `frontend/src/features/auth/MockSsoPage.tsx`, `auth/mock-sso.css`; backend `auth/staff-sign-in/`, `auth/demo-login/` |
+| Calendar subscription | `backend/booking/ics.py`, `features/booking/CalendarSubscribe.tsx` |
+| Outlook through the main account | `backend/booking/outlook.py`, `calendar_sync.py`, `OUTLOOK_INVITE_MODE` |
+| Local startup | `backend/start-backend.ps1` (local file, not committed to Git), `npm run dev` in `frontend` |
+| Tests | `claude-tools/check-local.sh` |
 
-## 验收
+## Acceptance
 
-1. 按 S2-1 的脚本完整演示一遍，全程无报错、无空白页。
-2. S2-7 的全套测试结果贴进本轮交付。
-3. S2-2、S2-3 的说明文档写清「模拟」两个字，避免演示时被理解成真实接入。
+1. Complete the S2-1 demonstration script with no errors or blank pages.
+2. Include the complete S2-7 test results in this delivery.
+3. Clearly use the word "simulated" in the S2-2 and S2-3 documentation so the demonstration is not mistaken for a real integration.

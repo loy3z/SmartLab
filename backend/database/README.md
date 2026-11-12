@@ -1,145 +1,145 @@
-# 本地 PostgreSQL 数据库与前后端运行
+# Local PostgreSQL Database and Full-Stack Startup
 
-每位组员使用自己的本地数据库。以下命令适用于 Windows PowerShell，在项目的 `backend` 目录执行；前端启动另开终端。
+Each team member uses a separate local database. The commands below are for Windows PowerShell and run from the project's `backend` directory. Start the frontend in another terminal.
 
-## 包含的文件和数据
+## Included files and data
 
-- `database/schema.sql`：18 张表（含 `resource_internal_info`、 `site_contact`、`notification_preference`、`announcement`、`booking_history_removal` 和持久化邮件队列 `email_delivery`）、约束、索引、序列和审计保护触发器。
-- `database/seed_resources.sql`：2 条培训要求（Advanced 要求先通过 General）、2 个房间、20 台设备（记录所在房间）。
-- `database/seed_users.sql`：6 个演示账号（与内存版演示数据相同的假 zID 和 id），以及 z1000001 一条已通过的 induction。全部是编造的数据，不要把真实学生的 zID 提交进 Git。
-- `database/migrations/`：已有数据库的升级脚本 001–016，按编号顺序执行，都可以重复执行（见第 2 节）。
-- `booking/tests/test_postgres.py`：用真实 PostgreSQL 跑的适配器集成测试（见第 6 节）。
-- `booking/postgres.py`：数据库及上传文件存储适配器。
-- `requirements-postgres.txt`：后端依赖及 PostgreSQL 驱动。
-- `config/settings.py`：从环境变量读取数据库连接配置。
+- `database/schema.sql`: 18 tables, including `resource_internal_info`, `site_contact`, `notification_preference`, `announcement`, `booking_history_removal` and durable email queue `email_delivery`, plus constraints, indexes, sequences and the audit-protection trigger.
+- `database/seed_resources.sql`: two training requirements, with Advanced requiring General first; two rooms; and 20 equipment resources with containing rooms.
+- `database/seed_users.sql`: six fictional demo accounts matching the in-memory identities and one verified induction for z1000001. Never commit real student zIDs.
+- `database/migrations/`: repeatable upgrade scripts 001–016 for existing databases, applied in order; see Section 2.
+- `booking/tests/test_postgres.py`: adapter integration tests against real PostgreSQL; see Section 6.
+- `booking/postgres.py`: database and uploaded-file storage adapters.
+- `requirements-postgres.txt`: backend dependencies and PostgreSQL driver.
+- `config/settings.py`: reads the database connection from environment variables.
 
-这些初始化文件不包含预约、Outlook 同步或审计记录。房间开放时间、预约时长、审批期限（`pending_hold_minutes`，默认 1440 分钟即 24 小时）、培训有效期等是项目演示配置，需要团队后续确认。
+Initialisation files contain no bookings, Outlook sync records or audits. Room hours, booking lengths, review deadlines (`pending_hold_minutes`, default 1440 minutes or 24 hours), training validity and similar values are demonstration configuration that the team must confirm later.
 
-## 1. 准备软件
+## 1. Prepare software
 
-安装并启动 PostgreSQL（推荐 18；16 及以上已验证可用），用同一版本的 `psql` 导入。准备 Python 3.13 环境（例如激活自己的 Conda 环境）和能运行项目 Vite 8 的 Node.js。
+Install and start PostgreSQL, preferably 18; versions 16 and later are verified. Import with the matching `psql`. Prepare Python 3.13, for example in an activated Conda environment, and a Node.js version that runs Vite 8.
 
-在 VS Code 打开克隆后的项目，在终端进入 `backend`。以下 PostgreSQL 安装路径按自己的电脑修改：
+Open the cloned project in VS Code and enter `backend` in the terminal. Adjust the PostgreSQL installation path for your machine:
 
 ```powershell
 $pgBin = 'C:\Program Files\PostgreSQL\18\bin'
 $dbName = 'SmartLab_9900_F15E_BREAD'
 ```
 
-如果安装在 D 盘，可以把第一行改为 `$pgBin = 'D:\PostgreSQL\bin'`。连接 PostgreSQL 时输入自己安装时设置的密码，不要把密码写进 Git 文件。
+For a D-drive installation, use a path such as `$pgBin = 'D:\PostgreSQL\bin'`. Enter the password chosen during PostgreSQL installation when connecting. Never write it into a Git file.
 
-## 2. 首次建立并导入数据库
+## 2. Create and import the database for the first time
 
-以下操作只用于首次创建一个新的空数据库。若数据库已经存在，创建命令会失败并停止；不要删除现有数据库来强行继续。
+Use this only to create a new, empty database. If it already exists, creation fails and stops. Do not delete an existing database merely to continue.
 
 ```powershell
 & "$pgBin\createdb.exe" --host=localhost --port=5432 --username=postgres --password --encoding=UTF8 --template=template0 $dbName
-if ($LASTEXITCODE -ne 0) { throw '创建失败。请检查报错；若已有数据库，请先确认其用途。' }
+if ($LASTEXITCODE -ne 0) { throw 'Creation failed. Inspect the error; if the database exists, confirm its purpose first.' }
 
 & "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\schema.sql' --file='.\database\seed_resources.sql' --file='.\database\seed_users.sql'
-if ($LASTEXITCODE -ne 0) { throw '导入失败，导入事务已回滚。请先排查报错。' }
+if ($LASTEXITCODE -ne 0) { throw 'Import failed and the transaction was rolled back. Investigate the error first.' }
 ```
 
-`schema.sql` 的建 schema 语句应为 `CREATE SCHEMA IF NOT EXISTS public;`，以兼容新数据库自带的 public。这不代表脚本可以重复导入：表和种子数据只导入一次。保留导出文件中的 `\restrict` / `\unrestrict`，使用 `psql` 执行整个文件。
+The schema creation statement in `schema.sql` should be `CREATE SCHEMA IF NOT EXISTS public;` for compatibility with a new database's existing public schema. This does not make the whole import repeatable: create the tables and seeds only once. Keep `\restrict` / `\unrestrict` from exported files and execute the complete file with `psql`.
 
-如果创建成功但导入失败，修复原因后仅重新执行导入命令，不要再次创建数据库。不要在已有业务数据的数据库中试用这些导入命令。
+If creation succeeds but import fails, fix the cause and rerun only the import command. Never experiment with these import commands on a database containing business data.
 
-### 已经建过库：升级到最新结构
+### Upgrade an existing database to the latest structure
 
-不想重建的话，按编号顺序执行 `database/migrations/` 里的全部脚本。每个脚本都可以重复执行，已经做过的步骤会跳过，不删除任何数据；在已经是最新结构的库上执行也不会有变化。所以不用判断自己的库停在哪一步，全部执行一遍即可：
+To avoid rebuilding, apply every script in `database/migrations/` in numerical order. Each script is repeatable, skips work already complete and, except where explicitly noted below, does not delete data. Running them against an up-to-date database makes no change, so it is safe to run the complete set without first finding the current version:
 
 ```powershell
 Get-ChildItem .\database\migrations\*.sql | Sort-Object Name | ForEach-Object {
     & "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file=$_.FullName
-    if ($LASTEXITCODE -ne 0) { throw "升级失败：$($_.Name)" }
+    if ($LASTEXITCODE -ne 0) { throw "Upgrade failed: $($_.Name)" }
 }
 ```
 
-每个文件都会要一次 PostgreSQL 密码。`$pgBin`、`$dbName` 见第 1 节，新开的窗口要重新设置。
+Each file prompts once for the PostgreSQL password. Set `$pgBin` and `$dbName` as in Section 1 in every new terminal.
 
-| 脚本 | 内容 |
+| Script | Contents |
 | --- | --- |
-| `001_client_approval_flow.sql` | 资源状态 `status`、`status_reason`；审批期限默认 1440 分钟 |
-| `002_week5_rules.sql` | 前置 induction `prerequisite_ids`、设备所在房间 `room_id`；演示数据设好 Advanced→General 和设备所在房间 |
-| `003_staff_sign_in.sql` | 新表 `staff_credential`（密码哈希和邀请码）；演示账号设好密码，其他已有员工拿到邀请码，在 staff 登录页激活 |
-| `004_staff_booking_urgent.sql` | `booking` 加 `created_by`、`urgent`、`urgent_reason`；已有预约的 `created_by` 填成 `student_id` |
-| `005_resource_category_demo_password.sql` | 设备类别 `bookable_resource.category`（演示设备填上编的类别，已填的不覆盖）；演示账号 z9000001、z9000002 的密码设为 `123` |
-| `006_calendar_notifications_attendance_series.sql` | 新表 `notification`、`calendar_feed`、`unfreeze_request`、`booking_series`；`app_users` 加 `no_show_count`、`frozen_until`；`booking` 加 `series_id`、`attendance`、`checked_in_at`。第一次执行时把已经开始的已批准预约标为 `NOT_TRACKED`，不会算成缺席 |
-| `007_change_requests_guidance_details_contact.sql` | 1.16.0：`booking` 加 `replaces_id`（申请改期，外键指向原预约，加部分唯一索引：一个预约同时只有一个未决定的改期）；`qualification_requirement` 加 `how_to_complete`、`accepted_evidence`、`reviewer`、`contact`（默认空）；`bookable_resource` 加 `capacity`（只有房间，1–1000）和 `details`（`jsonb` 数组，默认 `[]`）；新表 `site_contact`（实验室联系方式，只有一行）。不改已有数据 |
-| `008_notification_preferences.sql` | 每人每类别的通知站内开关 `notification_preference.enabled` |
-| `009_announcements_notification_channels.sql` | Sprint 3（1.19.0）：偏好加 `email_enabled DEFAULT true NOT NULL`，保留旧 `enabled`；通知记录加 `in_app`、`email` 渠道快照（默认 true）；新表 `announcement`、每资源一条未下架状态公告的部分唯一索引及时间索引 |
-| `010_booking_history_removal.sql` | 1.20.0：每用户／预约一条个人历史移除记录；复合主键保证幂等，外键保留原预约和用户；不删除或修改任何预约 |
-| `011_durable_email_delivery.sql` | 邮件通知的最终收件地址和内容、发送状态、尝试次数、重试时间及 worker 租约；通知删除时级联清理 |
-| `012_additional_hours_requests.sql` | `booking` 加额外每周小时申请标志与理由、正在采集数据的声明与说明；旧记录默认 false／null，保留原状态和时间。约束要求此类请求没有待审批占位和普通自动审批期限，并禁止兼作紧急请求 |
-| `013_long_booking_requests.sql` | `booking` 加长时段申请标志与理由；旧记录默认 false／null，保留普通及额外小时预约。长预约必须有理由，不能同时是紧急请求、额外小时申请或循环预约；保留正常待审占位和候补流程 |
-| `014_remove_booking_freeze.sql` | 1.25.0：删除冻结。删表 `unfreeze_request`，删 `app_users.no_show_count`、`frozen_until` 和对应约束。**会删数据**（解冻申请、冻结日期、缺席次数）；每个预约上的缺席标记 `booking.attendance` 保留。回滚到 1.25.0 之前的代码前先重跑 006，补回列和表（数据不会回来） |
-| `015_resource_internal_info.sql` | 1.26.0：新表 `resource_internal_info`（每个资源一行：负责人、UNSW 资产编号、来源、规格，只有 Manager 能看）；资源删除时级联删除。只加表，不改已有数据 |
-| `016_extension_requests.sql` | 1.27.0：`booking` 加 `extension_end`（学生申请的更晚结束时间，等 Manager 批准）和检查约束（必须晚于 `end`）；已有预约为 NULL |
+| `001_client_approval_flow.sql` | Resource `status`, `status_reason`; review deadline default 1440 minutes |
+| `002_week5_rules.sql` | Induction prerequisites `prerequisite_ids`, containing room `room_id`; demo Advanced → General and equipment rooms |
+| `003_staff_sign_in.sql` | New `staff_credential` table for password hashes and invites; demo passwords set, other existing staff receive activation invites |
+| `004_staff_booking_urgent.sql` | Add `created_by`, `urgent`, `urgent_reason` to `booking`; existing `created_by` becomes `student_id` |
+| `005_resource_category_demo_password.sql` | Add `bookable_resource.category`, populate fictional categories only when empty; set demo z9000001/z9000002 password to `123` |
+| `006_calendar_notifications_attendance_series.sql` | Add `notification`, `calendar_feed`, `unfreeze_request`, `booking_series`; add `no_show_count`, `frozen_until` to `app_users`; add `series_id`, `attendance`, `checked_in_at` to `booking`. On first run, approved bookings already started become `NOT_TRACKED`, not absent |
+| `007_change_requests_guidance_details_contact.sql` | 1.16.0: add `booking.replaces_id` for change requests and a partial unique index for one unresolved change per booking; add four guidance fields to `qualification_requirement`; add room-only `capacity` 1–1000 and `details` JSON array to resources; add one-row `site_contact`. Existing data unchanged |
+| `008_notification_preferences.sql` | Per-person/category in-app switch `notification_preference.enabled` |
+| `009_announcements_notification_channels.sql` | Sprint 3 1.19.0: add `email_enabled DEFAULT true NOT NULL` while retaining `enabled`; add channel snapshots `in_app`, `email` to notifications; add `announcement`, one-active-status-announcement-per-resource partial unique index and time indexes |
+| `010_booking_history_removal.sql` | 1.20.0: one personal history-removal row per user/booking; composite key provides idempotency and foreign keys preserve original entities; no booking is deleted or changed |
+| `011_durable_email_delivery.sql` | Final recipient/content, send state, attempts, retry time and worker lease for email; cascade when its notification is deleted |
+| `012_additional_hours_requests.sql` | Add additional-hours flag/reason and active-data-collection declaration/explanation to `booking`; old records default false/null and retain state/time. Constraints prohibit review holds and ordinary automatic deadlines and prohibit urgent combination |
+| `013_long_booking_requests.sql` | Add long-booking flag/reason; old normal and additional-hours records remain. A long booking requires a reason, cannot be urgent, additional hours or recurring, and retains ordinary hold/waitlist behaviour |
+| `014_remove_booking_freeze.sql` | 1.25.0: remove freeze table `unfreeze_request`, `app_users.no_show_count`, `frozen_until` and constraints. **Deletes freeze data**, while `booking.attendance` remains. Before rolling back to pre-1.25 code, rerun 006 to restore empty columns/tables |
+| `015_resource_internal_info.sql` | 1.26.0: new one-row-per-resource `resource_internal_info` for owner, UNSW asset number, source and specifications, Manager-only; cascades on resource deletion. Adds only a table |
+| `016_extension_requests.sql` | 1.27.0: add `booking.extension_end`, a requested later end awaiting Manager approval, with a later-than-`end` constraint; existing rows are NULL |
 
-### 已有数据库升级到长时段预约申请
+### Upgrade an existing database for long-booking requests
 
-先完成 012，再执行 013，之后再启动包含长预约功能的后端。013 只增加 `long_booking`、`long_booking_reason` 及一致性约束，可以重复执行；已有普通预约和 012 额外小时预约的时间、状态、审批和占位数据不变。新建库的 `schema.sql` 已包含 012 和 013。
+Apply 012 before 013, then start a backend with long-booking support. Migration 013 only adds `long_booking`, `long_booking_reason` and consistency constraints and is repeatable. Existing normal and 012 additional-hours bookings retain time, state, review and hold data. A new `schema.sql` database already includes both.
 
 ```powershell
 & "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\012_additional_hours_requests.sql' --file='.\database\migrations\013_long_booking_requests.sql'
-if ($LASTEXITCODE -ne 0) { throw '012／013 升级失败，事务已回滚。' }
+if ($LASTEXITCODE -ne 0) { throw '012/013 upgrade failed and the transaction was rolled back.' }
 ```
 
-`long_booking=true` 必须附带非空理由，并且 `urgent=false`、`additional_hours=false`、`series_id=NULL`。长时段请求沿用普通待审占位与先到先得候补，因此允许 `hold_until` 和 `review_due_at`；业务层要求 Manager 明确审批，不自动批准。`start`／`end` 与 `reviewed_by`／`reviewed_at` 保存获准的具体时段和审批记录。
+`long_booking=true` requires a non-empty reason, `urgent=false`, `additional_hours=false` and `series_id=NULL`. It uses ordinary pending holds and first-come waitlisting, so `hold_until` and `review_due_at` are permitted. The business layer requires an explicit Manager decision and never auto-approves it. `start`/`end` and `reviewed_by`/`reviewed_at` store the exact authorised interval and review.
 
-### 已有数据库升级到额外每周小时申请
+### Upgrade an existing database for additional weekly hours
 
-部署此功能的后端前，对已经到 011 的数据库执行 012；若还缺更早迁移，先按编号补齐。脚本只增加四个字段及一致性约束，不修改旧预约的状态、时间、审批或占位信息，可以重复执行。新建库的 `schema.sql` 已包含相同结构。
+Before deploying this backend against a database at 011, apply 012. Apply missing earlier scripts first in order. It adds four fields and consistency constraints without changing existing state, time, review or hold information and is repeatable. New databases already have the same structure.
 
 ```powershell
 & "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\012_additional_hours_requests.sql'
-if ($LASTEXITCODE -ne 0) { throw '012 升级失败，事务已回滚。' }
+if ($LASTEXITCODE -ne 0) { throw '012 upgrade failed and the transaction was rolled back.' }
 ```
 
-`additional_hours` 与 `additional_hours_reason` 保存申请及理由；`active_data_collection` 与 `data_collection_reason` 保存申请人对数据采集工作的声明。此类请求的 `hold_until`、`review_due_at` 必须为空：可以提前提交，等待 Manager 决定时不占时段，也不进入普通预约的自动批准流程。Manager 只能在预约开始前配置的窗口内批准（默认 48 小时）；到开始时间仍未决定的申请过期，批准后才按现有 `APPROVED` 规则占用时段。`start`／`end`、`reviewed_by`／`reviewed_at` 保存批准的准确范围，决定时的优先级依据、顺序、审批窗口及采集声明确认写入审计记录。
+`additional_hours` and `additional_hours_reason` store the request and reason. `active_data_collection` and `data_collection_reason` store the applicant's claim. `hold_until` and `review_due_at` must be empty: it can be submitted early, holds no time while awaiting a Manager and is outside ordinary automatic approval. A Manager may approve only within the configured pre-start window, default 48 hours. An unresolved request expires at the start and occupies time under existing `APPROVED` rules only after approval. `start`/`end`, `reviewed_by`/`reviewed_at` store the approved scope; the audit stores priority basis, order, approval window and confirmation of the collection claim.
 
-### 已有数据库升级到持久化邮件队列
+### Upgrade an existing database for the durable email queue
 
-部署包含可靠邮件重试的后端前，对已有库执行 011。脚本新增表和索引；已经跑过原版 011 的库会把自动生成的外键名改为 `email_delivery_notification_fk`，保留约束和邮件记录。不修改已有预约或通知，可以重复执行：
+Apply 011 before deploying reliable email retries. It adds a table and indexes. A database that ran the original 011 has its generated foreign-key name changed to `email_delivery_notification_fk`, retaining the constraint and email records. It changes no booking or notification and is repeatable:
 
 ```powershell
 & "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\011_durable_email_delivery.sql'
-if ($LASTEXITCODE -ne 0) { throw '011 升级失败，事务已回滚。' }
+if ($LASTEXITCODE -ne 0) { throw '011 upgrade failed and the transaction was rolled back.' }
 ```
 
-### 1.20.0 已有数据库升级（Sprint 3）
+### Upgrade an existing database to 1.20.0 (Sprint 3)
 
-已有库到 009 时，执行 `010_booking_history_removal.sql` 即可；脚本可重复执行、不修改已有预约。新建库已在 schema.sql 包含相同表。旧后端代码不受新增表影响，新后端在接流量前必须先迁移。
+For a database at 009, apply `010_booking_history_removal.sql`. It is repeatable and does not change existing bookings. New databases contain the table in `schema.sql`. Old backend code ignores the additional table; migrate before sending traffic to the new backend.
 
 ```powershell
 & "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\010_booking_history_removal.sql'
-if ($LASTEXITCODE -ne 0) { throw '010 升级失败，事务已回滚。' }
+if ($LASTEXITCODE -ne 0) { throw '010 upgrade failed and the transaction was rolled back.' }
 ```
 
-`booking_history_removal(principal_id, booking_id, removed_at)` 只控制个人列表可见性，不用于报表、缺席或日历。新建／升级结构一致性用 `bash claude-tools/check-local.sh schema` 验证；本轮不部署。
+`booking_history_removal(principal_id, booking_id, removed_at)` affects only personal-list visibility, not reporting, attendance or calendar data. Verify new/upgrade schema consistency with `bash claude-tools/check-local.sh schema`. This iteration was not deployed.
 
-### 1.19.0 已有数据库升级（Sprint 3）
+### Upgrade an existing database to 1.19.0 (Sprint 3)
 
-数据库已经到 008 时，只执行 009；它不会改旧的站内选择，邮件默认开启。公告 `author_role` 保存发布角色，`expected_back` 是恢复估计，状态公告的 `expires_at` 必须为 null。手动公告没有资源和恢复估计。`removed_by` / `created_by` 保留外键，记录软下架历史。
+For a database at 008, apply only 009. It preserves old in-app choices and enables email by default. Announcement `author_role` stores the publishing role; `expected_back` is an estimate; a status announcement must have `expires_at = null`. Manual announcements have no resource or recovery estimate. `removed_by` and `created_by` retain foreign keys and soft-removal history.
 
 ```powershell
 & "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\009_announcements_notification_channels.sql'
-if ($LASTEXITCODE -ne 0) { throw '009 升级失败，事务已回滚。' }
+if ($LASTEXITCODE -ne 0) { throw '009 upgrade failed and the transaction was rolled back.' }
 ```
 
-009 可以重复执行；用 `bash claude-tools/check-local.sh schema` 验证新建库和从 HEAD 升级、迁移连跑两遍后的结构一致。该本地检查使用临时库，不是线上升级。本轮未重新部署 EC2。旧迁移 005 会重设演示员工密码，已有库升级到 009 不需要重跑 005。
+Migration 009 is repeatable. Use `bash claude-tools/check-local.sh schema` to verify structural equality between a new database and an upgraded HEAD database after running migrations twice. This local check uses temporary databases and is not a production upgrade. EC2 was not redeployed in this iteration. Do not rerun old migration 005 merely to reach 009 because it resets demo staff passwords.
 
-升级后的库和用 `schema.sql` 与种子文件新建的库，`pg_dump --schema-only` 结果完全一致。每次改表结构都要按这个方法验证：新建一个库、一个按旧脚本建的库，后者执行全部升级脚本（执行两遍），再比较两边的 `pg_dump --schema-only`。
+The schema-only dump of an upgraded database must exactly match one created from `schema.sql` and seeds. For every schema change, create one new database and one from old scripts, run every migration twice on the latter, and compare `pg_dump --schema-only`.
 
-如果本地库里只有测试数据，也可以用 pgAdmin 或 `dropdb` 删掉重建（删之前确认里面没有需要保留的东西）。
+If a local database contains only disposable test data, it may instead be deleted and recreated with pgAdmin or `dropdb`. Confirm nothing must be retained first.
 
-## 3. 安装后端依赖和配置连接
+## 3. Install backend dependencies and configure the connection
 
-仍在 `backend` 目录，激活自己的 Python 环境后执行：
+From `backend`, activate your Python environment and run:
 
 ```powershell
 python -m pip install -r requirements-postgres.txt
-if ($LASTEXITCODE -ne 0) { throw '后端依赖安装失败' }
+if ($LASTEXITCODE -ne 0) { throw 'Backend dependency installation failed' }
 
 $env:DB_NAME = 'SmartLab_9900_F15E_BREAD'
 $env:DB_USER = 'postgres'
@@ -155,97 +155,97 @@ $env:FILE_STORAGE_FACTORY = 'booking.postgres.PostgresFileStorage'
 $env:OUTLOOK_ENABLED = 'false'
 ```
 
-这些环境变量只对当前终端及其启动的程序生效。新开后端终端时需要重新设置；项目不会自动加载 `.env`。两个工厂变量必须设置，否则默认使用内存存储（`REPOSITORY_FACTORY` 指向 PostgreSQL 适配器时，后端才会连接数据库；不设置时不需要安装 PostgreSQL，使用内存演示数据）。`SEED_DEMO_DATA=false` 必须保留，避免运行时再次注入默认演示数据。想让登录在重启后端后仍然有效，可以再设置一个固定的本地 `$env:DJANGO_SECRET_KEY`（只用于本机，不要提交）。
+These variables apply only to this terminal and its child processes. Set them again in every new backend terminal; `.env` is not loaded automatically. Both factory variables are required, otherwise memory storage remains the default. The backend connects to PostgreSQL only when `REPOSITORY_FACTORY` points to the adapter; without it, PostgreSQL need not be installed. Keep `SEED_DEMO_DATA=false` to prevent runtime demo reinsertion. For login sessions to survive a backend restart, also use a stable local `$env:DJANGO_SECRET_KEY`, never committed.
 
-可选：`DB_CONN_MAX_AGE`（秒，默认 60）。同一个后端进程在这段时间内复用数据库连接，不再每个请求新建一次（每次约 12 ms）；设为 0 恢复每个请求新建。Docker 部署用默认值，不需要设置（2026-10-29，压测任务卡 S3）。
+Optional: `DB_CONN_MAX_AGE` in seconds, default 60. A process reuses the connection for this period instead of opening one for every request, which costs about 12 ms. Set 0 to restore per-request connections. Docker uses the default; no setting is needed, based on the 29 October 2026 S3 load-test task.
 
-确认适配器能读取数据：
+Confirm that the adapter reads data:
 
 ```powershell
 python manage.py shell -c "from booking.postgres import PostgresRepository; r = PostgresRepository(); print('Users:', len(r.list_principals())); print('Resources:', len(r.list_resources())); print('Requirements:', len(r.list_requirements())); print('Submissions:', len(r.list_submissions()))"
 ```
 
-首次导入后的预期：Users 6、Resources 22、Requirements 2、Submissions 1。
+After first import, expect Users 6, Resources 22, Requirements 2 and Submissions 1.
 
-## 4. 启动后端和前端
+## 4. Start backend and frontend
 
-在已配置环境变量的后端终端执行，保持终端运行：
+In the configured backend terminal, keep this running:
 
 ```powershell
 python manage.py runserver 127.0.0.1:8000 --noreload
 ```
 
-另开终端，进入项目的 `frontend` 目录：
+In another terminal, enter `frontend`:
 
 ```powershell
 npm.cmd ci
-if ($LASTEXITCODE -ne 0) { throw '前端依赖安装失败' }
+if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency installation failed' }
 npm.cmd run dev
 ```
 
-打开终端显示的网址，通常为 `http://localhost:5173`。前端通过 Vite 将 `/api` 请求转发至 `http://127.0.0.1:8000`。若端口被占用，先确认哪个已有服务占用了端口。
+Open the displayed URL, normally `http://localhost:5173`. Vite proxies `/api` to `http://127.0.0.1:8000`. If a port is occupied, identify the existing service first.
 
-## 5. 演示登录和验证
+## 5. Demo sign-in and verification
 
-学生用大学登录（模拟 SSO，只填 zID，不校验密码）；Admin 和 Manager 点登录页的 **Staff sign-in**，用 zID + 密码登录。
+Students use simulated university sign-in with zID only. Admins and Managers select **Staff sign-in** and use zID and password.
 
-| zID | 角色 | 说明 |
+| zID | Role | Description |
 | --- | --- | --- |
-| z1000001 | STUDENT | 已通过基础 induction，可以直接预约 Lab Room 1 及其设备 |
-| z1000002 | STUDENT | 没有 induction |
-| z1000003 | STUDENT | 没有 induction |
-| z1000004 | STUDENT | 没有 induction |
-| z9000001 | ADMIN | 审核资料和预约；staff 登录，演示密码 `123` |
-| z9000002 | MANAGER | 房间状态、导出、人员管理；staff 登录，演示密码 `123` |
+| z1000001 | STUDENT | General induction verified; can book Lab Room 1 and its equipment |
+| z1000002 | STUDENT | No induction |
+| z1000003 | STUDENT | No induction |
+| z1000004 | STUDENT | No induction |
+| z9000001 | ADMIN | Reviews evidence and bookings; demo password `123` |
+| z9000002 | MANAGER | Room status, exports and user management; demo password `123` |
 
-建议走一遍：z1000002 上传测试材料 → z9000001 审核通过 → z1000002 预约 → z9000001 批准。然后停掉后端再启动，确认数据还在。只使用可分享的测试附件。新操作写入各自的本地数据库，不会自动进入 Git。后端重启后如果登录失效，重新登录；开发模式未固定密钥时会生成新的临时密钥。
+Suggested walkthrough: z1000002 uploads safe test evidence → z9000001 verifies it → z1000002 requests a booking → z9000001 approves. Stop and restart the backend and confirm the data remains. New operations write only to each member's local database and never enter Git automatically. If login expires after restart because development uses a temporary key, sign in again.
 
-日常启动不需要再次导入 SQL：启动 PostgreSQL、在后端终端重新设置环境变量并运行后端，再启动前端即可。
+Do not re-import SQL for everyday startup. Start PostgreSQL, set the backend variables again, run the backend and then the frontend.
 
-### 建一个新的 Manager（不用写 SQL）
+### Create a new Manager without SQL
 
-在设置了上面环境变量的后端终端执行：
+From the configured backend terminal:
 
 ```powershell
 python manage.py create_manager --zid z9000003 --name "Lab Manager" --email z9000003@ad.unsw.edu.au
 ```
 
-命令会输出一次性邀请码。对方在 Staff sign-in 页面选“首次激活”，填 zID、邀请码和自己的密码。之后的员工由 Manager 在 User Management 页面用 Add staff 添加；房间和设备由 Manager 在 Resources 页面添加。
+The command prints a one-time invite. The user selects First activation on Staff sign-in and enters the zID, invite and a new password. Later staff are added through Add staff in User Management; rooms and equipment are added through Resources.
 
-### 定时处理到期申请
+### Scheduled due processing
 
-审批期限到了的申请会在有人访问网页时顺带处理。Docker Compose 使用独立的 `scheduler` 服务；本地数据库开发可以在设置了同样环境变量的终端里持续运行：
+Visits incidentally process requests whose review deadline passed. Docker Compose uses a separate `scheduler`; local database development can run this persistently with the same variables:
 
 ```powershell
 python manage.py run_scheduler
 ```
 
-也可以通过 Windows 任务计划程序或服务器的 cron 每分钟运行一次：
+Alternatively use Windows Task Scheduler or server cron every minute:
 
 ```powershell
 python manage.py process_due
 ```
 
-输出 `Decided or expired N request(s).`。它也会把开始后没确认到场的预约记为缺席。演示时也可以手动运行一次。该命令只能用于数据库模式，内存模式会直接报错退出。
+It prints `Decided or expired N request(s).` and also records absence after an unconfirmed attendance window. It can be run once for a demonstration. Database mode is required; memory mode exits with an error.
 
-## 6. 用真实数据库跑适配器测试
+## 6. Test the adapter against a real database
 
-在已设置上面环境变量的后端终端执行。Django 会临时创建并删除一个 `test_<库名>` 测试库，不会改动你自己的数据：
+Run from the configured backend terminal. Django creates and removes a temporary `test_<database-name>` without changing your data:
 
 ```powershell
 python manage.py test booking.tests.test_postgres -v 2
 ```
 
-这组测试覆盖：各类记录读写和类型、房间状态、前置 induction 和设备所在房间、staff 邀请码激活和密码登录、上传附件、完整审批流程（待审批 → 批准 → 取消 → 候补递补 → 24 小时到期自动批准）、事务回滚、审计记录不可修改、两个人同时申请同一时段时只有一人进入待审批，以及通知、订阅链接、重复预约、到场确认和缺席的读写。
+The suite covers record types and persistence, room status, induction prerequisites and containing rooms, staff activation and password sign-in, file upload, the full workflow from pending through approval, cancellation, waitlist promotion and automatic approval after 24 hours, rollback, immutable audits, simultaneous requests producing only one pending hold, plus notification, calendar feed, recurring booking, check-in and absence persistence.
 
-Sprint 3（1.19.0）的 `Postgres119Tests` 与 `Memory119Tests` 复用同一组验收：四种通知渠道、部分保存与个人隔离、公告权限矩阵、过期和下架、房间及设备状态公告更新／重开、同事务回滚；另有旧偏好升级与 009 连跑两遍测试。
+Sprint 3 1.19.0 `Postgres119Tests` and `Memory119Tests` reuse one acceptance suite for four notification-channel combinations, partial saves and personal isolation, announcement permission matrix, expiry/removal, room/equipment status announcement update/reopen and transactional rollback. Separate tests cover old preference upgrade and running 009 twice.
 
-其余测试（`python manage.py test booking`）使用内存存储，跑之前先把 `REPOSITORY_FACTORY` 和 `FILE_STORAGE_FACTORY` 两个变量清掉（或新开一个终端）。
+Other tests, `python manage.py test booking`, use memory storage. Clear `REPOSITORY_FACTORY` and `FILE_STORAGE_FACTORY` first or use a new terminal.
 
-## 验证范围和限制
+## Verified scope and limitations
 
-第 6 节的集成测试和第 2 节的升级验证在 PostgreSQL 16 上通过；`process_due` 命令可在数据库模式运行；前后端完整流程（上传、审核、预约、批准、改房间状态）的数据都会写入数据库，重启后端后仍在。
+Section 6 integration tests and Section 2 upgrade verification pass on PostgreSQL 16. `process_due` runs in database mode. Full-stack upload, review, request, approval and room-status changes persist after backend restart.
 
-这是本地联调用的适配方案。适配器使用数据库级 advisory lock 串行化所有写入：并发申请同一时段的正确性已有测试覆盖，但没有做压力测试，不能据此宣称已通过生产性能验收。
+This adapter is for local integration. Database advisory locks serialise writes. Tests cover correctness for concurrent requests to the same time, but this alone does not constitute production performance acceptance.
 
-提交 Git 时仅选择这些说明、初始化 SQL、适配器和配置改动。不要提交 `.env`、数据库密码、完整数据备份或个人测试附件。
+When committing, select only the documentation, initial SQL, adapter and configuration changes. Never commit `.env`, database passwords, complete data backups or personal test attachments.

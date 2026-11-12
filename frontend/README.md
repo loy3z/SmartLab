@@ -178,10 +178,10 @@ Enable the local backend's test-console flag as described in [backend startup](.
 
 Urgent bookings use one required **Purpose and urgency** explanation. Training uploads mark evidence **Required** and use the English **Choose file** control. The submit button explains missing input. Functional scope and code locations are in [SPRINT3.md](../SPRINT3.md#17-functional-controls-1170).
 
-## 通知和公告使用说明（Sprint 3，1.19.0）
+## Notifications and announcements guide (Sprint 3, 1.19.0)
 
-- 所有人从侧栏 **Notifications** 打开设置。五类更新各有 **In the bell** / **By email** 两列；勾选即时保存，失败显示错误并保留之前已保存的选择。网站未开邮件时邮件列禁用并整列显示为不勾选（保存的选择不变，开邮件后恢复）；开了也不代表实际邮箱已连接。
-- Dashboard 和 Today 顶部显示生效公告、署名和日期；无公告时不显示公告区。公告不进铃铛、不发邮件。
-- Admin / Manager 从 **Daily work → Announcements** 发布手动公告，填写 Title、Message，可选 Remove at（悉尼时间）。自己的公告可以编辑、下架；Manager 还可下架他人的，不能编辑他人的。历史列表保留已过期和已下架记录。
-- Manager 从 **Room management** 设维修／关闭，填写原因和可选 **Expected back**。原因出现在首页状态公告中，恢复估计不自动重新开放。重新开放房间时自动下架公告；状态公告在 Announcements 页标 **From room status**，不能在该页改或删。设备后端同样支持状态公告，设备状态页面入口仍是后续任务。
-- 日期输入采用 Australia/Sydney（包括夏令时）；错误显示在当前表单／弹窗内。390px 宽度和新文字至少 12px 由 `tests/routing.spec.ts` 的 1.19 用例检查。
+- Everyone opens the settings through **Notifications** in the sidebar. Each of the five update categories has separate **In the bell** and **By email** columns. A selection saves immediately; on failure, an error is shown and the previous saved choice is retained. If email is not enabled for the site, the email column is disabled and appears entirely unchecked. Saved choices remain unchanged and return when email is enabled. Enabling the column does not necessarily mean that an actual mailbox has been connected.
+- Dashboard and Today display active announcements, the publisher's name and the date at the top. The announcement area is hidden when there are no announcements. Announcements do not appear in the bell and do not send email.
+- Admins and Managers publish manual announcements through **Daily work → Announcements**, entering Title, Message and an optional Remove at time in Sydney time. They can edit and remove their own announcements. Managers can also remove, but cannot edit, announcements created by others. The history retains expired and removed announcements.
+- A Manager sets maintenance or closure through **Room management**, providing a reason and an optional **Expected back** time. The reason appears in a status announcement on the home page. The estimated recovery time does not reopen the room automatically. Reopening the room removes the announcement automatically. Status announcements are labelled **From room status** on the Announcements page and cannot be changed or deleted there. The backend also supports equipment status announcements; the equipment-status page entry point remains a future task.
+- Date inputs use Australia/Sydney time, including daylight saving. Errors appear in the current form or dialog. The 1.19 cases in `tests/routing.spec.ts` check the 390 px layout and a minimum font size of 12 px for new text.

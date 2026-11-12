@@ -1,94 +1,94 @@
-# SmartLab 预约后端
+# SmartLab Booking Backend
 
-Django 5.2 + Django REST Framework 3.16。提供学生时段查询、房间／单台设备预约、induction 资料提交、资格审核和预约审核的 REST API。前端交接说明见 [frontend-api.md](docs/frontend-api.md)，完整接口定义见 [openapi.json](docs/openapi.json)。运行后也可读取 `GET /api/schema/`；该地址返回 OpenAPI JSON。
+Django 5.2 + Django REST Framework 3.16. Provides REST APIs for student availability searches, room and individual-equipment bookings, induction evidence submission, qualification review and booking review. See [frontend-api.md](docs/frontend-api.md) for the frontend handover and [openapi.json](docs/openapi.json) for the complete interface definition. While running, `GET /api/schema/` also returns the OpenAPI JSON.
 
-## 功能与规则
+## Features and rules
 
-- **超长预约申请**（1.22.0）：通过独立的 `POST bookings/long-bookings/` 提交用途和超长理由，只豁免普通单次时长上限（默认 3 小时）。仍计入每周 12 小时和最多 8 个未来预约，遵守正常提前 7–28 天、资源自身最长时长、开放时间和资格限制；不能与紧急申请、额外时数或循环预约合并。所有数字继续读取现有配置。
-- **超长预约审批**：时段空闲时按资源审批期限占位，冲突时进入现有先到先得候补队列。只有 Manager 能批准或拒绝，不能审批本人或本人创建的申请；到审批期限仍未处理则过期释放时段，绝不自动批准。获批仅适用于原资源和原起止时间，改期须取消后重新申请。现有数据库须先完成迁移 012，再执行 013。
-- **所有人用同一套规则预约**：学生、Admin、Manager 都可以预约，**只有对应 induction 已通过且有效期覆盖整个预约时才能提交申请**；资料还在审核、被拒或已过期都不能申请，员工也不例外。induction 只能由 Admin／Manager 人工审核，不能审核自己的。
-- **代他人预约**：Admin／Manager 可以用 `on_behalf_of_zid` 替别人预约。预约属于被预约人（`student_id`，检查他的 induction），`created_by` 记录创建者，审计同时记两个人。不能审批给自己的或自己创建的申请。
-- **紧急申请**：开始时间早于最短提前期（默认 7 天）的申请可以标为紧急（必须写原因）。只跳过提前期，induction、开放时间和冲突照常检查（时段必须空闲，不进候补）；只有 Manager 能决定，不自动批准，开始前没人决定就过期。
-- **额外时数申请**（1.21.0）：通过独立的 `POST bookings/additional-hours/` 申请普通每周额度之外的时数，必填用途和理由；可以提前提交，不要求先用完普通额度。待审批时不占住资源，也不消耗普通每周 12 小时，但待审和已批准的额外预约都计入 8 个未来预约上限。Manager 只能在预约开始前配置的窗口内（默认 48 小时）批准，并重新检查资源空闲、资格及优先顺序；单次 3 小时、开放时间和最多提前 28 天仍适用。该流程允许短通知申请，不受最少提前 7 天限制，不自动批准，开始时仍未决定则过期。
-- **额外时数公平顺序**：同一资源、时间重叠且当前可批准的额外申请中，“目标预约当地周一至周日内，跨资源没有已开始且已签到的使用记录”与“正在进行数据采集”属于同一优先组，组内按提交时间及 ID 排序。采集声明必须有说明，Manager 批准时必须明确确认；无效声明应拒绝。无优先条件的申请在后一组，组内同样先到先得。普通已批准预约与有效占位优先于额外时数；额外申请之间不预占资源。审批在事务内重查，审计记录当时的优先依据、顺序、窗口、采集确认及授权时段。
-- **额外时数授权范围**：只适用于已批准的具体资源和起止时间；不能通过普通改期接口移动，需取消后重新申请。Admin 不能批准或拒绝额外申请，Manager 也不能审批本人或本人创建的申请。申请、结果和过期使用现有通知渠道，Manager 收到专门待办通知。
-- **只有 Manager 能直接改期**：改任何人已批准的普通未来预约，不受最短提前期限制（`RESCHEDULED_BY_MANAGER`）。超长和额外时数授权固定到原时段，须取消后重新申请。
-- **预约人申请改期**（1.16.0，`POST bookings/{id}/change/`）：本人已批准的未来预约可以申请换时间。系统新建一个申请（`replaces_id` 指向原预约），新时间空闲就待审批，被占用就进候补；原预约在新申请批准前一直保留，批准时自动取消（`REPLACED_BY_CHANGE`）并交给候补；原预约被取消时，还在等的改期申请一并取消（2026-11-12）。规则和普通申请相同，但原预约不算冲突或重复申请；一个预约同时只能有一个改期申请；不能紧急改期。
-- **改期期间的每周额度**：原预约尚未开始时，同周的原预约与待审／候补改期合并计算，按新旧时长中较长的一项预留，避免重复扣额度或在缩短获批前提前释放额度。跨周改期在决定前保留两周各自的额度，批准后释放原周，撤回／拒绝后释放新周。原预约已经开始时两条分别计入额度，人工批准、自动批准及候补递补都会重新检查周额度。
-- **前置 induction**：一项 induction 可以要求先通过另一项（`QualificationRequirement.prerequisite_ids`，数据库列 `prerequisite_ids uuid[]`）。演示数据中 Advanced laboratory training 要求先有 General laboratory induction：General 未通过时不能提交 Advanced 资料，Admin 也不能通过 Advanced；预约 Advanced 资源时，General 和 Advanced **都必须有效并覆盖整个预约**（缺 General 时 `qualification_status=PREREQUISITE_REQUIRED`）。Manager 可用 `PATCH /api/v1/admin/qualification-requirements/{id}/` 设置 `{"prerequisite_ids":[...]}`，不允许形成循环。
-- **统一规则检查**：创建申请、Admin 批准、超时自动处理、候补递补、改期都调用同一个 `BookingService.rule_violation`，按顺序检查账号是否启用、资源是否可用、时间是否合法、（创建和改期时）预约窗口、资格及前置资格。任何路径都不会绕过其中一项。
-- **账号状态**：停用学生账号时，该学生所有未决申请（待审批和候补）立即拒绝（`ACCOUNT_DEACTIVATED`）并递补下一位；还没开始的已批准预约一并取消（`CANCELLED_BY_STAFF`）、通知本人并把时段交给候补，已经开始的保留（2026-11-10）。批准或自动处理时也会再次检查账号是否启用（`AUTO_REJECTED_ACCOUNT_INACTIVE`）。
-- **房间和设备**：设备记录所在房间（`room_id`），页面按房间分组显示。房间维修／关闭只暂停该房间本身的预约，**不影响**房间里设备的借用；设备有自己的状态。两者**分开预约**，订房间不包含设备（1.16.0 起页面上写明，怎么组合留给客户决定）。1.16.0 起房间可以填容量（`capacity`），所有资源可以加最多 12 行“标签：内容”（`details`），由 Manager 在 Resources 页面填。
-- **普通申请先进入待审批 `PENDING_APPROVAL`**（`reason_code=AWAITING_REVIEW`），不算确认，但在审批期限内为申请人占住时段（`hold_until` = `review_due_at`）。Admin／Manager 可以随时批准或拒绝；审批期限（资源的 `pending_hold_minutes`，默认 1440 分钟即 24 小时，Manager 可按资源调整，且不晚于预约开始）到了还没人处理，系统自动处理：资格仍覆盖整个预约、资源可用、时段无已批准冲突就批准（`AUTO_APPROVED_AFTER_REVIEW_WINDOW`），否则拒绝（`AUTO_REJECTED_*`，`decision_reason` 写明原因），`reviewed_by` 为 `SYSTEM`。批准后才写入 Outlook。
-- 预约默认至少提前 7 天、最多提前 28 天（4 周）；上限适用于所有角色、代他人预约和员工重复预约的每个日期。这些数字不写死在代码里，见下文“可配置规则”。管理员批准时重新检查资格和冲突，不能重复批准相同时段。
-- 同一时段严格先到先得：已批准预约和审批期内的待审批申请占用时段；之后的重叠申请进入等待名单 `WAITLISTED`（`TIME_CONFLICT`／`TEMPORARY_HOLD_CONFLICT`），管理员不能直接批准候补，但可以拒绝。时段空出来时（取消、被拒、过期、改期、资源重新开放），系统按提交顺序递补：申请人资格仍有效就转为新的待审批申请（`PROMOTED_FROM_WAITLIST`，重新计算审批期限），否则拒绝。前一位获批后，候补保留为后备，到开始时间仍未轮到则 `EXPIRED`。资料被拒时，该学生依赖这项资格的所有未决申请（包括候补）会被一并拒绝（`QUALIFICATION_REJECTED`）。
-- 同一学生不能为同一资源重复提交时间重叠的有效申请；已有 `PENDING_APPROVAL`、`WAITLISTED` 或 `APPROVED` 记录时返回 `DUPLICATE_BOOKING`。取消、拒绝或过期后可重新申请；不同资源在同一时间仍可分别预约。
-- 学生查看自己的 dashboard、资格和预约，取消尚未开始的有效预约。员工的“我的预约”还包括自己替别人建的申请。Admin／Manager 查看审批队列并作出决定，也可以取消任何人的预约（`CANCELLED_BY_STAFF`）；Manager 可以改期（可以改时长）。
-- Manager 可以把房间或设备设为维修中／关闭（`PATCH /api/v1/admin/resources/{id}/status/`，需填原因）：暂停新申请、批准和递补，已有预约保留并列出供 Manager 决定是否取消；改回可用后候补自动递补。1.16.0 起状态变化时自动通知（站内和邮件）这个资源上有未来预约或申请的人（`RESOURCE_OUT_OF_SERVICE`／`RESOURCE_REOPENED`）。
-- **预约记录**（Admin／Manager，Booking records 页面）：`GET /api/v1/admin/bookings/?status=ALL` 按资源、学生、日期、姓名或 zID（`q`）查看所有人的预约（带学生 zID 和姓名）；`GET /api/v1/admin/bookings/export/` 用同样的筛选导出 CSV（含创建人、是否重复预约和到场情况）。
-- **Manager 拥有 Admin 的全部权限**，另外独有审批期限配置、资源状态、人员管理和 Lab setup（1.16.0）；**Admin 不能访问任何 Manager 页面和接口**（包括读取审批期限）。人员管理：`GET /api/v1/admin/users/` 查看人员名单（带 `is_staff` 和学生的 induction 状态）；Add staff（`POST /api/v1/admin/users/staff/`，`role` 为 `ADMIN` 或 `MANAGER`）新建员工账号；`PATCH /api/v1/admin/users/{id}/` 停用或恢复账号。**Student、Admin、Manager 是三种分开的账号，角色在创建时确定，之后不能互换**（学生不能升为员工，Admin 和 Manager 也不能互相切换，`ROLE_CHANGE_NOT_ALLOWED` 409）；要换人就新建账号、停用旧账号。不能修改自己，至少保留一个启用的 Manager，修改写审计。`POST /api/v1/admin/users/managers/` 等同于 Add staff 选 Manager（兼容接口）。
-- Admin／Manager 可通过 `GET /api/v1/admin/audit/` 按资源、学生、操作类型和时间查看审计记录（申请、审批、改期、取消、资格审核等），满足客户对操作轨迹的要求。
-- **日历订阅链接**：每人一条私密地址（`GET /api/v1/calendar/link/`，地址里是系统生成的随机码，和微软 Token 无关）。用户在 Outlook 里“从 Internet 订阅”粘贴即可，Outlook 自己定期读取 `GET /api/v1/calendar/{token}.ics`，里面是本人作为预约人的已批准预约；改期是更新同一条，取消后消失。可以重新生成（`POST calendar/link/reset/`），旧链接立即失效。更新频率由 Outlook 决定，可能要几个小时。
-- **站内通知**（顶部铃铛，`GET /api/v1/notifications/`）：自己提交的申请已收到、预约被批准／拒绝（含系统自动决定）、候补转为待审批、被 Manager 改期、被员工取消、员工替你建了预约、induction 审核结果、缺席记录；Manager 还会收到紧急申请。普通新申请不通知管理员。通知和状态变化写在同一个事务里；其他发送渠道写在 `booking/notification_channels.py`，用 `NOTIFICATION_CHANNELS` 配置。
-- **邮件通知**：`booking/email_channel.py` 通过系统 Gmail 邮箱（SMTP + 应用专用密码）把申请已收到、批准或拒绝、过期、候补转正、改期、被员工取消、提醒、替你预约、改期申请的结果和维修／重新开放（1.16.0）这些通知发到预约人的大学邮箱。默认关闭（`EMAIL_ENABLED`）；打开后 `EMAIL_MODE` 默认 `allowlist`，只发给名单里的地址，演示时用 `redirect` 把所有邮件改发给自己。邮件先与通知一起写入 PostgreSQL，scheduler 对临时 SMTP 故障做退避重试，进程重启不会丢待办。测试命令 `manage.py send_test_email --to 你的邮箱`。配置见 [email-setup.md](docs/email-setup.md)。
-- **到场确认**：已批准的预约在开始前 15 分钟到开始后 30 分钟之间，由预约人自己在“我的预约”点 I'm here（`POST bookings/{id}/check-in/`）。窗口结束仍未确认就记一次缺席（`attendance=NO_SHOW`；资源当时维修或关闭的记为 `EXCUSED`，不算），并通知本人以后来不了要及时取消。缺席只用于使用情况报表，没有处罚：1.25.0 按客户 Week 8 会议的意见删除了冻结和解冻申请。
-- **每人每周最多 24 个半小时 slots（12 小时）**：同一受益人在同一周（资源当地时间周一到周日）里普通待审批、候补、已批准和循环预约的实际时长都计入；独立额外时数申请及其已批准预约不占这个普通额度。新普通申请会连同已占用额度一起计算，超过 24 slots 返回 409 `WEEKLY_LIMIT_REACHED`，Manager 改期也一样。取消、被拒、过期后 slots 自动释放；员工代建算在受益人头上。
-- **每人最多 8 个有效未来预约**：待审批、候补、已批准和循环预约都计入，超过时返回 409 `FUTURE_BOOKING_LIMIT_REACHED`。取消、被拒、过期或预约开始后自动释放名额；员工代建算在受益人头上；一个已批准预约及其待处理改期申请合计只算一个。
-- **重复预约（只有员工）**：员工在资源卡片上点 Repeat weekly，选每周几、时间、时长、起止日期（模式跨度最长 14 周，每个实际预约日期仍须在当前预约窗口内），先预览每个日期（`POST bookings/series/preview/`），有问题的日期跳过（不进候补），再创建（`POST bookings/series/`）。每个日期均检查当前预约窗口（默认提前 7–28 天），给自己和代他人预约都适用；超过最晚日期的预览项返回 `BOOKING_TOO_FAR_AHEAD`，创建时必须跳过。开放时间、受益人每个日期的 induction 和冲突等规则照常检查；员工自己创建，所以**直接批准**。每一次都是一条普通预约（带 `series_id`），可以取消单次或整组剩下的（`POST bookings/series/{id}/cancel/`）；到场确认照常要求。
-- **Manager 在网页上管理房间和设备**（Resources 页面，`GET/POST /api/v1/admin/resources/`、`PATCH admin/resources/{id}/`）：
-  - 新增时必须填名称、地点和所需 induction；设备可以选所在房间、填类别；开放时间、时间步长（15／30／60 分钟）、最长时长、审批期限有默认值。
-  - 名称在未下架的资源里不能重复（不区分大小写）；房间不能有所在房间和类别；开放和关闭时间要落在步长上；最长时长必须是步长的整数倍，并且放得进开放时间。
-  - 类型（房间／设备）创建后不能改（`KIND_IS_FIXED`）。修改不动已有预约：新规则只管之后的申请、审批和自动处理；响应里的 `bookings_outside_rules` 列出不再符合新规则的未来预约，由 Manager 决定取消或改期。
-  - 不真删除：下架（`POST …/archive/`）后从预约页消失，历史和审计都保留，可以恢复（`POST …/restore/`）。还有未来预约（`RESOURCE_HAS_BOOKINGS`），或房间里还有设备（`ROOM_HAS_EQUIPMENT`）时不能下架。
-  - 每次新增、修改、下架、恢复都写审计（`RESOURCE_CREATED`／`RESOURCE_UPDATED`（记录改了哪些字段）／`RESOURCE_ARCHIVED`／`RESOURCE_RESTORED`）。
-- **提醒**（通知铃铛）：已批准的预约开始前 24 小时提醒“记得点 I'm here”；已通过的 induction 在 14 天内到期时提醒重新上传；候补或待审批的申请到开始时间还没轮到或没人决定时，通知“申请已过期”。每条提醒只发一次。
-- **使用情况报表**（1.26.0 起只有 Manager，Booking records 页面的 Usage statistics 标签，`GET /api/v1/admin/reports/usage/?first_date=&last_date=`）：每个资源在日期范围内的已批准预约数、预约小时数、占开放时间的比例、到场率（已到场 ÷（已到场 + 缺席））、缺席、取消和被拒数。只读。
-- **员工修改自己的密码**（Account 页面，`POST /api/v1/auth/change-password/`）：要填当前密码，新密码至少 8 位且不能和当前相同；学生没有密码（用大学登录）。
-- **Lab setup**（1.16.0，Manager，`/manager/setup`）：新建 induction、编辑名称和四段说明（怎么完成、接受什么证明、谁审核、找谁问，显示在 Induction & Training 页面），以及实验室联系方式（`GET/PATCH site/contact/`，显示在 Help、已批准预约和 induction 说明下）。
-- **员工首页**（`GET admin/overview/`）：Admin 登录后进 Today，看到待审 induction、预约、候补、改期、快到期限的申请、维修中的资源和今天的预约。Manager 登录后进 Lab overview（1.26.0），先看到只有 Manager 能决定的事（紧急、额外时数、超长）、房间状态、本周使用情况和按 zID 查历史的入口；Today 照样可以打开。
-- **按角色区分数据**（1.26.0）：Booking Records 和 CSV 对 Admin 只返回 7 天内结束及以后的预约，完整历史只给 Manager；设备的负责人、UNSW 资产编号、来源、规格存在单独的表里，只有 Manager 能读写（`GET/PATCH admin/resources/{id}/internal/`）。
-- **建第一个 Manager**：`python manage.py create_manager --zid z9000003 --name "Lab Manager" --email z9000003@ad.unsw.edu.au`，输出一次性邀请码，对方在 staff 登录页激活。只能在 PostgreSQL 模式用。
+- **Long-booking requests** (1.22.0): submit a purpose and reason through the separate `POST bookings/long-bookings/`. This exempts only the normal per-booking duration limit, which defaults to three hours. It still counts toward the weekly 12-hour limit and eight future bookings, and still follows the normal 7–28-day window, resource maximum duration, opening hours and qualification requirements. It cannot be combined with an urgent, additional-hours or recurring request. All numbers continue to come from existing configuration.
+- **Long-booking review:** when the time is free, it is held until the resource's review deadline; when it conflicts, it enters the existing first-come, first-served waitlist. Only a Manager may approve or reject it and cannot review their own or a request they created. An unresolved request expires at the review deadline and releases its time; it is never approved automatically. Approval applies only to the original resource and interval; rescheduling requires cancellation and a new request. Existing databases must apply migration 012 before 013.
+- **One set of booking rules for everyone:** Students, Admins and Managers can book, but **a request can be submitted only when the required induction is verified and remains valid through the entire booking**. Evidence that is pending, rejected or expired does not qualify; staff have no exception. Only an Admin or Manager can review induction evidence, and nobody may review their own.
+- **Booking on behalf:** an Admin or Manager can use `on_behalf_of_zid` to book for somebody else. The booking belongs to the beneficiary (`student_id`, whose induction is checked); `created_by` records the creator, and the audit records both. Staff cannot approve their own or a request they created.
+- **Urgent requests:** a request earlier than the minimum notice, seven days by default, can be marked urgent and requires a reason. Only the notice rule is bypassed; induction, opening hours and conflicts still apply. The time must be free and cannot join a waitlist. Only a Manager decides it, it is never approved automatically, and it expires if unresolved before the start.
+- **Additional-hours requests** (1.21.0): use the separate `POST bookings/additional-hours/` to request time beyond the normal weekly allowance. Purpose and reason are required. It can be submitted before the normal allowance is used. While pending, it neither holds the resource nor consumes the normal weekly 12 hours, but pending and approved additional-hours requests count toward the eight-future-booking limit. A Manager may approve only within the configured period before the start, 48 hours by default, after rechecking availability, qualification and priority. The three-hour per-booking limit, opening hours and 28-day maximum notice still apply. This workflow permits short-notice requests and is exempt from the seven-day minimum. It is never approved automatically and expires unresolved at its start.
+- **Fair ordering for additional hours:** among currently approvable additional-hours requests that overlap on the same resource and time, users with no started and checked-in use across resources during the target booking's local Monday–Sunday week and users in active data collection share the first priority group. Within that group, order by submission time and ID. A data-collection claim requires an explanation and explicit Manager confirmation at approval; invalid claims should be rejected. Requests with neither priority condition form a later group, also first-come, first-served. Normal approved bookings and active holds take precedence. Additional-hours requests do not hold time against one another. Approval rechecks everything in a transaction, while the audit records the priority basis, order, window, collection confirmation and authorised interval.
+- **Scope of additional-hours approval:** approval applies only to the exact resource and interval. The ordinary reschedule endpoint cannot move it; cancel and request again. Admins cannot approve or reject additional-hours requests, and Managers cannot review their own or one they created. Requests, outcomes and expiry use existing notification channels, with a dedicated Manager task notification.
+- **Only a Manager reschedules directly:** a Manager may change any approved normal future booking without the minimum-notice restriction (`RESCHEDULED_BY_MANAGER`). Long-booking and additional-hours approval is fixed to its original interval and requires cancellation and a new request.
+- **Beneficiary change requests** (1.16.0, `POST bookings/{id}/change/`): the beneficiary can request a different time for their approved future booking. The system creates a request whose `replaces_id` points to the original. A free time enters review; an occupied time joins the waitlist. The original remains until the change is approved, when it is cancelled as `REPLACED_BY_CHANGE` and its time is offered to the waitlist. Cancelling the original also cancels any unresolved change request as of 12 November 2026. Ordinary request rules apply, except the original is not a conflict or duplicate. Only one unresolved change request can exist per booking, and a change request cannot be urgent.
+- **Weekly allowance during a change:** before the original starts, an original and unresolved same-week change reserve the longer of their two durations, avoiding double charging or early release when shortening. A cross-week change reserves allowance in both weeks until decision; approval releases the original week, while withdrawal or rejection releases the new week. Once the original has started, both count separately. Manual approval, automatic approval and waitlist promotion all recheck the weekly allowance.
+- **Induction prerequisites:** one induction may require another through `QualificationRequirement.prerequisite_ids`, stored as `prerequisite_ids uuid[]`. In demo data, Advanced laboratory training requires General laboratory induction. Without General, a user cannot submit Advanced evidence and an Admin cannot verify Advanced. General and Advanced must both remain valid through the end of an Advanced-resource booking; missing General returns `qualification_status=PREREQUISITE_REQUIRED`. A Manager configures `{"prerequisite_ids":[...]}` through `PATCH /api/v1/admin/qualification-requirements/{id}/`; cycles are rejected.
+- **Shared rule checks:** creation, Admin approval, automatic deadline processing, waitlist promotion and rescheduling all call the same `BookingService.rule_violation`. It checks active account, available resource, valid time, booking window for creation/rescheduling, and qualifications and prerequisites, in that order. No path bypasses a check.
+- **Account state:** deactivating a student immediately rejects every unresolved request with `ACCOUNT_DEACTIVATED` and promotes the next person. Since 10 November 2026, it also cancels not-yet-started approved bookings as `CANCELLED_BY_STAFF`, notifies the beneficiary and releases the time; started bookings remain. Approval and automatic processing recheck activity and can return `AUTO_REJECTED_ACCOUNT_INACTIVE`.
+- **Rooms and equipment:** equipment records its containing room in `room_id` and is grouped by room on the page. Closing or maintaining a room pauses only bookings for the room itself and **does not affect** equipment in it, which has independent status. The two are **booked separately**; booking a room does not include equipment, stated on the page since 1.16.0 while the client decides how combinations should work. Since 1.16.0, a room can have `capacity`, and every resource can have up to 12 label/value `details` entered by a Manager on Resources.
+- **Normal requests first enter `PENDING_APPROVAL`** with `reason_code=AWAITING_REVIEW`. They are not confirmed but hold the time for the applicant until `hold_until = review_due_at`. An Admin or Manager may decide at any time. At the resource's `pending_hold_minutes` deadline, default 1440 minutes or 24 hours and no later than the booking start, the system decides automatically: approve with `AUTO_APPROVED_AFTER_REVIEW_WINDOW` if qualifications still cover the booking, the resource is available and no approved conflict exists; otherwise reject with an `AUTO_REJECTED_*` code and explanatory `decision_reason`. `reviewed_by` becomes `SYSTEM`. Outlook is written only after approval.
+- Bookings require at least seven and at most 28 days' notice by default. The maximum applies to every role, booking on behalf and each date of a staff recurring series. These values are configurable rather than hard-coded; see Configurable rules below. Approval rechecks qualification and conflict and cannot approve a duplicate interval.
+- Strict first-come, first-served ordering applies to a time. Approved bookings and pending requests with an active hold occupy it. Later overlaps enter `WAITLISTED` with `TIME_CONFLICT` or `TEMPORARY_HOLD_CONFLICT`. Staff cannot approve a waitlisted request directly but may reject it. When the time opens through cancellation, rejection, expiry, rescheduling or reopening, the system promotes in submission order. An eligible beneficiary moves to a new `PENDING_APPROVAL` with `PROMOTED_FROM_WAITLIST` and a recalculated deadline; an ineligible request is rejected. Once the first request is approved, later entries remain backups until they expire at the start. Rejected induction evidence also rejects all dependent unresolved requests with `QUALIFICATION_REJECTED`.
+- A student cannot submit overlapping active requests for the same resource. Existing `PENDING_APPROVAL`, `WAITLISTED` or `APPROVED` records return `DUPLICATE_BOOKING`. A final cancelled, rejected or expired record permits another request. Simultaneous bookings for different resources are not duplicates.
+- Students view their dashboard, qualifications and bookings and cancel active bookings that have not started. Staff My Bookings also includes requests they created for others. Admins and Managers review queues and decisions and may cancel anybody's booking as `CANCELLED_BY_STAFF`; Managers may reschedule and change duration.
+- A Manager can place a room or equipment under maintenance or close it through `PATCH /api/v1/admin/resources/{id}/status/` with a required reason. This pauses new requests, approval and promotion. Existing bookings remain listed for the Manager to decide whether to cancel. Returning to available promotes the waitlist. Since 1.16.0, a status change automatically sends in-app and email notifications (`RESOURCE_OUT_OF_SERVICE` / `RESOURCE_REOPENED`) to people with future bookings or requests for that resource.
+- **Booking records** (Admin/Manager, Booking records): `GET /api/v1/admin/bookings/?status=ALL` searches everyone's bookings by resource, student, date, name or zID (`q`), including student zID and name. `GET /api/v1/admin/bookings/export/` exports the same filters to CSV with creator, recurring-series and attendance details.
+- **A Manager has every Admin permission**, plus exclusive access to review-window configuration, resource status, user management and Lab setup from 1.16.0. **An Admin cannot access a Manager page or endpoint**, including reading review windows. User management includes `GET /api/v1/admin/users/` with `is_staff` and student induction status; Add staff through `POST /api/v1/admin/users/staff/` with role `ADMIN` or `MANAGER`; and account deactivation/reactivation through `PATCH /api/v1/admin/users/{id}/`. **Student, Admin and Manager are separate account types fixed at creation.** Students cannot be promoted, and Admins and Managers cannot switch roles; attempts return 409 `ROLE_CHANGE_NOT_ALLOWED`. Create a replacement account and deactivate the old one. Users cannot modify themselves, at least one active Manager must remain, and every change is audited. `POST /api/v1/admin/users/managers/` is a compatibility alias for Add staff with Manager selected.
+- Admins and Managers query audit history through `GET /api/v1/admin/audit/` by resource, student, action and time. It covers requests, decisions, rescheduling, cancellation and qualification review.
+- **Calendar subscription link:** every person has one private URL from `GET /api/v1/calendar/link/`, containing a system-generated random token unrelated to a Microsoft token. Paste it into Outlook's Subscribe from web. Outlook periodically reads `GET /api/v1/calendar/{token}.ics`, containing approved bookings where that person is the beneficiary. Rescheduling updates the entry and cancellation removes it. `POST calendar/link/reset/` generates a new token and invalidates the old link immediately. Outlook controls refresh timing, which may take hours.
+- **In-app notifications** (top-bar bell, `GET /api/v1/notifications/`): request received, booking approved or rejected including automatic decisions, waitlist promotion, Manager reschedule, staff cancellation, booking created for you, induction result and absence. Managers also receive urgent requests. Ordinary new requests do not notify staff. A notification and its state change commit in one transaction. Additional channels are configured through `NOTIFICATION_CHANNELS` in `booking/notification_channels.py`.
+- **Email notifications:** `booking/email_channel.py` uses a Gmail system mailbox with SMTP and an app password to send request received, approval/rejection, expiry, promotion, reschedule, staff cancellation, reminder, booking on behalf, change-request outcome and resource maintenance/reopening notifications to the beneficiary's university address. It is disabled by default with `EMAIL_ENABLED`. When enabled, `EMAIL_MODE` defaults to `allowlist`; demonstrations use `redirect` to send everything to the tester. Email is written to PostgreSQL with the notification, and the scheduler retries temporary SMTP failures with backoff, retaining tasks through restarts. Test with `manage.py send_test_email --to your-email`. See [email-setup.md](docs/email-setup.md).
+- **Check-in:** the beneficiary of an approved booking selects I'm here in My Bookings from 15 minutes before until 30 minutes after the start (`POST bookings/{id}/check-in/`). An unconfirmed booking becomes `attendance=NO_SHOW` after the window. A resource under maintenance or closed at the time becomes `EXCUSED`. The beneficiary is notified to cancel in future if unable to attend. Absence is for usage reporting only and has no penalty; version 1.25.0 removed freezing and unfreeze requests following the Week 8 client meeting.
+- **Maximum 24 half-hour slots (12 hours) per person per week:** normal pending, waitlisted, approved and recurring booking duration for one beneficiary counts within the resource-local Monday–Sunday week. Separate additional-hours requests and approved additional-hours bookings do not consume this normal allowance. A new normal request is added to current use; more than 24 slots returns 409 `WEEKLY_LIMIT_REACHED`, including a Manager reschedule. Cancellation, rejection and expiry release slots automatically. A booking on behalf counts against the beneficiary.
+- **Maximum eight active future bookings per person:** pending, waitlisted, approved and recurring bookings count. Exceeding the limit returns 409 `FUTURE_BOOKING_LIMIT_REACHED`. Cancellation, rejection, expiry or the start of a booking releases a place. A booking on behalf counts for the beneficiary. One approved booking and its unresolved change request count as one.
+- **Recurring bookings for staff only:** select Repeat weekly on a resource card, then weekdays, time, duration and date range. The pattern spans at most 14 weeks, while every occurrence must still lie in the current booking window. Preview each date through `POST bookings/series/preview/`; dates with problems are skipped rather than waitlisted, then create through `POST bookings/series/`. Every date uses the current 7–28-day window for both self and on-behalf bookings. Dates too far ahead return `BOOKING_TOO_FAR_AHEAD` and must be skipped at creation. Opening hours, beneficiary induction and conflicts still apply. As staff create the series, valid occurrences are **approved immediately**. Each is an ordinary booking with `series_id`, cancellable individually or for the remaining series through `POST bookings/series/{id}/cancel/`; check-in still applies.
+- **Manager resource management through the website** (Resources, `GET/POST /api/v1/admin/resources/`, `PATCH admin/resources/{id}/`):
+  - Creation requires name, location and induction. Equipment may select a containing room and category. Opening hours, 15/30/60-minute step, maximum duration and review window have defaults.
+  - Active resource names are case-insensitively unique. Rooms cannot have a containing room or category. Opening and closing times align to the step; maximum duration is a multiple of the step and fits within opening hours.
+  - Kind, room or equipment, is fixed after creation (`KIND_IS_FIXED`). Editing does not change existing bookings. New rules apply to later requests, approval and automatic processing. `bookings_outside_rules` lists future bookings that no longer fit, for the Manager to cancel or reschedule.
+  - Resources are archived, not deleted, through `POST …/archive/`; they disappear from booking pages while history and audits remain, and can be restored through `POST …/restore/`. A resource with future bookings returns `RESOURCE_HAS_BOOKINGS`; a room containing equipment returns `ROOM_HAS_EQUIPMENT`.
+  - Creation, update, archive and restore write `RESOURCE_CREATED`, `RESOURCE_UPDATED` with changed fields, `RESOURCE_ARCHIVED` and `RESOURCE_RESTORED` audits.
+- **Reminders** in the notification bell: 24 hours before an approved booking, remind the beneficiary to select I'm here; within 14 days of a verified induction's expiry, remind them to upload again; at its start, notify that an unpromoted waitlisted or unresolved pending request expired. Each reminder is sent once.
+- **Usage report** (Manager only since 1.26.0, Usage statistics under Booking records, `GET /api/v1/admin/reports/usage/?first_date=&last_date=`): for each resource and date range, approved count, booked hours, proportion of opening time, attendance rate as checked in / (checked in + absent), absences, cancellations and rejections. Read-only.
+- **Staff password change** (Account, `POST /api/v1/auth/change-password/`): requires the current password; the new password has at least eight characters and differs from the current one. Students use university sign-in and have no password here.
+- **Lab setup** (1.16.0, Manager, `/manager/setup`): create inductions; edit their name and four guidance sections—how to complete, accepted evidence, reviewer and contact—shown under Induction & Training; and maintain laboratory contact details through `GET/PATCH site/contact/`, displayed in Help, approved bookings and induction guidance.
+- **Staff home** (`GET admin/overview/`): an Admin lands on Today with pending inductions, bookings, waitlist, changes, requests near deadline, out-of-service resources and today's bookings. A Manager lands on Lab overview from 1.26.0 with Manager-only decisions for urgent, additional-hours and long requests, room status, weekly use and zID history lookup; Today remains available.
+- **Role-scoped data** (1.26.0): Booking Records and CSV give Admins only bookings ending within the last seven days or later; complete history is Manager-only. Equipment owner, UNSW asset number, source and specifications live in a separate table accessible only to Managers through `GET/PATCH admin/resources/{id}/internal/`.
+- **Create the first Manager:** `python manage.py create_manager --zid z9000003 --name "Lab Manager" --email z9000003@ad.unsw.edu.au` outputs a one-time invite code for activation on staff sign-in. PostgreSQL mode only.
 
-Pending 不算确认，但在审批期限内占住时段，后来的人不能抢走正在审核的时段；冲突的申请进入等待名单，不占位。每个资源关联一项资格要求（可带前置），资格有效期必须覆盖预约结束时间。
+Pending is not confirmed but holds the time until its deadline, preventing later users from taking a request under review. Conflicts enter the waitlist without holding time. Every resource has one qualification requirement, which may have prerequisites, and its validity must cover the booking end.
 
-Manager 可通过 `GET /api/v1/admin/resources/{id}/booking-policy/` 查看审批期限，并用 `PATCH` 提交 `{"pending_hold_minutes":1440}`。支持整数 1–20160 分钟（默认 1440，即 24 小时），只影响之后进入待审批的申请；Admin 不能读取或修改。新种子资源的默认值来自可配置规则 `default_review_window_minutes`。
+A Manager reads a resource's review window through `GET /api/v1/admin/resources/{id}/booking-policy/` and updates it with `PATCH {"pending_hold_minutes":1440}`. Values are integers from 1 to 20160 minutes, default 1440 or 24 hours. A change affects only later requests. An Admin cannot read or update it. The seed default comes from `default_review_window_minutes`.
 
-## 可配置规则（给客户留的接口）
+## Configurable rules for client changes
 
-客户以后可能调整的全局数字集中在 `booking/rules.py` 的 `BookingRules`，业务代码只通过 `RulesProvider.current()` 读取，每次检查都重新读取：
+Global numbers the client may adjust are centralised in `BookingRules` in `booking/rules.py`. Business code reads only through `RulesProvider.current()` and rereads for each check:
 
-| 规则 | 字段 | 默认值 | 环境变量 |
+| Rule | Field | Default | Environment variable |
 | --- | --- | --- | --- |
-| 最少提前天数 | `min_advance_days` | 7 | `MIN_ADVANCE_DAYS` |
-| 最多提前天数 | `max_advance_days` | 28（4 周） | `MAX_ADVANCE_DAYS` |
-| induction 有效天数 | `qualification_validity_days` | 120 | `QUALIFICATION_VALIDITY_DAYS` |
-| 新资源默认审批期限（分钟） | `default_review_window_minutes` | 1440 | `DEFAULT_PENDING_HOLD_MINUTES` |
-| 公平使用 slot 长度（分钟） | `booking_slot_minutes` | 30 | `BOOKING_SLOT_MINUTES` |
-| 普通单次预约最多 slots | `max_slots_per_booking` | 6 | `MAX_SLOTS_PER_BOOKING` |
-| 每人每周最多 slots | `max_slots_per_week` | 24 | `MAX_SLOTS_PER_WEEK` |
-| 每人最多有效未来预约数 | `max_active_future_bookings` | 8 | `MAX_ACTIVE_FUTURE_BOOKINGS` |
-| 额外时数可批准的开始前小时数 | `additional_hours_approval_window_hours` | 48 | `ADDITIONAL_HOURS_APPROVAL_WINDOW_HOURS` |
-| 到场确认：开始前多少分钟开放 | `check_in_opens_minutes` | 15 | `CHECK_IN_OPENS_MINUTES` |
-| 到场确认：开始后多少分钟截止 | `check_in_closes_minutes` | 30 | `CHECK_IN_CLOSES_MINUTES` |
-| 重复预约模式最长周数（不放宽每个日期的预约窗口） | `max_series_weeks` | 14 | `MAX_SERIES_WEEKS` |
-| 预约开始前多少小时提醒 | `reminder_hours_before` | 24 | `REMINDER_HOURS_BEFORE` |
-| induction 到期前多少天提醒 | `induction_reminder_days` | 14 | `INDUCTION_REMINDER_DAYS` |
+| Minimum advance days | `min_advance_days` | 7 | `MIN_ADVANCE_DAYS` |
+| Maximum advance days | `max_advance_days` | 28 (4 weeks) | `MAX_ADVANCE_DAYS` |
+| Induction validity days | `qualification_validity_days` | 120 | `QUALIFICATION_VALIDITY_DAYS` |
+| Default review window for new resources, minutes | `default_review_window_minutes` | 1440 | `DEFAULT_PENDING_HOLD_MINUTES` |
+| Fair-use slot length, minutes | `booking_slot_minutes` | 30 | `BOOKING_SLOT_MINUTES` |
+| Maximum slots per normal booking | `max_slots_per_booking` | 6 | `MAX_SLOTS_PER_BOOKING` |
+| Maximum slots per person per week | `max_slots_per_week` | 24 | `MAX_SLOTS_PER_WEEK` |
+| Maximum active future bookings per person | `max_active_future_bookings` | 8 | `MAX_ACTIVE_FUTURE_BOOKINGS` |
+| Hours before start when additional hours may be approved | `additional_hours_approval_window_hours` | 48 | `ADDITIONAL_HOURS_APPROVAL_WINDOW_HOURS` |
+| Check-in opens this many minutes before start | `check_in_opens_minutes` | 15 | `CHECK_IN_OPENS_MINUTES` |
+| Check-in closes this many minutes after start | `check_in_closes_minutes` | 30 | `CHECK_IN_CLOSES_MINUTES` |
+| Maximum recurring-pattern weeks, without widening each date's booking window | `max_series_weeks` | 14 | `MAX_SERIES_WEEKS` |
+| Reminder hours before booking start | `reminder_hours_before` | 24 | `REMINDER_HOURS_BEFORE` |
+| Reminder days before induction expiry | `induction_reminder_days` | 14 | `INDUCTION_REMINDER_DAYS` |
 
-- 现在：默认的 `SettingsRulesProvider` 读取上面的环境变量，改值后重启即可。
-- 以后：如果客户要在 Manager 页面上修改，新建一个读取数据库表的类，实现 `current()` 返回 `BookingRules`，再把环境变量 `RULES_PROVIDER` 指向它（例如 `RULES_PROVIDER=my_app.rules.DatabaseRulesProvider`）。预约、审批和资格代码都不需要改。
-- 属于单个资源的规则（开放时间、时段长度、最长时长、审批期限、所需 induction、状态）仍保存在资源记录上。审批期限不晚于预约开始时间，刷新页面、重复提交同一幂等请求都不会延长期限。
+- Current: the default `SettingsRulesProvider` reads these environment variables; restart after changing a value.
+- Future: if the client wants Manager-page editing, create a database-backed provider whose `current()` returns `BookingRules`, then point `RULES_PROVIDER` to it, for example `my_app.rules.DatabaseRulesProvider`. Booking, review and qualification code needs no change.
+- Per-resource rules—opening hours, step, maximum duration, review window, required induction and status—remain on the resource. A review deadline never extends beyond the start and is not lengthened by refreshing or replaying the same idempotent request.
 
-已提供 Microsoft Graph 的真实 Outlook 日历适配器：预约批准后创建事件，Manager 改期时更新同一个事件，取消时删除事件；同步状态独立于预约状态，失败可重试。系统从不读取 Outlook 里的修改，**预约永远以网站为准**；用户在自己日历里删掉事件，只有 Manager 改期时才会按新时间重建。默认只邀请 `OUTLOOK_ALLOWED_ATTENDEES` 里列出的邮箱。Admin／Manager 可以在 Calendar sync 页面（开发用）查看连接和同步状态。默认关闭；配置、个人账号登录（可自动续期）和实测命令 `manage.py outlook_live_check` 见 [outlook-setup.md](docs/outlook-setup.md)。自动化测试使用模拟响应，真实连通需要在本机完成微软授权。
+A real Microsoft Graph Outlook adapter is provided. Approval creates an event, Manager rescheduling updates it, and cancellation deletes it. Sync state is independent of booking state and failures can retry. The system never reads Outlook changes: **the website is always authoritative**. Deleting an event from a personal calendar causes recreation only when a Manager later reschedules it. By default only addresses in `OUTLOOK_ALLOWED_ATTENDEES` are invited. Admins and Managers can inspect connection and status on the development Calendar sync page. The integration is disabled by default. See [outlook-setup.md](docs/outlook-setup.md) for setup, refreshable personal sign-in and `manage.py outlook_live_check`. Automated tests mock responses; a live connection requires local Microsoft authorisation.
 
-预约页有两种方式：浏览资源卡片，或 **Find a free time**（按日期、时长、类型、房间、设备类别筛选，一张表看所有资源当天的空闲时间，点空闲时间直接预约；接口 `GET resources/day-overview/`，见 [frontend-api.md](docs/frontend-api.md)）。设备有 `category` 字段（演示类别是编的）。
+The booking page supports browsing resource cards or **Find a free time**, which filters by date, duration, kind, room and equipment category, displays all resources' daily availability in one table and opens a booking from a free time. Endpoint: `GET resources/day-overview/`; see [frontend-api.md](docs/frontend-api.md). Equipment `category` values in demo data are fictional.
 
-**尚未实现**：真实学校 SSO、Outlook 邮件通知（已有 Gmail SMTP 邮件）、设备领取／归还、学生自己的重复预约、更完整的 Manager 规则配置（全局规则目前在环境变量里）。
+**Not implemented:** real university SSO, Outlook email notification (Gmail SMTP email exists), equipment collection/return, student recurring bookings, and complete Manager configuration of global rules, which currently use environment variables.
 
-**两种存储**：默认是内存演示适配器，演示数据、附件和日历事件对应关系在进程重启后丢失，只能单进程运行；PostgreSQL 适配器会持久保存，见 [database/README.md](database/README.md)。服务器部署（Docker Compose，PostgreSQL + gunicorn + nginx）见 [DEPLOY.md](../DEPLOY.md)。
+**Two storage modes:** the default in-memory demonstration adapter loses demo data, attachments and event mappings on process restart and supports only one process. The PostgreSQL adapter persists them; see [database/README.md](database/README.md). See [DEPLOY.md](../DEPLOY.md) for the Docker Compose server deployment with PostgreSQL, gunicorn and nginx.
 
-## 本地启动（PowerShell）
+## Local startup (PowerShell)
 
-在本目录执行：
+Run from this directory:
 
 ```powershell
 py -m venv .venv
@@ -101,129 +101,129 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
 .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000 --noreload
 ```
 
-环境变量示例在 [.env.example](.env.example)。将其复制为 `.env` 不会自动加载，请设置进程环境变量，或自行使用环境加载工具。
+Example variables are in [.env.example](.env.example). Copying it to `.env` does not load it automatically; set process environment variables or use an environment-loading tool.
 
-`ENABLE_DEMO_AUTH` 默认关闭，只有 `DEBUG=true` 且显式开启时，登录接口才可用。token 有效期 3600 秒，使用 `Authorization: Bearer <access_token>`。
+`ENABLE_DEMO_AUTH` defaults off. Sign-in endpoints work only when both it and `DEBUG=true` are set explicitly. Tokens last 3600 seconds and use `Authorization: Bearer <access_token>`.
 
-**两个登录入口**（角色始终由账号决定，不由入口决定）：
+**Two sign-in entry points**; the account, never the entry point, determines the role:
 
-- **学生**：大学登录（目前是模拟 SSO，`POST /api/v1/auth/demo-login/`，只填 zID，不检查密码）。staff 的 zID 在这里会被拒绝（403 `USE_STAFF_SIGN_IN`）。
-- **Admin／Manager**：staff 登录页，zID + 密码（`POST /api/v1/auth/staff-sign-in/`）。学生的 zID 在这里会被拒绝（403 `STUDENT_USES_SSO`）。
-- **新 staff 怎么来**：Manager 在人员管理页 Add staff，系统生成一个邀请码（如 `K7Q4-9MZD`），在人员列表里显示，直到对方激活。对方在 staff 登录页选"首次激活"，填 zID、邀请码和自己设的密码（至少 8 位，`POST /api/v1/auth/staff-activate/`），激活后邀请码作废。
-- **忘记密码**：Manager 点 Reset access（`POST /api/v1/admin/users/{id}/reset-access/`），旧密码失效，生成新邀请码，对方重新激活。角色不变。
-- 密码只存 Django 的密码哈希，单独存在 `StaffCredential`／`staff_credential` 表里，不会出现在任何接口响应中。这是拿到学校 SSO 之前的原型方案；staff 也接入 SSO 后，替换登录方式即可，角色判断不用改。
+- **Student:** University sign-in, currently simulated SSO through `POST /api/v1/auth/demo-login/`, accepts a zID without a password. A staff zID returns 403 `USE_STAFF_SIGN_IN`.
+- **Admin/Manager:** staff sign-in with zID and password through `POST /api/v1/auth/staff-sign-in/`. A student zID returns 403 `STUDENT_USES_SSO`.
+- **Creating staff:** a Manager selects Add staff in user management. The system generates an invite such as `K7Q4-9MZD`, displayed until activation. The user selects First activation on staff sign-in, enters zID and invite and chooses a password of at least eight characters through `POST /api/v1/auth/staff-activate/`; the invite then expires.
+- **Forgotten password:** a Manager selects Reset access through `POST /api/v1/admin/users/{id}/reset-access/`. The old password becomes invalid, a new invite is generated, and the user activates again without changing role.
+- Only a Django password hash is stored, separately in `StaffCredential` / `staff_credential`, and never returned by an API. This is the prototype until university SSO is available. When staff also use SSO, replace sign-in while keeping role decisions unchanged.
 
-演示身份：
+Demo identities:
 
-| zID | 角色 | 登录方式 |
+| zID | Role | Sign-in method |
 | --- | --- | --- |
-| `z1000001` | STUDENT | 大学登录（模拟）；已有有效 General induction |
-| `z1000002` | STUDENT | 大学登录（模拟）；需要先上传 induction |
-| `z9000001` | ADMIN | staff 登录，演示密码 `123` |
-| `z9000002` | MANAGER | staff 登录，演示密码 `123` |
+| `z1000001` | STUDENT | Simulated university sign-in; valid General induction |
+| `z1000002` | STUDENT | Simulated university sign-in; must upload induction first |
+| `z9000001` | ADMIN | Staff sign-in, demo password `123` |
+| `z9000002` | MANAGER | Staff sign-in, demo password `123` |
 
-调用 `POST /api/v1/auth/demo-login/` 并发送 `{"zid":"z1000001"}` 即可获得学生 token；staff 调用 `POST /api/v1/auth/staff-sign-in/` 并发送 `{"zid":"z9000002","password":"123"}`。演示密码只用于这两个假账号。`demo-register` 只能创建 STUDENT，不允许请求体决定管理员角色。可以用 [demo.http](demo.http) 演示完整调用流程。
+Obtain a student token with `POST /api/v1/auth/demo-login/` and `{"zid":"z1000001"}`. Staff use `POST /api/v1/auth/staff-sign-in/` with `{"zid":"z9000002","password":"123"}`. The demo password applies only to those two fictional accounts. `demo-register` creates only STUDENT and never accepts a requested staff role. [demo.http](demo.http) demonstrates the complete flow.
 
-演示注册必须提供 `zid`、`display_name`、`university_email`。演示邮箱只检查格式，不验证学校归属或邮箱所有权；正式认证由可信 SSO 声明提供。种子身份使用对应 `zID@ad.unsw.edu.au` 演示地址。
+Demo registration requires `zid`, `display_name` and `university_email`. It validates only email format, not university membership or ownership. Production authentication receives trusted SSO claims. Seed identities use matching `zID@ad.unsw.edu.au` demo addresses.
 
-按客户原型要求，种子数据包含 2 间实验室（`101`、`102`）和 20 台示例设备（`201`–`220`），每台设备都是独立资源，有自己的可用性。`101` 和放在 Lab Room 1 的普通设备要求基础 induction `00000000-0000-0000-0000-000000000001`；`102` 和 Lab Room 2 的专业设备（如 `202` Camera 001、3D 打印机、激光切割机）要求高级培训 `00000000-0000-0000-0000-000000000002`。资源完整 ID 前缀均为 `00000000-0000-0000-0000-000000000`，清单见 `booking/runtime.py` 的 `DEMO_RESOURCES`。学生 `z1000001` 仅具备基础资格，因此不能直接申请高级资源。实际名称和规则以 `GET resources/` 返回为准。
+As required by the client prototype, seed data contains two laboratories, `101` and `102`, and 20 independent example equipment resources, `201`–`220`, each with separate availability. `101` and ordinary equipment in Lab Room 1 require General induction `00000000-0000-0000-0000-000000000001`. `102` and specialist Lab Room 2 equipment such as `202` Camera 001, the 3D printer and laser cutter require Advanced training `00000000-0000-0000-0000-000000000002`. Complete resource IDs share prefix `00000000-0000-0000-0000-000000000`; see `DEMO_RESOURCES` in `booking/runtime.py`. Student `z1000001` has only General and cannot request Advanced resources. Actual names and rules come from `GET resources/`.
 
-## 检查
+## Checks
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py check
 .\.venv\Scripts\python.exe manage.py test
 ```
 
-依赖的已验证精确版本保存在 `requirements-lock.txt`，可用它重建相同环境。
+Exact verified dependency versions are in `requirements-lock.txt` for reproducing the environment.
 
-这些测试使用临时内存数据，覆盖资格门槛、待审批与审批期限、人工审批与超时自动处理、等待名单递补、并发冲突、Manager 规则权限、身份邮箱和 API 契约。数据库同学接入后，需要对自己的适配器额外运行事务和并发测试。
+Tests use temporary in-memory data and cover qualification gates, pending requests and deadlines, manual and automatic decisions, waitlist promotion, concurrent conflict, Manager rule permissions, identity email and the API contract. A database adapter also needs its own transaction and concurrency tests.
 
-## 业务代码的位置
+## Business-code locations
 
-整体结构见仓库根目录的 [ARCHITECTURE.md](../ARCHITECTURE.md)，历次改动见 [CHANGELOG.md](../CHANGELOG.md)，Sprint 3 新增的功能和代码清单见 [SPRINT3.md](../SPRINT3.md)。
+See [ARCHITECTURE.md](../ARCHITECTURE.md) for overall structure, [CHANGELOG.md](../CHANGELOG.md) for changes and [SPRINT3.md](../SPRINT3.md) for the Sprint 3 feature/code inventory.
 
-所有业务规则都在 `booking/services/` 里，对外只有一个入口 `BookingService`（`from booking.services import BookingService`）。它按主题拆成几个文件，方法都挂在同一个对象上，互相直接用 `self.xxx` 调用：
+All business rules live under `booking/services/`, with one public `BookingService` entry point (`from booking.services import BookingService`). Topic mixins attach their methods to the same object and call each other through `self.xxx`:
 
-| 文件 | 内容 |
+| File | Responsibility |
 | --- | --- |
-| `base.py` | 时钟、规则读取、角色检查、审计写入、资源查找、状态分组常量 |
-| `accounts.py` | 用户列表与停用、员工账号（邀请码、登录）、查找代订对象 |
-| `resources.py` | Manager 新增、编辑、下架、恢复资源，审批期限、维护／关闭和预约报表 |
-| `qualifications.py` | induction 上传、审核、有效期、前置资格 |
-| `checks.py` | 所有路径共用的规则检查 `rule_violation` 和冲突查询 |
-| `bookings.py` | 创建（含代订、紧急）、审批、取消、Manager 改期 |
-| `waitlist.py` | 过期处理、超时自动决定、候补递补 |
-| `availability.py` | 单个资源某天的时段，以及预约页的全天总览 |
-| `audit.py` | 审计记录查询 |
-| `notifications.py` | 站内通知（铃铛）；其他发送渠道在 `booking/notification_channels.py` |
-| `calendar_feed.py` | 日历订阅链接（iCalendar 内容由 `booking/ics.py` 生成） |
-| `attendance.py` | 到场确认和缺席记录 |
-| `series.py` | 员工的重复预约 |
-| `reminders.py` | 提醒：预约快开始、induction 快到期 |
-| `reports.py` | Manager 的使用情况报表 |
-| `changes.py` | 预约人申请改期（1.16.0） |
-| `site_contact.py` | 实验室联系方式（1.16.0） |
-| `overview.py` | 员工首页 Today（1.16.0） |
+| `base.py` | Clock, rules, role checks, audit writing, resource lookup and status-group constants |
+| `accounts.py` | User list/deactivation, staff invite/sign-in and beneficiary lookup |
+| `resources.py` | Manager create/edit/archive/restore, review windows, maintenance/closure and booking records |
+| `qualifications.py` | Induction upload, review, validity and prerequisites |
+| `checks.py` | Shared `rule_violation` and conflict queries |
+| `bookings.py` | Creation, including on-behalf and urgent, review, cancellation and Manager reschedule |
+| `waitlist.py` | Expiry, automatic deadline decisions and waitlist promotion |
+| `availability.py` | One resource's daily slots and the booking-page day overview |
+| `audit.py` | Audit queries |
+| `notifications.py` | In-app bell notifications; other channels are in `booking/notification_channels.py` |
+| `calendar_feed.py` | Calendar subscription; `booking/ics.py` renders iCalendar |
+| `attendance.py` | Check-in and absence records |
+| `series.py` | Staff recurring bookings |
+| `reminders.py` | Upcoming-booking and induction-expiry reminders |
+| `reports.py` | Manager usage reports |
+| `changes.py` | Beneficiary change requests (1.16.0) |
+| `site_contact.py` | Laboratory contact details (1.16.0) |
+| `overview.py` | Staff Today overview (1.16.0) |
 
-新功能放进对应主题的文件；如果是全新主题，新建一个 mixin 文件并加进 `booking/services/__init__.py` 的 `BookingService` 继承列表。
+Put a new feature in its topic file. For a new topic, create a mixin and add it to the `BookingService` inheritance list in `booking/services/__init__.py`.
 
-## 接入正式数据库
+## Production database integration
 
-业务逻辑依赖 [booking/repository.py](booking/repository.py) 的 `Repository` Protocol，不直接查询 Django ORM。数据库适配器需实现用户、资源、资格要求、提交资料、预约和审计记录的读写接口；实体字段见 [booking/domain.py](booking/domain.py)，新增字段、占位查询和事务约定见 [database-interface.md](docs/database-interface.md)。所有可预约资源必须设置 induction 要求；未配置要求的资源会拒绝创建申请，防止配置遗漏绕过资格门槛。附件通过 [booking/storage.py](booking/storage.py) 的 `FileStorage` 接入私有文件服务。
+Business logic depends on the `Repository` protocol in [booking/repository.py](booking/repository.py), not direct Django ORM queries. An adapter implements user, resource, qualification requirement, submission, booking and audit persistence. See [booking/domain.py](booking/domain.py) for entities and [database-interface.md](docs/database-interface.md) for new fields, blocking queries and transaction contracts. Every bookable resource requires an induction; missing configuration rejects requests rather than bypassing the gate. Attachments use the private `FileStorage` interface in [booking/storage.py](booking/storage.py).
 
-`Repository.atomic(resource_ids, student_ids)` 必须是真实事务，并同时协调以下操作：
+`Repository.atomic(resource_ids, student_ids)` must be a real transaction coordinating:
 
-1. 对资源和学生的锁定顺序保持一致。
-2. 在事务内重读最新资格，通过 `list_blocking_bookings` 查询已批准预约和未到期 Pending 占位，检查区间冲突，再保存状态和审计。
-3. 创建请求、人工批准、超时自动处理和等待名单递补使用相同锁定规则。
-4. 失败时完整回滚，避免两个并发请求都获批准。不能先查询可用性再独立写入预约。
+1. Consistent resource and student lock ordering.
+2. Rereading qualification inside the transaction, querying approved and unexpired pending holds through `list_blocking_bookings`, checking interval conflicts, then saving state and audit.
+3. Identical locking for creation, manual approval, automatic deadline processing and waitlist promotion.
+4. Complete rollback on failure so concurrent requests cannot both be approved. Never query availability and then write independently.
 
-区间采用 `[start, end)`，前一预约的结束时间可等于后一预约的开始时间。数据库用带时区时间，API 输出 UTC；资源规则按 `Australia/Sydney` 解释。设备按独立单台建资源，不是设备型号的库存数量。
+Intervals use `[start, end)`, so one booking may start when another ends. The database stores timezone-aware values, the API emits UTC, and resource rules use `Australia/Sydney`. Each physical device is an independent resource rather than an inventory quantity for a model.
 
-通过 `REPOSITORY_FACTORY` 和 `FILE_STORAGE_FACTORY` 配置可导入的 factory 路径；factory 应返回实现相应 Protocol 的实例。内存适配器不需要建表或运行迁移。正式适配器可选择 Django ORM、PostgreSQL 或其他数据库，但需要保持上述接口和事务保证。正式环境应在启动时替换内存实例，不能多进程部署当前演示仓储。`SEED_DEMO_DATA` 控制演示种子数据，仅在 DEBUG 模式允许加载。
+`REPOSITORY_FACTORY` and `FILE_STORAGE_FACTORY` are importable factory paths returning protocol implementations. Memory mode requires no tables or migration. A production adapter may use Django ORM, PostgreSQL or another database while preserving interfaces and transaction guarantees. Replace the memory instance at production startup; the demo repository cannot support multiple processes. `SEED_DEMO_DATA` controls demo seeds and is permitted only in DEBUG.
 
-## 接入真实 SSO 与后台时间处理
+## Real SSO and background time processing
 
-真实 SSO 应验证学校提供的凭证，再映射为本地 `Principal`：`id`、`zid`、`display_name`、`university_email`、`role`、`active`。身份角色来自受信任的学校声明或本地管理记录，不能采用浏览器提交的角色。是否完成 induction 由资格记录判断，不能因 SSO 登录成功就视为已合格。
+Real SSO verifies university credentials and maps them to local `Principal` fields: `id`, `zid`, `display_name`, `university_email`, `role`, `active`. Roles come from trusted university claims or local management, never a browser-submitted role. Induction comes from qualification records; successful SSO does not imply qualification.
 
-`AUTH_PROVIDER` 是真实认证适配器的配置入口：配置可无参数实例化的 provider 类，实现 `resolve_bearer(token: str) -> Principal`。provider 应验证凭证签名、有效期和受众，并将可信身份映射为数据库中的用户记录。当前演示 Bearer 认证不能代替学校 SSO。完成接入后，前端保留相同 `/auth/me/` 和业务接口，登录跳转／token 获取方式根据学校方案调整。
+`AUTH_PROVIDER` configures the real authentication adapter. Its no-argument provider implements `resolve_bearer(token: str) -> Principal`, verifies signature, expiry and audience, and maps trusted identity to a database user. Demo Bearer authentication is not university SSO. After integration, keep `/auth/me/` and business endpoints; adjust only frontend redirection and token acquisition for the university solution.
 
-审批期限保存在每张申请的 `review_due_at`（进入待审批时按资源的 `pending_hold_minutes` 计算）。预约查询及操作会推进到期的状态（超时自动处理、开始时间已过则过期），Admin 也可调用 `POST /api/v1/admin/process-due/`。Docker 部署中的 `scheduler` 服务每分钟调用同一个时间处理逻辑，因此即使无人访问网站也会准时处理。
+Each request stores `review_due_at`, calculated on entering pending review from resource `pending_hold_minutes`. Booking queries and actions advance due state, including automatic decisions and expiry after the start. An Admin can call `POST /api/v1/admin/process-due/`. The Docker `scheduler` invokes the same logic every minute so processing continues without site visits.
 
-资料仅本人和 Admin／Manager 能通过受保护下载接口读取。正式文件存储必须保持私有权限；同时补齐部署配置、SSO、数据库、后台任务与文件服务后，才能作为真实校园服务使用。
+Only the owner and Admin/Manager can download evidence through the protected endpoint. Production storage must remain private. The service is not a real campus service until deployment configuration, SSO, database, background jobs and file service are complete.
 
-## 资格来源与有效期
+## Qualification source and validity
 
-资格审核通过后，有效期为审核时间加 `QUALIFICATION_VALIDITY_DAYS` 天（默认 120 天，约一个学期），审核人不能自行填写有效期。预约结束时间必须不晚于有效期。资格仍有效时不能提前续期；拒绝或到期后可以重新提交。资格撤销尚未实现。120 天是演示默认值，不是客户确认的政策。
+After verification, a qualification expires review time plus `QUALIFICATION_VALIDITY_DAYS`, default 120 days or approximately one term. Reviewers cannot choose the expiry. A booking must end no later than it. Valid qualifications cannot renew early; rejected or expired ones can be resubmitted. Revocation is not implemented. The 120-day value is a demo default, not confirmed client policy.
 
-有效期计算集中在 `BookingService.qualification_expiry`（`booking/services/qualifications.py`）；如以后改为按学期结束日或按资格类型设定，只需修改这一处。所有预约路径（创建、审批、改期、可用性查询）都通过 `BookingService.qualification_state` 判断资格，它只读取该资源要求的最新 `QualificationSubmission`。
+`BookingService.qualification_expiry` in `booking/services/qualifications.py` centralises calculation. A future term-end or per-type rule changes only that location. Every booking path—creation, approval, reschedule and availability—uses `BookingService.qualification_state`, which reads the latest submission for the resource's requirement.
 
-以后如果客户希望由 Moodle 课程完成记录自动判断资格，可以新增一个资格来源适配器：读取学校提供的完成记录（zID、对应课程／模块、完成时间），为对应的 `requirement_id` 保存一条 `VERIFIED` 的 `QualificationSubmission`，`reviewed_by` 标明来源，`valid_until` 使用 `qualification_expiry`。预约、审批、冲突和占位规则无需修改。Moodle 对接需要学校提供接口与数据授权，由客户方实现和维护；当前项目不连接 Moodle。
+If the client later wants Moodle completion to establish qualification, add an adapter that reads authorised completion records containing zID, course/module and completion time, then saves a `VERIFIED` `QualificationSubmission` for the corresponding `requirement_id`, identifies the source in `reviewed_by`, and calculates `valid_until` with `qualification_expiry`. Booking, review, conflict and hold rules remain unchanged. Moodle integration requires a university API and data authorisation and must be implemented and maintained by the client; this project does not connect to Moodle.
 
-## Outlook 与数据库交接
+## Outlook and database handover
 
-`booking/outlook.py` 定义 `CalendarProvider` 和真实 Microsoft Graph 适配器。`booking/calendar_sync.py` 负责事件对应关系、失败退避重试、取消补偿和处理租约。个人演示将所有资源预约写到一个账号的默认日历；`OUTLOOK_MAILBOX`、`OUTLOOK_CALENDAR_ID` 可指定 Microsoft 365 日历。同步是单向的：系统不读取 Outlook 里的修改，也不把任何 Outlook 改动写回预约；预约只能在本系统操作。
+`booking/outlook.py` defines `CalendarProvider` and the real Microsoft Graph adapter. `booking/calendar_sync.py` manages mapping, backoff retry, cancellation compensation and processing leases. A personal demo writes every resource booking to one default calendar; `OUTLOOK_MAILBOX` and `OUTLOOK_CALENDAR_ID` select a Microsoft 365 calendar. Sync is one way: Outlook changes are never read or applied to bookings, which can be changed only in SmartLab.
 
-数据库适配器需要实现 `get_outlook_sync(booking_id)`、`list_outlook_sync()`、`save_outlook_sync(record)`，实体为 `OutlookSyncRecord`。预约、同步记录、审计必须在同一 `atomic` 事务内保存。通过相同资源／学生锁领取处理租约，网络调用发生在事务外，完成后重读版本再更新；保留取消预约的事件对应关系。
+The adapter implements `get_outlook_sync(booking_id)`, `list_outlook_sync()` and `save_outlook_sync(record)` for `OutlookSyncRecord`. Booking, sync record and audit save in one `atomic` transaction. Claim a processing lease under the same resource/student locks, perform the network call outside the transaction, then reread the version and update it. Retain event mappings for cancelled bookings.
 
-内存演示通过预约 API 自动尝试同步，管理员可用 Calendar sync 页面（或 `admin/outlook/process/`、`admin/bookings/{id}/outlook-retry/`）处理失败。接入共享数据库后，可定时执行 `python manage.py process_outlook --limit 10`；独立进程不能读取演示服务器的内存，因此该命令拒绝内存适配器。
+Memory mode tries sync after booking API calls. Staff can process failures through Calendar sync or `admin/outlook/process/` and `admin/bookings/{id}/outlook-retry/`. With a shared database, schedule `python manage.py process_outlook --limit 10`. An independent process cannot access the demo server's memory, so the command rejects the memory adapter.
 
-## 定时处理到期申请
+## Scheduled due processing
 
-审批期限到了的申请需要有人触发自动处理，开始后没确认到场的预约也要按时记为缺席。网页请求会顺带处理，但没人访问时不会执行。Docker Compose 已包含常驻的 `scheduler` 服务；非 Docker 数据库部署可持续运行：
+Requests require a trigger at their review deadline, and an unconfirmed attendance requires recording after its window. Web requests advance state incidentally, but nothing happens when the site is idle. Docker Compose includes a persistent `scheduler`; other database deployments can run:
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py run_scheduler
 ```
 
-也可以继续用 Windows 任务计划或 cron 每分钟执行一次：
+Alternatively run this every minute with Windows Task Scheduler or cron:
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py process_due
 ```
 
-输出到期申请、邮件任务和 Outlook 任务的处理数量。邮件参数是 `--email-limit`（默认 50），启用 Outlook 时还会处理等待中的同步（`--outlook-limit`，默认 10）。该命令同样拒绝内存适配器。
+It reports processed due requests, email tasks and Outlook tasks. `--email-limit` defaults to 50; with Outlook enabled, `--outlook-limit` defaults to 10. It also rejects the memory adapter.
 
 ## Local test console (1.17.0)
 

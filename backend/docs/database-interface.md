@@ -1,45 +1,45 @@
-# 数据库接口说明
+# Database Interface
 
-业务使用 `booking/repository.py` 的 `Repository` Protocol 和 `booking/domain.py` 的实体。数据库适配器通过 `REPOSITORY_FACTORY` 接入；附件通过 `FILE_STORAGE_FACTORY` 接入私有存储。现有两种适配器：内存适配器（默认，用于演示和单元测试）和 PostgreSQL 适配器（`booking/postgres.py`，建表脚本和本地搭建步骤见 `database/README.md`，集成测试见 `booking/tests/test_postgres.py`）。项目不使用 Django ORM 模型或 Django 迁移；表结构改动要同时更新 `database/schema.sql`，并在 `database/migrations/` 里加一个可重复执行的升级脚本。
+The business layer uses the `Repository` protocol in `booking/repository.py` and the entities in `booking/domain.py`. A database adapter is selected through `REPOSITORY_FACTORY`; attachments use private storage selected through `FILE_STORAGE_FACTORY`. Two adapters exist: the default in-memory adapter for demonstrations and unit tests, and the PostgreSQL adapter in `booking/postgres.py`. See `database/README.md` for the schema and local setup, and `booking/tests/test_postgres.py` for integration tests. The project does not use Django ORM models or Django migrations. Every schema change must update `database/schema.sql` and add a repeatable upgrade script under `database/migrations/`.
 
-## 实体字段约定
+## Entity field conventions
 
-下表列出需要特别注意的字段，完整字段以 `booking/domain.py` 为准。
+The table lists fields that need particular attention. `booking/domain.py` is authoritative for the complete field definitions.
 
-| 实体 | 字段 | 持久化约定 |
+| Entity | Field | Persistence contract |
 | --- | --- | --- |
-| Principal | `university_email: str` | 必填；正式环境由可信 SSO／身份记录提供。与 zID、姓名一起返回用户接口。不要据此推断角色或资格 |
-| Resource | `pending_hold_minutes: int` | 必填整数 1–20160；默认 1440（24 小时）。含义是 Admin 审批期限（列名沿用）。Manager 修改时持久化并记录审计 |
-| Resource | `status: str`、`status_reason: str \| None` | `status` 取值 `AVAILABLE`／`MAINTENANCE`／`CLOSED`，默认 `AVAILABLE`；`status_reason` 可空，最长 500 字符。与 `active` 不同：`active=false` 表示资源下架不显示，`status` 是 Manager 随时切换的运营状态 |
-| Resource | `room_id: str \| None` | 设备所在房间（外键指向房间资源）；房间本身为空（检查约束 `room_id IS NULL OR kind='EQUIPMENT'`）。仅用于显示和分组，房间状态不影响设备 |
-| Resource | `category: str \| None` | 设备类别，供预约页筛选；房间为空；1–60 个字符 |
-| QualificationRequirement | `prerequisite_ids: tuple[str, ...]` | 列 `prerequisite_ids uuid[] NOT NULL DEFAULT '{}'`，不能包含自己；循环由业务层检查。演示数据：Advanced 的前置是 General |
-| Booking | `student_id`、`created_by: str \| None` | `student_id` 是预约属于谁（检查他的 induction，锁和重复检查都按它）；`created_by` 是谁创建的，员工代别人预约时与 `student_id` 不同 |
-| Booking | `urgent: bool`、`urgent_reason: str \| None` | 紧急申请标记和原因（≤500 字） |
-| Booking | `hold_until`、`review_due_at: datetime \| None` | 可空、带时区。普通申请进入 `PENDING_APPROVAL` 时两者写同一个值：`min(start, 当时 + pending_hold_minutes)`，不随资源规则变化重算。紧急申请 `review_due_at` 为空、`hold_until=start` |
-| ResourceInternalInfo | `resource_id`、`owner`、`asset_number`、`provided_by`、`specifications`、`updated_at`、`updated_by` | 1.26.0：表 `resource_internal_info`，主键 `resource_id`（外键，资源删除时级联）；只有 Manager 能读写，故意不放进 `Resource` |
-| Booking | `revision: int` | 默认 1，每次改期加 1 |
-| Booking | `extension_end: datetime \| None` | 1.27.0：进行中的预约，本人申请的更晚结束时间，等 Manager 批准；批准后移到 `end` 并清空，拒绝时清空。检查约束 `booking_extension_end_check` 要求晚于 `end` |
-| Booking | `series_id: str \| None` | 员工的重复预约（外键指向 `booking_series`）；单次预约为空 |
-| Booking | `attendance: str \| None`、`checked_in_at` | 到场标记，只对已批准的预约有意义：`CHECKED_IN`／`NO_SHOW`／`EXCUSED`／`NOT_TRACKED`，未决定时为空。迁移 006 把加列前已开始的已批准预约标为 `NOT_TRACKED`，避免被算成缺席 |
-| Booking | `replaces_id: str \| None` | 1.16.0 申请改期：指向它要替换的已批准预约（外键指向 `booking`）。部分唯一索引 `booking_one_open_change_idx` 保证一个预约同时只有一个未决定的改期申请。改期申请被批准时，业务层在同一事务里取消原预约 |
-| Resource | `capacity: int \| None`、`details: tuple[ResourceDetail, ...]` | 1.16.0：房间容纳人数（只有房间，1–1000，检查约束 `bookable_resource_capacity_check`）；`details` 存成 `jsonb` 数组 `[{"label": …, "value": …}]`（检查约束要求是数组，默认 `[]`），适配器读出后转回 `ResourceDetail` |
-| QualificationRequirement | `how_to_complete`、`accepted_evidence`、`reviewer`、`contact: str` | 1.16.0：Manager 写的说明，`text NOT NULL DEFAULT ''` |
-| SiteContact | `id`、`email`、`phone`、`hours`、`note`、`updated_at`、`updated_by` | 1.16.0：表 `site_contact` 只有一行（`id` 固定为 `SITE_CONTACT_ID`，检查约束保证），没有这行时业务层返回空记录 |
-| Notification | `recipient_id`、`kind`、`title`、`body`、`created_at`、`link`、`booking_id`、`read_at` | 表 `notification`，和引起它的变化在同一事务里写入；按收件人、时间倒序读取 |
-| CalendarFeed | `principal_id`、`token`、`created_at` | 表 `calendar_feed`，每人一行，`token` 唯一。重新生成时覆盖 `token` |
-| BookingSeries | `student_id`、`created_by`、`resource_id`、`weekdays`、`start_time`、`duration_minutes`、`first_date`、`last_date`、`purpose` | 表 `booking_series`；`weekdays` 是逗号分隔的 ISO 星期（`"1,3"` = 周一、周三），`start_time` 是资源当地时间 |
-| Booking | `status` | 七种：`WAITING_QUALIFICATION`、`PENDING_APPROVAL`、`WAITLISTED`、`APPROVED`、`REJECTED`、`CANCELLED`、`EXPIRED`。`WAITING_QUALIFICATION` 只出现在早期数据中，现在的流程不会产生 |
-| OutlookSyncRecord | `booking_revision`、`ical_uid`、`last_success_at` 等 | 事件对应关系、版本、重试和租约，均需持久化 |
-| StaffCredential | `principal_id`、`password_hash`、`invite_code`、`updated_at` | 表 `staff_credential`（主键 `principal_id`，外键指向 `app_users`）。只有 Admin／Manager 有；`password_hash` 是 Django 密码哈希，激活前为空；`invite_code` 激活后为空。仓储方法 `get_credential(principal_id)`、`save_credential(credential)`。单独成表，避免密码哈希跟着用户对象被返回 |
+| Principal | `university_email: str` | Required; in production it comes from a trusted SSO or identity record. Returned by the user API with the zID and name. Never infer a role or qualification from it |
+| Resource | `pending_hold_minutes: int` | Required integer from 1 to 20160; default 1440 (24 hours). This is the Admin review deadline; the existing column name is retained. Persist changes made by a Manager and write an audit record |
+| Resource | `status: str`, `status_reason: str \| None` | `status` is `AVAILABLE`, `MAINTENANCE` or `CLOSED`, defaulting to `AVAILABLE`; `status_reason` is optional and at most 500 characters. This differs from `active`: `active=false` archives and hides a resource, while `status` is an operational state a Manager can change at any time |
+| Resource | `room_id: str \| None` | Room that contains a piece of equipment, as a foreign key to a room resource. It is empty for rooms themselves, enforced by `room_id IS NULL OR kind='EQUIPMENT'`. Used only for display and grouping; room status does not affect its equipment |
+| Resource | `category: str \| None` | Equipment category used by booking-page filters; empty for rooms; 1–60 characters |
+| QualificationRequirement | `prerequisite_ids: tuple[str, ...]` | Column `prerequisite_ids uuid[] NOT NULL DEFAULT '{}'`; cannot contain its own ID. The business layer checks cycles. In demo data, Advanced requires General |
+| Booking | `student_id`, `created_by: str \| None` | `student_id` identifies the beneficiary: their induction is checked, and locks and duplicate checks use this ID. `created_by` identifies the creator and differs from `student_id` when staff book for somebody else |
+| Booking | `urgent: bool`, `urgent_reason: str \| None` | Urgent-request flag and reason, at most 500 characters |
+| Booking | `hold_until`, `review_due_at: datetime \| None` | Optional, timezone-aware. When a normal request enters `PENDING_APPROVAL`, both receive `min(start, submission time + pending_hold_minutes)` and are not recalculated when resource rules change. An urgent request has no `review_due_at` and uses `hold_until=start` |
+| ResourceInternalInfo | `resource_id`, `owner`, `asset_number`, `provided_by`, `specifications`, `updated_at`, `updated_by` | 1.26.0: table `resource_internal_info`, with `resource_id` as its primary key and a cascading foreign key to the resource. Intentionally separate from `Resource` because only Managers may read and write it |
+| Booking | `revision: int` | Defaults to 1 and increments on every reschedule |
+| Booking | `extension_end: datetime \| None` | 1.27.0: requested later end time for a booking in progress, awaiting Manager approval. Approval moves it to `end` and clears the field; rejection clears it. Constraint `booking_extension_end_check` requires a time later than `end` |
+| Booking | `series_id: str \| None` | Staff recurring booking, as a foreign key to `booking_series`; empty for a single booking |
+| Booking | `attendance: str \| None`, `checked_in_at` | Attendance marker meaningful only for approved bookings: `CHECKED_IN`, `NO_SHOW`, `EXCUSED` or `NOT_TRACKED`; empty until decided. Migration 006 marked approved bookings that had already started before the column was added as `NOT_TRACKED`, preventing them from being counted as absences |
+| Booking | `replaces_id: str \| None` | 1.16.0 change request: points to the approved booking it will replace. Partial unique index `booking_one_open_change_idx` permits only one unresolved change request for a booking. When the request is approved, the business layer cancels the original booking in the same transaction |
+| Resource | `capacity: int \| None`, `details: tuple[ResourceDetail, ...]` | 1.16.0: room capacity, available only for rooms, from 1 to 1000 and enforced by `bookable_resource_capacity_check`; `details` is a `jsonb` array `[{'label': …, 'value': …}]`, constrained to be an array and defaulting to `[]`. The adapter converts it back to `ResourceDetail` |
+| QualificationRequirement | `how_to_complete`, `accepted_evidence`, `reviewer`, `contact: str` | 1.16.0 Manager-authored guidance, stored as `text NOT NULL DEFAULT ''` |
+| SiteContact | `id`, `email`, `phone`, `hours`, `note`, `updated_at`, `updated_by` | 1.16.0: `site_contact` contains one row. Its `id` is fixed to `SITE_CONTACT_ID` by a constraint. If the row is absent, the business layer returns an empty record |
+| Notification | `recipient_id`, `kind`, `title`, `body`, `created_at`, `link`, `booking_id`, `read_at` | Stored in `notification` in the same transaction as the change that caused it; read newest first for each recipient |
+| CalendarFeed | `principal_id`, `token`, `created_at` | One `calendar_feed` row per person with a unique `token`; regenerating the link replaces the token |
+| BookingSeries | `student_id`, `created_by`, `resource_id`, `weekdays`, `start_time`, `duration_minutes`, `first_date`, `last_date`, `purpose` | Table `booking_series`; `weekdays` is a comma-separated list of ISO weekdays (`"1,3"` means Monday and Wednesday), and `start_time` is in the resource's local time |
+| Booking | `status` | Seven values: `WAITING_QUALIFICATION`, `PENDING_APPROVAL`, `WAITLISTED`, `APPROVED`, `REJECTED`, `CANCELLED`, `EXPIRED`. `WAITING_QUALIFICATION` occurs only in legacy data and is no longer created |
+| OutlookSyncRecord | `booking_revision`, `ical_uid`, `last_success_at`, etc. | Event mapping, version, retry and lease information must all be persisted |
+| StaffCredential | `principal_id`, `password_hash`, `invite_code`, `updated_at` | Table `staff_credential`, keyed by `principal_id` with a foreign key to `app_users`. Only Admins and Managers have one. `password_hash` is a Django password hash and is empty before activation; `invite_code` is empty afterward. Repository methods are `get_credential(principal_id)` and `save_credential(credential)`. A separate table prevents password hashes from being returned with user objects |
 
-`hold_active`、`blocks_slot`、`waitlist_position` 是 API 根据状态、提交顺序和服务端时间计算的响应字段，不需要持久化。
+`hold_active`, `blocks_slot` and `waitlist_position` are API response fields calculated from status, submission order and server time. They are not persisted.
 
-Student、Admin、Manager 是三种分开的账号，角色在创建时确定，之后不能互转；三种角色都可以预约，规则相同。Manager 通过 `POST admin/users/staff/` 新建 Admin 或 Manager 账号（`save_principal`，zID 唯一、小写保存，写 `ADMIN_CREATED`／`MANAGER_CREATED` 审计），通过 `PATCH admin/users/{id}/` 修改 `active`，业务层在同一事务里写 `USER_UPDATED` 审计。停用学生时，同时把该学生的未决申请改为 `REJECTED`（`ACCOUNT_DEACTIVATED`）并递补；`atomic` 会同时锁住所有 Manager 和被修改的用户，防止并发操作导致系统里没有启用的 Manager。演示用户可以直接写进数据库，`role` 只能是 `STUDENT`／`ADMIN`／`MANAGER`，至少要有一个启用的 Manager。
+Student, Admin and Manager are separate account types. A role is fixed at creation and cannot be converted later. All three roles can make bookings under the same rules. A Manager creates an Admin or Manager through `POST admin/users/staff/`: `save_principal` stores the unique, lower-case zID and writes an `ADMIN_CREATED` or `MANAGER_CREATED` audit. `PATCH admin/users/{id}/` changes `active`, while the business layer writes `USER_UPDATED` in the same transaction. Deactivating a student also rejects that student's unresolved requests with `ACCOUNT_DEACTIVATED` and promotes the waitlist. `atomic` locks every Manager and the modified user together, preventing concurrent actions from leaving the system without an active Manager. Demo users may be inserted directly into the database. `role` must be `STUDENT`, `ADMIN` or `MANAGER`, and at least one Manager must remain active.
 
-`Principal` 必须带邮箱；认证适配器和数据库映射都要提供。演示注册用 EmailField 校验格式，不验证邮箱所有权或学校域名，不能当作正式认证证明。Admin／Manager 角色只由受信任来源或系统所有者指定，不能从学生注册请求接收。
+Every `Principal` requires an email address, which authentication adapters and database mappings must supply. Demo registration uses EmailField to validate format but does not prove ownership or a university domain and is not production authentication. Admin and Manager roles can be assigned only by a trusted source or system owner, never accepted from a student registration request.
 
-## 阻挡查询
+## Blocking query
 
 ```python
 def list_blocking_bookings(
@@ -52,7 +52,7 @@ def list_blocking_bookings(
 ) -> list[Booking]: ...
 ```
 
-返回与 `[start,end)` 重叠且当前阻挡时段的预约。`at` 来自后端时钟，不能由浏览器指定。查询条件示意如下，字段名可按实际表结构映射：
+Return bookings that overlap `[start,end)` and currently block the time. `at` comes from the backend clock and cannot be supplied by a browser. The query is conceptually as follows; map the field names to the actual schema as required:
 
 ```sql
 WHERE resource_id = :resource_id
@@ -67,61 +67,61 @@ WHERE resource_id = :resource_id
   )
 ```
 
-审批某个请求时，仅排除该预约 ID；不能排除该学生的其他预约。相邻区间不冲突，房间和单台设备独立查询。
+When reviewing a request, exclude only that booking ID, not the student's other bookings. Adjacent intervals do not conflict. Rooms and individual pieces of equipment are queried independently.
 
-## 审批流程
+## Approval workflow
 
-- 只有 induction（及其前置）已审核通过且在有效期内的人才能提交；否则业务层返回 403 `QUALIFICATION_REQUIRED`，不写任何预约记录。
-- 创建、人工批准、自动处理、递补、改期都调用 `BookingService.rule_violation`（`booking/services/checks.py`），按顺序检查：账号启用 → 资源可用 → 时间合法 → 预约窗口（仅创建和改期）→ 资格及前置资格。数据库适配器只需保证在锁内能读到最新的用户、资源、资格记录。
-- 时段空闲的申请一律进入 `PENDING_APPROVAL`（`reason_code=AWAITING_REVIEW`），写入 `hold_until = review_due_at = min(start, 提交时间 + pending_hold_minutes)`，在期限内阻挡重叠时段。有阻挡记录的申请为 `WAITLISTED`，`hold_until=None`，**不阻挡任何时段**。
-- 紧急申请（`urgent=true`）时段必须空闲，不进候补；`reason_code=URGENT_AWAITING_MANAGER`，只能由 Manager 决定，不自动处理，开始前没人决定就过期。
-- Admin／Manager 在期限内批准（`APPROVED`）或拒绝（`REJECTED`）。不能审批给自己的或自己创建的申请。
-- 期限到了仍未决：`process_due_requests` 在资源锁内重查规则，仍符合（账号启用、资格有效、资源可用、无冲突）则 `APPROVED`（`reason_code=AUTO_APPROVED_AFTER_REVIEW_WINDOW`），否则 `REJECTED`（`AUTO_REJECTED_ACCOUNT_INACTIVE`／`AUTO_REJECTED_QUALIFICATION`／`AUTO_REJECTED_RESOURCE_UNAVAILABLE`／`AUTO_REJECTED_BOOKING_RULES`／`AUTO_REJECTED_CONFLICT`）；`reviewed_by='SYSTEM'`，写审计。自动批准同样生成 Outlook 同步待办。使用数据库时由定时命令 `python manage.py process_due` 触发（见 database/README.md）。
-- 预约开始时仍未决的申请（含候补）改为 `EXPIRED`。取消、拒绝、过期立即失去阻挡效力；`hold_until` 保留供追溯。
-- 学生的 induction 被拒绝时，其依赖这项资格的未决申请（`PENDING_APPROVAL`／`WAITLISTED`）一并 `REJECTED`（`QUALIFICATION_REJECTED`）。induction 通过不会自动批准任何预约。
+- Only a person whose required induction and prerequisites are verified and remain valid may submit. Otherwise the business layer returns 403 `QUALIFICATION_REQUIRED` and writes no booking record.
+- Creation, manual approval, automatic processing, promotion and rescheduling all call `BookingService.rule_violation` in `booking/services/checks.py`. Checks run in this order: active account → available resource → valid time → booking window (creation and rescheduling only) → qualification and prerequisites. The adapter must make the latest user, resource and qualification records available while locked.
+- Every request for a free time enters `PENDING_APPROVAL` with `reason_code=AWAITING_REVIEW`. It stores `hold_until = review_due_at = min(start, submission time + pending_hold_minutes)` and blocks overlapping times until that deadline. A request with an existing blocker is `WAITLISTED`, has `hold_until=None`, and **does not block any time**.
+- An urgent request (`urgent=true`) requires a free time and does not join the waitlist. It uses `reason_code=URGENT_AWAITING_MANAGER`, can be decided only by a Manager, is never processed automatically, and expires if unresolved before it starts.
+- An Admin or Manager approves (`APPROVED`) or rejects (`REJECTED`) within the deadline. Staff cannot review a request for themselves or one they created.
+- At the deadline, `process_due_requests` rechecks the rules under the resource lock. A request that still has an active account, valid qualification, available resource and no conflict becomes `APPROVED` with `reason_code=AUTO_APPROVED_AFTER_REVIEW_WINDOW`. Otherwise it becomes `REJECTED` with `AUTO_REJECTED_ACCOUNT_INACTIVE`, `AUTO_REJECTED_QUALIFICATION`, `AUTO_REJECTED_RESOURCE_UNAVAILABLE`, `AUTO_REJECTED_BOOKING_RULES` or `AUTO_REJECTED_CONFLICT`. It sets `reviewed_by='SYSTEM'` and writes an audit. Automatic approval also creates an Outlook sync task. In database mode, the scheduled command `python manage.py process_due` triggers this processing; see `database/README.md`.
+- Unresolved requests, including waitlisted requests, become `EXPIRED` when their start time arrives. Cancellation, rejection and expiry immediately stop blocking; `hold_until` is retained for traceability.
+- When a student's induction is rejected, unresolved requests that depend on it (`PENDING_APPROVAL` or `WAITLISTED`) are also `REJECTED` with `QUALIFICATION_REJECTED`. Verifying an induction never approves a booking automatically.
 
-## 等待名单与自动递补
+## Waitlist and automatic promotion
 
-业务层的 `_promote_waitlist(resource_id)`（`booking/services/waitlist.py`）在**同一事务、持有该资源锁**时运行，处理该资源全部 `WAITLISTED` 预约：
+The business-layer `_promote_waitlist(resource_id)` in `booking/services/waitlist.py` processes every `WAITLISTED` booking for the resource **inside the same transaction while holding the resource lock**:
 
-1. 按 `(created_at, id)` 升序遍历。**顺序就是先到先得的依据**，`created_at` 需保存到微秒；如有条件，建议加一个单调递增的序号列作为最终排序依据，避免同一时刻提交时顺序不确定。
-2. 已过开始时间的候补改为 `EXPIRED`；仍有阻挡记录的跳过；资源不可用时跳过；否则仍符合规则的改为 `PENDING_APPROVAL`（`reason_code=PROMOTED_FROM_WAITLIST`，重新计算 `hold_until`／`review_due_at`），不符合的改为 `REJECTED`（`reason_code` 为规则检查的错误码，如 `QUALIFICATION_REQUIRED`、`ACCOUNT_INACTIVE`）。同时写审计 `BOOKING_PROMOTED`／`BOOKING_REJECTED`（actor 为 `SYSTEM`）。递补不会直接获批，仍要走审批期限。
-3. 触发时机：取消、拒绝、过期、改期、自动拒绝，以及资源恢复 `AVAILABLE`。
+1. Iterate in ascending `(created_at, id)` order. **This order defines first-come, first-served.** Persist `created_at` to microseconds. Where possible, add a monotonically increasing sequence column as the final ordering key to avoid ambiguity between simultaneous submissions.
+2. Change requests whose start has passed to `EXPIRED`. Skip them when a blocker still exists or the resource is unavailable. Otherwise, change requests that still satisfy the rules to `PENDING_APPROVAL` with `reason_code=PROMOTED_FROM_WAITLIST` and recalculate `hold_until` and `review_due_at`. Change ineligible requests to `REJECTED`, using the rule error such as `QUALIFICATION_REQUIRED` or `ACCOUNT_INACTIVE` as `reason_code`. Write `BOOKING_PROMOTED` or `BOOKING_REJECTED` audits with actor `SYSTEM`. Promotion does not approve the request; it still has a review deadline.
+3. Trigger promotion on cancellation, rejection, expiry, rescheduling, automatic rejection and restoration of a resource to `AVAILABLE`.
 
-递补会修改**其他学生**的预约，但只持有资源锁。这是可以的，因为所有会改变同一资源占用情况的写操作（创建、审批、取消、改期、资料审核、时间推进）都会先锁住该资源。数据库适配器必须保证：`atomic` 嵌套调用时复用外层事务（或使用 savepoint），并且不会在已持有资源锁的情况下，再按不同顺序去锁其他资源。
+Promotion modifies bookings belonging to **other students** while holding only the resource lock. This is safe because every write that changes occupancy of the resource—creation, review, cancellation, rescheduling, evidence review and time advancement—locks that resource first. The adapter must reuse the outer transaction, or a savepoint, for nested calls to `atomic`, and must not lock another resource in a different order while already holding a resource lock.
 
-建议索引：`(resource_id, status, created_at)` 用于读取候补队列，`(status, review_due_at)` 用于找出审批期限已到的申请，`(student_id, status)` 用于重复预约检查和资料被拒时的级联拒绝。
+Recommended indexes: `(resource_id, status, created_at)` for reading the waitlist, `(status, review_due_at)` for finding requests whose review deadline has arrived, and `(student_id, status)` for duplicate checks and cascading rejection after evidence is rejected.
 
-## 事务和并发要求
+## Transaction and concurrency requirements
 
-`atomic(resource_ids, student_ids)` 必须实现真实数据库事务和一致顺序的资源／学生锁。创建申请、人工批准、期限到期后的自动决定、资料被拒时的级联拒绝以及规则修改必须遵循业务服务传入的锁约定。在同一事务内重读资源规则、资格及阻挡预约，然后保存预约和审计；失败完整回滚。
+`atomic(resource_ids, student_ids)` must implement a real database transaction with consistently ordered resource and student locks. Request creation, manual approval, automatic decisions at the deadline, cascading rejection after evidence rejection, and rule changes must follow the lock set supplied by the business service. Within one transaction, reread resource rules, qualifications and blocking bookings, then save the booking and audit; any failure rolls everything back.
 
-数据库索引可覆盖资源、时间区间、状态和占位截止时间。仅对 APPROVED 建区间排斥约束无法防止跨状态的占位冲突，仍需资源锁和事务内重查。可用性接口只提供快照，不能代替写入事务中的校验。适配器需验证两个并发请求只会产生一个占位／获批预约，且错误能回滚全部关联写入。
+Database indexes may cover resource, time interval, status and hold deadline. An interval exclusion constraint on `APPROVED` rows alone cannot prevent holds that conflict across statuses, so a resource lock and transactional recheck remain necessary. The availability API is only a snapshot and cannot replace validation in the write transaction. The adapter must verify that two concurrent requests create only one hold or approved booking and that an error rolls back every related write.
 
-同一资源／学生锁内还必须检查该学生是否已经有与新时段重叠的有效申请（状态为 `PENDING_APPROVAL`、`WAITLISTED` 或 `APPROVED`；早期数据中的 `WAITING_QUALIFICATION` 也算）。存在时业务层返回 `DUPLICATE_BOOKING`，不能再创建一条候补记录。终态记录不阻止重新申请；不同资源同一时间不属于重复预约。
+Under the same resource and student locks, check whether that student already has an active request overlapping the new time. Active statuses are `PENDING_APPROVAL`, `WAITLISTED` and `APPROVED`; legacy `WAITING_QUALIFICATION` also counts. If one exists, the business layer returns `DUPLICATE_BOOKING` and must not create another waitlisted record. Final records do not prevent another request. Requests for different resources at the same time are not duplicates.
 
-规则更新写入 `RESOURCE_BOOKING_POLICY_UPDATED` 审计，保存前后分钟数。`QualificationSubmission.valid_until` 在 VERIFIED 时由业务服务设定（审核时间加可配置规则 `qualification_validity_days`，默认 120 天），PENDING／REJECTED 为空；`QUALIFICATION_VERIFIED` 审计的 details 带 `valid_until`。审计查询接口 `GET admin/audit/` 在业务层对 `list_audit()` 的结果做筛选和分页；数据量变大后，数据库适配器应为审计表的 `at`、`entity_type`＋`entity_id`、`actor_id`、`action` 建索引，必要时再把筛选下推到查询中（结果需与现有测试一致）。审计记录只追加，不修改、不删除。每个资源关联一项 `required_qualification_id`，不同资源可以不同；该要求的前置项记录在 `qualification_requirement.prerequisite_ids`。不要改成用户全局 inducted 布尔值。
+A rule update writes a `RESOURCE_BOOKING_POLICY_UPDATED` audit with the before and after minute values. The business service sets `QualificationSubmission.valid_until` when status is VERIFIED, using the review time plus configurable `qualification_validity_days`, default 120. It is empty for PENDING or REJECTED. Details for the `QUALIFICATION_VERIFIED` audit include `valid_until`. `GET admin/audit/` filters and paginates the result of `list_audit()` in the business layer. As data grows, add indexes for audit `at`, `entity_type` + `entity_id`, `actor_id` and `action`, and push filtering into the query if necessary while preserving existing test results. Audit records are append-only and are never edited or deleted. Every resource has one `required_qualification_id`, which may differ between resources. Prerequisites are in `qualification_requirement.prerequisite_ids`. Do not replace this with a global inducted boolean on the user.
 
-## 通知、订阅、到场确认和重复预约
+## Notifications, subscriptions, attendance and recurring bookings
 
-仓储新增方法：`save_notification`、`get_notification`、`list_notifications(recipient_id)`（最新在前）；邮件队列的 `save_email_delivery`、`get_email_delivery`、`list_email_deliveries`、`claim_email_deliveries`；`get_calendar_feed(principal_id)`、`get_calendar_feed_by_token(token)`、`save_calendar_feed`；`save_series`、`get_series`；1.16.0：`get_site_contact()`（没有时返回 `None`）、`save_site_contact(contact)`；1.26.0：`get_resource_internal_info(resource_id)`（没有时返回 `None`）、`save_resource_internal_info(info)`。
+Repository methods include `save_notification`, `get_notification`, `list_notifications(recipient_id)` in newest-first order; email queue methods `save_email_delivery`, `get_email_delivery`, `list_email_deliveries`, `claim_email_deliveries`; `get_calendar_feed(principal_id)`, `get_calendar_feed_by_token(token)`, `save_calendar_feed`; and `save_series`, `get_series`. Version 1.16.0 adds `get_site_contact()` (returns `None` when absent) and `save_site_contact(contact)`. Version 1.26.0 adds `get_resource_internal_info(resource_id)` (returns `None` when absent) and `save_resource_internal_info(info)`.
 
-- **通知和邮件 outbox** 在保存预约的同一个事务里写入，失败时一起回滚。SMTP 网络调用在提交后进行；`claim_email_deliveries` 必须用行锁／`SKIP LOCKED` 等原子方式设置租约，防止多个 worker 同时领取。
-- **缺席处理**在 `process_due_requests` 的最后一步（`attendance.py` 的 `_process_attendance`）：已批准、`attendance` 为空、到场窗口已结束的预约，在资源＋受益人锁内重读后标记为 `NO_SHOW`／`EXCUSED`，不改其他预约（1.25.0 删除了冻结，`Principal` 不再有 `no_show_count`、`frozen_until`，也没有 `UnfreezeRequest`）。
-- **重复预约**在资源＋受益人锁内重新检查每个日期，然后一次写入系列和全部预约；任何一步失败都整体回滚。
-- **每周上限**在创建申请的资源＋受益人锁内统计这个人同一周的有效预约（`series_id` 为空的）。
+- The **notification and email outbox** is written in the same transaction as the booking and rolls back with it on failure. SMTP network calls run after commit. `claim_email_deliveries` must atomically set leases using row locks, `SKIP LOCKED` or equivalent, preventing multiple workers from claiming one task.
+- **Absence processing** is the final step of `process_due_requests`, in `_process_attendance` in `attendance.py`. An approved booking with empty `attendance` whose check-in window has ended is reread under resource and beneficiary locks, then marked `NO_SHOW` or `EXCUSED` without changing other bookings. Version 1.25.0 removed freezes: `Principal` no longer has `no_show_count` or `frozen_until`, and `UnfreezeRequest` no longer exists.
+- A **recurring booking** rechecks every date under resource and beneficiary locks, then writes the series and every booking together. Any failure rolls back the whole operation.
+- The **weekly limit** counts the beneficiary's active non-series bookings in the same week under the resource and beneficiary locks during request creation.
 
-## 接入和升级
+## Integration and upgrades
 
-- 已有数据库按顺序运行 `database/migrations/` 里的全部脚本（001–011，都可重复执行），步骤见 `database/README.md` 第 2 节。
-- 用户邮箱应从可信身份数据补齐；不要编造正式用户邮箱。
-- 环境变量 `DEFAULT_PENDING_HOLD_MINUTES` 仅用于创建演示种子数据，不能覆盖数据库中的 Manager 配置。
-- 时间字段使用带时区存储；API 输出 UTC，开放时间规则使用资源时区。
-- `save_booking`、`save_resource`、`save_principal` 必须读写上述全部字段；替换适配器后保持 API 结构不变。
-- Manager 在网页上新增资源时，`save_resource` 会插入新行（id 由业务层生成 uuid）；下架只是把 `active` 改成 `false`，不删除行，所以预约和审计的外键始终有效。资源规则（名称不重复、设备所在房间、时间步长等）由业务层检查，数据库不需要新约束。
-- 第一个 Manager 用 `python manage.py create_manager --zid … --name … --email …` 创建（输出一次性邀请码），不需要手写 SQL。
-- 提醒（预约快开始、induction 快到期）只发一次：业务层发之前会在这个人的 `notification` 里查同类提醒，所以不需要额外的表或字段。
+- For an existing database, run every script under `database/migrations/` in order. Scripts 001–011 are repeatable. See Section 2 of `database/README.md`.
+- Populate user email addresses from trusted identity data; never invent production user addresses.
+- `DEFAULT_PENDING_HOLD_MINUTES` is only for creating demo seed data and cannot override Manager configuration stored in the database.
+- Store time fields with time zones. The API emits UTC; opening-hour rules use the resource time zone.
+- `save_booking`, `save_resource` and `save_principal` must read and write every field above. Replacing the adapter must not change the API structure.
+- When a Manager creates a resource through the website, `save_resource` inserts a row whose UUID is generated by the business layer. Archiving sets `active=false` and does not delete the row, so foreign keys from bookings and audits remain valid. The business layer checks resource rules such as unique names, the containing room for equipment and time increments; no new database constraint is required.
+- Create the first Manager with `python manage.py create_manager --zid … --name … --email …`, which outputs a one-time invite code. Hand-written SQL is unnecessary.
+- Reminders for an upcoming booking or expiring induction are sent once. Before sending, the business layer searches that person's `notification` records for the same reminder kind, so no additional table or field is required.
 
-## Outlook 同步记录
+## Outlook synchronisation records
 
-Outlook 使用 `OutlookSyncRecord` 和 `get_outlook_sync`／`list_outlook_sync`／`save_outlook_sync`。预约、审计和同步待办同事务提交；网络调用在事务外。Pending 申请不创建 Outlook 事件；人工或自动批准后才同步。同步是单向的，系统从不读取 Outlook 的修改。改期时如果发现事件已经被用户删除，就把待办改成 CREATE 重新写入（保留旧 iCal UID 作为标记，换一个 transactionId），并写审计 `OUTLOOK_EVENT_RECREATED`。只有使用 PostgreSQL 这类共享数据库时，才能多进程运行后端和独立的后台处理命令；内存演示不共享或持久化数据。
+Outlook uses `OutlookSyncRecord` and repository methods `get_outlook_sync`, `list_outlook_sync` and `save_outlook_sync`. The booking, audit and sync task commit in one transaction; the network call runs outside it. A pending request has no Outlook event; synchronisation starts only after manual or automatic approval. Synchronisation is one way and the system never reads changes made in Outlook. If a reschedule finds that the user deleted the event, change the task to CREATE and write it again, retaining the old iCal UID as a marker but using a new transactionId, then write an `OUTLOOK_EVENT_RECREATED` audit. Multiple backend processes and independent background commands require a shared database such as PostgreSQL. The in-memory demo neither shares nor persists data.

@@ -1,33 +1,33 @@
-# SmartLab：实验室与房间预约
+# SmartLab: Laboratory and Room Booking
 
-**在线演示（Sprint 3 部署版）：** http://3.24.73.197/#/login，用下面「演示账号」里的 zID 登录。
+**Online demo (Sprint 3 deployment):** http://3.24.73.197/#/login. Sign in with one of the zIDs under "Demo accounts" below.
 
 Start here: [Project guide — workflows, pages and local startup](PROJECT_GUIDE.md).
 
-UNSW COMP9900 小组项目（9900-F15E-BREAD）。学生、Admin、Manager 在网站上预约实验室房间和单台设备。系统会检查 induction 资格、开放时间、预约窗口和时间冲突，按审批流程处理申请，已批准的预约单向同步到 Outlook 日历。
+UNSW COMP9900 group project (9900-F15E-BREAD). Students, Admins and Managers use the website to book laboratory rooms and individual pieces of equipment. The system checks induction eligibility, opening hours, booking windows and time conflicts, processes requests through an approval workflow, and synchronises approved bookings one way to Outlook Calendar.
 
-- 后端：Django 5.2 + Django REST Framework，目录 [backend/](backend/)
-- 前端：React + TypeScript + Vite，目录 [frontend/](frontend/)
-- 数据库：默认用内存演示数据；也可以接本地 PostgreSQL，见 [backend/database/README.md](backend/database/README.md)
+- Backend: Django 5.2 + Django REST Framework, in [backend/](backend/)
+- Frontend: React + TypeScript + Vite, in [frontend/](frontend/)
+- Database: in-memory demonstration data by default; a local PostgreSQL database can also be used. See [backend/database/README.md](backend/database/README.md)
 
-## 演示账号
+## Demo accounts
 
-| zID | 角色 | 登录方式 |
+| zID | Role | Sign-in method |
 | --- | --- | --- |
-| `z1000001` | Student（已有 General induction） | 大学登录（演示版，只填 zID） |
-| `z1000002` | Student（还没有 induction） | 大学登录（演示版） |
-| `z9000001` | Admin | Staff sign-in，演示密码 `123` |
-| `z9000002` | Manager | Staff sign-in，演示密码 `123` |
+| `z1000001` | Student (General induction completed) | University sign-in (demo; enter the zID only) |
+| `z1000002` | Student (no induction yet) | University sign-in (demo) |
+| `z9000001` | Admin | Staff sign-in, demo password `123` |
+| `z9000002` | Manager | Staff sign-in, demo password `123` |
 
-全部是编造的演示账号，线上版和本地内存演示模式都能用。
+All of these are fictional demonstration accounts. They work in both the online deployment and the local in-memory demo mode.
 
-## 本地开发（内存演示模式）
+## Local development (in-memory demo mode)
 
-要改代码或跑测试时用。只想看效果的话，直接打开上面的在线演示。
+Use this mode when changing code or running tests. To view the application without developing it, open the online demo above.
 
-后端（在 `backend` 目录）：
+Backend (from the `backend` directory):
 
-Windows PowerShell：
+Windows PowerShell:
 
 ```powershell
 py -m venv .venv
@@ -38,7 +38,7 @@ $env:DJANGO_SECRET_KEY = "local-demo-only-change-this-key"
 .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000 --noreload
 ```
 
-macOS / Linux：
+macOS / Linux:
 
 ```bash
 python3 -m venv .venv
@@ -47,16 +47,16 @@ export DEBUG=true ENABLE_DEMO_AUTH=true DJANGO_SECRET_KEY=local-demo-only-change
 .venv/bin/python manage.py runserver 127.0.0.1:8000 --noreload
 ```
 
-前端（另开一个终端，在 `frontend` 目录）：
+Frontend (open another terminal in the `frontend` directory):
 
 ```powershell
 npm ci
 npm run dev
 ```
 
-打开 Vite 显示的网址（通常是 `http://localhost:5173`）。
+Open the URL displayed by Vite (normally `http://localhost:5173`).
 
-## 测试
+## Tests
 
 ```powershell
 # backend
@@ -68,32 +68,32 @@ npm run build
 npm run test:e2e
 ```
 
-PostgreSQL 集成测试的运行方法见 [backend/database/README.md](backend/database/README.md) 第 6 节。
+See Section 6 of [backend/database/README.md](backend/database/README.md) for instructions on running the PostgreSQL integration tests.
 
-push 代码或开 MR 时，GitLab CI 会自动跑 `manage.py test booking`、`npm test`、`npm run lint` 和 `npm run build`（配置在 [.gitlab-ci.yml](.gitlab-ci.yml)），结果在 MR 的 Pipelines 页查看。2026-11-12 起 CI 也跑 PostgreSQL 集成测试和 Playwright（`test:e2e`）。
+When code is pushed or an MR is opened, GitLab CI automatically runs `manage.py test booking`, `npm test`, `npm run lint` and `npm run build` (configured in [.gitlab-ci.yml](.gitlab-ci.yml)). View the results on the MR's Pipelines page. Since 12 November 2026, CI has also run the PostgreSQL integration tests and Playwright (`test:e2e`).
 
-## 部署
+## Deployment
 
-线上版本用 Docker Compose 手动部署和更新，步骤见 [DEPLOY.md](DEPLOY.md)。CI 只跑测试，不会自动部署：有些迁移会删数据，需要人工确认。
+The online version is deployed and updated manually with Docker Compose. See [DEPLOY.md](DEPLOY.md). CI only runs tests and does not deploy automatically because some migrations delete data and require human confirmation.
 
-## 文档
+## Documentation
 
-| 文档 | 内容 |
+| Document | Contents |
 | --- | --- |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | 整体结构、一次请求怎么走、加功能改哪里 |
-| [CHANGELOG.md](CHANGELOG.md) | 历次改动和原因 |
-| [SPRINT3.md](SPRINT3.md) | Sprint 3 新增的功能和代码清单 |
-| [DEPLOY.md](DEPLOY.md) | 服务器部署和更新（手动） |
-| [backend/README.md](backend/README.md) | 功能与规则、配置、登录方式、交接说明 |
-| [frontend/README.md](frontend/README.md) | 前端路由、登录流程、检查命令 |
-| [backend/docs/frontend-api.md](backend/docs/frontend-api.md) | 前端调用接口的说明和错误码 |
-| [backend/docs/openapi.json](backend/docs/openapi.json) | 完整接口定义（运行后也可读 `GET /api/schema/`） |
-| [backend/docs/database-interface.md](backend/docs/database-interface.md) | 数据库适配器要遵守的约定 |
-| [backend/database/README.md](backend/database/README.md) | 本地 PostgreSQL 搭建和升级 |
-| [backend/docs/outlook-setup.md](backend/docs/outlook-setup.md) | Outlook 同步的配置和实测 |
-| [backend/docs/email-setup.md](backend/docs/email-setup.md) | 邮件通知（Gmail 系统邮箱）的配置和测试 |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Overall structure, request flow and where to change a feature |
+| [CHANGELOG.md](CHANGELOG.md) | Changes in each version and their reasons |
+| [SPRINT3.md](SPRINT3.md) | Inventory of features and code added in Sprint 3 |
+| [DEPLOY.md](DEPLOY.md) | Manual server deployment and updates |
+| [backend/README.md](backend/README.md) | Features and rules, configuration, sign-in methods and handover notes |
+| [frontend/README.md](frontend/README.md) | Frontend routes, sign-in flow and check commands |
+| [backend/docs/frontend-api.md](backend/docs/frontend-api.md) | Frontend API instructions and error codes |
+| [backend/docs/openapi.json](backend/docs/openapi.json) | Complete API definition (also available at `GET /api/schema/` while running) |
+| [backend/docs/database-interface.md](backend/docs/database-interface.md) | Contract that database adapters must follow |
+| [backend/database/README.md](backend/database/README.md) | Local PostgreSQL setup and upgrades |
+| [backend/docs/outlook-setup.md](backend/docs/outlook-setup.md) | Outlook synchronisation configuration and test results |
+| [backend/docs/email-setup.md](backend/docs/email-setup.md) | Email notification configuration and testing with a Gmail system mailbox |
 
-## 注意
+## Notes
 
-- 不要把 `.env`、数据库密码、微软 Token、Gmail 应用专用密码或 `backend/.local/` 提交进 Git。
-- 提交时按具体文件路径 `git add`，不要 `git add backend`（会带上 `.local`）。
+- Do not commit `.env`, database passwords, Microsoft tokens, Gmail app passwords or `backend/.local/` to Git.
+- Use `git add` with specific file paths. Do not run `git add backend`, because it may include `.local`.

@@ -1,110 +1,110 @@
-# 邮件通知（Sprint 3）
+# Email Notifications (Sprint 3)
 
-系统用一个 Gmail 系统邮箱（SMTP + 应用专用密码）给预约人发邮件。通知和最终邮件内容会在同一个业务事务里写入 PostgreSQL；请求提交后由 `booking/email_channel.py` 发送，失败则由 scheduler 延迟重试。SMTP 网络调用不在数据库事务中，不会拖住预约锁或改变预约结果。
+The system uses a Gmail system mailbox (SMTP + app password) to email the person a booking is for. The notification and final email content are written to PostgreSQL in the same business transaction. After the request finishes, `booking/email_channel.py` sends the message; the scheduler retries failures later. SMTP network calls are outside the database transaction, so they do not hold booking locks or change booking outcomes.
 
-## 发哪些邮件
+## Emails sent
 
-收件人是预约人（受益人）的大学邮箱；员工替别人预约时，发给被预约的人。
+The recipient is the university email address of the person the booking is for. When staff book on behalf of somebody else, the beneficiary receives the email.
 
-| 什么时候 | 通知类型 | 主题示例 |
+| Event | Notification kind | Example subject |
 | --- | --- | --- |
-| 自己提交了申请 | `BOOKING_SUBMITTED` | SmartLab: Request received – Lab Room 1, Mon 2 Nov 2026, 14:00–15:30 |
-| 员工替你预约 | `BOOKING_CREATED_FOR_YOU` | SmartLab: Booking made for you – … |
-| 员工建了重复预约（给自己／给别人） | `SERIES_CREATED`／`SERIES_CREATED_FOR_YOU` | SmartLab: Weekly booking confirmed |
-| 批准、拒绝（含系统自动决定） | `BOOKING_APPROVED`／`BOOKING_REJECTED` | SmartLab: Booking approved – … |
-| 候补或待审批的申请过期 | `BOOKING_EXPIRED` | SmartLab: Request expired – … |
-| 候补转为待审批 | `BOOKING_PROMOTED` | SmartLab: Your waitlisted request moved up – … |
-| 被 Manager 改期 | `BOOKING_RESCHEDULED` | SmartLab: Booking moved by a Manager – … |
-| 被员工取消 | `BOOKING_CANCELLED` | SmartLab: Booking cancelled by staff – … |
-| 预约开始前 24 小时 | `BOOKING_REMINDER` | SmartLab: Booking coming up – … |
-| induction 快到期 | `INDUCTION_EXPIRING` | SmartLab: Induction expires soon |
-| 学生申请改期：收到、批准、拒绝（1.16.0） | `CHANGE_REQUESTED`／`CHANGE_APPROVED`／`CHANGE_REJECTED` | SmartLab: Booking moved – … |
-| 资源进入维护或关闭、重新开放（1.16.0） | `RESOURCE_OUT_OF_SERVICE`／`RESOURCE_REOPENED` | SmartLab: Lab Room 1 is under maintenance – … |
+| A user submits their own request | `BOOKING_SUBMITTED` | SmartLab: Request received – Lab Room 1, Mon 2 Nov 2026, 14:00–15:30 |
+| Staff book on behalf of a user | `BOOKING_CREATED_FOR_YOU` | SmartLab: Booking made for you – … |
+| Staff create a recurring booking for themselves or somebody else | `SERIES_CREATED` / `SERIES_CREATED_FOR_YOU` | SmartLab: Weekly booking confirmed |
+| A request is approved or rejected, including an automatic decision | `BOOKING_APPROVED` / `BOOKING_REJECTED` | SmartLab: Booking approved – … |
+| A waitlisted or pending request expires | `BOOKING_EXPIRED` | SmartLab: Request expired – … |
+| A waitlisted request moves to pending review | `BOOKING_PROMOTED` | SmartLab: Your waitlisted request moved up – … |
+| A Manager reschedules a booking | `BOOKING_RESCHEDULED` | SmartLab: Booking moved by a Manager – … |
+| Staff cancel a booking | `BOOKING_CANCELLED` | SmartLab: Booking cancelled by staff – … |
+| 24 hours before a booking starts | `BOOKING_REMINDER` | SmartLab: Booking coming up – … |
+| An induction is about to expire | `INDUCTION_EXPIRING` | SmartLab: Induction expires soon |
+| A student's change request is received, approved or rejected (1.16.0) | `CHANGE_REQUESTED` / `CHANGE_APPROVED` / `CHANGE_REJECTED` | SmartLab: Booking moved – … |
+| A resource enters maintenance, closes or reopens (1.16.0) | `RESOURCE_OUT_OF_SERVICE` / `RESOURCE_REOPENED` | SmartLab: Lab Room 1 is under maintenance – … |
 
-正文是纯文本：称呼、通知内容、网站链接（`SITE_URL` + `/#/bookings` 等）和“自动邮件，请勿回复”。要改发哪些，设置 `EMAIL_NOTIFICATION_KINDS`（逗号分隔）。
+The body is plain text: a greeting, notification content, a website link such as `SITE_URL` + `/#/bookings`, and an automatic-email/do-not-reply notice. Set the comma-separated `EMAIL_NOTIFICATION_KINDS` to change which notification kinds send email.
 
-## 谁真的会收到：`EMAIL_MODE`
+## Who actually receives email: `EMAIL_MODE`
 
-演示数据里的 zID 可能是真实学生的，所以默认不会给任何不在名单上的人发信。
+Demo zIDs might belong to real students, so by default no email is sent to an address outside the allowlist.
 
-| 值 | 效果 |
+| Value | Effect |
 | --- | --- |
-| `none` | 不发 |
-| `allowlist`（默认） | 只发给 `EMAIL_ALLOWED_RECIPIENTS` 里的地址，其他人跳过 |
-| `redirect` | 所有邮件都改发到 `EMAIL_REDIRECT_TO`，正文注明原本发给谁。**演示时用这个**：所有人的邮件都进你自己的邮箱 |
-| `all` | 发给每个人的大学邮箱（正式上线才用） |
+| `none` | Send nothing |
+| `allowlist` (default) | Send only to addresses in `EMAIL_ALLOWED_RECIPIENTS`; skip all others |
+| `redirect` | Redirect every message to `EMAIL_REDIRECT_TO` and identify the original recipient in the body. **Use this for demonstrations** so every user's email reaches your own mailbox |
+| `all` | Send to every user's university email address; use only in production |
 
-## 第一次配置（Loy 本机，PowerShell）
+## First-time setup (Loy's computer, PowerShell)
 
-1. 新建一个 Gmail 账号作为系统邮箱，开启两步验证。
-2. 打开 <https://myaccount.google.com/apppasswords>，新建一个应用专用密码（名字写 SmartLab），得到 16 个字母。**这个密码不要发到聊天、文档或代码里。**
-3. 在运行后端的终端（`backend` 目录）里设置。密码那一行**单独执行**，输入时不显示：
+1. Create a Gmail account for the system mailbox and enable two-step verification.
+2. Open <https://myaccount.google.com/apppasswords>, create an app password named SmartLab and copy the 16 letters. **Never send this password through chat or put it in documentation or code.**
+3. Set it in the terminal that runs the backend from the `backend` directory. Run the password line **separately**; the input is hidden:
 
 ```powershell
-$env:EMAIL_HOST_USER = "你的系统邮箱@gmail.com"
+$env:EMAIL_HOST_USER = "your-system-mailbox@gmail.com"
 $sec = Read-Host "Gmail app password" -AsSecureString
 $env:EMAIL_HOST_PASSWORD = [System.Net.NetworkCredential]::new("", $sec).Password
-$env:EMAIL_HOST_PASSWORD.Length   # 应该显示 16（带空格是 19，也可以，程序会去掉空格）
+$env:EMAIL_HOST_PASSWORD.Length   # Should display 16, or 19 with spaces; the program removes spaces
 ```
 
-4. 先发一封测试邮件给自己：
+4. Send a test email to yourself:
 
 ```powershell
-.\.venv\Scripts\python.exe manage.py send_test_email --to 你自己的邮箱
+.\.venv\Scripts\python.exe manage.py send_test_email --to your-email-address
 ```
 
-成功会显示 `Sent to …`。失败会显示 Gmail 的原话，常见的是 `535 … Username and Password not accepted`（密码错，或没开两步验证）。命令只打印“password set／NOT set”，不打印密码。
+Success displays `Sent to …`. A failure displays Gmail's original response, commonly `535 … Username and Password not accepted` when the password is wrong or two-step verification is disabled. The command prints only `password set` or `NOT set`, never the password.
 
-5. 打开邮件通知（演示模式：全部改发给自己），再启动后端：
+5. Enable email notifications in demonstration mode, redirecting all email to yourself, and then start the backend:
 
 ```powershell
 $env:EMAIL_ENABLED = "true"
 $env:EMAIL_MODE = "redirect"
-$env:EMAIL_REDIRECT_TO = "你自己的邮箱"
+$env:EMAIL_REDIRECT_TO = "your-email-address"
 .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000 --noreload
 ```
 
-6. 用 z1000001 提交一个申请，邮箱里应该收到 “Request received”；用 Admin 批准后收到 “Booking approved”。
+6. Submit a request as z1000001. The mailbox should receive "Request received". Approve it as an Admin and confirm that "Booking approved" arrives.
 
-这些环境变量只在当前终端有效，关掉终端就没了，下次要重新设置（密码也要重新输入）。
+These environment variables apply only to the current terminal. Closing it clears them, so they, including the password, must be set again next time.
 
-## 其他设置
+## Other settings
 
-| 环境变量 | 默认 | 说明 |
+| Environment variable | Default | Description |
 | --- | --- | --- |
-| `EMAIL_ENABLED` | `false` | `true` 时把邮件渠道加进 `NOTIFICATION_CHANNELS` |
-| `EMAIL_HOST`／`EMAIL_PORT`／`EMAIL_USE_TLS` | `smtp.gmail.com`／`587`／`true` | 换成学校的邮件服务器时改这三个 |
-| `EMAIL_HOST_USER`／`EMAIL_HOST_PASSWORD` | 空 | 系统邮箱和应用专用密码 |
-| `DEFAULT_FROM_EMAIL` | `SmartLab <EMAIL_HOST_USER>` | 发件人显示名 |
-| `EMAIL_TIMEOUT` | `10` | 和邮件服务器连接、登录、发送的超时秒数 |
-| `EMAIL_MAX_ATTEMPTS` | `6` | 一封邮件最多尝试次数；达到后保留为 `FAILED`，不再自动发送 |
-| `EMAIL_LEASE_SECONDS` | `300` | worker 领取任务后的租约；进程崩溃并过期后，其他 worker 可以接管 |
-| `EMAIL_BATCH_SIZE` | `50` | API 后台线程一次最多领取的到期邮件数 |
-| `LOG_LEVEL` | `INFO` | 后端 `booking` 日志的级别；`INFO` 时每封邮件发出、跳过都记一行（见下面「日志」） |
-| `EMAIL_MODE`、`EMAIL_ALLOWED_RECIPIENTS`、`EMAIL_REDIRECT_TO` | `allowlist`、空、空 | 见上一节 |
-| `EMAIL_NOTIFICATION_KINDS` | 上表所有类型 | 哪些通知发邮件 |
-| `SITE_URL` | `http://localhost:5173` | 邮件里的网站链接 |
+| `EMAIL_ENABLED` | `false` | When `true`, add the email channel to `NOTIFICATION_CHANNELS` |
+| `EMAIL_HOST` / `EMAIL_PORT` / `EMAIL_USE_TLS` | `smtp.gmail.com` / `587` / `true` | Change these three values when using the university mail server |
+| `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` | Empty | System mailbox and app password |
+| `DEFAULT_FROM_EMAIL` | `SmartLab <EMAIL_HOST_USER>` | Displayed sender name |
+| `EMAIL_TIMEOUT` | `10` | Timeout in seconds for connecting, signing in and sending |
+| `EMAIL_MAX_ATTEMPTS` | `6` | Maximum attempts per message; after this it remains `FAILED` and is no longer sent automatically |
+| `EMAIL_LEASE_SECONDS` | `300` | Lease after a worker claims a task; after a crashed process's lease expires, another worker can take over |
+| `EMAIL_BATCH_SIZE` | `50` | Maximum due messages claimed in one pass by the API background thread |
+| `LOG_LEVEL` | `INFO` | Log level for backend `booking` messages; at `INFO`, each sent or skipped email writes one line, as described under Logs below |
+| `EMAIL_MODE`, `EMAIL_ALLOWED_RECIPIENTS`, `EMAIL_REDIRECT_TO` | `allowlist`, empty, empty | See the previous section |
+| `EMAIL_NOTIFICATION_KINDS` | All kinds in the table above | Notification kinds that send email |
+| `SITE_URL` | `http://localhost:5173` | Website link included in email |
 
-## 什么时候发出、怎么查（2026-10-27 起）
+## Delivery and inspection (since 27 October 2026)
 
-- 生成通知时，最终收件地址、主题和正文会作为 `email_delivery` 记录一并提交；SMTP 密码永远只在环境变量里。
-- 请求结束时，API 后台线程立即领取到期记录并批量发送，网页不用等待 Gmail。独立 scheduler 每分钟继续处理遗留记录和到期重试。
-- 一批邮件复用同一条 SMTP 连接；多个 worker 用数据库租约领取，避免正常并发下重复发送。worker 崩溃后租约到期，任务可以被接管。
-- 临时失败依次延迟约 1、5、15、60 分钟重试，之后保持 60 分钟间隔，达到 `EMAIL_MAX_ATTEMPTS` 后标为 `FAILED`。预约和站内通知不受影响。
-- 日志（`docker compose --env-file .env.docker logs api`；本机看运行后端的终端），每批和每封各一行：
+- When a notification is generated, the final recipient address, subject and body are committed with it as an `email_delivery` record. The SMTP password exists only in an environment variable.
+- At the end of a request, an API background thread immediately claims and sends due records in batches; the web page does not wait for Gmail. The independent scheduler continues to process remaining records and due retries every minute.
+- A batch reuses one SMTP connection. Database leases allow multiple workers to claim tasks without duplicate delivery during normal concurrency. If a worker crashes, another can take over after the lease expires.
+- Temporary failures retry after approximately 1, 5, 15 and 60 minutes, followed by 60-minute intervals. After `EMAIL_MAX_ATTEMPTS`, the message becomes `FAILED`. The booking and in-app notification are unaffected.
+- Logs are available through `docker compose --env-file .env.docker logs api`, or in the terminal running the local backend. Each batch and message produces one line:
 
   ```
   INFO booking.email_channel: Mail server connection opened in 1907 ms for 2 durable email(s)
-  INFO booking.email_channel: Email sent for notification <通知编号> to @ad.unsw.edu.au: waited 2125 ms, sent in 360 ms
+  INFO booking.email_channel: Email sent for notification <notification-id> to @ad.unsw.edu.au: waited 2125 ms, sent in 360 ms
   ```
 
-  `waited` 是从放进队列到开始发这一封（包括连接和登录），`sent in` 是发这一封本身。日志只写收件人的域名。失败时是 `ERROR` 行，带原因。
-- 邮件到得慢时，先看这一行：应用这边通常两三秒内就交给了 Gmail。2026-10-27 查过一封晚到约 4 分钟的邮件，时间几乎都花在 UNSW 那边（Proofpoint 扫描约 2 分 30 秒，Microsoft 365 投递约 1 分 20 秒），应用这边改不了。
-- `manage.py process_due --email-limit 50` 会处理到期邮件；Docker 的 `scheduler` 会持续调用它。
+  `waited` measures the time from entering the queue until sending begins, including connection and authentication. `sent in` measures the message transmission itself. Logs record only the recipient's domain. Failures produce an `ERROR` line with the cause.
+- If an email arrives slowly, check this line first. The application normally hands the message to Gmail within two or three seconds. An email investigated on 27 October 2026 arrived about four minutes late; almost all of that time was spent on the UNSW side, with about 2 minutes 30 seconds in Proofpoint scanning and about 1 minute 20 seconds in Microsoft 365 delivery. The application cannot reduce that delay.
+- `manage.py process_due --email-limit 50` processes due email; the Docker `scheduler` calls it continuously.
 
-## 可靠性边界
+## Reliability boundaries
 
-- PostgreSQL 模式下待办和失败原因会持久保存，API 或 scheduler 重启后继续处理。内存仓储只用于本地测试，本身不具备跨进程持久性。
-- SMTP 没有幂等键：极端情况下，服务器已经接受邮件、但 worker 在写回 `SENT` 前崩溃，租约恢复后可能再次发送。系统保证任务不会静默丢失并尽量避免重复，但不能宣称严格 exactly-once。
-- 配置错误或永久拒收在达到最大次数后保留为 `FAILED`，需要修好配置后人工处理；不会无限重试。
-- 为什么不用 Outlook 邮箱：Outlook.com 从 2024 年 9 月起不再接受密码登录 SMTP，要用微软授权（Graph `Mail.Send`），Token 会过期。正式交付时，学校可以把 `EMAIL_HOST` 等换成自己的邮件服务器，代码不用改。
+- In PostgreSQL mode, pending tasks and failure reasons persist, and processing continues after an API or scheduler restart. The in-memory repository is only for local tests and does not persist across processes.
+- SMTP has no idempotency key. In an extreme case, the server may accept a message before the worker crashes while writing `SENT`; the task may be sent again after its lease is recovered. The system prevents silent loss and minimises duplicates, but does not claim strict exactly-once delivery.
+- Configuration errors or permanent rejection remain `FAILED` after the maximum attempts. They require manual action after the configuration is fixed and are not retried forever.
+- Outlook mail is not used because Outlook.com stopped accepting password-based SMTP sign-in in September 2024 and requires Microsoft authorisation through Graph `Mail.Send`; its token expires. For production handover, the university can replace `EMAIL_HOST` and related settings with its own mail server without changing the code.

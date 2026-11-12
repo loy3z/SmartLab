@@ -1,276 +1,276 @@
-# Sprint 3 新增的功能和代码
+# Sprint 3 Features and Code
 
-这份清单列出 Sprint 3 加入的全部功能，以及每项功能对应的文件、函数、接口、页面和测试，方便检查和演示。Sprint 3 以前的代码都没有列进来。
+This checklist lists every feature added in Sprint 3, together with the files, functions, endpoints, pages, and tests for each feature, to make review and demonstration easier. Code from before Sprint 3 is not included.
 
-> **2026-10-25 补充（deepseek修改，Loy已审核）**：本文件记录**已经实现**的 Sprint 3 功能；下面新增一节写 Sprint 3 的目标与范围（未实现，供规划）。Sprint 2 的计划见 [SPRINT2.md](SPRINT2.md)。
+> **2026-10-25 addition (edited by deepseek and reviewed by Loy)**: This document records Sprint 3 features that have **already been implemented**. The new section below describes the Sprint 3 goals and scope (not implemented; for planning). See [SPRINT2.md](SPRINT2.md) for the Sprint 2 plan.
 
-## Sprint 3 目标与范围（2026-10-25 规划，未实现）
+## Sprint 3 Goals and Scope (planned on 2026-10-25, not implemented)
 
-一句话目标：部署到云上、有真实数据量、接客户真实登录。
+Goal in one sentence: deploy to the cloud, use a realistic amount of data, and connect the client's real sign-in system.
 
-| 编号 | 项 | 要做到 | 依赖/风险 |
+| ID | Item | Target | Dependencies / risks |
 | --- | --- | --- | --- |
-| S3-1 | 可视化 | Usage statistics 图表、Today 页面图形、Room Management 时间轴、My Bookings 进度条；倾向手写 SVG，不引入图表库 | 无外部依赖，纯前端 |
-| S3-2 | 云部署 | 选平台、PostgreSQL 托管、HTTPS、环境变量、上传文件持久化、备份 | 需要 Loy 选型；注意 induction 文件和 Outlook token 的存放 |
-| S3-3 | 压力测试 | k6 或 Locust：并发查可用时间、并发抢同一时段、审批吞吐；给出 P95 和错误率 | 需要先有云环境 |
-| S3-4 | 真实 SSO | UNSW 的 OAuth/SAML 接入 | **强依赖客户**，申请审批可能 2–4 周 |
-| S3-5 | 真实 Outlook | 学校账号或学生个人账号的 Graph/Google 接入 | **强依赖客户**；先确认账号类型（见 `claude/reports/2026-10-25-outlook-personal-calendar.md`） |
+| S3-1 | Visualisation | Usage statistics charts, Today page graphics, Room Management timeline, and My Bookings progress bars; prefer hand-written SVG without adding a chart library | No external dependency; frontend only |
+| S3-2 | Cloud deployment | Choose a platform, managed PostgreSQL, HTTPS, environment variables, persistent uploaded files, and backups | Loy must choose the platform; consider storage for induction files and Outlook tokens |
+| S3-3 | Load testing | k6 or Locust: concurrent availability searches, concurrent attempts to book the same time, and approval throughput; report P95 and error rate | Requires a cloud environment first |
+| S3-4 | Real SSO | Integrate UNSW OAuth/SAML | **Strong client dependency**; approval may take 2–4 weeks |
+| S3-5 | Real Outlook | Integrate Graph/Google using a university or personal student account | **Strong client dependency**; confirm the account type first (see `claude/reports/2026-10-25-outlook-personal-calendar.md`) |
 
-建议顺序：云部署 → 压力测试 → 可视化 → 真实 SSO/Outlook（客户到位再做）。S3-4、S3-5 是外部依赖，应在 Sprint 2 期间就开始向客户申请。
+Recommended order: cloud deployment → load testing → visualisation → real SSO/Outlook (after the client is ready). S3-4 and S3-5 are external dependencies, so requests to the client should start during Sprint 2.
 
-**代码里怎么认出 Sprint 3 的部分**
-- 新文件：第一行注明 `Sprint 3`。
-- 改动过的旧文件：新增的代码段前有 `Sprint 3` 注释，或行尾有 `# Sprint 3`。
+**How to identify Sprint 3 code**
+- New files: the first line says `Sprint 3`.
+- Modified existing files: new code blocks have a `Sprint 3` comment before them or `# Sprint 3` at the end of the line.
 
-**版本**：接口 OpenAPI 1.12.0 到 1.16.0；数据库迁移 006（1.12.0）和 007（1.16.0），1.13.0 到 1.15.0 不改数据库。每项改动的原因见 [CHANGELOG.md](CHANGELOG.md)；每条规则写在哪个函数里，见 [ARCHITECTURE.md](ARCHITECTURE.md) 第 10 节。
+**Versions**: API OpenAPI 1.12.0 to 1.16.0; database migrations 006 (1.12.0) and 007 (1.16.0). Versions 1.13.0 to 1.15.0 do not change the database. See [CHANGELOG.md](CHANGELOG.md) for the reason behind each change, and Section 10 of [ARCHITECTURE.md](ARCHITECTURE.md) for the function that implements each rule.
 
-## 功能一览
+## Feature Overview
 
-| # | 功能 | 谁用 | 页面 | 版本 |
+| # | Feature | Users | Page | Version |
 | --- | --- | --- | --- | --- |
-| 1 | 日历订阅链接 | 所有人 | My Bookings | 1.12.0 |
-| 2 | 站内通知（铃铛） | 所有人 | 顶部栏 | 1.12.0 |
-| 3 | 到场确认和缺席（冻结 1.25.0 删除） | 所有人 | My Bookings | 1.12.0 |
-| 4 | 每人每周最多 3 个预约 | 所有人 | Book a Resource | 1.12.0 |
-| 5 | 员工的重复预约 | Admin、Manager | 资源卡片上的 Repeat weekly | 1.12.0 |
-| 6 | Manager 在网页上管理房间和设备 | Manager | Resources | 1.13.0 |
-| 7 | 提醒：预约快开始、induction 快到期、申请过期 | 所有人 | 铃铛 | 1.13.0 |
-| 8 | 使用情况报表 | Manager（1.26.0 起；1.14.0–1.25.0 Admin 也可以） | Booking Records → Usage statistics | 1.13.0 |
-| 9 | 员工修改自己的密码 | Admin、Manager | Account | 1.13.0 |
-| 10 | `create_manager` 命令：建第一个 Manager | 部署的人 | 命令行 | 1.13.0 |
-| 11 | 邮件通知（Gmail 系统邮箱）和“申请已收到”确认 | 所有人收；部署的人配置 | 邮箱、铃铛 | 1.14.0 |
-| 12 | Booking Records：查、筛选、导出所有人的预约 | Manager 全部；Admin 只有 7 天内（1.26.0） | Booking Records | 1.14.0 |
-| 13 | 重复预约在 My Bookings 里合成一张卡片 | 所有人 | My Bookings | 1.14.0 |
-| 14 | 时长用小时显示；页面顶部更紧凑 | 所有人 | Book a Resource、My Bookings 等 | 1.14.0 |
-| 15 | 可视化第一部分：铃铛动效和面板、资源封面、时间格配色和“现在”线、基础动效 | 所有人 | 顶部栏、Book a Resource、所有页面 | 1.15.0 |
-| 16 | 用户体验报告的修改：申请改期、维修通知、联系方式、induction 说明、资源信息、Find a free time 说明原因、预约表单、员工首页 Today | 所有人；Manager 填 Lab setup | My Bookings、Book a Resource、Induction & Training、Help、Today、Lab setup 等 | 1.16.0 |
+| 1 | Calendar subscription link | Everyone | My Bookings | 1.12.0 |
+| 2 | In-app notifications (bell) | Everyone | Top bar | 1.12.0 |
+| 3 | Check-in and absence records (freezing removed in 1.25.0) | Everyone | My Bookings | 1.12.0 |
+| 4 | Maximum of three bookings per person per week | Everyone | Book a Resource | 1.12.0 |
+| 5 | Recurring bookings for staff | Admin, Manager | Repeat weekly on a resource card | 1.12.0 |
+| 6 | Manager room and equipment management on the website | Manager | Resources | 1.13.0 |
+| 7 | Reminders for upcoming bookings, expiring inductions, and expired requests | Everyone | Bell | 1.13.0 |
+| 8 | Usage report | Manager (from 1.26.0; Admin was also allowed in 1.14.0–1.25.0) | Booking Records → Usage statistics | 1.13.0 |
+| 9 | Staff password change | Admin, Manager | Account | 1.13.0 |
+| 10 | `create_manager` command to create the first Manager | Deployers | Command line | 1.13.0 |
+| 11 | Email notifications (Gmail system mailbox) and “request received” confirmation | Received by everyone; configured by deployers | Email, bell | 1.14.0 |
+| 12 | Booking Records: search, filter, and export everyone's bookings | Manager sees all; Admin only sees the last seven days (1.26.0) | Booking Records | 1.14.0 |
+| 13 | Combine a recurring series into one card in My Bookings | Everyone | My Bookings | 1.14.0 |
+| 14 | Show duration in hours and use a more compact page header | Everyone | Book a Resource, My Bookings, etc. | 1.14.0 |
+| 15 | First visualisation set: bell animation and panel, resource covers, time-cell colours and “now” line, and base animations | Everyone | Top bar, Book a Resource, all pages | 1.15.0 |
+| 16 | User-experience report changes: time-change requests, maintenance notices, contact details, induction guidance, resource information, Find a free time explanations, booking form, and staff Today home page | Everyone; Manager completes Lab setup | My Bookings, Book a Resource, Induction & Training, Help, Today, Lab setup, etc. | 1.16.0 |
 
-## 1. 日历订阅链接
+## 1. Calendar Subscription Link
 
-每人一条私密地址，在 Outlook（或 Google、苹果日历）里选“从 Internet 订阅”即可。不需要微软授权。
+Each person has a private URL. In Outlook (or Google Calendar or Apple Calendar), select “Subscribe from Internet.” Microsoft authorisation is not required.
 
-- **后端**：
-  - `booking/services/calendar_feed.py`：`calendar_feed`（生成或重置随机码）、`calendar_feed_events`（订阅里有哪些预约）。
-  - `booking/ics.py`：`render_calendar`（iCalendar 文本）。
-  - `views/calendar.py`：`CalendarLinkView`、`CalendarLinkResetView`、`CalendarFeedView`。
-- **接口**：`GET calendar/link/`、`POST calendar/link/reset/`、`GET calendar/{token}.ics`（不需要登录，随机码就是钥匙）。
-- **前端**：`features/booking/CalendarSubscribe.tsx`，地址拼接在 `features/booking/attendance.ts` 的 `calendarUrl`。
-- **数据**：表 `calendar_feed`。
-- **测试**：`test_sprint3.py` `CalendarFeedTests` 和 `test_calendar_link_and_public_feed`。
+- **Backend**:
+  - `booking/services/calendar_feed.py`: `calendar_feed` (generate or reset the random token) and `calendar_feed_events` (bookings included in the subscription).
+  - `booking/ics.py`: `render_calendar` (iCalendar text).
+  - `views/calendar.py`: `CalendarLinkView`, `CalendarLinkResetView`, and `CalendarFeedView`.
+- **Endpoints**: `GET calendar/link/`, `POST calendar/link/reset/`, and `GET calendar/{token}.ics` (no sign-in is required; the random token is the key).
+- **Frontend**: `features/booking/CalendarSubscribe.tsx`; the URL is assembled by `calendarUrl` in `features/booking/attendance.ts`.
+- **Data**: `calendar_feed` table.
+- **Tests**: `CalendarFeedTests` and `test_calendar_link_and_public_feed` in `test_sprint3.py`.
 
-## 2. 站内通知
+## 2. In-App Notifications
 
-- **后端**：
-  - `booking/services/notifications.py`：
-    - `_booking_changed`：每次保存预约都会调用，统一判断要不要通知。
-    - `_notify`、`_notify_managers`。
-    - `list_notifications`、`mark_notification_read`、`mark_all_notifications_read`。
-  - 发送渠道的接口（预留给 Outlook 或邮件）：`booking/notification_channels.py`，在 `middleware.py` 的 `NotificationDeliveryMiddleware` 里调用，配置项是 `NOTIFICATION_CHANNELS`。
-- **接口**：`GET notifications/`、`POST notifications/{id}/read/`、`POST notifications/read-all/`。
-- **前端**：`features/notifications/`，包括 `NotificationBell.tsx`、`notifications.ts` 和 `notifications.css`。
-- **数据**：表 `notification`。
-- **测试**：`test_sprint3.py` `NotificationTests` 和 `test_notifications_api`；`test_extra_channels_receive_new_notifications_after_the_request`；前端 `tests/sprint3.test.mjs`。
+- **Backend**:
+  - `booking/services/notifications.py`:
+    - `_booking_changed`: called whenever a booking is saved to decide consistently whether to send a notification.
+    - `_notify` and `_notify_managers`.
+    - `list_notifications`, `mark_notification_read`, and `mark_all_notifications_read`.
+  - Delivery-channel interface (reserved for Outlook or email): `booking/notification_channels.py`, called by `NotificationDeliveryMiddleware` in `middleware.py`; configured through `NOTIFICATION_CHANNELS`.
+- **Endpoints**: `GET notifications/`, `POST notifications/{id}/read/`, and `POST notifications/read-all/`.
+- **Frontend**: `features/notifications/`, including `NotificationBell.tsx`, `notifications.ts`, and `notifications.css`.
+- **Data**: `notification` table.
+- **Tests**: `NotificationTests` and `test_notifications_api` in `test_sprint3.py`; `test_extra_channels_receive_new_notifications_after_the_request`; frontend `tests/sprint3.test.mjs`.
 
-## 3. 到场确认和缺席
+## 3. Check-In and Absence Records
 
-1.25.0（2026-11-07）删除了冻结和解冻申请（客户 Week 8 会议；迁移 014），这一节只剩到场确认和缺席记录。
+Version 1.25.0 (2026-11-07) removed freezing and unfreeze requests (client Week 8 meeting; migration 014). This section now covers only check-in and absence records.
 
-- **规则**：开始前 15 分钟到开始后 30 分钟内，本人要点 I'm here，否则记一次缺席并通知本人（提醒以后来不了要取消）。资源当时在维修或关闭的不算。缺席没有处罚，只用于使用情况报表。
-- **后端**：`booking/services/attendance.py`：`check_in_window`、`check_in_state`、`check_in`、`_process_attendance`。
-- **接口**：`POST bookings/{id}/check-in/`。
-- **前端**：My Bookings 里的 I'm here 按钮：`MyBookings.tsx`、`attendance.ts`。
-- **数据**：`booking.attendance`、`checked_in_at`。
-- **测试**：`test_sprint3.py` `AttendanceTests`、`test_check_in_and_booking_fields`；`test_postgres.py` `test_weekly_series_check_in_and_missed_booking_are_persisted`。
+- **Rule**: The user must select I'm here from 15 minutes before to 30 minutes after the start time. Otherwise, an absence is recorded and the user is notified (with a reminder to cancel in future if they cannot attend). A resource under maintenance or closed at the time does not count. Absences have no penalty and are used only in usage reports.
+- **Backend**: `check_in_window`, `check_in_state`, `check_in`, and `_process_attendance` in `booking/services/attendance.py`.
+- **Endpoint**: `POST bookings/{id}/check-in/`.
+- **Frontend**: I'm here button in My Bookings: `MyBookings.tsx` and `attendance.ts`.
+- **Data**: `booking.attendance` and `checked_in_at`.
+- **Tests**: `AttendanceTests` and `test_check_in_and_booking_fields` in `test_sprint3.py`; `test_weekly_series_check_in_and_missed_booking_are_persisted` in `test_postgres.py`.
 
-## 4. 每人每周最多 3 个预约
+## 4. Maximum of Three Bookings per Person per Week
 
-- **后端**：`booking/services/checks.py` `_weekly_limit_violation`，在 `bookings.py` 的 `create_booking` 和 `reschedule_booking` 里调用。
-- **错误**：`WEEKLY_LIMIT_REACHED`。
-- **测试**：`test_sprint3.py` `WeeklyLimitTests`、`test_weekly_limit_api_error`。
+- **Backend**: `_weekly_limit_violation` in `booking/services/checks.py`, called by `create_booking` and `reschedule_booking` in `bookings.py`.
+- **Error**: `WEEKLY_LIMIT_REACHED`.
+- **Tests**: `WeeklyLimitTests` and `test_weekly_limit_api_error` in `test_sprint3.py`.
 
-## 5. 员工的重复预约
+## 5. Recurring Bookings for Staff
 
-- **后端**：`booking/services/series.py`：`_series_plan`、`_series_check`、`preview_series`、`create_series`（直接批准）、`series_detail`、`cancel_series`。
-- **接口**：`POST bookings/series/preview/`、`POST bookings/series/`、`GET bookings/series/{id}/`、`POST bookings/series/{id}/cancel/`。
-- **前端**：`features/booking/RecurringBookingForm.tsx`、`series.ts`；入口是资源卡片 `ResourceCard.tsx` 上的 Repeat weekly（`BookingApp.tsx`）。
-- **数据**：表 `booking_series`、`booking.series_id`。
-- **测试**：`test_sprint3.py` `SeriesTests`、`test_series_api`；Playwright `staff book a weekly series…`。
+- **Backend**: `_series_plan`, `_series_check`, `preview_series`, `create_series` (approved directly), `series_detail`, and `cancel_series` in `booking/services/series.py`.
+- **Endpoints**: `POST bookings/series/preview/`, `POST bookings/series/`, `GET bookings/series/{id}/`, and `POST bookings/series/{id}/cancel/`.
+- **Frontend**: `features/booking/RecurringBookingForm.tsx` and `series.ts`; opened through Repeat weekly on the resource card in `ResourceCard.tsx` (`BookingApp.tsx`).
+- **Data**: `booking_series` table and `booking.series_id`.
+- **Tests**: `SeriesTests` and `test_series_api` in `test_sprint3.py`; Playwright `staff book a weekly series…`.
 
-## 6. Manager 在网页上管理房间和设备
+## 6. Manager Room and Equipment Management on the Website
 
-- **规则**：都在 `booking/services/resources.py` 开头的说明里：
-  - 必填名称、地点和所需 induction；名称不重复。
-  - 房间不能有所在房间和类别。
-  - 时间要落在 15／30／60 分钟的步长上；最长时长要放得进开放时间。
-  - 类型创建后不能改。
-  - 修改不动已有预约，而是列出不再符合新规则的预约。
-  - 只下架不删除；还有未来预约，或房间里还有设备时不能下架。
-- **后端**：`booking/services/resources.py`：
-  - 主要函数：`list_all_resources`、`create_resource`、`update_resource`、`archive_resource`、`restore_resource`；
-  - 字段规则：`_check_resource_fields`；
-  - 编辑后受影响的预约：`_bookings_outside_rules`。
-- **接口**：`GET/POST admin/resources/`、`PATCH admin/resources/{id}/`、`POST admin/resources/{id}/archive/`、`POST admin/resources/{id}/restore/`。
-- **前端**：`features/manager/ManagerResourcesPage.tsx`（Resources），表单规则在 `features/manager/resource-form.ts`。
-- **数据**：不改表结构，沿用 `bookable_resource`。
-- **测试**：`test_resource_setup.py`；`test_postgres.py` `test_resource_setup_is_persisted`；前端 `tests/resource-form.test.mjs`；Playwright `a Manager adds equipment…`、`Admins do not see the Resources page`。
+- **Rules**: described at the top of `booking/services/resources.py`:
+  - Name, location, and required induction are mandatory; names must be unique.
+  - A room cannot have a parent room or category.
+  - Times must align with 15-, 30-, or 60-minute steps; the maximum duration must fit within opening hours.
+  - The resource type cannot be changed after creation.
+  - An edit does not modify existing bookings; it lists bookings that no longer satisfy the new rules.
+  - Resources are archived, not deleted; a resource cannot be archived while it has future bookings or, for a room, contains equipment.
+- **Backend**: `booking/services/resources.py`:
+  - Main functions: `list_all_resources`, `create_resource`, `update_resource`, `archive_resource`, and `restore_resource`;
+  - Field rules: `_check_resource_fields`;
+  - Bookings affected by an edit: `_bookings_outside_rules`.
+- **Endpoints**: `GET/POST admin/resources/`, `PATCH admin/resources/{id}/`, `POST admin/resources/{id}/archive/`, and `POST admin/resources/{id}/restore/`.
+- **Frontend**: `features/manager/ManagerResourcesPage.tsx` (Resources); form rules are in `features/manager/resource-form.ts`.
+- **Data**: no schema change; continues to use `bookable_resource`.
+- **Tests**: `test_resource_setup.py`; `test_resource_setup_is_persisted` in `test_postgres.py`; frontend `tests/resource-form.test.mjs`; Playwright `a Manager adds equipment…` and `Admins do not see the Resources page`.
 
-## 7. 提醒
+## 7. Reminders
 
-- **规则**：
-  - 已批准的预约开始前 24 小时提醒点 I'm here；
-  - 已通过的 induction 14 天内到期时提醒；
-  - 候补或待审批的申请到开始时间还没轮到或没人决定，通知“已过期”。
-  - 每条只发一次。
-- **后端**：
-  - `booking/services/reminders.py`：`_send_reminders`、`_booking_reminders`、`_induction_reminders`，在 `waitlist.py` 的 `process_due_requests` 最后调用。
-  - 2026-11-01：提醒调用 `notifications.py` 的 `_notify(..., once=True)`，在写锁内按收件人和预约／induction 链接复查，避免网页请求和 scheduler 同时生成重复通知及邮件。
-  - “已过期”通知在 `notifications.py` `_booking_changed` 里。
-  - 规则数字：`rules.py` 的 `reminder_hours_before`、`induction_reminder_days`。
-- **测试**：`test_reminders.py`；`test_postgres.py` 的两个 `test_concurrent_*_reminders_create_one_notification_and_email` 在真实数据库上验证并发去重。
+- **Rules**:
+  - Remind users to select I'm here 24 hours before an approved booking starts;
+  - Remind users when an approved induction expires within 14 days;
+  - Notify users that a waitlisted or pending request has “expired” if it has not been promoted or decided by its start time.
+  - Send each reminder only once.
+- **Backend**:
+  - `_send_reminders`, `_booking_reminders`, and `_induction_reminders` in `booking/services/reminders.py`, called at the end of `process_due_requests` in `waitlist.py`.
+  - 2026-11-01: reminders call `_notify(..., once=True)` in `notifications.py` and recheck the recipient and booking/induction link inside the write lock, preventing web requests and the scheduler from generating duplicate notifications and emails concurrently.
+  - “Expired” notifications are handled by `_booking_changed` in `notifications.py`.
+  - Rule values: `reminder_hours_before` and `induction_reminder_days` in `rules.py`.
+- **Tests**: `test_reminders.py`; the two `test_concurrent_*_reminders_create_one_notification_and_email` tests in `test_postgres.py` verify concurrent deduplication against a real database.
 
-## 8. 使用情况报表
+## 8. Usage Report
 
-- **后端**：`booking/services/reports.py` `usage_report`（只读）。
-- **接口**：`GET admin/reports/usage/?first_date=&last_date=`。
-- **前端**：`features/records/UsageTab.tsx`（1.14.0 起是 Booking Records 的 Usage statistics 标签，以前是单独的 Usage Report 页面 `ManagerUsagePage.tsx`）、`features/manager/usage.ts`。
-- **测试**：`test_usage_report.py`；前端 `tests/usage.test.mjs`；Playwright `an Admin reads the usage statistics on Booking Records`、`the old Usage Report address opens the usage statistics tab`。
+- **Backend**: `usage_report` in `booking/services/reports.py` (read-only).
+- **Endpoint**: `GET admin/reports/usage/?first_date=&last_date=`.
+- **Frontend**: `features/records/UsageTab.tsx` (from 1.14.0, the Usage statistics tab in Booking Records; previously the separate Usage Report page `ManagerUsagePage.tsx`) and `features/manager/usage.ts`.
+- **Tests**: `test_usage_report.py`; frontend `tests/usage.test.mjs`; Playwright `an Admin reads the usage statistics on Booking Records` and `the old Usage Report address opens the usage statistics tab`.
 
-## 9. 员工修改自己的密码
+## 9. Staff Password Change
 
-- **后端**：`booking/services/accounts.py` `change_password`。
-- **接口**：`POST auth/change-password/`。
-- **前端**：`features/auth/ChangePassword.tsx`，显示在 Account 页面（`app/UtilityPages.tsx`）。
-- **测试**：`test_change_password.py`；Playwright `staff change their password…`、`students have no password form`。
+- **Backend**: `change_password` in `booking/services/accounts.py`.
+- **Endpoint**: `POST auth/change-password/`.
+- **Frontend**: `features/auth/ChangePassword.tsx`, shown on the Account page (`app/UtilityPages.tsx`).
+- **Tests**: `test_change_password.py`; Playwright `staff change their password…` and `students have no password form`.
 
-## 10. `create_manager` 命令
+## 10. `create_manager` Command
 
-- **用法**：`python manage.py create_manager --zid z9000003 --name "Lab Manager" --email z9000003@ad.unsw.edu.au`，输出一次性邀请码。
-- **后端**：
-  - 命令：`booking/management/commands/create_manager.py`。
-  - 业务：`booking/services/accounts.py` 的 `bootstrap_manager`。它和 Add staff 共用 `_create_staff_account`，两条路径规则完全一样。
-- **测试**：`test_create_manager.py`。
+- **Usage**: `python manage.py create_manager --zid z9000003 --name "Lab Manager" --email z9000003@ad.unsw.edu.au`; outputs a one-time invitation code.
+- **Backend**:
+  - Command: `booking/management/commands/create_manager.py`.
+  - Logic: `bootstrap_manager` in `booking/services/accounts.py`. It shares `_create_staff_account` with Add staff, so both paths follow exactly the same rules.
+- **Tests**: `test_create_manager.py`.
 
-## 11. 邮件通知和“申请已收到”
+## 11. Email Notifications and “Request Received”
 
-- **规则**：
-  - 发给预约人（受益人）的大学邮箱；哪些通知发邮件见 `settings.py` 的 `EMAIL_NOTIFICATION_KINDS`。
-  - `EMAIL_MODE` 决定谁真的收到：`none`、`allowlist`（默认）、`redirect`（演示：全部改发给一个地址）、`all`。
-  - 发送失败只记日志，不影响预约。
-- **后端**：
-  - `booking/email_channel.py`：`EmailChannel.deliver`（选不选发，写好后放进队列）、`choose_recipient`（按模式选收件人）、`compose`（主题和正文）、`booking_label`、`site_link`；`EmailOutbox`（2026-10-27：后台线程发送，同一批共用一条连接，每封记日志）；`notification_channels.wait_for_deliveries`（命令和测试等后台发完）。日志设置在 `config/settings.py` 的 `LOGGING`。
-  - 配置：`config/settings.py` 的 `EMAIL_*`、`SITE_URL`；`EMAIL_ENABLED=true` 时把邮件渠道加进 `NOTIFICATION_CHANNELS`。
-  - 命令：`booking/management/commands/send_test_email.py`。
-  - “申请已收到”：`services/bookings.py` `_created_notices`（`BOOKING_SUBMITTED`）；员工自己的重复预约：`services/series.py` `create_series`（`SERIES_CREATED`）；时间文字 `services/notifications.py` `describe_moment`。
-- **文档**：`backend/docs/email-setup.md`。
-- **测试**：`test_email_channel.py`（2026-10-27 新增：`test_the_response_does_not_wait_for_the_mail_server`、`test_emails_waiting_together_share_one_connection`、`test_each_sent_email_is_logged_with_its_notification_and_recipient_domain`、`test_a_mail_server_that_cannot_be_reached_is_logged_and_later_emails_still_go`）；`test_sprint3.py` 里关于 `BOOKING_SUBMITTED`、`SERIES_CREATED` 的断言。
+- **Rules**:
+  - Send to the university email address of the person receiving the booking; `EMAIL_NOTIFICATION_KINDS` in `settings.py` determines which notifications are emailed.
+  - `EMAIL_MODE` determines who actually receives messages: `none`, `allowlist` (default), `redirect` (demo: redirect all messages to one address), or `all`.
+  - A delivery failure is logged and does not affect the booking.
+- **Backend**:
+  - `booking/email_channel.py`: `EmailChannel.deliver` (decide whether to send, compose, and enqueue), `choose_recipient` (select recipient by mode), `compose` (subject and body), `booking_label`, and `site_link`; `EmailOutbox` (2026-10-27: send on a background thread, share one connection within a batch, and log every email); `notification_channels.wait_for_deliveries` (wait for background delivery in commands and tests). Logging is configured through `LOGGING` in `config/settings.py`.
+  - Configuration: `EMAIL_*` and `SITE_URL` in `config/settings.py`; when `EMAIL_ENABLED=true`, the email channel is added to `NOTIFICATION_CHANNELS`.
+  - Command: `booking/management/commands/send_test_email.py`.
+  - “Request received”: `_created_notices` in `services/bookings.py` (`BOOKING_SUBMITTED`); staff recurring bookings: `create_series` in `services/series.py` (`SERIES_CREATED`); time wording: `describe_moment` in `services/notifications.py`.
+- **Documentation**: `backend/docs/email-setup.md`.
+- **Tests**: `test_email_channel.py` (added on 2026-10-27: `test_the_response_does_not_wait_for_the_mail_server`, `test_emails_waiting_together_share_one_connection`, `test_each_sent_email_is_logged_with_its_notification_and_recipient_domain`, and `test_a_mail_server_that_cannot_be_reached_is_logged_and_later_emails_still_go`); assertions for `BOOKING_SUBMITTED` and `SERIES_CREATED` in `test_sprint3.py`.
 
 ## 12. Booking Records
 
-- **后端**：
-  - `services/resources.py` `booking_report` 新增 `query`（zID 或姓名的一部分，预约人或创建人）。
-  - `serializers.py` `AdminBookingQuerySerializer` 新增 `q`；`views/admin.py` `staff_booking_rows` 把它传下去。
-  - `views/admin.py` `AdminBookingExportView` 改为 Admin 也能用，CSV 加 Weekly series、Attendance 两列；`services/reports.py` `usage_report` 改为 Admin 也能用。
-- **接口**：`GET admin/bookings/?q=`、`GET admin/bookings/export/?q=`。
-- **前端**：
-  - 页面 `features/records/BookingRecordsPage.tsx`（Records 和 Usage statistics 两个标签），筛选换成接口参数在 `features/records/records.ts`（`recordQuery`、`sydneyMidnight`、`creatorText`、`attendanceText`）。
-  - 接口 `features/booking/api.ts` 的 `listBookingRecords`、`downloadBookingRecords`。
-  - 路由 `/admin/records`（`routes.ts`、`AppRouter.tsx`、`AppLayout.tsx`）；旧地址 `/manager/usage` 跳转过来。
-  - `features/manager/ManagerBookingsPage.tsx` 去掉导出按钮。
-- **测试**：`test_manager_tools.py`（`q` 搜索、Admin 导出、新列）、`test_usage_report.py`；前端 `tests/sprint3-records.test.mjs`；Playwright `staff search booking records and export the same list as CSV`、`students do not see Booking Records`。
+- **Backend**:
+  - `booking_report` in `services/resources.py` adds `query` (part of a zID or name, for either the booking holder or creator).
+  - `AdminBookingQuerySerializer` in `serializers.py` adds `q`; `staff_booking_rows` in `views/admin.py` passes it through.
+  - `AdminBookingExportView` in `views/admin.py` is changed so Admin can use it, and the CSV adds Weekly series and Attendance columns; `usage_report` in `services/reports.py` is changed so Admin can also use it.
+- **Endpoints**: `GET admin/bookings/?q=` and `GET admin/bookings/export/?q=`.
+- **Frontend**:
+  - `features/records/BookingRecordsPage.tsx` (Records and Usage statistics tabs); filters become endpoint parameters in `features/records/records.ts` (`recordQuery`, `sydneyMidnight`, `creatorText`, and `attendanceText`).
+  - `listBookingRecords` and `downloadBookingRecords` in `features/booking/api.ts`.
+  - Route `/admin/records` (`routes.ts`, `AppRouter.tsx`, and `AppLayout.tsx`); the old `/manager/usage` address redirects here.
+  - The export button is removed from `features/manager/ManagerBookingsPage.tsx`.
+- **Tests**: `test_manager_tools.py` (`q` search, Admin export, and new columns) and `test_usage_report.py`; frontend `tests/sprint3-records.test.mjs`; Playwright `staff search booking records and export the same list as CSV` and `students do not see Booking Records`.
 
-## 13. 重复预约合成一张卡片
+## 13. Combine a Recurring Series into One Card
 
-- **前端**：`features/booking/my-bookings.ts`（`groupBookings`、`seriesSummary`）；`MyBookings.tsx` 的 `SeriesCard`。
-- **测试**：`tests/sprint3-records.test.mjs`；Playwright `my bookings shows a weekly series as one card`。
+- **Frontend**: `groupBookings` and `seriesSummary` in `features/booking/my-bookings.ts`; `SeriesCard` in `MyBookings.tsx`.
+- **Tests**: `tests/sprint3-records.test.mjs`; Playwright `my bookings shows a weekly series as one card`.
 
-## 14. 时长用小时、页面顶部更紧凑
+## 14. Durations in Hours and a More Compact Page Header
 
-- **前端**：
-  - `features/booking/format.ts` `fmtDuration`（`1.5 h`）；“几分钟前”另用 `fmtSpan`。`FindTime.tsx` 的时长下拉也用它。
-  - `BookingApp.tsx`：induction 一行（`bk-induction-strip`）。
-  - `CalendarSubscribe.tsx`：先只显示 Subscribe in calendar 按钮。
-  - 样式在 `booking.css` 末尾的 Sprint 3 段。
-- **测试**：`tests/sprint3-records.test.mjs`；Playwright `book a resource shows all inductions on one line with an upload link`、`my bookings: check in, and get the calendar subscription link`。
+- **Frontend**:
+  - `fmtDuration` in `features/booking/format.ts` (`1.5 h`); `fmtSpan` is used separately for wording such as “a few minutes ago.” The duration selector in `FindTime.tsx` also uses it.
+  - `BookingApp.tsx`: induction information on one line (`bk-induction-strip`).
+  - `CalendarSubscribe.tsx`: initially shows only the Subscribe in calendar button.
+  - Styles are in the Sprint 3 section at the end of `booking.css`.
+- **Tests**: `tests/sprint3-records.test.mjs`; Playwright `book a resource shows all inductions on one line with an upload link` and `my bookings: check in, and get the calendar subscription link`.
 
-## 15. 可视化第一部分
+## 15. First Visualisation Set
 
-- **铃铛**：
-  - `features/notifications/notifications.ts`：`notificationIcon`（类型 → 图标）、`groupNotifications`（按悉尼日期分“今天 / 更早”）、`shouldRing`（未读数增加才摆，第一次加载不摆）。
-  - `NotificationBell.tsx`：`ringKey` 重新挂载图标来重播摆动，角标用 `key={badge}` 重播弹出；面板分组、图标（`KindIcon`）、两行正文、未读蓝点。
-  - 样式 `notifications.css`：角标选择器 `.nt-bell-button > .nt-badge`（压过 `shell.css` 的 27px）、`nt-ring`、`nt-pop`、`nt-panel-in`；窄屏（≤600px）面板改为固定在屏幕上。
-- **资源封面**：`features/booking/covers.ts` `coverKey`（房间／类别／名称里的关键词 → 封面类型）；`ResourceCard.tsx` 的 `ResourceCover`、`COVER_ICONS`；样式在 `booking.css` 的 `.bk-cover` 段。
-- **时间格**：配色和边框在 `ui/ui.css` 的 `.ui-tl-*`、`.ui-legend` 段；“现在”线：`features/booking/slot-cells.ts` `nowLineFraction`，组件 `features/booking/NowLine.tsx`（`NowLine`、`NowLegend`），用在 `SlotPicker.tsx` 和 `FindTime.tsx`。
-- **基础动效**：变量 `--motion-fast`、`--motion-base`、`--ease-out`、`--ease-spring` 和“减少动态效果”总开关在 `index.css`；页面淡入 `app/AppLayout.tsx`（`app-page`，`key={pathname}`）和 `app/shell.css`；弹窗 `booking.css`（`bk-modal-in`）、确认框和按钮 `ui/ui.css`；首页数字卡片 `features/dashboard/dashboard.css`。
-- **测试**：`tests/sprint3-visual.test.mjs`；Playwright `the bell badge stays small, and the panel groups notifications with an icon each`。
+- **Bell**:
+  - `features/notifications/notifications.ts`: `notificationIcon` (type → icon), `groupNotifications` (group by Sydney date into “Today / Earlier”), and `shouldRing` (animate only when the unread count increases, not on the first load).
+  - `NotificationBell.tsx`: `ringKey` remounts the icon to replay the ringing animation, while `key={badge}` replays the badge pop; the panel has groups, icons (`KindIcon`), two-line messages, and blue unread dots.
+  - `notifications.css`: badge selector `.nt-bell-button > .nt-badge` (overrides the 27px rule in `shell.css`), `nt-ring`, `nt-pop`, and `nt-panel-in`; on narrow screens (≤600px), the panel becomes fixed to the viewport.
+- **Resource covers**: `coverKey` in `features/booking/covers.ts` (keywords in room/category/name → cover type); `ResourceCover` and `COVER_ICONS` in `ResourceCard.tsx`; styles in the `.bk-cover` section of `booking.css`.
+- **Time cells**: colours and borders in the `.ui-tl-*` and `.ui-legend` sections of `ui/ui.css`; “now” line: `nowLineFraction` in `features/booking/slot-cells.ts` and `NowLine`/`NowLegend` in `features/booking/NowLine.tsx`, used by `SlotPicker.tsx` and `FindTime.tsx`.
+- **Base animations**: variables `--motion-fast`, `--motion-base`, `--ease-out`, and `--ease-spring`, plus the global reduced-motion switch in `index.css`; page fade-in in `app/AppLayout.tsx` (`app-page`, `key={pathname}`) and `app/shell.css`; modal animation in `booking.css` (`bk-modal-in`), confirmation dialogs and buttons in `ui/ui.css`, and home-page number cards in `features/dashboard/dashboard.css`.
+- **Tests**: `tests/sprint3-visual.test.mjs`; Playwright `the bell badge stays small, and the panel groups notifications with an icon each`.
 
-## 16. 用户体验报告的修改（1.16.0）
+## 16. User-Experience Report Changes (1.16.0)
 
-- **申请改期**：
-  - 后端：`services/changes.py`（`ChangesMixin`）`request_time_change`（谁能申请、什么时候能申请）、`open_change_for`、`_apply_time_change`（新申请批准时取消原预约，在 `base.py` `_save_booking` 里调用）。`bookings.py` `create_booking` 的 `replaces` 参数：重复、每周上限和冲突检查都排除原预约；`checks.py` `_overlaps` 的 `also_exclude`；`waitlist.py` 递补时同样排除。通知在 `notifications.py`（`CHANGE_REQUESTED`／`CHANGE_APPROVED`／`CHANGE_REJECTED`，`_old_time_note`）。
-  - 数据：`Booking.replaces_id`；数据库 `booking.replaces_id` 和部分唯一索引 `booking_one_open_change_idx`（一个预约只能有一个待处理的改期）。
-  - 接口：`POST bookings/{id}/change/`（`views/bookings.py` `BookingChangeView`）；预约 JSON 新增 `replaces_booking`、`open_change`。
-  - 前端：`features/booking/ChangeTimeBox.tsx`、`change-requests.ts`（`canAskForChange`、`openChangeText`、`replacesText`、`changeSentMessage`）；`MyBookings.tsx` 的 Change time；`SlotPicker.tsx` 的 `takenNote`（选到被占用的时间时提示只能候补）。
-- **维修和关闭通知**：`services/resources.py` `set_resource_status` → `_notify_status_change`（`RESOURCE_OUT_OF_SERVICE`／`RESOURCE_REOPENED`，每个受影响的预约一条，状态真的变了才发）；邮件类型在 `settings.py` `EMAIL_NOTIFICATION_KINDS`。前端 `ManagerBookingsPage.tsx` 的确认框和 `is-attention` 行。
-- **联系方式**：`domain.py` `SiteContact`；`services/site_contact.py`（`site_contact`、`update_site_contact`）；新表 `site_contact`（只有一行）；接口 `GET/PATCH site/contact/`（`SiteContactView`）。前端 `features/contact/contact.ts`（`hasContact`、`mailtoLink`）、`site-contact-store.ts`（`useSiteContact`）、`LabContact.tsx`（`LabContactCard`、`ContactLink`），用在 Help、My Bookings 和 induction 说明里。
-- **induction 说明和新建**：`QualificationRequirement` 的 `how_to_complete`、`accepted_evidence`、`reviewer`、`contact`；`services/qualifications.py` `create_requirement`、`update_requirement`、`_check_requirement_fields`；接口 `POST admin/qualification-requirements/`、`PATCH …/{id}/`。前端 `features/induction/guide.ts`（`guideItems`）、`InductionGuide.tsx`；`InductionRow.tsx` 显示说明。
-- **Lab setup 页面**（Manager，`/manager/setup`）：`features/manager/LabSetupPage.tsx`（Inductions 和 Contact details 两个标签）、`lab-setup.ts`（`requirementChanges` 只发改了的字段）。
-- **资源信息**：`domain.py` `ResourceDetail`、`Resource.capacity`／`details`；`services/resources.py` `_check_resource_fields`（容量 1–1000 且只有房间，最多 `MAX_DETAILS = 12` 行）；数据库 `bookable_resource.capacity`、`details jsonb`（`postgres.py` 的 `_JSON_LISTS`）。前端 `ResourceCard.tsx` `ResourceFacts`；`BookingApp.tsx` 的 Fits at least 筛选；`ManagerResourcesPage.tsx` 的 `DetailsEditor`；`resource-form.ts` 的检查和小时换算（`hoursFromMinutes`、`minutesFromHours`、`describeHours`）。
-- **房间和设备分开预约的说明**：`features/booking/format.ts` `SEPARATE_BOOKING_TEXT`，显示在 `BookingForm.tsx` 和 `BookingApp.tsx`。
-- **Find a free time**：后端 `services/availability.py` `day_overview` 的 `too_long`、`not_bookable`；前端 `features/booking/find-time.ts`（`FIND_DURATIONS`、`hiddenSummary`）、`FindTime.tsx`。
-- **预约表单**：`format.ts` `submitBlocker`（还差什么）；`BookingForm.tsx`（必填标记、`bk-submit-row`）；`SlotPicker.tsx`（`onAskEarlier`、开始时间和时长下拉 `chooseByInputs`）。
-- **员工首页 Today**：`services/overview.py` `staff_overview`（`DUE_SOON_HOURS = 6`、`LIST_LIMIT = 10`）；接口 `GET admin/overview/`（`StaffOverviewView`）。前端 `features/admin/TodayPage.tsx`、`today.ts`（`todoCards`、`attendanceLabel`）；`app/routes.ts` `homePath` 让员工进 `/admin/today`。
-- **其他**：`BookingReviewPage.tsx`（Purpose 列、Details 按钮、Change from）；`CalendarSubscribe.tsx`（`CALENDAR_APPS`）；样式在 `booking.css` 和 `ui/ui.css` 的 `Sprint 3 (1.16.0)` 段。
-- **数据库**：`database/migrations/007_change_requests_guidance_details_contact.sql`（可重复执行），`schema.sql` 同步。
-- **测试**：后端 `tests/test_change_requests.py`、`tests/test_lab_setup.py`，`test_postgres.py` 新增两项，`test_day_overview.py` 改了一项；前端 `tests/sprint3-review.test.mjs`；Playwright `a student asks to move a booking; a taken time can only join the waitlist`、`staff start on Today, whose cards open the pages that handle them`、`the induction page says how to get an induction and offers the lab's email`、`Find a free time says why nothing can be booked`、`a Manager saves the lab's contact details on Lab setup`。
+- **Time-change requests**:
+  - Backend: `request_time_change` (who can request and when), `open_change_for`, and `_apply_time_change` (cancel the original booking when the new request is approved, called by `_save_booking` in `base.py`) in `services/changes.py` (`ChangesMixin`). The `replaces` argument of `create_booking` in `bookings.py` excludes the original booking from duplicate, weekly-limit, and conflict checks; `also_exclude` in `_overlaps` in `checks.py`; waitlist promotion in `waitlist.py` applies the same exclusion. Notifications are in `notifications.py` (`CHANGE_REQUESTED`, `CHANGE_APPROVED`, `CHANGE_REJECTED`, and `_old_time_note`).
+  - Data: `Booking.replaces_id`; database column `booking.replaces_id` and partial unique index `booking_one_open_change_idx` (one booking can have only one pending change request).
+  - Endpoint: `POST bookings/{id}/change/` (`BookingChangeView` in `views/bookings.py`); booking JSON adds `replaces_booking` and `open_change`.
+  - Frontend: `features/booking/ChangeTimeBox.tsx` and `change-requests.ts` (`canAskForChange`, `openChangeText`, `replacesText`, and `changeSentMessage`); Change time in `MyBookings.tsx`; `takenNote` in `SlotPicker.tsx` (explains that a selected occupied time can only join the waitlist).
+- **Maintenance and closure notifications**: `set_resource_status` → `_notify_status_change` in `services/resources.py` (`RESOURCE_OUT_OF_SERVICE`/`RESOURCE_REOPENED`, one per affected booking, sent only when the status actually changes); email kinds are in `EMAIL_NOTIFICATION_KINDS` in `settings.py`. Frontend confirmation dialog and `is-attention` row in `ManagerBookingsPage.tsx`.
+- **Contact details**: `SiteContact` in `domain.py`; `site_contact` and `update_site_contact` in `services/site_contact.py`; new single-row `site_contact` table; endpoint `GET/PATCH site/contact/` (`SiteContactView`). Frontend `features/contact/contact.ts` (`hasContact`, `mailtoLink`), `site-contact-store.ts` (`useSiteContact`), and `LabContact.tsx` (`LabContactCard`, `ContactLink`), used in Help, My Bookings, and induction guidance.
+- **Induction guidance and creation**: `how_to_complete`, `accepted_evidence`, `reviewer`, and `contact` on `QualificationRequirement`; `create_requirement`, `update_requirement`, and `_check_requirement_fields` in `services/qualifications.py`; endpoints `POST admin/qualification-requirements/` and `PATCH …/{id}/`. Frontend `features/induction/guide.ts` (`guideItems`) and `InductionGuide.tsx`; `InductionRow.tsx` displays the guidance.
+- **Lab setup page** (Manager, `/manager/setup`): `features/manager/LabSetupPage.tsx` (Inductions and Contact details tabs) and `lab-setup.ts` (`requirementChanges` sends only changed fields).
+- **Resource information**: `ResourceDetail` and `Resource.capacity`/`details` in `domain.py`; `_check_resource_fields` in `services/resources.py` (capacity 1–1000, rooms only, up to `MAX_DETAILS = 12` rows); database columns `bookable_resource.capacity` and `details jsonb` (`_JSON_LISTS` in `postgres.py`). Frontend `ResourceFacts` in `ResourceCard.tsx`; Fits at least filter in `BookingApp.tsx`; `DetailsEditor` in `ManagerResourcesPage.tsx`; validation and hour conversion (`hoursFromMinutes`, `minutesFromHours`, `describeHours`) in `resource-form.ts`.
+- **Separate room and equipment booking guidance**: `SEPARATE_BOOKING_TEXT` in `features/booking/format.ts`, displayed in `BookingForm.tsx` and `BookingApp.tsx`.
+- **Find a free time**: backend `too_long` and `not_bookable` from `day_overview` in `services/availability.py`; frontend `features/booking/find-time.ts` (`FIND_DURATIONS`, `hiddenSummary`) and `FindTime.tsx`.
+- **Booking form**: `submitBlocker` in `format.ts` (what is still missing); `BookingForm.tsx` (required markers and `bk-submit-row`); `SlotPicker.tsx` (`onAskEarlier`, start-time and duration selectors through `chooseByInputs`).
+- **Staff Today home page**: `staff_overview` in `services/overview.py` (`DUE_SOON_HOURS = 6`, `LIST_LIMIT = 10`); endpoint `GET admin/overview/` (`StaffOverviewView`). Frontend `features/admin/TodayPage.tsx` and `today.ts` (`todoCards`, `attendanceLabel`); `homePath` in `app/routes.ts` sends staff to `/admin/today`.
+- **Other**: `BookingReviewPage.tsx` (Purpose column, Details button, and Change from); `CalendarSubscribe.tsx` (`CALENDAR_APPS`); styles in the `Sprint 3 (1.16.0)` sections of `booking.css` and `ui/ui.css`.
+- **Database**: repeatable `database/migrations/007_change_requests_guidance_details_contact.sql`; synchronised `schema.sql`.
+- **Tests**: backend `tests/test_change_requests.py` and `tests/test_lab_setup.py`, two additions to `test_postgres.py`, and one change to `test_day_overview.py`; frontend `tests/sprint3-review.test.mjs`; Playwright `a student asks to move a booking; a taken time can only join the waitlist`, `staff start on Today, whose cards open the pages that handle them`, `the induction page says how to get an induction and offers the lab's email`, `Find a free time says why nothing can be booked`, and `a Manager saves the lab's contact details on Lab setup`.
 
-## 所有新增文件
+## All New Files
 
-- **后端**：
-  - 业务（`booking/services/`）：`attendance.py`、`calendar_feed.py`、`notifications.py`、`series.py`、`reminders.py`、`reports.py`、`changes.py`、`site_contact.py`、`overview.py`（后三个 1.16.0）
-  - 其他代码：`booking/ics.py`、`booking/notification_channels.py`、`booking/email_channel.py`、`booking/management/commands/create_manager.py`、`send_test_email.py`
-  - 迁移：`database/migrations/006_calendar_notifications_attendance_series.sql`、`007_change_requests_guidance_details_contact.sql`（1.16.0）
-  - 测试（`booking/tests/`）：`test_sprint3.py`、`test_resource_setup.py`、`test_reminders.py`、`test_usage_report.py`、`test_change_password.py`、`test_create_manager.py`、`test_email_channel.py`、`test_change_requests.py`、`test_lab_setup.py`（后两个 1.16.0）
-- **前端**：
-  - 页面和组件：
+- **Backend**:
+  - Services (`booking/services/`): `attendance.py`, `calendar_feed.py`, `notifications.py`, `series.py`, `reminders.py`, `reports.py`, `changes.py`, `site_contact.py`, and `overview.py` (the last three in 1.16.0)
+  - Other code: `booking/ics.py`, `booking/notification_channels.py`, `booking/email_channel.py`, `booking/management/commands/create_manager.py`, and `send_test_email.py`
+  - Migrations: `database/migrations/006_calendar_notifications_attendance_series.sql` and `007_change_requests_guidance_details_contact.sql` (1.16.0)
+  - Tests (`booking/tests/`): `test_sprint3.py`, `test_resource_setup.py`, `test_reminders.py`, `test_usage_report.py`, `test_change_password.py`, `test_create_manager.py`, `test_email_channel.py`, `test_change_requests.py`, and `test_lab_setup.py` (the last two in 1.16.0)
+- **Frontend**:
+  - Pages and components:
     - `features/auth/ChangePassword.tsx`
-    - `features/booking/CalendarSubscribe.tsx`、`RecurringBookingForm.tsx`
-    - `features/manager/ManagerResourcesPage.tsx`（`ManagerUsagePage.tsx` 在 1.14.0 改成 `features/records/UsageTab.tsx`）
-    - `features/records/BookingRecordsPage.tsx`、`UsageTab.tsx`
+    - `features/booking/CalendarSubscribe.tsx` and `RecurringBookingForm.tsx`
+    - `features/manager/ManagerResourcesPage.tsx` (`ManagerUsagePage.tsx` became `features/records/UsageTab.tsx` in 1.14.0)
+    - `features/records/BookingRecordsPage.tsx` and `UsageTab.tsx`
     - `features/notifications/NotificationBell.tsx`
-    - `features/booking/NowLine.tsx`（1.15.0）
-    - 1.16.0：`features/booking/ChangeTimeBox.tsx`、`features/admin/TodayPage.tsx`、`features/manager/LabSetupPage.tsx`、`features/contact/LabContact.tsx`、`features/induction/InductionGuide.tsx`
-  - 辅助文件：
-    - `features/booking/attendance.ts`、`series.ts`、`my-bookings.ts`
+    - `features/booking/NowLine.tsx` (1.15.0)
+    - 1.16.0: `features/booking/ChangeTimeBox.tsx`, `features/admin/TodayPage.tsx`, `features/manager/LabSetupPage.tsx`, `features/contact/LabContact.tsx`, and `features/induction/InductionGuide.tsx`
+  - Supporting files:
+    - `features/booking/attendance.ts`, `series.ts`, and `my-bookings.ts`
     - `features/records/records.ts`
-    - `features/manager/resource-form.ts`、`usage.ts`
-    - `features/notifications/notifications.ts`、`notifications.css`
-    - `features/booking/covers.ts`（1.15.0）
-    - 1.16.0：`features/booking/change-requests.ts`、`find-time.ts`、`features/admin/today.ts`、`features/manager/lab-setup.ts`、`features/contact/contact.ts`、`site-contact-store.ts`、`features/induction/guide.ts`
-  - 测试：`tests/sprint3.test.mjs`、`tests/resource-form.test.mjs`、`tests/usage.test.mjs`、`tests/sprint3-records.test.mjs`、`tests/sprint3-visual.test.mjs`（1.15.0）、`tests/sprint3-review.test.mjs`（1.16.0）、`tests/ui-internal-tool.test.mjs`（第 20 节）
-- **文档**：`SPRINT3.md`（本文件）、`backend/docs/email-setup.md`
+    - `features/manager/resource-form.ts` and `usage.ts`
+    - `features/notifications/notifications.ts` and `notifications.css`
+    - `features/booking/covers.ts` (1.15.0)
+    - 1.16.0: `features/booking/change-requests.ts`, `find-time.ts`, `features/admin/today.ts`, `features/manager/lab-setup.ts`, `features/contact/contact.ts`, `site-contact-store.ts`, and `features/induction/guide.ts`
+  - Tests: `tests/sprint3.test.mjs`, `tests/resource-form.test.mjs`, `tests/usage.test.mjs`, `tests/sprint3-records.test.mjs`, `tests/sprint3-visual.test.mjs` (1.15.0), `tests/sprint3-review.test.mjs` (1.16.0), and `tests/ui-internal-tool.test.mjs` (Section 20)
+- **Documentation**: `SPRINT3.md` (this file) and `backend/docs/email-setup.md`
 
-## 改动过的旧文件（新增部分都标了 Sprint 3）
+## Modified Existing Files (all additions are marked Sprint 3)
 
-- **后端**：
-  - 实体和存储：`domain.py`、`repository.py`、`postgres.py`
-  - 规则和配置：`rules.py`、`config/settings.py`、`.env.example`
-  - 接口：`serializers.py`、`views/`、`urls.py`、`middleware.py`
-  - 业务（`booking/services/`）：`__init__.py`、`accounts.py`、`availability.py`、`base.py`、`bookings.py`、`checks.py`、`qualifications.py`、`resources.py`、`waitlist.py`
-  - 命令：`management/commands/process_due.py`
-  - 数据库：`database/schema.sql`
-  - 测试：`tests/test_postgres.py`、`tests/test_user_management.py`、`tests/test_manager_tools.py`、`tests/test_day_overview.py`（1.16.0）
-- **前端**：
-  - 框架：`app/AppLayout.tsx`、`app/AppRouter.tsx`、`app/routes.ts`、`app/UtilityPages.tsx`
-  - 预约页面：`features/booking/BookingApp.tsx`、`MyBookings.tsx`、`ResourceCard.tsx`、`FindTime.tsx`、`SlotPicker.tsx`、`slot-cells.ts`、`BookingForm.tsx`、`icons.tsx`（后两个 1.16.0）
-  - 其他页面（1.16.0）：`features/admin/BookingReviewPage.tsx`、`features/induction/InductionRow.tsx`
-  - 全局样式（1.15.0）：`index.css`、`app/shell.css`、`ui/ui.css`、`features/dashboard/dashboard.css`
-  - Manager 页面：`features/manager/ManagerBookingsPage.tsx`
-  - 接口、类型和格式：`features/booking/api.ts`、`types.ts`、`format.ts`、`booking.css`
-  - 测试：`tests/routing.spec.ts`、`tests/session-routing.test.mjs`（1.16.0）
-- **文档**：
-  - 根目录：`ARCHITECTURE.md`、`CHANGELOG.md`、`README.md`
-  - 后端：`backend/README.md`、`backend/database/README.md`、`backend/docs/frontend-api.md`、`backend/docs/database-interface.md`、`backend/docs/outlook-setup.md`、`backend/docs/email-setup.md`、`backend/docs/openapi.json`
-  - 前端：`frontend/README.md`
+- **Backend**:
+  - Entities and storage: `domain.py`, `repository.py`, and `postgres.py`
+  - Rules and configuration: `rules.py`, `config/settings.py`, and `.env.example`
+  - Endpoints: `serializers.py`, `views/`, `urls.py`, and `middleware.py`
+  - Services (`booking/services/`): `__init__.py`, `accounts.py`, `availability.py`, `base.py`, `bookings.py`, `checks.py`, `qualifications.py`, `resources.py`, and `waitlist.py`
+  - Command: `management/commands/process_due.py`
+  - Database: `database/schema.sql`
+  - Tests: `tests/test_postgres.py`, `tests/test_user_management.py`, `tests/test_manager_tools.py`, and `tests/test_day_overview.py` (1.16.0)
+- **Frontend**:
+  - Framework: `app/AppLayout.tsx`, `app/AppRouter.tsx`, `app/routes.ts`, and `app/UtilityPages.tsx`
+  - Booking pages: `features/booking/BookingApp.tsx`, `MyBookings.tsx`, `ResourceCard.tsx`, `FindTime.tsx`, `SlotPicker.tsx`, `slot-cells.ts`, `BookingForm.tsx`, and `icons.tsx` (the last two in 1.16.0)
+  - Other pages (1.16.0): `features/admin/BookingReviewPage.tsx` and `features/induction/InductionRow.tsx`
+  - Global styles (1.15.0): `index.css`, `app/shell.css`, `ui/ui.css`, and `features/dashboard/dashboard.css`
+  - Manager page: `features/manager/ManagerBookingsPage.tsx`
+  - API, types, and formatting: `features/booking/api.ts`, `types.ts`, `format.ts`, and `booking.css`
+  - Tests: `tests/routing.spec.ts` and `tests/session-routing.test.mjs` (1.16.0)
+- **Documentation**:
+  - Repository root: `ARCHITECTURE.md`, `CHANGELOG.md`, and `README.md`
+  - Backend: `backend/README.md`, `backend/database/README.md`, `backend/docs/frontend-api.md`, `backend/docs/database-interface.md`, `backend/docs/outlook-setup.md`, `backend/docs/email-setup.md`, and `backend/docs/openapi.json`
+  - Frontend: `frontend/README.md`
 
 ## 17. Functional controls (1.17.0)
 
@@ -361,131 +361,131 @@ No API, schema or booking-rule change. Review: project docs `claude/reports/2026
 | RV-D2 | `services/notifications.py` `save_notification_preferences` (check all names, then save in `repo.atomic()`) | `test_notification_preferences.py` `test_a_refused_save_changes_nothing` |
 | SU-1 | `features/auth/MockSsoPage.tsx` `create` (Create one → Create account form, `demoRegister`); `features/auth/mock-sso.css` `.mock-sso-create`, `.mock-sso-back` | routing tests `a new demo student creates an account on the mock sign-in page`, `the mock sign-in page offers no sign-up when demo registration is off` |
 | DK-1 | `docker-compose.yml`, `.env.docker.example`, `backend/Dockerfile`, `backend/entrypoint.sh` (new database: schema + optional `seed_*.sql` in one transaction; `migrate` subcommand), `backend/.dockerignore`, `frontend/Dockerfile`, `frontend/nginx.conf`, `frontend/.dockerignore`; steps in `DEPLOY.md` | `entrypoint.sh` run against a temporary local PostgreSQL (new database, restart keeps a changed password, `migrate`); containers not yet run (no Docker on the dev machine) |
-## 24. 通知独立渠道与公告栏（1.19.0，Sprint 3）
+## 24. Independent Notification Channels and Announcement Board (1.19.0, Sprint 3)
 
-范围：任务清单 N1、N2、A1–A4、D1；不做 D2，不改 Docker / 部署文件，不重新部署 EC2。
+Scope: checklist items N1, N2, A1–A4, and D1. D2 is excluded; Docker/deployment files are unchanged, and EC2 is not redeployed.
 
-| 项 | 文件和主要函数 | 自动验证 |
+| Item | Files and main functions | Automated verification |
 | --- | --- | --- |
-| N1 设置页和侧栏 | `frontend/src/features/notifications/NotificationPreferences.tsx`；`app/routes.ts`、`AppRouter.tsx`、`AppLayout.tsx`、`UtilityPages.tsx`；`features/booking/api.ts`、`types.ts`；`ui/workspace.css` | `routing.spec.ts` 三种角色的 `1.19 notifications`：五类十开关、失败不丢选择、刷新保留、邮件禁用且整列不勾选、开邮件后恢复保存的选择（审查 Q1）、Account 链接、390px 等宽、新文字 ≥12px |
-| N2 通知渠道 | `backend/booking/domain.py` `Notification/NotificationPreference`；`services/notifications.py` `_category_channels/_notify`、偏好和读通知函数；`notification_channels.py`；`serializers.py`；`views/notifications.py` | `test_119.py` `Acceptance119` 的 channels / partial_preferences；`test_notification_preferences.py` 同步新契约；HTTP `API119Tests` |
-| A1 / A3 / A4 公告及权限 | 新 `services/announcements.py`；新 `views/announcements.py`；`services/__init__.py`、`views/__init__.py`、`urls.py`；`domain.py` `Announcement`；`repository.py`、`postgres.py` | `Acceptance119` 的 expiry_order_history、ownership_matrix、removal_time_must_be_in_the_future（审查 R1）；HTTP 学生写 403、禁止伪造 kind、跨作者 Admin / Manager 权限 |
-| A2 状态公告 | `services/resources.py` `set_resource_status`；`AnnouncementsMixin._status_announcement`；`serializers.py` `ResourceStatusSerializer`；`views/admin.py` | Memory / PG 共用 status_upsert（同状态改原因、维修→关闭、重开、房间及设备、恢复估计不过期）；status_and_announcement_roll_back_together |
-| 数据库 | `backend/database/schema.sql`；新 `migrations/009_announcements_notification_channels.sql`；`repository.py` Memory 事务快照；`postgres.py` 公告读写 | `test_postgres.py` 新 `Postgres119Tests` 共用六项服务验收，加旧偏好升级／009 连跑两遍；`check-local.sh schema` 比较新旧库 |
-| 前端公告 | 新 `features/announcements/AnnouncementBoard.tsx`、`AnnouncementsPage.tsx`、`dates.ts`；`dashboard/DashboardPage.tsx`、`admin/TodayPage.tsx`；新 `manager/ResourceStatusDialog.tsx`；`manager/ManagerBookingsPage.tsx`；API / types / routes / workspace 样式同上 | `routing.spec.ts` 公告发布、修改、下架失败弹窗、首页署名、学生权限、空公告无区域、390px；状态弹窗错误和输入保留；新 `announcement-dates.test.mjs` 夏令时及无效日期 |
-| D1 文档 | `openapi.json` 1.19.0（72 路由）；`frontend-api.md`；`database/README.md`；CHANGELOG；本节；ARCHITECTURE 第 10 节；`frontend/README.md`、`PROJECT_GUIDE.md` 使用说明 | OpenAPI 校验及路由覆盖；任务卡记录完整检查的实际结果行 |
+| N1 settings page and sidebar | `frontend/src/features/notifications/NotificationPreferences.tsx`; `app/routes.ts`, `AppRouter.tsx`, `AppLayout.tsx`, and `UtilityPages.tsx`; `features/booking/api.ts` and `types.ts`; `ui/workspace.css` | `1.19 notifications` for all three roles in `routing.spec.ts`: five categories and ten switches, selections retained after failure, persisted after refresh, entire email column unchecked while email is disabled, saved selections restored when email is re-enabled (review Q1), Account link, equal width at 390px, new text ≥12px |
+| N2 notification channels | `Notification/NotificationPreference` in `backend/booking/domain.py`; `_category_channels/_notify`, preference functions, and notification-read functions in `services/notifications.py`; `notification_channels.py`; `serializers.py`; `views/notifications.py` | channels / partial_preferences in `Acceptance119` in `test_119.py`; `test_notification_preferences.py` updated for the new contract; HTTP `API119Tests` |
+| A1 / A3 / A4 announcements and permissions | New `services/announcements.py`; new `views/announcements.py`; `services/__init__.py`, `views/__init__.py`, and `urls.py`; `Announcement` in `domain.py`; `repository.py` and `postgres.py` | expiry_order_history, ownership_matrix, and removal_time_must_be_in_the_future in `Acceptance119` (review R1); HTTP verifies student writes return 403, `kind` cannot be forged, and cross-author Admin/Manager permissions |
+| A2 status announcements | `set_resource_status` in `services/resources.py`; `AnnouncementsMixin._status_announcement`; `ResourceStatusSerializer` in `serializers.py`; `views/admin.py` | Shared Memory/PG status_upsert (change reason without changing status, maintenance → closed, reopen, rooms and equipment, recovery estimate does not expire); status_and_announcement_roll_back_together |
+| Database | `backend/database/schema.sql`; new `migrations/009_announcements_notification_channels.sql`; Memory transaction snapshots in `repository.py`; announcement reads/writes in `postgres.py` | New `Postgres119Tests` in `test_postgres.py` shares six service acceptance tests, plus old-preference upgrade and two consecutive runs of 009; `check-local.sh schema` compares old and new databases |
+| Frontend announcements | New `features/announcements/AnnouncementBoard.tsx`, `AnnouncementsPage.tsx`, and `dates.ts`; `dashboard/DashboardPage.tsx` and `admin/TodayPage.tsx`; new `manager/ResourceStatusDialog.tsx`; `manager/ManagerBookingsPage.tsx`; API/types/routes/workspace styles above | `routing.spec.ts` covers announcement publish/edit, failed-removal dialog, author on home page, student permissions, no section when empty, and 390px; status-dialog errors and retained inputs; new `announcement-dates.test.mjs` covers daylight saving and invalid dates |
+| D1 documentation | `openapi.json` 1.19.0 (72 routes); `frontend-api.md`; `database/README.md`; CHANGELOG; this section; Section 10 of ARCHITECTURE; usage instructions in `frontend/README.md` and `PROJECT_GUIDE.md` | OpenAPI validation and route coverage; the task card records the actual output lines from the complete checks |
 
-实现前的失败日志和完整检查结果放在项目外 `9900/output/1.19.0-checks/`；最终验收和截图索引见 `claude/tasks-1.19.0.md` 及本轮交付报告。通知邮件的实际外部送达、线上 EC2 页面未在本轮验证。
+Pre-implementation failure logs and complete check results are outside the project in `9900/output/1.19.0-checks/`. See `claude/tasks-1.19.0.md` and this delivery report for final acceptance and the screenshot index. Actual external email delivery and the live EC2 page were not verified in this round.
 
-## 25. 结构整理 S1 + S3（2026-10-27，接口仍为 1.19.0）
+## 25. Structure Cleanup S1 + S3 (2026-10-27, API remains 1.19.0)
 
-只搬移和删除，不改行为。报告：项目文档 `reports/2026-10-27-code-structure-review.md` 4.3、4.4 节。
+Moves and deletions only; no behaviour changes. Report: Sections 4.3 and 4.4 of project document `reports/2026-10-27-code-structure-review.md`.
 
-| 项 | 内容 | 证据 |
+| Item | Content | Evidence |
 | --- | --- | --- |
-| S1 | 删 31 个没用过的 CSS 类名：booking.css 21、workspace.css 8、shell.css 3、auth.css 2（审查清单里的 `ttf` 是字体扩展名，不是类名） | 每个类名在 src/tests 里搜不到（任务卡）；删除前后的 CSS 用 PostCSS 逐条比对：被删的选择器都含清单里的类，留下的规则声明一条没变（审查报告）；`check-local.sh` 全通过；截图比对见下 |
-| S3 | `features/booking/api.ts`、`types.ts` → `src/api/`：函数 7 个领域文件 + `client.ts`，类型 8 个文件，`index.ts` 统一导出；旧文件删除，不留转发 | 对照表（任务卡）；用 TypeScript 语法树逐条比对 128 条顶层语句：126 条一字不差，`post` 只多了 `export`，`ApiError` 的转发只改了相对路径；说明注释全部在原来的声明上方（审查修复 R1）；`grep "features/booking/(api\|types)"` 无结果；`check-local.sh` 全通过；截图比对：44 张改动后的截图都能和 `8ae931f` 的某一次截图逐像素相同（审查修复 R2） |
-| 文档 | `ARCHITECTURE.md` 第 7 节、`frontend/README.md` 的路径说明 | review |
+| S1 | Delete 31 unused CSS class names: 21 from booking.css, 8 from workspace.css, 3 from shell.css, and 2 from auth.css (`ttf` in the review checklist is a font extension, not a class name) | No class name is found in src/tests (task card); PostCSS comparison before and after deletion shows every removed selector contains a listed class and no declaration in retained rules changed (review report); all `check-local.sh` checks pass; see screenshot comparison below |
+| S3 | Move `features/booking/api.ts` and `types.ts` to `src/api/`: functions split into seven domain files plus `client.ts`, types split into eight files, and `index.ts` exports them together; delete old files without forwarders | Mapping table (task card); TypeScript syntax-tree comparison of 128 top-level statements: 126 are byte-for-byte identical, `post` only adds `export`, and the `ApiError` forwarder only changes the relative path; explanatory comments remain above their original declarations (review fix R1); `grep "features/booking/(api\|types)"` returns no results; all `check-local.sh` checks pass; screenshot comparison: all 44 updated screenshots are pixel-identical to one screenshot from `8ae931f` (review fix R2) |
+| Documentation | Section 7 of `ARCHITECTURE.md` and the path explanation in `frontend/README.md` | review |
 
-## 26. 页面流畅度 B 卡（2026-10-27，接口仍为 1.19.0）
+## 26. Page Fluency Card B (2026-10-27, API remains 1.19.0)
 
-只改前端，任务卡：项目文档 `claude/tasks-fluency-2026-10-27.md`；不做卡 A 维修链路。
+Frontend only. Task card: project document `claude/tasks-fluency-2026-10-27.md`. Card A's maintenance flow is excluded.
 
-| 项 | 文件和行为 | 验证 |
+| Item | Files and behaviour | Verification |
 | --- | --- | --- |
-| V2 | `frontend/src/features/booking/BookingApp.tsx`、`ui/workspace.css`：人数和设备房间筛选独立于标签区 | `tests/fluency.spec.ts` V2（320/390/1440px，完整标签、仅 tab、设备筛选、无水平溢出） |
-| V4 | `features/records/BookingRecordsPage.tsx`、`ui/workspace.css`：保留结果及对应筛选；更新中变淡/aria-busy/禁用输出；失败恢复，CSV 使用可见结果的筛选 | 同文件 V4（延迟、成功、失败、旧结果导出查询） |
-| V5 | 新 `features/announcements/use-announcements.ts`；`AnnouncementBoard.tsx` 改为接收状态；`dashboard/DashboardPage.tsx`、`admin/TodayPage.tsx` 协调首页首次显示 | 同文件 V5（三角色、公告延迟1.6秒、首帧位移0、失败/重试/空公告、首页数据晚到、刷新时公告不收起） |
-| V6 | `features/manager/ManagerBookingsPage.tsx`：仅首次加载错误显示与文字重试 | 同文件 V6（错误后无 Loading，重试恢复）；现有 routing 用例验证其他页面 |
-| V8 | `ui/workspace.css`：移除整页入场，不影响状态动效 | 同文件 V8（计算样式无入场、reduced-motion 仍有效） |
+| V2 | `frontend/src/features/booking/BookingApp.tsx` and `ui/workspace.css`: capacity and equipment-room filters are independent of the tab area | V2 in `tests/fluency.spec.ts` (320/390/1440px, full labels, tab only, equipment filter, no horizontal overflow) |
+| V4 | `features/records/BookingRecordsPage.tsx` and `ui/workspace.css`: retain results and their filters; fade/use aria-busy/disable export while updating; recover after failure; CSV uses filters for the visible result set | V4 in the same file (delay, success, failure, and export query for old results) |
+| V5 | New `features/announcements/use-announcements.ts`; `AnnouncementBoard.tsx` changed to receive state; `dashboard/DashboardPage.tsx` and `admin/TodayPage.tsx` coordinate the first home-page display | V5 in the same file (three roles, 1.6-second announcement delay, zero first-frame shift, failure/retry/empty announcements, late home-page data, announcements remain expanded during refresh) |
+| V6 | `features/manager/ManagerBookingsPage.tsx`: initial-load error display and text retry only | V6 in the same file (no Loading after error, recovery after retry); existing routing tests verify other pages |
+| V8 | `ui/workspace.css`: remove full-page entrance without affecting state animations | V8 in the same file (computed style has no entrance animation, reduced-motion still works) |
 
-红灯日志、前后截图和全套检查结果：项目外 `9900/output/fluency-2026-10-27/`，索引与验收状态见任务卡。
+Failure logs, before/after screenshots, and complete check results are outside the project in `9900/output/fluency-2026-10-27/`; see the task card for the index and acceptance status.
 
-## 27. 维修链路 A 卡（2026-10-28，接口仍为 1.19.0）
+## 27. Maintenance Flow Card A (2026-10-28, API remains 1.19.0)
 
-只改前端，任务卡：项目文档 `claude/tasks-maintenance-2026-10-27.md`。
+Frontend only. Task card: project document `claude/tasks-maintenance-2026-10-27.md`.
 
-| 项 | 文件和行为 | 验证 |
+| Item | Files and behaviour | Verification |
 | --- | --- | --- |
-| M1① | `frontend/src/api/admin.ts` `listUnfinishedBookings(since)`（替换 `listApprovedBookings`）；`features/manager/ManagerBookingsPage.tsx` 只请求还没结束的预约和申请 | `tests/maintenance.spec.ts` M1（请求的四个状态和 `since`） |
-| B1 | `ManagerBookingsPage.tsx` 的预约表和 Upcoming 列只用已批准的（`confirmed`）；`manager/ResourceStatusDialog.tsx` 显示预约加申请的合计 | 同文件 B1（弹窗 3 条含待审批、候补；表格只有已批准的） |
-| V3 | `ResourceStatusDialog.tsx` `onSaved(resource)` 交出接口返回的房间；`ManagerBookingsPage.tsx` 立即更新这一行，刷新中状态按钮禁用 | 同文件 V3（刷新延迟时这一行已是 Maintenance，Reopen 禁用；刷新后恢复） |
+| M1① | `listUnfinishedBookings(since)` in `frontend/src/api/admin.ts` (replaces `listApprovedBookings`); `features/manager/ManagerBookingsPage.tsx` requests only bookings and requests that have not ended | M1 in `tests/maintenance.spec.ts` (four requested statuses and `since`) |
+| B1 | Booking table and Upcoming column in `ManagerBookingsPage.tsx` use only approved (`confirmed`) bookings; `manager/ResourceStatusDialog.tsx` shows the combined count of bookings and requests | B1 in the same file (dialog has three entries including pending and waitlisted; table contains only approved bookings) |
+| V3 | `onSaved(resource)` in `ResourceStatusDialog.tsx` returns the resource received from the endpoint; `ManagerBookingsPage.tsx` updates the row immediately and disables status buttons during refresh | V3 in the same file (row already shows Maintenance and Reopen is disabled while refresh is delayed; recovers after refresh) |
 
-## 28. Booking 筛选、个人历史与首页（2026-10-28，1.20.0，迁移 010）
+## 28. Booking Filters, Personal History, and Home Page (2026-10-28, 1.20.0, migration 010)
 
-| 项 | 文件与入口 | 验证 |
+| Item | Files and entry points | Verification |
 | --- | --- | --- |
-| F1 | `features/booking/MyBookings.tsx`、`ui/workspace.css`：资源／状态交集与 URL、数量、Clear filters | `tests/routing.spec.ts` booking history resource（三角色、刷新、空结果与手机） |
-| H1 后端 | `services/bookings.py` `remove_booking_history`；`views/bookings.py` `BookingHistoryRemoveView`、`my_bookings`；`urls.py`；`repository.py` / `postgres.py` 的 `hide_booking`、`hidden_booking_ids`；迁移 010 / schema.sql | `test_booking_history.py`：权限、状态、幂等、代约双方、回滚、原记录／缺席／日历保留、API 与 Dashboard；`test_postgres.py` 持久化与迁移连跑两遍 |
-| H1 前端 | `api/bookings.ts` `removeBookingHistory`；`MyBookings.tsx`、`SeriesCard.tsx`；`my-bookings.ts` `canRemoveBookingHistory` | routing booking history removal（三角色、取消确认、503 保留、成功与刷新）、逐日期移除 |
-| D1 | `DashboardPage.tsx`、`dashboard.css`、`workspace.css`：独立统计卡、紧凑 Next session 与预约列表、员工 Today 横幅 | routing booking dashboard（真实列表形状、桌面与320/390px）；既有 fluency 用例回归公告 |
-| 文档 | OpenAPI 1.20.0 / frontend-api.md、数据库 README、ARCHITECTURE 第10节、CHANGELOG | check-local 的 openapi 和 schema；具体输出见任务卡 |
+| F1 | `features/booking/MyBookings.tsx` and `ui/workspace.css`: resource/status intersection, URL, count, and Clear filters | booking history resource in `tests/routing.spec.ts` (three roles, refresh, empty results, and mobile) |
+| H1 backend | `remove_booking_history` in `services/bookings.py`; `BookingHistoryRemoveView` and `my_bookings` in `views/bookings.py`; `urls.py`; `hide_booking` and `hidden_booking_ids` in `repository.py` / `postgres.py`; migration 010 / schema.sql | `test_booking_history.py`: permissions, statuses, idempotency, both parties in proxy bookings, rollback, preservation of source record/absence/calendar, API and Dashboard; persistence and two consecutive migration runs in `test_postgres.py` |
+| H1 frontend | `removeBookingHistory` in `api/bookings.ts`; `MyBookings.tsx` and `SeriesCard.tsx`; `canRemoveBookingHistory` in `my-bookings.ts` | routing booking history removal (three roles, cancel confirmation, preserve on 503, success and refresh), removal by date |
+| D1 | `DashboardPage.tsx`, `dashboard.css`, and `workspace.css`: separate statistics cards, compact Next session and booking list, staff Today banner | routing booking dashboard (real list shape, desktop and 320/390px); existing fluency cases regress announcements |
+| Documentation | OpenAPI 1.20.0 / frontend-api.md, database README, Section 10 of ARCHITECTURE, CHANGELOG | openapi and schema checks in check-local; see the task card for exact output |
 
-## 29. 压力测试（2026-10-29）
+## 29. Load Testing (2026-10-29)
 
-脚本和结果都在 [load-test/README.md](load-test/README.md)。性能修复的代码改动见 CHANGELOG 的压力测试三轮。
+Scripts and results are in [load-test/README.md](load-test/README.md). See the three load-test rounds in CHANGELOG for code changes made for performance fixes.
 
-## 30. 客户 Week 8 会议（2026-11-06，1.24.0，无迁移）
+## 30. Client Week 8 Meeting (2026-11-06, 1.24.0, no migration)
 
-任务卡：项目文档 `claude/tasks-week8-2026-11-06.md`。
+Task card: project document `claude/tasks-week8-2026-11-06.md`.
 
-| 项 | 文件和入口 | 测试 |
+| Item | Files and entry points | Tests |
 | --- | --- | --- |
-| W1 Manager 越过规则 | `services/bookings.py` `_create_manager_booking`（`create_booking` 调用）、`reschedule_booking`；`services/availability.py` `_availability`、`day_overview` 的 `manager_override`；前端 `BookingForm.tsx`、`SlotPicker.tsx`、`slot-picker.ts` `dateRange`、`ManagerBookingsPage.tsx` 说明文字 | `test_approval_flow.py` `test_a_manager_booking_overrides_the_rules_but_needs_free_time`；`test_staff_booking.py` `test_a_manager_sees_times_inside_the_window_and_the_full_length`；`test_booking_window.py`、`test_sprint3.py` 改期用例 |
-| W2 延长进行中的预约 | `services/changes.py` `extend_booking`；`checks.py` `_period_violation`（参数 `started`）；`views/bookings.py` `BookingExtendView`；`urls.py`；`serializers.py` `BookingExtendSerializer`；前端 `api/bookings.ts` `extendBooking`、`features/booking/extend.ts`、`ExtendBox.tsx`、`MyBookings.tsx`、`ManagerBookingsPage.tsx` | `test_change_requests.py` `ExtendBookingTests`、`test_extend_a_booking_in_progress`；`frontend/tests/extend.test.mjs` |
-| W3 冻结默认关闭 | 已被 1.25.0 整个删除（第 31 节） | — |
+| W1 Manager rule override | `_create_manager_booking` (called by `create_booking`) and `reschedule_booking` in `services/bookings.py`; `_availability` and `manager_override` for `day_overview` in `services/availability.py`; frontend guidance in `BookingForm.tsx`, `SlotPicker.tsx`, `dateRange` in `slot-picker.ts`, and `ManagerBookingsPage.tsx` | `test_a_manager_booking_overrides_the_rules_but_needs_free_time` in `test_approval_flow.py`; `test_a_manager_sees_times_inside_the_window_and_the_full_length` in `test_staff_booking.py`; time-change cases in `test_booking_window.py` and `test_sprint3.py` |
+| W2 extend an in-progress booking | `extend_booking` in `services/changes.py`; `_period_violation` (`started` argument) in `checks.py`; `BookingExtendView` in `views/bookings.py`; `urls.py`; `BookingExtendSerializer` in `serializers.py`; frontend `extendBooking` in `api/bookings.ts`, `features/booking/extend.ts`, `ExtendBox.tsx`, `MyBookings.tsx`, and `ManagerBookingsPage.tsx` | `ExtendBookingTests` and `test_extend_a_booking_in_progress` in `test_change_requests.py`; `frontend/tests/extend.test.mjs` |
+| W3 freezing disabled by default | Removed entirely in 1.25.0 (Section 31) | — |
 
-## 31. 删除冻结（2026-11-07，1.25.0，迁移 014）
+## 31. Remove Freezing (2026-11-07, 1.25.0, migration 014)
 
-Loy 定：客户不想用缺席处罚，冻结整个删除。任务卡：项目文档 `claude/tasks-week8-2026-11-06.md` W4。
+Loy's decision: the client does not want an absence penalty, so freezing is removed completely. Task card: W4 in project document `claude/tasks-week8-2026-11-06.md`.
 
-| 部分 | 删除或改动 |
+| Area | Removal or change |
 | --- | --- |
-| 数据库 | `migrations/014_remove_booking_freeze.sql` 删表 `unfreeze_request`、删 `app_users.no_show_count`、`frozen_until`；`schema.sql` 同步 |
-| 后端 | `domain.py` 去掉 `Principal.no_show_count`、`frozen_until`、`frozen_at` 和 `UnfreezeRequest`；`rules.py`、`settings.py`、`.env.example` 去掉两个冻结参数；`attendance.py` 只剩到场和缺席标记；各处 `frozen_violation` 调用（`bookings.py`、`additional_hours.py`、`long_bookings.py`、`series.py`）、`availability.py` 的冻结字段、`overview.py` 的 `unfreeze_requests`、两种仓储的解冻方法、`views/unfreeze.py`、5 个接口和 4 个 serializer 都删除 |
-| 前端 | 删 `FreezesPage.tsx`、`FreezeNotice.tsx`、`/admin/freezes` 路由和菜单、Today 的解冻卡片、相关 API 和类型 |
-| 测试 | 删冻结和解冻用例；`test_sprint3.py` `test_missed_bookings_are_marked_and_notified_without_a_penalty` 确认缺席 5 次也不影响预约 |
+| Database | `migrations/014_remove_booking_freeze.sql` drops table `unfreeze_request` and columns `app_users.no_show_count` and `frozen_until`; `schema.sql` synchronised |
+| Backend | `domain.py` removes `Principal.no_show_count`, `frozen_until`, `frozen_at`, and `UnfreezeRequest`; `rules.py`, `settings.py`, and `.env.example` remove two freezing parameters; `attendance.py` retains only check-in and absence marking; remove all `frozen_violation` calls (`bookings.py`, `additional_hours.py`, `long_bookings.py`, and `series.py`), freezing fields in `availability.py`, `unfreeze_requests` in `overview.py`, unfreeze methods in both repositories, `views/unfreeze.py`, five endpoints, and four serializers |
+| Frontend | Remove `FreezesPage.tsx`, `FreezeNotice.tsx`, the `/admin/freezes` route and menu entry, the unfreeze card on Today, and related API functions and types |
+| Tests | Remove freezing and unfreeze tests; `test_missed_bookings_are_marked_and_notified_without_a_penalty` in `test_sprint3.py` confirms that five absences still do not affect booking |
 
-## 32. 三个角色看到的明显不同（2026-11-07，1.26.0，迁移 015）
+## 32. Clear Differences Between the Three Roles (2026-11-07, 1.26.0, migration 015)
 
-客户 Week 8 会议。任务卡：项目文档 `claude/tasks-week8-2026-11-06.md` W5–W7。
+Client Week 8 meeting. Task card: W5–W7 in project document `claude/tasks-week8-2026-11-06.md`.
 
-| 项 | 文件和入口 | 测试 |
+| Item | Files and entry points | Tests |
 | --- | --- | --- |
-| W5 Manager 首页、角色标识 | 新 `features/manager/ManagerHomePage.tsx`、`manager-home.ts`；`admin/today.ts` `MANAGER_DECIDES`、`cardsFor`；`TodayPage.tsx`；`app/routes.ts` `homePath`、`/manager/home`；`AppRouter.tsx`；`AppLayout.tsx` 菜单和 `app-role-badge`；`ui/workspace.css` | `frontend/tests/roles.test.mjs`；Playwright `a Manager starts on the Lab overview, sees the role badge and looks up a zID`、`staff start on Today…` |
-| W6 Admin 只看近期历史 | `services/resources.py` `booking_report`、`ADMIN_HISTORY_DAYS`；`services/reports.py` `usage_report` 改为 `require_manager`；前端 `records/records.ts` `defaultRecordFilters`、`BookingRecordsPage.tsx`；`routes.ts` `/manager/usage` | `test_roles.py` `AdminHistoryTests`；`test_usage_report.py`；`roles.test.mjs`；Playwright `a Manager reads the usage statistics…` |
-| W7 Manager 才能看的设备资料 | `domain.py` `ResourceInternalInfo`；两种仓储 `get/save_resource_internal_info`；`services/resources.py` `resource_internal_info`、`update_resource_internal_info`、`INTERNAL_FIELDS`；`views/admin.py` `AdminResourceInternalInfoView`；`serializers.py` `ResourceInternalInfoSerializer`；`migrations/015_resource_internal_info.sql`、`schema.sql`；前端 `api/resources.ts`、`ManagerResourcesPage.tsx`（Managers only 一栏） | `test_roles.py` `InternalInfoTests`、`InternalInfoAPITests`；`test_postgres.py` `test_resource_internal_info_is_persisted` |
+| W5 Manager home page and role badge | New `features/manager/ManagerHomePage.tsx` and `manager-home.ts`; `MANAGER_DECIDES` and `cardsFor` in `admin/today.ts`; `TodayPage.tsx`; `homePath` and `/manager/home` in `app/routes.ts`; `AppRouter.tsx`; menu and `app-role-badge` in `AppLayout.tsx`; `ui/workspace.css` | `frontend/tests/roles.test.mjs`; Playwright `a Manager starts on the Lab overview, sees the role badge and looks up a zID` and `staff start on Today…` |
+| W6 Admin sees only recent history | `booking_report` and `ADMIN_HISTORY_DAYS` in `services/resources.py`; `usage_report` in `services/reports.py` changed to `require_manager`; frontend `defaultRecordFilters` in `records/records.ts`, `BookingRecordsPage.tsx`, and `/manager/usage` in `routes.ts` | `AdminHistoryTests` in `test_roles.py`; `test_usage_report.py`; `roles.test.mjs`; Playwright `a Manager reads the usage statistics…` |
+| W7 Manager-only equipment information | `ResourceInternalInfo` in `domain.py`; `get/save_resource_internal_info` in both repositories; `resource_internal_info`, `update_resource_internal_info`, and `INTERNAL_FIELDS` in `services/resources.py`; `AdminResourceInternalInfoView` in `views/admin.py`; `ResourceInternalInfoSerializer` in `serializers.py`; `migrations/015_resource_internal_info.sql` and `schema.sql`; frontend `api/resources.ts` and the Managers only section in `ManagerResourcesPage.tsx` | `InternalInfoTests` and `InternalInfoAPITests` in `test_roles.py`; `test_resource_internal_info_is_persisted` in `test_postgres.py` |
 
-## 33. 延长改为拖动时间轴、由 Manager 批准（2026-11-07，1.27.0，迁移 016）
+## 33. Extension Changed to Timeline Dragging and Manager Approval (2026-11-07, 1.27.0, migration 016)
 
-取代第 30 节 W2 的“立即生效”。任务卡：项目文档 `claude/tasks-week8-2026-11-06.md` W8。
+Replaces the “takes effect immediately” behaviour in W2 of Section 30. Task card: W8 in project document `claude/tasks-week8-2026-11-06.md`.
 
-| 部分 | 文件和入口 | 测试 |
+| Area | Files and entry points | Tests |
 | --- | --- | --- |
-| 数据 | `domain.py` `Booking.extension_end`；`migrations/016_extension_requests.sql`（加列和检查约束 `booking_extension_end_check`）、`schema.sql` | `test_postgres.py` `test_extension_request_is_persisted` |
-| 后端 | `services/changes.py` `extend_booking`（学生申请，Manager 立即生效）、`review_extension`、`_check_extension`、`_apply_extension`；`services/overview.py` `extension_requests`；`views/bookings.py` `BookingExtensionReviewView`；`serializers.py` `ExtensionReviewSerializer`；`urls.py`；通知 `EXTENSION_REQUESTED`／`APPROVED`／`REJECTED`（`notifications.py`、`settings.py` 邮件类型） | `test_change_requests.py` `ExtendBookingTests`（3 个）、`test_extend_a_booking_in_progress` |
-| 前端 | `features/booking/ExtendBox.tsx`（时间轴、拖动和方向键）、`extend.ts` `timelineCells`、`latestEnd`、`waitingExtension`、`sydneyDate`；`MyBookings.tsx` 等待提示；`admin/today.ts` `extensions` 卡片；`manager/ManagerHomePage.tsx` `ExtensionRow`；`api/bookings.ts` `reviewExtension`；`ui/workspace.css` `.ext-*` | `tests/extend.test.mjs`；Playwright `a student drags the end of a booking in progress…`、`a Manager approves an extension request on the Lab overview` |
+| Data | `Booking.extension_end` in `domain.py`; `migrations/016_extension_requests.sql` (adds the column and `booking_extension_end_check` constraint) and `schema.sql` | `test_extension_request_is_persisted` in `test_postgres.py` |
+| Backend | `extend_booking` (student submits a request; Manager applies immediately), `review_extension`, `_check_extension`, and `_apply_extension` in `services/changes.py`; `extension_requests` in `services/overview.py`; `BookingExtensionReviewView` in `views/bookings.py`; `ExtensionReviewSerializer` in `serializers.py`; `urls.py`; notifications `EXTENSION_REQUESTED`/`APPROVED`/`REJECTED` (email kinds in `notifications.py` and `settings.py`) | Three `ExtendBookingTests` and `test_extend_a_booking_in_progress` in `test_change_requests.py` |
+| Frontend | `features/booking/ExtendBox.tsx` (timeline, dragging, and arrow keys); `timelineCells`, `latestEnd`, `waitingExtension`, and `sydneyDate` in `extend.ts`; waiting message in `MyBookings.tsx`; `extensions` card in `admin/today.ts`; `ExtensionRow` in `manager/ManagerHomePage.tsx`; `reviewExtension` in `api/bookings.ts`; `.ext-*` in `ui/workspace.css` | `tests/extend.test.mjs`; Playwright `a student drags the end of a booking in progress…` and `a Manager approves an extension request on the Lab overview` |
 
-## 34. GitLab CI（2026-11-09，不改网站）
+## 34. GitLab CI (2026-11-09, no website change)
 
-只做持续集成，不自动部署（原因见 CHANGELOG 同名一节）。
+Continuous integration only; no automatic deployment (see the section with the same name in CHANGELOG for the reason).
 
-| job | 镜像 | 跑什么 | 没包括 |
+| Job | Image | Runs | Not included |
 | --- | --- | --- | --- |
-| `backend-tests` | `python:3.12-slim` | 装 `backend/requirements-postgres.txt`，`python manage.py test booking`（内存存储，PostgreSQL 用例自动跳过） | PostgreSQL 集成测试（见下一行） |
-| `postgres-tests`（2026-11-12） | `python:3.12-slim` + 服务 `postgres:16-alpine` | `python manage.py test booking.tests.test_postgres`，连 job 自带的临时数据库 | 新旧库结构对比（`check-local.sh schema`） |
-| `frontend-checks` | `node:22-alpine` | `npm ci`，`npm test`、`npm run lint`、`npm run build` | Playwright e2e（见下一行） |
-| `e2e-tests`（2026-11-12） | `mcr.microsoft.com/playwright:v1.64.0-noble` | `npm ci`，`npx playwright test`；失败时保留 `frontend/test-results/` 一周 | — |
+| `backend-tests` | `python:3.12-slim` | Install `backend/requirements-postgres.txt`; run `python manage.py test booking` (memory storage; PostgreSQL cases skip automatically) | PostgreSQL integration tests (see next row) |
+| `postgres-tests` (2026-11-12) | `python:3.12-slim` + `postgres:16-alpine` service | Run `python manage.py test booking.tests.test_postgres` against the temporary database provided by the job | Old/new database structure comparison (`check-local.sh schema`) |
+| `frontend-checks` | `node:22-alpine` | `npm ci`, `npm test`, `npm run lint`, and `npm run build` | Playwright e2e (see next row) |
+| `e2e-tests` (2026-11-12) | `mcr.microsoft.com/playwright:v1.64.0-noble` | `npm ci` and `npx playwright test`; retain `frontend/test-results/` for one week on failure | — |
 
-升级 `@playwright/test` 时，`e2e-tests` 的镜像版本号要一起改。
+When upgrading `@playwright/test`, update the image version for `e2e-tests` at the same time.
 
-配置在仓库根目录 `.gitlab-ci.yml`；结果在 GitLab 的 Build → Pipelines 和每个 MR 页面。
+Configuration is in `.gitlab-ci.yml` at the repository root. Results appear under Build → Pipelines in GitLab and on each MR page.
 
-## 35. Lab overview 和长表单弹窗（2026-11-09，只改前端，接口不变）
+## 35. Lab Overview and Long-Form Dialog (2026-11-09, frontend only, API unchanged)
 
-Loy 反馈：`claude/reports/2026-11-09-loy-feedback-lab-rules-overview.md`。
+Loy feedback: `claude/reports/2026-11-09-loy-feedback-lab-rules-overview.md`.
 
-| 部分 | 文件和入口 | 测试 |
+| Area | Files and entry points | Tests |
 | --- | --- | --- |
-| Lab overview | `features/manager/ManagerHomePage.tsx`（`mh-chips` 一行标签、`SplitBar`、本周 `mh-usage` 条形图）；`manager-home.ts` `segments`、`busiest`；样式 `ui/workspace.css` 的 `.mh-*` 段 | `tests/roles.test.mjs` 两个 2026-11-09 用例；Playwright `the Lab overview shows waiting counts as chips and this week as bars`（截图 `output/manager-ui-2026-11-09/lab-overview-*.png`） |
-| 长表单弹窗 | `ui/components.tsx` `DialogTitle`（标题加 ×）；`ui/ui.css` `.ui-dialog-form`（960px，标题和按钮固定）、`.mr-columns`、`.mr-two-columns`；`ManagerResourcesPage.tsx` `ResourceDialog` 两栏和 Booking rules 分组；`LabSetupPage.tsx`、`ManagerUsersPage.tsx` 用 `DialogTitle` | Playwright `the resource form opens wide in two columns and closes with the close button`（截图 `resource-dialog-*.png`）；原有的 `a Manager adds equipment…` 照常通过 |
+| Lab overview | `features/manager/ManagerHomePage.tsx` (`mh-chips` one-line labels, `SplitBar`, and this week's `mh-usage` bars); `segments` and `busiest` in `manager-home.ts`; `.mh-*` section in `ui/workspace.css` | Two 2026-11-09 cases in `tests/roles.test.mjs`; Playwright `the Lab overview shows waiting counts as chips and this week as bars` (screenshots `output/manager-ui-2026-11-09/lab-overview-*.png`) |
+| Long-form dialog | `DialogTitle` in `ui/components.tsx` (adds × to title); `.ui-dialog-form` (960px, fixed title and buttons), `.mr-columns`, and `.mr-two-columns` in `ui/ui.css`; two-column `ResourceDialog` with Booking rules group in `ManagerResourcesPage.tsx`; `LabSetupPage.tsx` and `ManagerUsersPage.tsx` use `DialogTitle` | Playwright `the resource form opens wide in two columns and closes with the close button` (screenshots `resource-dialog-*.png`); existing `a Manager adds equipment…` continues to pass |

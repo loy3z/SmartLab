@@ -59,7 +59,7 @@ DEMO_TOKEN_TTL_SECONDS = 8 * 3600  # 2026-11-10 (U5): one hour ended the session
 # Default 24 hours (client meeting); a Manager may change it per resource (1 to 20160 minutes).
 DEFAULT_PENDING_HOLD_MINUTES = int(os.getenv("DEFAULT_PENDING_HOLD_MINUTES", "1440"))
 # Sprint 1 fixed policy: verified induction lasts one term, counted in days from approval.
-# A demo value, not a client-confirmed rule; see README "资格来源与有效期".
+# The demo uses this default while the client policy is unconfirmed. See backend/README.md for qualification sources and expiry.
 QUALIFICATION_VALIDITY_DAYS = int(os.getenv("QUALIFICATION_VALIDITY_DAYS", "120"))
 if not 1 <= QUALIFICATION_VALIDITY_DAYS <= 3650:
     raise ValueError("QUALIFICATION_VALIDITY_DAYS must be from 1 to 3650")

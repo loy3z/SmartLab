@@ -211,7 +211,8 @@ class BookingsMixin:
                 raise DomainError("URGENT_NEEDS_MANAGER", "Only a Manager can decide an urgent request.", 403)
             if decision == "APPROVED":
                 resource = self.resource(source.resource_id)
-                error = self.rule_violation(source.student_id, resource, source.start, source.end)
+                error = (self.rule_violation(source.student_id, resource, source.start, source.end)
+                         or self._change_approval_quota_violation(source))
                 if error and error.code == "QUALIFICATION_REQUIRED":
                     raise DomainError("QUALIFICATION_NOT_VERIFIED", "Verify current induction evidence covering the booking before approval.",
                                       409, error.details)

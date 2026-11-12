@@ -101,6 +101,75 @@ class ChangeRequestTests(Sprint3Fixture, SimpleTestCase):
         change = self.change(week[0], days=1, hour=14, minutes=180)
         self.assertEqual(change.status, BookingStatus.PENDING_APPROVAL)
 
+    def test_pending_change_preserves_the_remaining_weekly_allowance(self):
+        week = [self.approved(days=day, hour=8, minutes=180) for day in (1, 2, 3)]
+        change = self.change(week[0], days=1, hour=14, minutes=180)
+        self.assertEqual(change.status, BookingStatus.PENDING_APPROVAL)
+        self.assertEqual(self.service.week_hours(self.student.id)["used_hours"], 9)
+        available = self.service.availability(self.student, self.room.id, self.today + timedelta(days=4))
+        self.assertEqual(available["week_hours"]["used_hours"], 9)
+        self.assertEqual(self.request(days=4, hour=8, minutes=180).status, BookingStatus.PENDING_APPROVAL)
+        self.assertEqual(self.service.week_hours(self.student.id)["used_hours"], 12)
+
+    def test_shortening_a_pending_change_does_not_release_hours_before_approval(self):
+        week = [self.approved(days=day, hour=8, minutes=180) for day in (1, 2, 3, 4)]
+        change = self.change(week[0], days=1, hour=14, minutes=60)
+        self.assertEqual(self.service.week_hours(self.student.id)["used_hours"], 12)
+        self.refused("WEEKLY_LIMIT_REACHED", self.request, days=5, hour=8, minutes=60)
+
+        self.service.review_booking(self.admin, change.id, "APPROVED")
+        self.assertEqual(self.repo.get_booking(week[0].id).status, BookingStatus.CANCELLED)
+        self.assertEqual(self.service.week_hours(self.student.id)["used_hours"], 10)
+        self.assertEqual(self.request(days=5, hour=8, minutes=120).status, BookingStatus.PENDING_APPROVAL)
+
+    def test_withdrawn_or_rejected_longer_change_restores_the_original_allowance(self):
+        for decision in ("withdraw", "reject"):
+            with self.subTest(decision=decision):
+                self.setUp()
+                old = self.approved(days=1, hour=8, minutes=60)
+                change = self.change(old, days=1, hour=14, minutes=180)
+                self.assertEqual(self.service.week_hours(self.student.id)["used_hours"], 3)
+                if decision == "withdraw":
+                    self.service.cancel_booking(self.student, change.id)
+                else:
+                    self.service.review_booking(self.admin, change.id, "REJECTED", "Keep the original time")
+                self.assertEqual(self.repo.get_booking(old.id).status, BookingStatus.APPROVED)
+                self.assertEqual(self.service.week_hours(self.student.id)["used_hours"], 1)
+
+    def test_cross_week_change_reserves_each_week_until_a_decision(self):
+        for decision in ("approve", "withdraw", "reject"):
+            with self.subTest(decision=decision):
+                self.setUp()
+                old = self.approved(days=1, hour=8, minutes=180)
+                change = self.change(old, days=7, hour=8, minutes=120)
+                next_week = self.today + timedelta(days=7)
+                self.assertEqual(self.service.week_hours(self.student.id)["used_hours"], 3)
+                self.assertEqual(self.service.week_hours(self.student.id, next_week)["used_hours"], 2)
+                if decision == "withdraw":
+                    self.service.cancel_booking(self.student, change.id)
+                else:
+                    self.service.review_booking(self.admin, change.id,
+                                                "APPROVED" if decision == "approve" else "REJECTED",
+                                                "Keep the original time" if decision == "reject" else "")
+                self.assertEqual(self.service.week_hours(self.student.id)["used_hours"],
+                                 0 if decision == "approve" else 3)
+                self.assertEqual(self.service.week_hours(self.student.id, next_week)["used_hours"],
+                                 2 if decision == "approve" else 0)
+
+    def test_waitlisted_change_counts_separately_once_the_original_has_started(self):
+        old = self.approved(days=1, hour=8, minutes=180)
+        blocker = self.approved(self.other, days=3, hour=8, minutes=180)
+        change = self.change(old, days=3, hour=8, minutes=180)
+        self.assertEqual(change.status, BookingStatus.WAITLISTED)
+        self.assertEqual(self.service.week_hours(self.student.id)["used_hours"], 3)
+
+        self.now = old.start + timedelta(minutes=1)
+        self.assertEqual(self.service.week_hours(self.student.id)["used_hours"], 6)
+        self.service.cancel_booking(self.other, blocker.id)
+        self.service.review_booking(self.admin, change.id, "APPROVED")
+        self.assertEqual(self.repo.get_booking(old.id).status, BookingStatus.APPROVED)
+        self.assertEqual(self.service.week_hours(self.student.id)["used_hours"], 6)
+
     def test_the_old_booking_and_its_open_change_count_as_one_future_booking(self):
         self.service._override_rule(max_active_future_bookings=2)
         old = self.approved(days=2, hour=8, minutes=30)
@@ -219,6 +288,25 @@ class MaintenanceNoticeTests(Sprint3Fixture, SimpleTestCase):
 
 @override_settings(DEBUG=True, ENABLE_DEMO_AUTH=True, SEED_DEMO_DATA=True)
 class ChangeRequestAPITests(BookingAPIFixtureMixin, SimpleTestCase):
+    def test_pending_change_keeps_displayed_hours_and_new_booking_validation_in_sync(self):
+        self.service.min_advance_days, self.service.max_advance_days = 7, 28
+        bookings = [self.create_approved(payload=self.payload(day_offset=day, hour=8, minutes=180))
+                    for day in (8, 9, 10)]
+        new_time = self.payload(day_offset=8, hour=14, minutes=180)
+        change = self.verified.post(f"/api/v1/bookings/{bookings[0]['id']}/change/",
+                                    {"start": new_time["start"], "end": new_time["end"]}, format="json")
+        self.assertEqual(change.status_code, 201, change.data)
+        self.assertEqual(change.data["status"], "PENDING_APPROVAL")
+
+        next_booking = self.payload(day_offset=11, hour=8, minutes=180)
+        availability = self.verified.get(f"/api/v1/resources/{self.room['id']}/availability/",
+                                         {"date": next_booking["start"][:10], "duration_minutes": 30})
+        self.assertEqual(availability.status_code, 200, availability.data)
+        self.assertEqual((availability.data["week_hours"]["used_hours"],
+                          availability.data["week_hours"]["limit_hours"]), (9, 12))
+        created = self.create_booking(payload=next_booking)
+        self.assertEqual(created.status_code, 201, created.data)
+
     def test_owner_asks_for_a_new_time_and_both_bookings_show_the_link(self):
         created = self.verified.post("/api/v1/bookings/", self.payload(day_offset=3, hour=10), format="json")
         self.assertEqual(created.status_code, 201, created.data)

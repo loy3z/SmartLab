@@ -5,8 +5,9 @@ from datetime import datetime, timedelta
 from math import ceil, lcm
 from zoneinfo import ZoneInfo
 
+from ..domain import BookingStatus
 from ..errors import DomainError
-from .base import ACTIVE_REQUEST_STATUSES
+from .base import ACTIVE_REQUEST_STATUSES, UNDECIDED_STATUSES
 
 
 class ChecksMixin:
@@ -212,12 +213,36 @@ class ChecksMixin:
         return None
 
     def _week_slots_used(self, student_id, zone, week_start, exclude_id=None):
-        """Slots of the weekly allowance a person has used in the local week starting week_start (additional hours excluded)."""
+        """Reserve each possible booking once per week (additional hours excluded).
+
+        An undecided change and its approved future original are alternatives. In the same week, reserve the
+        longer duration until the decision; a shorter change must not release hours that its withdrawal restores.
+        Across weeks, each week keeps its own reservation until the original is actually cancelled. Once the
+        original has started, approval keeps both bookings, so they must count separately.
+        """
         week_end = week_start + timedelta(days=7)
-        return sum(self._duration_slots(item.start, item.end)
-                   for item in self.repo.list_bookings(student_id=str(student_id))
-                   if item.id != exclude_id and item.status in ACTIVE_REQUEST_STATUSES and not item.additional_hours
-                   and week_start <= item.start.astimezone(zone).date() < week_end)
+        active = {item.id: item for item in self.repo.list_bookings(student_id=str(student_id))
+                  if item.id != exclude_id and item.status in ACTIVE_REQUEST_STATUSES and not item.additional_hours}
+        now = self.now()
+        reserved = {}
+        for item in active.values():
+            if not week_start <= item.start.astimezone(zone).date() < week_end:
+                continue
+            original = active.get(item.replaces_id)
+            replaces_future = (item.status in UNDECIDED_STATUSES and original is not None
+                               and original.status == BookingStatus.APPROVED and original.start > now
+                               and original.resource_id == item.resource_id)
+            key = original.id if replaces_future else item.id
+            reserved[key] = max(reserved.get(key, 0), self._duration_slots(item.start, item.end))
+        return sum(reserved.values())
+
+    def _change_approval_quota_violation(self, booking):
+        """A late change approval keeps a started original: check the allowance for both before approving."""
+        original = self.repo.get_booking(booking.replaces_id) if booking.replaces_id else None
+        if original is None or original.status != BookingStatus.APPROVED or original.start > self.now():
+            return None
+        return self._weekly_limit_violation(booking.student_id, self.resource(booking.resource_id),
+                                            booking.start, booking.end, exclude_id=booking.id)
 
     def week_hours(self, student_id, day=None):
         """Hours booked against the weekly allowance in the Sydney week of ``day`` (default: this week).

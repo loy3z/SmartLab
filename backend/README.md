@@ -13,7 +13,8 @@ Django 5.2 + Django REST Framework 3.16。提供学生时段查询、房间／�
 - **额外时数公平顺序**：同一资源、时间重叠且当前可批准的额外申请中，“目标预约当地周一至周日内，跨资源没有已开始且已签到的使用记录”与“正在进行数据采集”属于同一优先组，组内按提交时间及 ID 排序。采集声明必须有说明，Manager 批准时必须明确确认；无效声明应拒绝。无优先条件的申请在后一组，组内同样先到先得。普通已批准预约与有效占位优先于额外时数；额外申请之间不预占资源。审批在事务内重查，审计记录当时的优先依据、顺序、窗口、采集确认及授权时段。
 - **额外时数授权范围**：只适用于已批准的具体资源和起止时间；不能通过普通改期接口移动，需取消后重新申请。Admin 不能批准或拒绝额外申请，Manager 也不能审批本人或本人创建的申请。申请、结果和过期使用现有通知渠道，Manager 收到专门待办通知。
 - **只有 Manager 能直接改期**：改任何人已批准的普通未来预约，不受最短提前期限制（`RESCHEDULED_BY_MANAGER`）。超长和额外时数授权固定到原时段，须取消后重新申请。
-- **预约人申请改期**（1.16.0，`POST bookings/{id}/change/`）：本人已批准的未来预约可以申请换时间。系统新建一个申请（`replaces_id` 指向原预约），新时间空闲就待审批，被占用就进候补；原预约在新申请批准前一直保留，批准时自动取消（`REPLACED_BY_CHANGE`）并交给候补。规则和普通申请相同，但原预约不算冲突、重复或每周名额；一个预约同时只能有一个改期申请；不能紧急改期。
+- **预约人申请改期**（1.16.0，`POST bookings/{id}/change/`）：本人已批准的未来预约可以申请换时间。系统新建一个申请（`replaces_id` 指向原预约），新时间空闲就待审批，被占用就进候补；原预约在新申请批准前一直保留，批准时自动取消（`REPLACED_BY_CHANGE`）并交给候补。规则和普通申请相同，但原预约不算冲突或重复申请；一个预约同时只能有一个改期申请；不能紧急改期。
+- **改期期间的每周额度**：原预约尚未开始时，同周的原预约与待审／候补改期合并计算，按新旧时长中较长的一项预留，避免重复扣额度或在缩短获批前提前释放额度。跨周改期在决定前保留两周各自的额度，批准后释放原周，撤回／拒绝后释放新周。原预约已经开始时两条分别计入额度，人工批准、自动批准及候补递补都会重新检查周额度。
 - **前置 induction**：一项 induction 可以要求先通过另一项（`QualificationRequirement.prerequisite_ids`，数据库列 `prerequisite_ids uuid[]`）。演示数据中 Advanced laboratory training 要求先有 General laboratory induction：General 未通过时不能提交 Advanced 资料，Admin 也不能通过 Advanced；预约 Advanced 资源时，General 和 Advanced **都必须有效并覆盖整个预约**（缺 General 时 `qualification_status=PREREQUISITE_REQUIRED`）。Manager 可用 `PATCH /api/v1/admin/qualification-requirements/{id}/` 设置 `{"prerequisite_ids":[...]}`，不允许形成循环。
 - **统一规则检查**：创建申请、Admin 批准、超时自动处理、候补递补、改期都调用同一个 `BookingService.rule_violation`，按顺序检查账号是否启用、资源是否可用、时间是否合法、（创建和改期时）预约窗口、资格及前置资格。任何路径都不会绕过其中一项。
 - **账号状态**：停用学生账号时，该学生所有未决申请（待审批和候补）立即拒绝（`ACCOUNT_DEACTIVATED`）并递补下一位；已批准的预约保留，由 Manager 决定是否取消。批准或自动处理时也会再次检查账号是否启用（`AUTO_REJECTED_ACCOUNT_INACTIVE`）。

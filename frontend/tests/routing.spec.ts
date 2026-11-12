@@ -1900,6 +1900,93 @@ const reviewRoom = { id: 'room-1', name: 'Lab Room 1', kind: 'ROOM', location: '
 const reviewSlot = (start: string, end: string, extra: Record<string, unknown> = {}) =>
   ({ start, end, available: true, reason_code: null, hold_until: null, held_by_me: false, requested_by_me: false, ...extra })
 
+// Invalid edits must discard the old submit-ready period, and valid edits must recover without reopening the form.
+async function openSlotPickerReview(page: Page, ownBookingAt?: number) {
+  await page.clock.setFixedTime(new Date('2030-01-03T00:00:00Z'))
+  const sent: Record<string, unknown>[] = []
+  const slots = Array.from({ length: 24 }, (_, index) => {
+    const start = Date.parse('2030-01-09T21:00:00Z') + index * 30 * 60_000
+    return reviewSlot(new Date(start).toISOString(), new Date(start + 30 * 60_000).toISOString(),
+      index === ownBookingAt ? { available: false, reason_code: 'BOOKED', requested_by_me: true } : {})
+  })
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname.replace('/api/v1/', '')
+    if (path === 'resources/' && request.method() === 'GET') {
+      return route.fulfill({ json: { count: 1, results: [{ ...reviewRoom, effective_max_booking_minutes: 180 }] } })
+    }
+    if (path === 'resources/room-1/availability/') {
+      return route.fulfill({ json: {
+        resource_id: 'room-1', date: '2030-01-10', timezone: 'Australia/Sydney', duration_minutes: 30,
+        selection_step_minutes: 30, max_booking_minutes: 180, can_request: true, qualification_status: 'VERIFIED',
+        earliest_date: '2030-01-10', latest_date: '2030-01-31', min_advance_days: 7, max_advance_days: 28,
+        resource_status: 'AVAILABLE', status_reason: null, slots,
+      } })
+    }
+    if (path === 'bookings/' && request.method() === 'POST') {
+      const body = request.postDataJSON()
+      sent.push(body)
+      return route.fulfill({ status: 201, json: approvedBooking({ ...body, id: 'picker-request', status: 'PENDING_APPROVAL' }) })
+    }
+    return route.fallback()
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'STUDENT')
+  await page.goto('/#/resources')
+  await page.getByRole('button', { name: 'View availability', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Book Lab Room 1', exact: true })
+  await dialog.getByPlaceholder('What will you use it for? e.g. Thesis experiment, group project build').fill('Slot picker regression')
+  return { dialog, sent }
+}
+
+test('slot picker clears a stale period after an invalid length and submits the corrected time', async ({ page }) => {
+  const { dialog, sent } = await openSlotPickerReview(page)
+  await dialog.getByLabel('Start time', { exact: true }).selectOption('22') // 19:00–20:00
+  await expect(dialog.getByRole('button', { name: 'Request 1 h', exact: true })).toBeEnabled()
+  await dialog.getByLabel('Length', { exact: true }).selectOption('6') // 3 hours, past closing
+  await expect(dialog.getByRole('alert')).toContainText('A 3 h booking starting then would run past closing time.')
+  await expect(dialog.getByLabel('Length', { exact: true })).toHaveValue('6')
+  await expect(dialog.locator('.ui-selection')).toHaveCount(0)
+  await expect(dialog.getByRole('group', { name: 'Times of day' }).getByRole('button', { pressed: true })).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: 'Request booking', exact: true })).toBeDisabled()
+  expect(sent).toEqual([])
+
+  await dialog.getByLabel('Start time', { exact: true }).selectOption('18') // 17:00–20:00 is valid
+  await expect(dialog.getByRole('alert')).toHaveCount(0)
+  await dialog.getByRole('button', { name: 'Request 3 h', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  expect(sent).toEqual([{ resource_id: 'room-1', start: '2030-01-10T06:00:00.000Z', end: '2030-01-10T09:00:00.000Z', purpose: 'Slot picker regression' }])
+})
+
+test('slot picker clears a stale period when a longer selection crosses an existing personal booking', async ({ page }) => {
+  const { dialog, sent } = await openSlotPickerReview(page, 18) // already booked at 17:00
+  await dialog.getByLabel('Start time', { exact: true }).selectOption('14') // 15:00–16:00 is free
+  await expect(dialog.getByRole('button', { name: 'Request 1 h', exact: true })).toBeEnabled()
+  await dialog.getByLabel('Length', { exact: true }).selectOption('6')
+  await expect(dialog.getByRole('alert')).toContainText('That period overlaps a request you already made for this resource.')
+  await expect(dialog.locator('.ui-selection')).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: 'Request booking', exact: true })).toBeDisabled()
+  expect(sent).toEqual([])
+  await dialog.getByLabel('Start time', { exact: true }).selectOption('8') // 12:00–15:00
+  await expect(dialog.getByRole('alert')).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: 'Request 3 h', exact: true })).toBeEnabled()
+})
+
+test('slot picker keeps Length in sync when switching from dropdowns to the timeline', async ({ page }) => {
+  const { dialog, sent } = await openSlotPickerReview(page)
+  await dialog.getByLabel('Length', { exact: true }).selectOption('6')
+  await dialog.getByLabel('Start time', { exact: true }).selectOption('14') // 15:00–18:00
+  await expect(dialog.getByRole('button', { name: 'Request 3 h', exact: true })).toBeEnabled()
+  const timeline = dialog.getByRole('group', { name: 'Times of day' })
+  await timeline.getByRole('button', { name: '8:00 am – 8:30 am: available', exact: true }).click()
+  await expect(dialog.getByLabel('Length', { exact: true })).toHaveValue('1')
+  await timeline.getByRole('button', { name: '8:30 am – 9:00 am: available', exact: true }).click()
+  await expect(dialog.getByLabel('Length', { exact: true })).toHaveValue('2')
+  await dialog.getByRole('button', { name: 'Request 1 h', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  expect(sent).toEqual([{ resource_id: 'room-1', start: '2030-01-09T21:00:00.000Z', end: '2030-01-09T22:00:00.000Z', purpose: 'Slot picker regression' }])
+})
+
 test('a student asks to move a booking; a taken time can only join the waitlist', async ({ page }) => {
   const sent: unknown[] = []
   await page.route('**/api/v1/**', async (route) => {

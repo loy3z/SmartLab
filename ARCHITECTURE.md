@@ -56,8 +56,8 @@ team-repo/
 │   │   ├── email_channel.py     Email channel to beneficiary university addresses (Sprint 3)
 │   │   ├── middleware.py        CORS; invokes notification channels after each request
 │   │   ├── runtime.py           Composition root + demo seed data
-│   │   ├── management/commands/ process_due, process_outlook, outlook_token, outlook_login,
-│   │   │                         outlook_live_check, create_manager, send_test_email
+│   │   ├── management/commands/ run_scheduler, process_due, create_manager, send_test_email,
+│   │   │                         outlook_token, outlook_login, outlook_live_check
 │   │   └── tests/               All backend tests
 │   ├── database/                schema.sql, seed data, migrations/
 │   └── docs/                    openapi.json, frontend-api.md, database-interface.md,

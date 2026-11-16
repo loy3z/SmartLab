@@ -1,4 +1,4 @@
-# Verified versions for the local Sprint 1 environment.
+# Pinned backend dependencies. requirements-postgres.txt adds the PostgreSQL driver for Docker and CI.
 Django==5.2.17
 djangorestframework==3.16.1
 asgiref==3.12.1

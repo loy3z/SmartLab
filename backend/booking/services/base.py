@@ -96,10 +96,6 @@ class ServiceBase:
             raise ValueError("The service clock must be timezone aware.")
         return current.astimezone(UTC)
 
-    def require_student(self, actor):
-        if not actor.active or actor.role != Role.STUDENT:
-            raise DomainError("FORBIDDEN", "This action requires an active student account.", 403)
-
     def require_booking_user(self, actor):
         """Any active account books and uploads induction evidence: Admins and Managers follow
         the same eligibility, induction, opening-hours and conflict rules as students."""

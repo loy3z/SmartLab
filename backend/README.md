@@ -92,7 +92,7 @@ Run from this directory:
 
 ```powershell
 py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt
 $env:DEBUG = "true"
 $env:ENABLE_DEMO_AUTH = "true"
 $env:DJANGO_SECRET_KEY = "local-demo-only-change-this-key"
@@ -122,7 +122,7 @@ Demo identities:
 | `z9000001` | ADMIN | Staff sign-in, demo password `123` |
 | `z9000002` | MANAGER | Staff sign-in, demo password `123` |
 
-Obtain a student token with `POST /api/v1/auth/demo-login/` and `{"zid":"z1000001"}`. Staff use `POST /api/v1/auth/staff-sign-in/` with `{"zid":"z9000002","password":"123"}`. The demo password applies only to those two fictional accounts. `demo-register` creates only STUDENT and never accepts a requested staff role. [demo.http](demo.http) demonstrates the complete flow.
+Obtain a student token with `POST /api/v1/auth/demo-login/` and `{"zid":"z1000001"}`. Staff use `POST /api/v1/auth/staff-sign-in/` with `{"zid":"z9000002","password":"123"}`. The demo password applies only to those two fictional accounts. `demo-register` creates only STUDENT and never accepts a requested staff role. [docs/openapi.json](docs/openapi.json) lists every endpoint.
 
 Demo registration requires `zid`, `display_name` and `university_email`. It validates only email format, not university membership or ownership. Production authentication receives trusted SSO claims. Seed identities use matching `zID@ad.unsw.edu.au` demo addresses.
 
@@ -207,7 +207,7 @@ If the client later wants Moodle completion to establish qualification, add an a
 
 The adapter implements `get_outlook_sync(booking_id)`, `list_outlook_sync()` and `save_outlook_sync(record)` for `OutlookSyncRecord`. Booking, sync record and audit save in one `atomic` transaction. Claim a processing lease under the same resource/student locks, perform the network call outside the transaction, then reread the version and update it. Retain event mappings for cancelled bookings.
 
-Memory mode tries sync after booking API calls. Staff can process failures through Calendar sync or `admin/outlook/process/` and `admin/bookings/{id}/outlook-retry/`. With a shared database, schedule `python manage.py process_outlook --limit 10`. An independent process cannot access the demo server's memory, so the command rejects the memory adapter.
+Memory mode tries sync after booking API calls. Staff can process failures through Calendar sync or `admin/outlook/process/` and `admin/bookings/{id}/outlook-retry/`. With a shared database, schedule `python manage.py process_due --outlook-limit 10` (the Docker `scheduler` already does this). An independent process cannot access the demo server's memory, so the command rejects the memory adapter.
 
 ## Scheduled due processing
 

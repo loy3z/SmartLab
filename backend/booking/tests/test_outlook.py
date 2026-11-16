@@ -489,4 +489,4 @@ class GraphAdapterTests(SimpleTestCase):
     def test_separate_worker_refuses_process_local_memory_repository(self):
         reset_runtime()
         with self.assertRaisesRegex(CommandError, "process-local"):
-            call_command("process_outlook", stdout=io.StringIO())
+            call_command("process_due", stdout=io.StringIO())

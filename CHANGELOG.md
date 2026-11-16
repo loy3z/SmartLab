@@ -11,7 +11,9 @@ First pass of a file-by-file review of `backend/`, for a teammate to check.
 - Update two stale “Sprint 1” descriptions (`requirements-lock.txt`, `booking/__init__.py`).
 - Delete three service methods that nothing calls, tests included: `_require_eligible` (`checks.py`; callers use `_qualification_violation`), `require_student` (`base.py`; replaced by `require_booking_user` when staff were allowed to book) and `set_pending_hold_minutes` (`resources.py`; a one-line alias of `set_booking_policy`).
 - Delete `PrerequisiteSerializer` (`serializers.py`), which was defined and imported but never used, and an unused import of `booking_rules_bypassed` in `views/_common.py`.
+- Remove three unused imports from the tests (`test_long_bookings.py`, `test_test_console.py`, `test_user_management.py`).
 - Delete the management command `process_outlook`: `process_due --outlook-limit N` already pushes the due Outlook updates, and the Docker `scheduler` runs it every minute. The test that a separate worker refuses the in-memory repository now calls `process_due` (`test_outlook.py`); `backend/README.md`, `backend/docs/outlook-setup.md` and `ARCHITECTURE.md` no longer mention the command.
+- Frontend `src/`, top level: delete `src/assets/` (three images from the Vite template that nothing references; the site's images are in `frontend/public/`), `features/booking/Layout.tsx` (the Sprint 1 shell, replaced by `app/AppLayout.tsx` and imported nowhere) and `features/manager/ManagerUsagePage.tsx` (replaced by `features/records/UsageTab.tsx` in 1.14.0 and imported nowhere). `features/manager/usage.ts` stays: `UsageTab.tsx` uses it.
 
 ## After 1.28.0: Two Small Interface Fixes (2026-11-16, frontend only)
 

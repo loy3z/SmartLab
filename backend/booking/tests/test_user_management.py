@@ -2,7 +2,6 @@
 Add staff, keep the role they were created with, and never come from promoting a student."""
 
 from dataclasses import replace
-from datetime import timedelta
 from uuid import uuid4
 
 from django.test import SimpleTestCase, override_settings

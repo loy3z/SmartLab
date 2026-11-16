@@ -123,7 +123,7 @@ Induction prerequisites come from each requirement's `prerequisite_ids` (for exa
 
 Dashboard data comes from `dashboard/`, `resources/` and `qualification-requirements/`. Upcoming bookings count only approved bookings whose start is in the future. Qualification summaries use each requirement's latest submission. Errors and empty states are distinct; users can refresh the overview. Dates are shown in Australia/Sydney. No mock totals are displayed.
 
-`features/booking/Layout.tsx` is not mounted anywhere (kept for the team's reference). Shared UI styles are in `src/app/shell.css`, authentication styles in `features/auth/auth.css`, and dashboard styles in `features/dashboard/dashboard.css`. Booking and admin styles are in `features/booking/booking.css`.
+Shared UI styles are in `src/app/shell.css`, authentication styles in `features/auth/auth.css`, and dashboard styles in `features/dashboard/dashboard.css`. Booking and admin styles are in `features/booking/booking.css`.
 
 ### Style layers
 

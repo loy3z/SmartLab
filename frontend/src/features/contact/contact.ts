@@ -1,4 +1,4 @@
-// Sprint 3 (1.16.0): helpers for the lab's contact details (set by a Manager on Lab setup).
+// Helpers for the lab's contact details (set by a Manager on Lab setup).
 import type { SiteContact } from '../../api/types/index.ts'
 
 /** True when the Manager has filled in at least one contact field. */

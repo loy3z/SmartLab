@@ -1,9 +1,9 @@
-// Sprint 3 (2026-10-27): moved from the booking feature folder; definitions unchanged.
+// Moved from the booking feature folder; definitions unchanged.
 import type { Role } from './auth'
 import type { Booking } from './bookings'
 import type { Resource } from './resources'
 
-/** Sprint 3 (1.16.0): the staff "Today" page (GET admin/overview/). */
+/** The staff "Today" page (GET admin/overview/). */
 export interface StaffOverview {
   role: Role
   pending_inductions: number
@@ -17,7 +17,7 @@ export interface StaffOverview {
   today: Booking[]
   today_count: number
   missed_today: number
-  /** 2026-11-07: bookings in progress whose person asks to finish later; a Manager decides. */
+  /** Bookings in progress whose person asks to finish later; a Manager decides. */
   extension_requests?: Booking[]
   can_decide_urgent: boolean
   additional_hours_requests?: number

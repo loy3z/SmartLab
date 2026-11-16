@@ -1,8 +1,8 @@
-/* Sprint 3: notification bell. */
+/* Notification bell. */
 .nt-bell { position: relative; margin-left: auto; margin-right: 14px; }
 .nt-bell-button { position: relative; }
 
-/* Sprint 3 (1.15.0): badge sits on the bell's top-right corner with a white ring.
+/* Badge sits on the bell's top-right corner with a white ring.
    ".nt-bell-button > .nt-badge" is needed to beat ".app-icon-button > span { font-size: 28px }" in shell.css,
    which made the number as big as the bell. */
 .nt-bell-button > .nt-badge { position: absolute; top: 3px; left: 22px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: #c62828; box-shadow: 0 0 0 2px #fff; color: #fff; font-size: 12px; font-weight: 700; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums; animation: nt-pop var(--motion-base) var(--ease-spring); }
@@ -27,7 +27,7 @@
 .nt-link:disabled { color: #9aa3b2; cursor: default; }
 .nt-list { margin: 0; padding: 4px 4px 8px; overflow-y: auto; }
 .nt-group ul { list-style: none; margin: 0; padding: 0; }
-.nt-group-title { margin: 10px 10px 4px; color: var(--app-muted, #6b7280); font-size: 12px; font-weight: 700; } /* Sprint 3 (internal-tool UI, AI-3): no capitals */
+.nt-group-title { margin: 10px 10px 4px; color: var(--app-muted, #6b7280); font-size: 12px; font-weight: 700; } /* No capitals */
 
 /* One notification: icon, title + time, two lines of body, blue dot when unread. */
 .nt-item { position: relative; display: flex; gap: 10px; width: 100%; padding: 10px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer; transition: background-color var(--motion-fast) var(--ease-out); }

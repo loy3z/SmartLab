@@ -2,7 +2,7 @@ import { Link } from 'react-router'
 import { CapIcon, CheckIcon, AlertIcon, ClockIcon } from '../booking/icons'
 import type { Qualification, Requirement, Resource } from '../../api/types/index.ts'
 import { describeInduction, unlocksText } from './status'
-import { InductionGuide } from './InductionGuide' // Sprint 3 (1.16.0)
+import { InductionGuide } from './InductionGuide'
 
 interface Props {
   requirement: Requirement
@@ -60,7 +60,7 @@ export function InductionRow({ requirement, latest, resources, linkTo, onUpload,
             {steps(view.status).map((step) => <li key={step.label} className={`is-${step.state}`}>{step.label}</li>)}
           </ol>
         )}
-        {/* Sprint 3 (1.16.0): guidance for people who do not have it yet (Induction page only). */}
+        {/* Guidance for people who do not have it yet (Induction page only). */}
         {showDescription && <InductionGuide requirement={requirement} open={view.status !== 'VERIFIED'} />}
       </div>
       {(action || viewButton) && <div className="ind-actions">{viewButton}{action}</div>}

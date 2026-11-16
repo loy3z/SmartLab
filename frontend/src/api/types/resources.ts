@@ -1,4 +1,4 @@
-// Sprint 3 (2026-10-27): moved from the booking feature folder; definitions unchanged.
+// Moved from the booking feature folder; definitions unchanged.
 import type { Role } from './auth'
 import type { Booking } from './bookings'
 
@@ -31,13 +31,13 @@ export interface Resource {
   room_id: string | null
   /** Equipment type for the booking page filter, e.g. "Microscopy". Rooms: null. */
   category?: string | null
-  /** Sprint 3 (1.16.0): rooms only, how many people fit (null = not given). */
+  /** Rooms only, how many people fit (null = not given). */
   capacity?: number | null
-  /** Sprint 3 (1.16.0): "label: value" lines a Manager adds (model, floor, specs…). */
+  /** "label: value" lines a Manager adds (model, floor, specs…). */
   details?: ResourceDetail[]
 }
 
-/** 2026-11-07 (client, Week 8): what only Managers see about a resource (GET/PATCH admin/resources/{id}/internal/). */
+/** What only Managers see about a resource (GET/PATCH admin/resources/{id}/internal/). */
 export interface ResourceInternalInput {
   owner: string
   asset_number: string
@@ -51,7 +51,7 @@ export interface ResourceInternalInfo extends ResourceInternalInput {
   updated_by: string | null
 }
 
-/** Sprint 3 (1.16.0): one "label: value" line on a resource. */
+/** One "label: value" line on a resource. */
 export interface ResourceDetail {
   label: string
   value: string
@@ -70,7 +70,7 @@ export interface DayOverviewRow {
 
 export interface DayOverview {
   test_bypass?: boolean
-  manager_override?: boolean // 1.24.0: a Manager's window starts today with no last date
+  manager_override?: boolean // A Manager's window starts today with no last date
   date: string
   duration_minutes: number
   timezone: string
@@ -82,9 +82,9 @@ export interface DayOverview {
   categories: string[]
   count: number
   results: DayOverviewRow[]
-  /** Sprint 3 (1.16.0): resources left out because they cannot be booked for this length. */
+  /** Resources left out because they cannot be booked for this length. */
   too_long?: number
-  /** Sprint 3 (1.16.0): rows hidden by "only what I can book", counted by reason (resource or induction status). */
+  /** Rows hidden by "only what I can book", counted by reason (resource or induction status). */
   not_bookable?: Record<string, number>
 }
 
@@ -138,9 +138,9 @@ export interface Availability {
   additional_hours?: boolean
   additional_hours_approval_window_hours?: number
   test_bypass?: boolean
-  /** 1.24.0: a Manager overrides the booking window, induction and limits; only free times can be booked. */
+  /** A Manager overrides the booking window, induction and limits; only free times can be booked. */
   manager_override?: boolean
-  /** 2026-11-10: weekly allowance used in the Sydney week of `date` (single-resource availability only). */
+  /** Weekly allowance used in the Sydney week of `date` (single-resource availability only). */
   week_hours?: { week_start: string; used_hours: number; limit_hours: number }
   max_booking_minutes?: number
   booking_slot_minutes?: number
@@ -158,7 +158,7 @@ export interface Availability {
   latest_date: string | null
   min_advance_days: number
   max_advance_days: number
-  /** Sprint 3: configured window for weekly series when a Manager's single booking has no window. */
+  /** Configured window for weekly series when a Manager's single booking has no window. */
   normal_booking_window?: {
     earliest_date: string
     latest_date: string
@@ -190,14 +190,14 @@ export interface Requirement {
   description: string
   /** Inductions that must be verified and current first (e.g. General before Advanced). */
   prerequisite_ids: string[]
-  /** Sprint 3 (1.16.0): guidance a Manager writes (empty = not written yet). */
+  /** Guidance a Manager writes (empty = not written yet). */
   how_to_complete?: string
   accepted_evidence?: string
   reviewer?: string
   contact?: string
 }
 
-/** Sprint 3 (1.16.0): fields a Manager sends when adding or editing an induction. */
+/** Fields a Manager sends when adding or editing an induction. */
 export interface RequirementInput {
   name: string
   description: string
@@ -227,7 +227,7 @@ export interface Qualification {
   valid_until: string | null
 }
 
-// Sprint 3: resource setup (Manager) ------------------------------------------------------------------------
+// Resource setup (Manager) ------------------------------------------------------------------------
 
 /** Fields a Manager fills in to add or edit a room or equipment. Times are "HH:MM". */
 export interface ResourceInput {
@@ -242,7 +242,6 @@ export interface ResourceInput {
   opening_time: string
   closing_time: string
   pending_hold_minutes: number
-  /** Sprint 3 (1.16.0) */
   capacity: number | null
   details: ResourceDetail[]
 }
@@ -259,7 +258,7 @@ export interface BookingOutsideRules extends Booking {
   problem: string
 }
 
-// Sprint 3: usage report (Manager) ---------------------------------------------------------------------------
+// Usage report (Manager) ---------------------------------------------------------------------------
 
 export interface UsageFigures {
   approved: number

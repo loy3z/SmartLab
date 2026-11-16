@@ -1,4 +1,4 @@
-// Sprint 3 (1.16.0): the guidance a Manager writes for each induction, as the lines the Induction page shows.
+// The guidance a Manager writes for each induction, as the lines the Induction page shows.
 import type { Requirement } from '../../api/types/index.ts'
 
 export const GUIDE_LABELS = {

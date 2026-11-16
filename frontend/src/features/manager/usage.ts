@@ -1,4 +1,4 @@
-// Sprint 3: display helpers for the Manager's usage report.
+// Display helpers for the Manager's usage report.
 import type { UsageRow } from '../../api/types/index.ts'
 
 /** 0.256 -> "26%"; null -> "—". */

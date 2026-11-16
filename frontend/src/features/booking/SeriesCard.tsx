@@ -1,4 +1,4 @@
-// Sprint 3 (2026-10-25 cleanup): moved out of MyBookings.tsx so the page file stays readable.
+// Moved out of MyBookings.tsx so the page file stays readable.
 import { useState } from 'react'
 import { ATTENDANCE_TEXT, canCheckIn, checkInHint } from './attendance'
 import { fmtDay, fmtDuration, fmtRange, fmtTime, minutesBetween, STATUS_TEXT } from './format'
@@ -6,7 +6,7 @@ import { ACTIVE, canRemoveBookingHistory, seriesSummary } from './my-bookings'
 import type { Booking, Resource } from '../../api/types/index.ts'
 
 /**
- * Sprint 3: a weekly series as one card. Shows the pattern, date range, how many dates are left and the next date;
+ * A weekly series as one card. Shows the pattern, date range, how many dates are left and the next date;
  * the "I'm here" button of today's date comes up to the card. "Show dates" lists every date, each cancellable on
  * its own; staff can cancel the rest of the series at once.
  */
@@ -21,7 +21,7 @@ export function SeriesCard({ bookings, resource, userId, now, isStaff, isManager
   onCancelRest: (b: Booking) => void
   onCheckIn: (b: Booking) => void
   onReschedule: (b: Booking) => void
-  onRemoveHistory: (b: Booking) => void // Sprint 3 (1.20.0): remove one historical date.
+  onRemoveHistory: (b: Booking) => void // Remove one historical date.
   removing: string | null
 }) {
   const [open, setOpen] = useState(false)

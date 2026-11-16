@@ -17,7 +17,7 @@ export function MockSsoPage({ notice = '' }: { notice?: string }) {
   const [configError, setConfigError] = useState('')
   const [attempt, setAttempt] = useState(0)
   const [account, setAccount] = useState('')
-  // Sprint 3 (2026-10-25, Loy): new demo students sign up here, since the sign-in hub no longer has a direct form.
+  // New demo students sign up here, since the sign-in hub no longer has a direct form.
   const [creating, setCreating] = useState(false)
   const [newZid, setNewZid] = useState('')
   const [newName, setNewName] = useState('')
@@ -75,14 +75,14 @@ export function MockSsoPage({ notice = '' }: { notice?: string }) {
       if (!mounted.current || currentRequest !== requestId.current) return
       pending.current = false
       setBusy(false)
-      // Sprint 3 (2026-10-28 feedback L1): staff accounts get a direct link instead of plain text.
+      // Staff accounts get a direct link instead of plain text.
       setError((err as { code?: string })?.code === 'USE_STAFF_SIGN_IN'
         ? <>Admins and Managers sign in on the <Link to="/staff/login" state={location.state}>Staff sign-in page</Link>.</>
         : errorMessage(err))
     }
   }
 
-  /** Sprint 3 (2026-10-25): create a demo student account (auth/demo-register/) and sign in with it. */
+  /** Create a demo student account (auth/demo-register/) and sign in with it. */
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (pending.current || !config?.demo_registration_enabled) return
@@ -164,7 +164,7 @@ export function MockSsoPage({ notice = '' }: { notice?: string }) {
               </fieldset>
               {busy && <p className="mock-sso-visually-hidden" role="status">Signing in to SmartLab…</p>}
             </form>}
-            {/* Sprint 3 (2026-10-25, Loy): demo sign-up for a new student zID. */}
+            {/* Demo sign-up for a new student zID. */}
             {config?.demo_auth_enabled && config.demo_registration_enabled && creating && <form onSubmit={create} noValidate aria-busy={busy}>
               <fieldset disabled={busy}>
                 <p className="mock-sso-hint mock-sso-create-intro">Demo only: creates a student account. No university password is used.</p>

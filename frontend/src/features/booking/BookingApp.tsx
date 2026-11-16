@@ -6,10 +6,10 @@ import { AdditionalHoursForm } from './AdditionalHoursForm'
 import { LongBookingForm } from './LongBookingForm'
 import { FindTime } from './FindTime'
 import { listQualifications, listRequirements, listResources } from '../../api/index.ts'
-import { errorMessage, SEPARATE_BOOKING_TEXT } from './format' // Sprint 3 (1.16.0): SEPARATE_BOOKING_TEXT
+import { errorMessage, SEPARATE_BOOKING_TEXT } from './format'
 import { SearchIcon } from './icons'
 import { Modal } from './Modal'
-import { RecurringBookingForm } from './RecurringBookingForm' // Sprint 3
+import { RecurringBookingForm } from './RecurringBookingForm'
 import { ResourceCard, type InductionState } from './ResourceCard'
 import type { Qualification, Requirement, Resource } from '../../api/types/index.ts'
 
@@ -34,7 +34,7 @@ function missingPrerequisite(r: Resource, quals: Qualification[], reqs: Requirem
   return missing ? reqs.find((item) => item.id === missing) : undefined
 }
 
-/** 2026-11-16 (Loy): where the card's induction chip leads when the student still has evidence to submit. */
+/** Where the card's induction chip leads when the student still has evidence to submit. */
 function inductionLink(r: Resource, state: InductionState, prerequisite: Requirement | undefined): string | undefined {
   if (state === 'PREREQUISITE_REQUIRED') return prerequisite && `/induction?requirement=${prerequisite.id}`
   if (state === 'NOT_SUBMITTED' || state === 'REJECTED' || state === 'EXPIRED') return `/induction?requirement=${r.required_qualification_id}`
@@ -50,10 +50,10 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
   const { user } = useAuth()
   const isStaff = user?.role === 'ADMIN' || user?.role === 'MANAGER'
   const isManager = user?.role === 'MANAGER'
-  // 2026-11-07: opened from "Request additional hours" on the Dashboard: each card's main button opens that form.
+  // Opened from "Request additional hours" on the Dashboard: each card's main button opens that form.
   const [params, setParams] = useSearchParams()
   const forAdditionalHours = params.get('for') === 'additional-hours'
-  const [repeat, setRepeat] = useState<Resource | null>(null) // Sprint 3: weekly series dialog
+  const [repeat, setRepeat] = useState<Resource | null>(null) // Weekly series dialog
   const [additional, setAdditional] = useState<Resource | null>(null)
   const [longBooking, setLongBooking] = useState<Resource | null>(null)
   const [view, setView] = useState<View>('ROOM')
@@ -68,7 +68,7 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
   // "Find a free time" (day grid) or the original resource cards.
   const [mode, setMode] = useState<Mode>('browse')
   const [picked, setPicked] = useState<Picked | null>(null)
-  const [people, setPeople] = useState('') // Sprint 3 (1.16.0): rooms that fit at least this many people
+  const [people, setPeople] = useState('') // Rooms that fit at least this many people
 
   useEffect(() => {
     Promise.all([listRequirements(), listQualifications()])
@@ -85,7 +85,7 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
   const rooms = resources.filter((r) => r.kind === 'ROOM')
   const equipment = resources.filter((r) => r.kind === 'EQUIPMENT')
   const roomName = (id: string | null) => (id ? rooms.find((room) => room.id === id)?.name : undefined)
-  // Sprint 3 (1.16.0): the people filter keeps rooms with no capacity given (unknown is not "too small").
+  // The people filter keeps rooms with no capacity given (unknown is not "too small").
   const needed = Number(people) || 0
   const shown = view === 'ROOM'
     ? rooms.filter((room) => !needed || !room.capacity || room.capacity >= needed)
@@ -94,8 +94,7 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
 
   return (
     <>
-      {/* Sprint 3 (internal-tool UI, AI-2): no introduction line.
-          2026-11-16 (Loy): no induction list here; each card's induction chip links to the induction page. */}
+      {/* No introduction line and no induction list here; each card's induction chip links to the induction page. */}
       <h1>Book a resource</h1>
 
       <div className="bk-pills bk-mode" role="tablist" aria-label="How to book">
@@ -109,7 +108,7 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
       {mode === 'find' && <FindTime resources={resources} onPick={(resource, start, minutes, date) => setPicked({ resource, start, minutes, date })} />}
 
       {mode === 'browse' && <>
-      {/* Sprint 3 (fluency V2): only tabs scroll; resource filters have their own row. */}
+      {/* Only tabs scroll; resource filters have their own row. */}
       <div className="bk-browse-toolbar">
       <form
         className="bk-search"
@@ -134,7 +133,7 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
       </div>
       {(view === 'ROOM' && anyCapacity || view === 'EQUIPMENT') && <div className="bk-resource-filters">
         {view === 'ROOM' && anyCapacity && (
-          <label className="bk-people-filter">Fits at least{/* Sprint 3 (1.16.0) */}
+          <label className="bk-people-filter">Fits at least
             <input type="number" min={1} max={1000} inputMode="numeric" aria-label="Fits at least this many people" value={people}
               placeholder="any" onChange={(e) => setPeople(e.target.value)} /> people
           </label>
@@ -151,7 +150,7 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
         {view === 'ROOM' ? 'Rooms' : roomFilter ? `Equipment in ${roomName(roomFilter)}` : 'Equipment'}
         <small>{shown.length} {view === 'ROOM' ? (shown.length === 1 ? 'room' : 'rooms') : (shown.length === 1 ? 'device' : 'devices')}</small>
       </h2>
-      {/* Sprint 3 (1.16.0): rooms and equipment are booked separately (agreed with Loy, 25 Oct). */}
+      {/* Rooms and equipment are booked separately. */}
       <p className="bk-muted bk-separate">{SEPARATE_BOOKING_TEXT[view]}</p>
       {error && <p className="bk-error">{error}</p>}
       {forAdditionalHours && (

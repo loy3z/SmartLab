@@ -1,5 +1,5 @@
 import { startTransition, useEffect } from 'react'
-import { NotificationPreferences } from '../features/notifications/NotificationPreferences' // Sprint 3 (1.19.0)
+import { NotificationPreferences } from '../features/notifications/NotificationPreferences'
 import { AnnouncementsPage } from '../features/announcements/AnnouncementsPage'
 import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { useAuth } from '../features/auth/auth-context'
@@ -13,22 +13,21 @@ import { InductionPage } from '../features/induction/InductionPage'
 import { QualificationReviewPage } from '../features/admin/QualificationReviewPage'
 import { BookingReviewPage } from '../features/admin/BookingReviewPage'
 import { CalendarSyncPage } from '../features/admin/CalendarSyncPage'
-// Sprint 3 pages
 import { ManagerBookingsPage } from '../features/manager/ManagerBookingsPage'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { AppLayout } from './AppLayout'
 import { AccountPage, HelpPage } from './UtilityPages'
 import { ManagerUsersPage } from '../features/manager/ManagerUsersPage'
 import { ManagerResourcesPage } from '../features/manager/ManagerResourcesPage'
-import { BookingRecordsPage } from '../features/records/BookingRecordsPage' // Sprint 3
-import { TodayPage } from '../features/admin/TodayPage' // Sprint 3 (1.16.0)
-import { ManagerHomePage } from '../features/manager/ManagerHomePage' // 2026-11-07
-import { LabSetupPage } from '../features/manager/LabSetupPage' // Sprint 3 (1.16.0)
+import { BookingRecordsPage } from '../features/records/BookingRecordsPage'
+import { TodayPage } from '../features/admin/TodayPage'
+import { ManagerHomePage } from '../features/manager/ManagerHomePage'
+import { LabSetupPage } from '../features/manager/LabSetupPage'
 import { canAccess, homePath, isKnownPath, loginDestination, normalizePath } from './routes'
 
-// Browser-tab titles. Sprint 3 (internal-tool UI, AI-6): the same sentence-case names as the navigation and the H1.
+// Browser-tab titles. The same sentence-case names as the navigation and the H1.
 const titles: Record<string, string> = {
-  '/settings/notifications': 'Notifications', '/admin/announcements': 'Announcements', // Sprint 3 (1.19.0)
+  '/settings/notifications': 'Notifications', '/admin/announcements': 'Announcements',
   '/dashboard': 'Dashboard', '/resources': 'Book a resource', '/bookings': 'My bookings',
   '/induction': 'Induction & training', '/admin/qualifications': 'Induction review',
   '/admin/bookings': 'Booking review', '/admin/calendar-sync': 'Calendar sync', '/manager/bookings': 'Room management',
@@ -37,7 +36,7 @@ const titles: Record<string, string> = {
   '/manager/users': 'User management',
   '/manager/resources': 'Resources',
   '/admin/records': 'Booking records',
-  '/admin/today': 'Today', '/manager/home': 'Lab overview', '/manager/setup': 'Lab setup', // Sprint 3 (1.16.0)
+  '/admin/today': 'Today', '/manager/home': 'Lab overview', '/manager/setup': 'Lab setup',
 }
 
 function useSignOut() {
@@ -91,7 +90,7 @@ function RouteMessage({ restricted = false }: { restricted?: boolean }) {
   const { user } = useAuth()
   return (
     <section className="app-card app-message-page">
-      {/* Sprint 3 (internal-tool UI, AI-2): no eyebrow; plain wording instead of "portal". */}
+      {/* No eyebrow; plain wording instead of "portal". */}
       <h1>{restricted ? 'This page is not available for your role' : 'Page not found'}</h1>
       <p className="app-page-description">
         {restricted ? 'Use the navigation to open the pages available to your account.' : 'The link may be wrong or out of date.'}
@@ -149,19 +148,17 @@ export function AppRouter() {
           <Route path="/resources" caseSensitive element={<BookingApp onBooked={() => { void navigate('/bookings') }} />} />
           <Route path="/bookings" caseSensitive element={<MyBookings refreshKey={0} />} />
           <Route path="/induction" caseSensitive element={<InductionPage />} />
-          <Route path="/admin/today" caseSensitive element={<TodayPage />} />{/* Sprint 3 (1.16.0) */}
-          <Route path="/manager/home" caseSensitive element={<ManagerHomePage />} />{/* 2026-11-07 */}
+          <Route path="/admin/today" caseSensitive element={<TodayPage />} />
+          <Route path="/manager/home" caseSensitive element={<ManagerHomePage />} />
           <Route path="/admin/qualifications" caseSensitive element={<QualificationReviewPage />} />
           <Route path="/admin/bookings" caseSensitive element={<BookingReviewPage />} />
-          {/* Sprint 3 */}
           <Route path="/admin/calendar-sync" caseSensitive element={<CalendarSyncPage />} />
           <Route path="/manager/bookings" caseSensitive element={<ManagerBookingsPage />} />
           <Route path="/manager/users" caseSensitive element={<ManagerUsersPage />} />
           <Route path="/manager/resources" caseSensitive element={<ManagerResourcesPage />} />
           <Route path="/admin/records" caseSensitive element={<BookingRecordsPage />} />
-          <Route path="/manager/setup" caseSensitive element={<LabSetupPage />} />{/* Sprint 3 (1.16.0) */}
+          <Route path="/manager/setup" caseSensitive element={<LabSetupPage />} />
           <Route path="/manager/usage" caseSensitive element={<Navigate to="/admin/records?tab=usage" replace />} />
-          {/* Sprint 3 (1.19.0) */}
           <Route path="/settings/notifications" caseSensitive element={<NotificationPreferences />} />
           <Route path="/admin/announcements" caseSensitive element={<AnnouncementsPage />} />
           <Route path="/account" caseSensitive element={auth.user && <AccountPage user={auth.user} />} />

@@ -6,12 +6,12 @@ import { useFeedback } from '../../ui/feedback-context'
 import { cancelBooking, cancelSeries, checkIn, listBookings, listResources, removeBookingHistory } from '../../api/index.ts'
 import { ATTENDANCE_TEXT, canCheckIn, checkInHint } from './attendance'
 import { CalendarSubscribe } from './CalendarSubscribe'
-import { ChangeTimeBox } from './ChangeTimeBox' // Sprint 3 (1.16.0)
-import { canAskForChange, openChangeText, replacesText } from './change-requests' // Sprint 3 (1.16.0)
-import { ContactLink } from '../contact/LabContact' // Sprint 3 (1.16.0)
-import { ExtendBox } from './ExtendBox' // 1.24.0
+import { ChangeTimeBox } from './ChangeTimeBox'
+import { canAskForChange, openChangeText, replacesText } from './change-requests'
+import { ContactLink } from '../contact/LabContact'
+import { ExtendBox } from './ExtendBox'
 import { canExtend, waitingExtension } from './extend'
-import { useAutoRefresh } from '../../lib/use-auto-refresh' // 2026-11-07
+import { useAutoRefresh } from '../../lib/use-auto-refresh'
 import { bookingDetail, errorMessage, fmtDuration, fmtRange, fmtTime, minutesBetween, statusText } from './format'
 import { ACTIVE, canRemoveBookingHistory, groupBookings } from './my-bookings'
 import { RescheduleBox } from './RescheduleBox'
@@ -41,7 +41,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
   const { user } = useAuth()
   const [params, setParams] = useSearchParams()
   const view = BOOKING_VIEWS.find(item => item.key === params.get('view'))?.key ?? 'all'
-  const resourceId = params.get('resource') ?? '' // Sprint 3 (1.20.0): keep both filters on navigation/reload.
+  const resourceId = params.get('resource') ?? '' // Keep both filters on navigation/reload.
   const isManager = user?.role === 'MANAGER'
   const isStaff = user?.role === 'MANAGER' || user?.role === 'ADMIN'
   const [bookings, setBookings] = useState<Booking[]>([])
@@ -50,9 +50,9 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(0)
   const [rescheduling, setRescheduling] = useState<string | null>(null)
-  const [changing, setChanging] = useState<string | null>(null) // Sprint 3 (1.16.0): booking whose change box is open
-  const [removing, setRemoving] = useState<string | null>(null) // Sprint 3 (1.20.0)
-  const [extending, setExtending] = useState<string | null>(null) // 1.24.0: booking whose extend box is open
+  const [changing, setChanging] = useState<string | null>(null) // Booking whose change box is open
+  const [removing, setRemoving] = useState<string | null>(null)
+  const [extending, setExtending] = useState<string | null>(null) // Booking whose extend box is open
 
   const load = useCallback(async () => {
     try {
@@ -72,9 +72,9 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load()
   }, [load, refreshKey])
-  useAutoRefresh(() => void load()) // 2026-11-07: an approval shows without F5
+  useAutoRefresh(() => void load()) // An approval shows without F5
 
-  // 2026-11-12: show what the server just returned on the card, also when the refresh after it fails.
+  // Show what the server just returned on the card, also when the refresh after it fails.
   const put = (saved: Booking) => setBookings((list) =>
     list.some((item) => item.id === saved.id) ? list.map((item) => (item.id === saved.id ? saved : item)) : [saved, ...list])
 
@@ -98,7 +98,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
     await load()
   }
 
-  // Sprint 3 (1.20.0): confirm the personal scope; only remove the visible row after server success.
+  // Confirm the personal scope; only remove the visible row after server success.
   async function removeHistory(b: Booking) {
     const ok = await feedback.confirm({
       title: 'Remove from your history?',
@@ -120,7 +120,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
     }
   }
 
-  // Sprint 3: check-in and cancelling a weekly series
+  // Check-in and cancelling a weekly series
   async function arrived(b: Booking) {
     try {
       put(await checkIn(b.id))
@@ -168,7 +168,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
   const loaded = now !== 0
   const future = (b: Booking) => new Date(b.start).getTime() > now
   const cancellable = (b: Booking) => future(b) && ACTIVE.includes(b.status)
-  // Sprint 3 (1.20.0): include historical/archived resources even if the catalogue omits them.
+  // Include historical/archived resources even if the catalogue omits them.
   const resourceOptions = new Map(Object.values(resources).map(resource => [resource.id, resource.name]))
   for (const booking of bookings) {
     if (!resourceOptions.has(booking.resource_id)) resourceOptions.set(booking.resource_id, booking.resource_name ?? 'Unavailable resource')
@@ -185,8 +185,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
 
   return (
     <div className="bookings-list">
-      <h1>My bookings</h1>{/* Sprint 3 (internal-tool UI, AI-2): no introduction line */}
-      {/* Sprint 3 */}
+      <h1>My bookings</h1>{/* No introduction line */}
       <CalendarSubscribe />
       {loaded && <div className="bookings-filters">
         <Tabs value={view} onChange={next => setFilter('view', next)} label="Booking status"
@@ -263,7 +262,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
             <p><b>{fmtRange(b.start, b.end)}</b> <span className="bk-muted">· {fmtDuration(minutesBetween(b.start, b.end))}</span></p>
             <p className="bk-muted">{bookingDetail(b)}</p>
             {b.purpose && !(b.urgent && b.purpose === b.urgent_reason) && <p className="bk-muted">Purpose: {b.purpose}</p>}
-            {/* Sprint 3 (1.16.0): change requests */}
+            {/* Change requests */}
             {b.replaces_booking && <p className="bk-change-note">{replacesText(b)}</p>}
             {b.open_change && <p className="bk-change-note">{openChangeText(b)}</p>}
             {b.outlook_sync?.status === 'SYNCED' && b.outlook_sync.web_link && (
@@ -285,7 +284,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
                 {isManager && !b.additional_hours && !b.long_booking && b.status === 'APPROVED' && future(b) && res && (
                   <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setRescheduling(b.id)}>Reschedule</button>
                 )}
-                {/* Sprint 3 (1.16.0): everyone else asks for a new time; Managers move bookings directly. */}
+                {/* Everyone else asks for a new time; Managers move bookings directly. */}
                 {!isManager && !b.additional_hours && !b.long_booking && res && canAskForChange(b, user?.id, now) && (
                   <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setChanging(b.id)}>Change time</button>
                 )}
@@ -294,14 +293,14 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
                     {b.status === 'APPROVED' ? 'Cancel booking' : b.replaces_booking ? 'Withdraw change request' : 'Withdraw request'}
                   </button>
                 )}
-                {/* Sprint 3 (1.16.0): email the lab with the booking already named (only when the lab gave an email) */}
+                {/* Email the lab with the booking already named (only when the lab gave an email) */}
                 {b.status === 'APPROVED' && future(b) && (
                   <ContactLink label="Contact the lab" subject={`SmartLab booking: ${res?.name ?? 'Resource'}, ${fmtRange(b.start, b.end)}`}
                     body={`Booking reference: ${b.id}\nResource: ${res?.name ?? ''}\nTime: ${fmtRange(b.start, b.end)}\n\n`} />
                 )}
               </div>
             )}
-            {/* 1.24.0 (client, Week 8): stay longer while the booking is in progress */}
+            {/* Stay longer while the booking is in progress */}
             {waitingExtension(b, now) && extending !== b.id && (
               <p className="bk-change-note">You asked to finish at {fmtTime(waitingExtension(b, now)!)}. Waiting for a Manager.</p>
             )}

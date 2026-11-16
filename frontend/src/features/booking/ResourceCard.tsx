@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import { fmtHours } from './format' // Sprint 3 (internal-tool UI, AI-6)
+import { fmtHours } from './format'
 import { AlertIcon, CheckIcon, ClockIcon, PinIcon } from './icons'
 import type { Resource } from '../../api/types/index.ts'
 
@@ -36,16 +36,16 @@ interface Props {
   roomName?: string
   /** Name of the unverified prerequisite induction, when state is PREREQUISITE_REQUIRED. */
   prerequisiteName?: string
-  /** 2026-11-16: the induction page for the evidence still to submit; makes the induction chip a link. */
+  /** The induction page for the evidence still to submit; makes the induction chip a link. */
   inductionHref?: string
-  /** Sprint 3, staff only: book the same time every week. */
+  /** Staff only: book the same time every week. */
   onRepeat?: () => void
   onAdditionalHours?: () => void
   onLongBooking?: () => void
   testOverride?: boolean
-  /** 2026-11-07: a Manager's booking skips induction and the normal length limit. */
+  /** A Manager's booking skips induction and the normal length limit. */
   managerOverride?: boolean
-  /** 2026-11-07: replaces "View availability" (e.g. when the page was opened to request additional hours). */
+  /** Replaces "View availability" (e.g. when the page was opened to request additional hours). */
   openLabel?: string
 }
 
@@ -64,7 +64,7 @@ export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEq
   return (
     <article className={`bk-rcard${unavailable ? ' is-unavailable' : ''}`}>
       <header className="resource-card-head">
-        {/* Sprint 3 (internal-tool UI, AI-2): no eyebrow label on rooms (the tab already says Rooms); equipment shows its category. */}
+        {/* No eyebrow label on rooms (the tab already says Rooms); equipment shows its category. */}
         <span className="resource-category">{resource.kind === 'EQUIPMENT' ? resource.category ?? '' : ''}</span>
         <span className={`bk-chip ${unavailable ? 'is-warn' : 'is-ok'}`}>{unavailable ? STATUS_TEXT[resource.status as keyof typeof STATUS_TEXT] : 'In service'}</span>
       </header>
@@ -74,7 +74,7 @@ export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEq
             <p className="bk-loc"><PinIcon size={14} /> {roomName ? `In ${roomName}` : resource.location}</p></div>
             <span className="resource-outline" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.1">{resource.kind === 'ROOM' ? <><path d="M4 5h24v22H4zM4 18h10V5M14 18h14M22 18v9"/><path d="M14 12a6 6 0 0 1 6 6" strokeDasharray="2 2"/><path d="M18 9h6v5h-6z"/></> : <><rect x="5" y="6" width="22" height="18" rx="2"/><path d="M10 13h12M10 17h7M12 27h8M16 24v3"/><circle cx="23" cy="20" r="1"/></>}</svg></span>
           </div>
-          {/* Sprint 3 (1.16.0): capacity and the first details, so people can choose without opening the form. */}
+          {/* Capacity and the first details, so people can choose without opening the form. */}
           <ResourceFacts resource={resource} limit={3} />
           {unavailable && (
             <div className="bk-unavailable" role="status">
@@ -108,7 +108,7 @@ export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEq
   )
 }
 
-/** Sprint 3 (1.16.0): room capacity and "label: value" details; limit shows only the first few (cards). */
+/** Room capacity and "label: value" details; limit shows only the first few (cards). */
 export function ResourceFacts({ resource, limit }: { resource: Resource; limit?: number }) {
   const details = resource.details ?? []
   const shown = limit ? details.slice(0, limit) : details

@@ -1,4 +1,4 @@
-// 1.24.0 (client, Week 8): finish a booking in progress later. 2026-11-07: drag the end of the booking on a timeline
+// Finish a booking in progress later. Drag the end of the booking on a timeline
 // (as in a calendar). For the person it is for, this asks a Manager; a Manager's extension applies at once.
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { extendBooking, getAvailability } from '../../api/index.ts'

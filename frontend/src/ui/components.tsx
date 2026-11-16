@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
-/** 2026-11-09 (Loy feedback): a form dialog's title with a close button; Esc still closes the dialog too. */
+/** A form dialog's title with a close button; Esc still closes the dialog too. */
 export function DialogTitle({ id, title, onClose }: { id: string; title: string; onClose: () => void }) {
   return (
     <div className="ui-dialog-head">

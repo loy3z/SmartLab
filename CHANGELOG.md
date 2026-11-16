@@ -7,6 +7,7 @@ This file records what changed in each update and why. Other documents describe 
 Code comments no longer start with tags such as “Sprint 3 (1.16.0):”, “2026-11-07 (client, Week 8):” or “(load test S2)”. The reason each comment gives stays; when and in which round a change was made is recorded here and in `SPRINT3.md`. Migration scripts keep their headers.
 
 - `backend/booking/` and `backend/config/`: comments and docstrings. Section headers that only said “Sprint 3” now name what follows.
+- `frontend/src/`: comments in TypeScript, TSX and CSS. Two CSS comments that only recorded where an old rule had been (`app/shell.css`, `index.css`) are deleted.
 
 ## After 1.28.0: Running Migration 005 Again Keeps Changed Staff Passwords (2026-11-17, no new migration)
 

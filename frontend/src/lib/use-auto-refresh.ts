@@ -1,4 +1,4 @@
-// 2026-11-07 (three-role walkthrough): pages that show what another person decides reload by themselves, so a
+// Pages that show what another person decides reload by themselves, so a
 // student sees the approval and an Admin sees a new request without pressing F5.
 import { useEffect, useRef } from 'react'
 

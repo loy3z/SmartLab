@@ -11,12 +11,12 @@ export const fmtDateTime = (iso: string) =>
     new Date(iso),
   )
 
-// Sprint 3 (internal-tool UI, AI-6): a wall-clock time ("08:00" or "08:00:00", as resources and searches store it) in the
+// A wall-clock time ("08:00" or "08:00:00", as resources and searches store it) in the
 // same "8:00 am" style as fmtTime. Formatted in UTC on a fixed day, so the time zone cannot shift it.
 const clockFormat = new Intl.DateTimeFormat('en-AU', { timeStyle: 'short', timeZone: 'UTC' })
 export const fmtClock = (hhmm: string) => clockFormat.format(new Date(`1970-01-01T${hhmm.slice(0, 5)}:00Z`))
 
-/** Sprint 3 (internal-tool UI, AI-6): opening hours, "8:00 am – 8:00 pm". */
+/** Opening hours, "8:00 am – 8:00 pm". */
 export const fmtHours = (opening: string, closing: string) => `${fmtClock(opening)} – ${fmtClock(closing)}`
 
 const dayLabel = new Intl.DateTimeFormat('en-AU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: TZ })
@@ -25,7 +25,7 @@ const dayKey = new Intl.DateTimeFormat('en-CA', { timeZone: TZ })
 /** "Mon 19 Oct" in Sydney time. */
 export const fmtDay = (iso: string) => dayLabel.format(new Date(iso))
 
-/** Sprint 3: booking lengths in hours everywhere: "0.5 h", "1 h", "1.5 h", "0.75 h" (15-minute resources). */
+/** Booking lengths in hours everywhere: "0.5 h", "1 h", "1.5 h", "0.75 h" (15-minute resources). */
 export function fmtDuration(minutes: number): string {
   const hours = Math.max(0, Math.round(minutes)) / 60
   return `${Number(hours.toFixed(2))} h`
@@ -73,7 +73,7 @@ export const STATUS_TEXT: Record<BookingStatus, string> = {
 }
 
 /** Student-facing explanation of where a request stands, from status + reason_code (server is the source of truth). */
-/** 2026-11-07: the status shown for a booking. Urgent, additional-hours and longer requests wait for a Manager. */
+/** The status shown for a booking. Urgent, additional-hours and longer requests wait for a Manager. */
 export function statusText(b: Booking): string {
   return b.status === 'PENDING_APPROVAL' && (b.urgent || b.additional_hours || b.long_booking)
     ? 'Waiting for Manager approval' : STATUS_TEXT[b.status]
@@ -84,7 +84,7 @@ export function bookingDetail(b: Booking): string {
     case 'APPROVED':
       return b.reason_code === 'AUTO_APPROVED_AFTER_REVIEW_WINDOW'
         ? 'Your booking is confirmed. It was approved automatically because no admin decided within the review period.'
-        : b.series_id // Sprint 3: weekly series
+        : b.series_id // Weekly series
           ? 'Confirmed: part of a weekly series made by staff.'
           : 'Your booking is confirmed.'
     case 'WAITING_QUALIFICATION':
@@ -124,7 +124,7 @@ export function bookingDetail(b: Booking): string {
           ? `This request was rejected automatically at the end of the review period${b.decision_reason ? `: ${b.decision_reason}` : '.'}`
           : `This request was rejected${b.decision_reason ? `: ${b.decision_reason}` : '.'}`
     case 'CANCELLED':
-      return b.reason_code === 'ACCOUNT_FROZEN' // older bookings: the freeze was removed on 2026-11-07
+      return b.reason_code === 'ACCOUNT_FROZEN' // older bookings: the freeze was removed
         ? 'Cancelled because booking was frozen after missed check-ins.'
         : b.reason_code === 'CANCELLED_BY_STAFF'
           ? 'This booking was cancelled by staff.'
@@ -279,7 +279,7 @@ export function submittedMessage(b: Booking): { title: string; message: string }
   }
 }
 
-// Sprint 3 (1.16.0): shared wording for the booking form and the change-time box.
+// Shared wording for the booking form and the change-time box.
 
 /** What still stops a request from being sent, in the order the form is filled in ('' when nothing does). */
 export function submitBlocker(state: { ready: boolean; canRequest: boolean; hasTime: boolean; hasPurpose: boolean; needsReason: boolean }): string {

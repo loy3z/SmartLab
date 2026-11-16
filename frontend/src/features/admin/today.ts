@@ -1,4 +1,4 @@
-// Sprint 3 (1.16.0): cards and labels of the staff "Today" page (TodayPage.tsx), kept here so they can be tested.
+// Cards and labels of the staff "Today" page (TodayPage.tsx), kept here so they can be tested.
 import type { Booking, StaffOverview } from '../../api/types/index.ts'
 
 export interface TodoCard {
@@ -11,7 +11,7 @@ export interface TodoCard {
   hint?: string
 }
 
-/** 2026-11-07 (client, Week 8): cards only a Manager can act on. Admins do not see them on Today; the Manager home
+/** Cards only a Manager can act on. Admins do not see them on Today; the Manager home
  *  page shows them first. */
 export const MANAGER_DECIDES = ['extensions', 'urgent', 'additional-hours', 'long-bookings']
 
@@ -25,7 +25,7 @@ export function todoCards(data: StaffOverview): TodoCard[] {
   const tone = (count: number, urgent = false): TodoCard['tone'] => (count === 0 ? 'grey' : urgent ? 'red' : 'amber')
   const extensions = data.extension_requests?.length ?? 0
   return [
-    // 2026-11-07: the person is in the lab now, so these come first.
+    // The person is in the lab now, so these come first.
     { key: 'extensions', count: extensions, label: 'Extension requests', to: '/manager/home?focus=extensions', tone: tone(extensions, true),
       hint: 'Someone in the lab asks to stay longer' },
     { key: 'urgent', count: data.urgent_requests, label: 'Urgent requests', to: '/admin/bookings', tone: tone(data.urgent_requests, true),

@@ -1,4 +1,4 @@
-// Sprint 3 (2026-10-27): moved from the booking feature folder; definitions unchanged.
+// Moved from the booking feature folder; definitions unchanged.
 
 export interface AppNotification {
   id: string
@@ -19,7 +19,7 @@ export interface NotificationList {
   results: AppNotification[]
 }
 
-/** Sprint 3 (1.19.0): independent delivery choices; missing preferences default to both channels on. */
+/** Independent delivery choices; missing preferences default to both channels on. */
 export interface NotificationPreference {
   category: string
   in_app: boolean

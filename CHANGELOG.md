@@ -2,6 +2,11 @@
 
 This file records what changed in each update and why. Other documents describe only the current rules. Version numbers refer to the API version in `backend/docs/openapi.json`, and migrations refer to scripts in `backend/database/migrations/`. The newest entries appear first.
 
+## After 1.28.0: Running Migration 005 Again Keeps Changed Staff Passwords (2026-11-17, no new migration)
+
+- `005_resource_category_demo_password.sql` set the two demo staff accounts (z9000001, z9000002) to the demo password every time it ran, so running the whole set of migrations again, as `backend/database/README.md` recommends, undid a password that had been changed. It now replaces only the earlier demo password from 003. A database upgraded from before 005 ends up the same as before; a database where the password was changed keeps it. Checked in a temporary database: before the change a changed password was reset, after it the password is kept on the first and the second run.
+- `backend/database/README.md`, `DEPLOY.md` and the comment in `backend/entrypoint.sh` no longer warn against running 005 again. The README now names the one change a repeated run still makes (001 moves a 30-minute review deadline to 1440 minutes).
+
 ## After 1.28.0: Backend Top-Level Clean-up (2026-11-16, no behaviour change)
 
 First pass of a file-by-file review of `backend/`, for a teammate to check.

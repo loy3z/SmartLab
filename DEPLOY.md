@@ -85,7 +85,7 @@ The example assumes that migrations up to 011 have already run. If any earlier m
 - To roll back to code older than 1.25.0, first rerun 006 with the new image (it is repeatable) to restore the columns and table, then use `--rollback`:
   `docker compose -p smartlab --env-file .env.docker run --rm --no-deps api migrate database/migrations/006_calendar_notifications_attendance_series.sql`
 
-Do not rerun all migrations on every startup: migration 005 resets both demo staff accounts to their demonstration passwords, which would overwrite passwords changed by the Manager.
+Migrations still do not run on every startup; apply each new one once, as above. Running an earlier script again is safe: migration 005 no longer resets the demo staff passwords (it replaces only the earlier demo password from 003, so a password changed later is kept).
 
 ## 4. Back up, stop and reset
 

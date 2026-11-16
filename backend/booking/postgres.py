@@ -224,7 +224,7 @@ class PostgresRepository:
 
     def list_submissions(self, student_id=None, requirement_id=None, *, student_ids=None, statuses=None,
                          valid_from=None, valid_to=None):
-        """2026-10-29 (load test S8): the same keyword filters as repository.submission_matches, in SQL."""
+        """2026-10-29 (load test S8): the same keyword filters as memory.submission_matches, in SQL."""
         if student_ids is None and statuses is None and valid_from is None and valid_to is None:
             return _filtered(QualificationSubmission, student_id=student_id, requirement_id=requirement_id)
         clauses, params = [], []
@@ -254,7 +254,7 @@ class PostgresRepository:
 
     def list_bookings(self, student_id=None, resource_id=None, *, statuses=None, start_from=None, start_to=None,
                       end_from=None, due_by=None, created_by=None, unmarked=False, extension_end_after=None):
-        """2026-10-29 (load test R1): the same keyword filters as repository.booking_matches, applied in SQL so only
+        """2026-10-29 (load test R1): the same keyword filters as memory.booking_matches, applied in SQL so only
         the rows a caller may need are read and decoded."""
         clauses, params = [], []
         for column, value in (('student_id', student_id), ('resource_id', resource_id), ('created_by', created_by)):

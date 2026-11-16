@@ -8,7 +8,7 @@ from django.core.management import call_command as django_call_command
 from django.core.management.base import CommandError
 from django.test import SimpleTestCase
 
-from booking.repository import MemoryRepository
+from booking.memory import MemoryRepository
 
 
 class SchedulerCommandTests(SimpleTestCase):

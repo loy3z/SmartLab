@@ -2,7 +2,7 @@
 
 from ._common import *  # noqa: F401,F403 - shared imports, helpers and PublicView.
 
-__all__ = ["AdminQualificationListView", "AdminQualificationReviewView", "staff_booking_rows", "staff_booking_json", "AdminBookingListView", "AdminBookingExportView", "_csv_safe", "AdminResourceStatusView", "audit_json", "AdminAuditListView", "user_json", "AdminStaffCreateView", "AdminManagerCreateView", "AdminUserListView", "AdminUserDetailView", "AdminUserResetAccessView", "AdminBookingReviewView", "changed_resource_json", "AdminResourceListView", "AdminResourceDetailView", "AdminResourceInternalInfoView", "AdminResourceArchiveView", "AdminResourceRestoreView", "AdminUsageReportView"]
+__all__ = ["AdminQualificationListView", "AdminQualificationReviewView", "staff_booking_rows", "staff_booking_json", "AdminBookingListView", "AdminBookingExportView", "_csv_safe", "AdminResourceStatusView", "audit_json", "AdminAuditListView", "user_json", "AdminStaffCreateView", "AdminUserListView", "AdminUserDetailView", "AdminUserResetAccessView", "AdminBookingReviewView", "changed_resource_json", "AdminResourceListView", "AdminResourceDetailView", "AdminResourceInternalInfoView", "AdminResourceArchiveView", "AdminResourceRestoreView", "AdminUsageReportView"]
 
 class AdminQualificationListView(APIView):
     def get(self, request):
@@ -151,15 +151,6 @@ class AdminStaffCreateView(APIView):
         service.require_manager(request.user)
         data = validated(StaffCreateSerializer, request.data)
         created = service.create_staff(request.user, data["zid"], data["display_name"], data["university_email"], data["role"])
-        return Response(user_json(service, created), status=status.HTTP_201_CREATED)
-
-class AdminManagerCreateView(APIView):
-    """Manager only ("Add manager"): kept for existing clients; same as Add staff with role MANAGER."""
-    def post(self, request):
-        service = get_service()
-        service.require_manager(request.user)
-        data = validated(ManagerCreateSerializer, request.data)
-        created = service.create_manager(request.user, data["zid"], data["display_name"], data["university_email"])
         return Response(user_json(service, created), status=status.HTTP_201_CREATED)
 
 class AdminUserListView(APIView):

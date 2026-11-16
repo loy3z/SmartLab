@@ -9,7 +9,7 @@ account", and enters the zID, this code and their own password. Afterwards they 
 from django.core.management.base import BaseCommand, CommandError
 
 from booking.errors import DomainError
-from booking.repository import MemoryRepository
+from booking.memory import MemoryRepository
 from booking.runtime import get_service
 
 

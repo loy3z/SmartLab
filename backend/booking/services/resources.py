@@ -241,23 +241,6 @@ class ResourcesMixin:
 
     # Review window and maintenance status ----------------------------------------------------------------
 
-    def set_booking_policy(self, actor, resource_id, pending_hold_minutes):
-        """Manager only: how long a pending request waits for an Admin (holding its slot) before the system decides.
-
-        Applies to requests that become pending afterwards; existing deadlines stay unchanged.
-        """
-        self.require_manager(actor)
-        if isinstance(pending_hold_minutes, bool) or not isinstance(pending_hold_minutes, int) \
-                or not 1 <= pending_hold_minutes <= MAX_PENDING_HOLD_MINUTES:
-            raise DomainError("VALIDATION_ERROR", f"pending_hold_minutes must be an integer from 1 to {MAX_PENDING_HOLD_MINUTES}.")
-        with self.repo.atomic(resource_ids=[str(resource_id)]):
-            current = self.resource(resource_id)
-            updated = replace(current, pending_hold_minutes=pending_hold_minutes)
-            self.repo.save_resource(updated)
-            self._audit(actor.id, "RESOURCE_BOOKING_POLICY_UPDATED", "resource", current.id,
-                        previous_minutes=current.pending_hold_minutes, pending_hold_minutes=pending_hold_minutes)
-            return updated
-
     def set_resource_status(self, actor, resource_id, status, reason=None, expected_back=None):
         """Manager only: open a resource or take it out of service (MAINTENANCE / CLOSED).
 

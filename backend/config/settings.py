@@ -50,7 +50,7 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "booking.exceptions.exception_handler",
 }
 AUTH_PROVIDER = os.getenv("AUTH_PROVIDER", "booking.authentication.DemoIdentityProvider")
-REPOSITORY_FACTORY = os.getenv("REPOSITORY_FACTORY", "booking.repository.MemoryRepository")
+REPOSITORY_FACTORY = os.getenv("REPOSITORY_FACTORY", "booking.memory.MemoryRepository")
 FILE_STORAGE_FACTORY = os.getenv("FILE_STORAGE_FACTORY", "booking.storage.MemoryFileStorage")
 SEED_DEMO_DATA = DEBUG and os.getenv("SEED_DEMO_DATA", "true").lower() == "true"
 DEMO_TOKEN_TTL_SECONDS = 8 * 3600  # 2026-11-10 (U5): one hour ended the session in the middle of a form

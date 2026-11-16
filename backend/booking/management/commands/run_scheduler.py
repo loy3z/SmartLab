@@ -9,7 +9,7 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import close_old_connections
 
-from booking.repository import MemoryRepository
+from booking.memory import MemoryRepository
 from booking.runtime import get_service
 
 

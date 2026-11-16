@@ -44,7 +44,8 @@ team-repo/
 │   │   ├── domain.py            Entities (dataclasses) and state enums
 │   │   ├── errors.py            DomainError(code, message, status)
 │   │   ├── exceptions.py        Normalises errors to {"error": {code, message, details}}
-│   │   ├── repository.py        Repository interface + memory implementation
+│   │   ├── repository.py        Repository interface: every read and write the rules need
+│   │   ├── memory.py            In-memory implementation (tests and local demo)
 │   │   ├── postgres.py          PostgreSQL implementation, including attachment storage
 │   │   ├── rules.py             Configurable global values: notice, validity, etc.
 │   │   ├── storage.py           FileStorage interface + memory implementation
@@ -78,7 +79,7 @@ team-repo/
 | HTTP | `views/`, `serializers.py`, `urls.py` | Validate request shape, resolve current user, call service, convert to JSON and trigger Outlook sync after the transaction |
 | Business rules | `booking/services/` | Permission, qualification, time, conflict, review, waitlist and audit; independent of HTTP and database choice |
 | Entities | `domain.py` | Data structures and simple field validation |
-| Storage | `repository.py`, `postgres.py`, `storage.py` | Persistence and transactional locking without business decisions |
+| Storage | `repository.py` (interface), `postgres.py`, `memory.py`, `storage.py` | Persistence and transactional locking without business decisions |
 | External services | `calendar_sync.py`, `outlook.py` | Outlook synchronisation whose failure does not affect the booking |
 
 `BookingService` is the sole business entry point, assembled from topic mixins whose methods share one object:

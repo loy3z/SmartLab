@@ -197,23 +197,16 @@ class UserUpdateSerializer(StrictSerializer):
         return attrs
 
 
-class BookingPolicySerializer(StrictSerializer):
-    pending_hold_minutes = serializers.IntegerField(min_value=1, max_value=20160)
-
-
 class ResourceStatusSerializer(StrictSerializer):
     expected_back = serializers.DateTimeField(required=False, allow_null=True, default=None)  # Sprint 3 (1.19.0)
     status = serializers.ChoiceField(choices=["AVAILABLE", "MAINTENANCE", "CLOSED"])
     reason = serializers.CharField(required=False, allow_blank=True, default="", max_length=500)
 
 
-class ManagerCreateSerializer(StrictSerializer):
+class StaffCreateSerializer(StrictSerializer):
     zid = serializers.RegexField(r"^[zZ]\d{7}$")
     display_name = serializers.CharField(max_length=120)
     university_email = serializers.EmailField(max_length=254)
-
-
-class StaffCreateSerializer(ManagerCreateSerializer):
     role = serializers.ChoiceField(choices=["ADMIN", "MANAGER"])
 
 

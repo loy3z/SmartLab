@@ -251,14 +251,14 @@ class ApprovalFlowServiceTests(BookingFixtureMixin, SimpleTestCase):
 
     def test_manager_sets_the_review_window_for_new_requests_only(self):
         first = self.book(self.a)
-        updated = self.service.set_booking_policy(self.manager, self.room.id, 60)
+        updated, _ = self.service.update_resource(self.manager, self.room.id, {"pending_hold_minutes": 60})
         self.assertEqual(updated.pending_hold_minutes, 60)
         self.assertEqual(self.get(first).hold_until, first.created_at + timedelta(hours=24))
         later = self.book(self.b, start=self.end, end=self.end + timedelta(hours=1))
         self.assertEqual(later.hold_until, later.created_at + timedelta(minutes=60))
         for actor, value in ((self.admin, 60), (self.a, 60), (self.manager, 0), (self.manager, 20161), (self.manager, True)):
             with self.subTest(actor=actor.zid, value=value), self.assertRaises(DomainError):
-                self.service.set_booking_policy(actor, self.room.id, value)
+                self.service.update_resource(actor, self.room.id, {"pending_hold_minutes": value})
 
     def test_reads_and_idempotent_retries_do_not_renew_the_window(self):
         first = super().book(self.a, idempotency_key="retry-1")
@@ -311,13 +311,11 @@ class ApprovalFlowAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual((decided["status"], decided["reason_code"], decided["reviewed_by"]),
                          ("APPROVED", "AUTO_APPROVED_AFTER_REVIEW_WINDOW", "SYSTEM"))
 
-    def test_manager_policy_endpoint(self):
-        url = f"/api/v1/admin/resources/{self.room['id']}/booking-policy/"
-        self.assert_error(self.admin.get(url), 403)  # rules belong to Managers; Admins approve
-        self.assertEqual(self.manager.get(url).data, {"resource_id": self.room["id"], "pending_hold_minutes": 1440})
-        self.assert_error(self.admin.patch(url, {"pending_hold_minutes": 60}, format="json"), 403)
-        self.assertEqual(self.manager.patch(url, {"pending_hold_minutes": 60}, format="json").data["pending_hold_minutes"], 60)
-        for body in ({}, {"pending_hold_minutes": 0}, {"pending_hold_minutes": 60, "auto_approve_max_minutes": 120}):
+    def test_only_a_manager_sets_the_review_window(self):
+        url = f"/api/v1/admin/resources/{self.room['id']}/"
+        self.assert_error(self.admin.patch(url, {"pending_hold_minutes": 60}, format="json"), 403)  # rules belong to Managers
+        self.assertEqual(self.manager.patch(url, {"pending_hold_minutes": 60}, format="json").data["resource"]["pending_hold_minutes"], 60)
+        for body in ({"pending_hold_minutes": 0}, {"pending_hold_minutes": 60, "auto_approve_max_minutes": 120}):
             with self.subTest(body=body):
                 self.assert_error(self.manager.patch(url, body, format="json"), 400)
 

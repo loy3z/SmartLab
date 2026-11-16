@@ -7,7 +7,7 @@ from several machines: each decision happens in a locked transaction and is made
 from django.core.management.base import BaseCommand, CommandError
 
 from booking.notification_channels import deliver_new_notifications, wait_for_deliveries
-from booking.repository import MemoryRepository
+from booking.memory import MemoryRepository
 from booking.runtime import get_service
 
 

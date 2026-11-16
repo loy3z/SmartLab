@@ -98,7 +98,7 @@ def get_service():
         if _service is None:
             repo = import_string(settings.REPOSITORY_FACTORY)()
             storage = import_string(settings.FILE_STORAGE_FACTORY)()
-            from .repository import MemoryRepository
+            from .memory import MemoryRepository
             from .storage import MemoryFileStorage
             if not settings.DEBUG and (isinstance(repo, MemoryRepository) or isinstance(storage, MemoryFileStorage)):
                 raise ImproperlyConfigured("Configure durable repository and private file-storage adapters outside DEBUG mode.")

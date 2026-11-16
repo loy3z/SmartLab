@@ -9,7 +9,7 @@ from django.test import SimpleTestCase, override_settings
 from booking.domain import Principal, QualificationRequirement, Resource, ResourceKind, Role
 from booking.errors import DomainError
 from booking.notification_channels import deliver_new_notifications
-from booking.repository import MemoryRepository
+from booking.memory import MemoryRepository
 from booking.services import BookingService
 from booking.storage import MemoryFileStorage
 from booking.tests.test_api import BookingAPIFixtureMixin

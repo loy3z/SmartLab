@@ -30,7 +30,7 @@ from booking.domain import (
     QualificationSubmission,  # 2026-10-29 (load test S8)
     Resource, ResourceKind, ResourceStatus, Role,
 )
-from booking.repository import MemoryRepository  # 2026-10-29 (load test R1)
+from booking.memory import MemoryRepository  # 2026-10-29 (load test R1)
 from booking.exceptions import DomainError
 from booking.services import BookingService
 

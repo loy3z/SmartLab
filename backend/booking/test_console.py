@@ -17,7 +17,7 @@ from .domain import Booking, BookingStatus, Principal, QualificationStatus, Qual
 from .errors import DomainError
 
 TEST_ACCOUNT_ID = "00000000-0000-0000-0000-000000000999"
-MEMORY_REPOSITORY = "booking.repository.MemoryRepository"
+MEMORY_REPOSITORY = "booking.memory.MemoryRepository"
 
 
 def test_console_enabled():

@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from booking.domain import BookingStatus, Principal, Role
 from booking.exceptions import DomainError
-from booking.repository import MemoryRepository
+from booking.memory import MemoryRepository
 from booking.runtime import reset_runtime
 from booking.services import BookingService
 from booking.storage import MemoryFileStorage

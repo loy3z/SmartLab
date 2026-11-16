@@ -29,8 +29,9 @@ class UserManagementAPITests(BookingAPIFixtureMixin, SimpleTestCase):
                 status=status, reviewed_by=self.user("z9000001").id, reviewed_at=self.service.now(), valid_until=valid_until))
 
     def add_manager(self, zid="z5999999"):
-        response = self.manager.post("/api/v1/admin/users/managers/", {
-            "zid": zid, "display_name": "Second manager", "university_email": f"{zid}@ad.unsw.edu.au"}, format="json")
+        response = self.manager.post("/api/v1/admin/users/staff/", {
+            "zid": zid, "display_name": "Second manager", "university_email": f"{zid}@ad.unsw.edu.au", "role": "MANAGER"},
+                                     format="json")
         self.assertEqual(response.status_code, 201, response.data)
         return self.user(zid)
 

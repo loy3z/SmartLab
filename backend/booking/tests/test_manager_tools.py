@@ -144,8 +144,8 @@ class ManagerToolsAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(cancelled.data["reason_code"], "CANCELLED_BY_STAFF")
 
     def test_add_manager_creates_a_new_manager_account(self):
-        url = "/api/v1/admin/users/managers/"
-        body = {"zid": "Z5123456", "display_name": "Lab Owner", "university_email": "z5123456@ad.unsw.edu.au"}
+        url = "/api/v1/admin/users/staff/"
+        body = {"zid": "Z5123456", "display_name": "Lab Owner", "university_email": "z5123456@ad.unsw.edu.au", "role": "MANAGER"}
         self.assert_error(self.admin.post(url, body, format="json"), 403)
         created = self.manager.post(url, body, format="json")
         self.assertEqual(created.status_code, 201, created.data)

@@ -302,7 +302,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
         {longBooking && <> Long-booking requests: {fmtDuration(minimumMinutes)} to {fmtDuration(maximumMinutes)}. A Manager must decide before the review deadline.</>}
       </p>
       {/* Sprint 3 (1.16.0): someone who wants an earlier day used to see only a disabled "previous day" button. */}
-      {onAskEarlier && !urgent && !allowEarly && atStart && data?.earliest_date && data.earliest_date > todaySydney() && (
+      {onAskEarlier && canRequest && !urgent && !allowEarly && atStart && data?.earliest_date && data.earliest_date > todaySydney() && (
         <div className="ui-hint bk-earlier">
           Need a date before {fmtDate(data.earliest_date)}?
           <button type="button" className="bk-linkbtn" onClick={onAskEarlier}>Make an urgent request</button>

@@ -23,6 +23,8 @@ test('sync state pills', () => {
 
 test('connection summary and error texts give advice, never raw tokens', () => {
   assert.equal(connectionSummary(status({ enabled: false })).title, 'Calendar sync is off')
+  // 2026-11-16 (U9): the page is read by Admins, so it does not name server settings.
+  assert.doesNotMatch(connectionSummary(status({ enabled: false })).detail, /OUTLOOK_|server/)
   assert.equal(connectionSummary(status({ configured: false })).title, 'Outlook is not set up')
   assert.equal(connectionSummary(status()).title, 'Connection not checked yet')
   const bad = connectionSummary(status({ last_check: { at: 'x', ok: false, code: 'TOKEN_EXPIRED', mode: 'm', calendar_name: null, owner: null } }))

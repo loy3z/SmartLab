@@ -30,7 +30,7 @@ export function syncPill(item: CalendarSyncItem): { tone: Tone; text: string } {
 }
 
 export function connectionSummary(status: CalendarSyncStatus): { tone: Tone; title: string; detail: string } {
-  if (!status.enabled) return { tone: 'grey', title: 'Calendar sync is off', detail: 'Set OUTLOOK_ENABLED=true on the server to write approved bookings to Outlook.' }
+  if (!status.enabled) return { tone: 'grey', title: 'Calendar sync is off', detail: 'Approved bookings are not written to Outlook on this site. People can still subscribe to their own bookings from My bookings.' }
   if (!status.configured) return { tone: 'red', title: 'Outlook is not set up', detail: syncErrorText('OUTLOOK_NOT_CONFIGURED') }
   const check: CalendarCheck | null = status.last_check
   if (!check) return { tone: 'amber', title: 'Connection not checked yet', detail: 'Use “Check connection” to test the Microsoft sign-in.' }

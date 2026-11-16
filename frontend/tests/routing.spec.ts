@@ -1837,6 +1837,9 @@ test('book a resource links a missing induction from the resource card', async (
     }
     if (path === 'qualifications/') return route.fulfill({ json: { count: quals.length, results: quals } })
     if (path === 'resources/room-2/availability/') return route.fulfill({ json: seriesAvailability({ resource_id: 'room-2' }) })
+    if (path === 'resources/room-1/availability/') {
+      return route.fulfill({ json: seriesAvailability({ can_request: quals.length > 1, qualification_status: quals.length > 1 ? 'VERIFIED' : 'NOT_SUBMITTED' }) })
+    }
     return route.fallback()
   })
   await page.goto('/#/login')
@@ -1847,6 +1850,12 @@ test('book a resource links a missing induction from the resource card', async (
   const done = page.locator('.bk-rcard', { hasText: 'Lab Room 2' })
   await expect(done.getByText('Induction verified')).toBeVisible()
   await expect(done.getByRole('link')).toHaveCount(0)
+  // 2026-11-16 (U7): without the induction nothing can be requested, so the form offers no urgent request either.
+  await missing.getByRole('button', { name: 'View availability' }).click()
+  await expect(page.getByRole('dialog')).toContainText('You cannot request this resource yet')
+  await expect(page.getByRole('dialog').getByLabel(/Urgent request/)).toHaveCount(0)
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Make an urgent request' })).toHaveCount(0)
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
   await missing.getByRole('link', { name: /Induction not submitted/ }).click()
   await expect(page).toHaveURL(/#\/induction\?requirement=req-2$/)
   await expect(page.getByRole('heading', { name: 'Induction & training', exact: true })).toBeVisible()
@@ -1860,6 +1869,7 @@ test('book a resource links a missing induction from the resource card', async (
   // 2026-11-16 (Loy): the urgent explanation sits below the time picker, where the normal purpose is.
   await done.getByRole('button', { name: 'View availability' }).click()
   const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('button', { name: 'Make an urgent request' })).toBeVisible()
   await dialog.getByLabel(/Urgent request/).check()
   const below = await dialog.getByLabel(/Purpose and urgency/).evaluate((box) =>
     Boolean(document.querySelector('.ui-tl-head')!.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING))

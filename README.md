@@ -19,7 +19,29 @@ UNSW COMP9900 group project (9900-F15E-BREAD). Students, Admins and Managers use
 | `z9000001` | Admin | Staff sign-in, demo password `123` |
 | `z9000002` | Manager | Staff sign-in, demo password `123` |
 
-All of these are fictional demonstration accounts. They work in both the online deployment and the local in-memory demo mode.
+All of these are fictional demonstration accounts. They work in the online deployment, the Docker setup below and the local in-memory demo mode.
+
+## Run with Docker
+
+This is the way to run the complete system (website, API, scheduler and PostgreSQL). It needs Docker with Docker Compose and nothing else.
+
+From the repository root:
+
+```bash
+cp .env.docker.example .env.docker
+docker compose --env-file .env.docker up -d --build
+```
+
+On Windows, use `copy .env.docker.example .env.docker` for the first line.
+
+Then open **http://localhost** and sign in with one of the demo accounts above.
+
+- The example file works unchanged for a local test: it turns on demo sign-in and loads the demo rooms, equipment, training requirements and accounts into a new database. Email and Outlook are off, so no external account is needed.
+- The first build takes a few minutes. `docker compose --env-file .env.docker ps` should then show four containers running (`db`, `api`, `scheduler`, `web`), with `api` marked healthy.
+- If port 80 is in use, set `WEB_PORT=8080` in `.env.docker` and open `http://localhost:8080`.
+- To stop and delete everything, including the database: `docker compose --env-file .env.docker down -v`.
+
+For a server deployment (passwords, host names, updates and backups), see [DEPLOY.md](DEPLOY.md).
 
 ## Local development (in-memory demo mode)
 
@@ -56,21 +78,54 @@ npm run dev
 
 Open the URL displayed by Vite (normally `http://localhost:5173`).
 
-## Tests
+## Testing approach and coverage
+
+### What is tested, and how
+
+| Layer | Tests | Command | What it covers |
+| --- | --- | --- | --- |
+| Backend unit and API tests | 534 | `python manage.py test booking` (in `backend`) | Business rules, data validation, the permission matrix for the three roles, and error codes. Runs against the in-memory repository, so it needs no database |
+| Backend PostgreSQL integration tests | 57 | `python manage.py test booking.tests.test_postgres` | The same acceptance cases run again on a real PostgreSQL database, plus transactions, row locks and migrations. Skipped when no database is configured; see Section 6 of [backend/database/README.md](backend/database/README.md) |
+| Frontend unit tests | 99 | `npm test` (in `frontend`) | Logic modules: time and quota calculations, formatting, route guards, the API client |
+| Frontend browser tests | 142 | `npm run test:e2e` | Component behaviour, user interactions and rendering for the pages of all three roles, in Chromium with Playwright |
+| Static checks | — | `npm run lint`, `npm run build` | ESLint and the TypeScript compiler |
+
+The counts are from 16 November 2026. All of these run in GitLab CI on every push and merge request ([.gitlab-ci.yml](.gitlab-ci.yml)); results are on the Pipelines page.
+
+### Coverage
+
+- **Backend: 94.8% of lines** (6,111 lines in `backend/booking`, tests excluded), measured on 16 November 2026 by running the backend suite under Python's built-in `trace` module. The PostgreSQL adapter (`postgres.py`) is not part of that figure because the in-memory run does not load it; the PostgreSQL integration tests exercise it instead. The lowest modules are the management commands that talk to a live Outlook account (72–81%).
+- **Frontend:** no line-coverage figure is collected. The browser tests cover the pages of all three roles, and 30 of the 41 logic modules are imported directly by a unit test; the other 11 are small (the largest is 79 lines) and are reached through the browser tests.
+
+### How the tests are written
+
+- **Happy and sad cases.** Each rule is tested both ways: for example, a booking that is accepted, and the same booking refused for a missing induction, a closed room, a time conflict, a weekly limit or the wrong role. The error code and HTTP status are asserted.
+- **Race conditions.** `test_approval_flow.py` starts four threads that request the same free slot at once and checks that only one holds it. `test_additional_hours.py` has two Managers approve the same request at the same moment and checks that it is confirmed once.
+- **External services are mocked.** Microsoft Graph (Outlook) and SMTP (email) are replaced with mocks in `test_outlook.py`, `test_outlook_features.py` and `test_email_channel.py`, including failed deliveries and retries. No test contacts a real mail or calendar server.
+- **Two storage adapters, one contract.** The service layer talks to a `Repository` interface. `test_119.py` and `test_postgres.py` run the same cases against the in-memory and the PostgreSQL implementation, so the two cannot drift apart.
+- **Browser tests use synthetic API data.** Each Playwright test answers the API calls itself, and a call that no test data handles fails the test. This keeps the browser tests fast and independent of a database, so they do not fail for reasons outside the frontend. The cost is that they do not prove the frontend and backend agree; both sides are written against the shared API definition ([backend/docs/openapi.json](backend/docs/openapi.json)), and the deployed site is checked by hand as described below.
+
+### What is not automated
+
+- **Real Outlook and Gmail delivery.** These need live accounts. The manual steps and recorded results are in [backend/docs/outlook-setup.md](backend/docs/outlook-setup.md) and [backend/docs/email-setup.md](backend/docs/email-setup.md).
+- **Load.** The scripts and method are in [load-test/README.md](load-test/README.md).
+- **The deployed site.** After each deployment the health endpoint, the home page and the four containers are checked by hand; the steps are in [DEPLOY.md](DEPLOY.md).
+
+### Running the tests locally
+
+Set up the backend and frontend as in "Local development" below, then:
 
 ```powershell
-# backend
-.\.venv\Scripts\python.exe manage.py test
-# frontend
+# backend (from the backend directory)
+.\.venv\Scripts\python.exe manage.py test booking
+# frontend (from the frontend directory)
 npm test
 npm run lint
 npm run build
 npm run test:e2e
 ```
 
-See Section 6 of [backend/database/README.md](backend/database/README.md) for instructions on running the PostgreSQL integration tests.
-
-When code is pushed or an MR is opened, GitLab CI automatically runs `manage.py test booking`, `npm test`, `npm run lint` and `npm run build` (configured in [.gitlab-ci.yml](.gitlab-ci.yml)). View the results on the MR's Pipelines page. Since 12 November 2026, CI has also run the PostgreSQL integration tests and Playwright (`test:e2e`).
+`npm run test:e2e` needs the Playwright browser once: `npx playwright install chromium`.
 
 ## Deployment
 

@@ -26,6 +26,8 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
   const [error, setError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
   const [canRequest, setCanRequest] = useState(true)
+  // The last loaded day said this person cannot request the resource (canRequest is also false while a day loads).
+  const [barred, setBarred] = useState(false)
   // Admin/Manager: book for themselves or on behalf of someone (checked by zID first).
   const [bookFor, setBookFor] = useState<BookFor>('self')
   const [zidInput, setZidInput] = useState('')
@@ -154,7 +156,8 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
         </fieldset>
       )}
 
-      {!isManager && <label className="bk-urgent">
+      {/* 2026-11-16 (U7): no urgent entry while the person cannot request this resource at all (induction, closed). */}
+      {!isManager && !barred && <label className="bk-urgent">
         <input type="checkbox" checked={urgent} onChange={(e) => { setUrgent(e.target.checked); pick(null) }} />
         Urgent request (sooner than the normal booking window)
       </label>}
@@ -162,6 +165,7 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
 
       {ready ? (
         <SlotPicker resource={resource} onSelect={fromPicker} refreshKey={refreshKey} onEligibility={setCanRequest}
+          onAvailability={(day) => setBarred(!day.can_request && !urgent)}
           forZid={forZid} urgent={urgent} initialDate={initialDate} initialStart={initialStart} initialMinutes={initialMinutes}
           /* Sprint 3 (1.16.0): route someone who wants an earlier day to the urgent request */
           onAskEarlier={() => { setUrgent(true); pick(null) }} />

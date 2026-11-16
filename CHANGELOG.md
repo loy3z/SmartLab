@@ -2,6 +2,13 @@
 
 This file records what changed in each update and why. Other documents describe only the current rules. Version numbers refer to the API version in `backend/docs/openapi.json`, and migrations refer to scripts in `backend/database/migrations/`. The newest entries appear first.
 
+## After 1.27.0: Book a Resource Layout (2026-11-16, frontend only)
+
+Based on Loy's feedback in `claude/reports/2026-11-16-book-page-layout-feedback.md`.
+
+- **No induction list at the top of Book a resource.** The “Training requirements” row grew with every new induction and room and pushed the page layout around. It is removed. On each resource card, the induction chip (“Induction not submitted”, “rejected”, “expired”, or “… needed first”) is now a link to the Induction page for the evidence still to submit (`BookingApp.tsx`, `ResourceCard.tsx`). This replaces R2 below.
+- **Urgent request: the explanation is below the time picker.** Ticking “Urgent request” used to show “Purpose and urgency” above the time picker, while the normal “Purpose” is below it. Both now sit in the same place; the note about Manager approval stays under the checkbox (`BookingForm.tsx`).
+
 ## After 1.27.0: Add PostgreSQL and Browser Tests to CI (2026-11-12, no website change)
 
 - Add two jobs to `.gitlab-ci.yml`: `postgres-tests` (PostgreSQL integration tests against the temporary database provided by the job) and `e2e-tests` (Playwright). These tests previously ran only locally, so nothing blocked changes merged directly into `main`. Automatic deployment is still disabled.

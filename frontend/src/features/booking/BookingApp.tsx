@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router'
 import { useAuth } from '../auth/auth-context'
 import { BookingForm } from './BookingForm'
 import { AdditionalHoursForm } from './AdditionalHoursForm'
@@ -7,7 +7,7 @@ import { LongBookingForm } from './LongBookingForm'
 import { FindTime } from './FindTime'
 import { listQualifications, listRequirements, listResources } from '../../api/index.ts'
 import { errorMessage, SEPARATE_BOOKING_TEXT } from './format' // Sprint 3 (1.16.0): SEPARATE_BOOKING_TEXT
-import { AlertIcon, CheckIcon, SearchIcon, UploadIcon } from './icons'
+import { SearchIcon } from './icons'
 import { Modal } from './Modal'
 import { RecurringBookingForm } from './RecurringBookingForm' // Sprint 3
 import { ResourceCard, type InductionState } from './ResourceCard'
@@ -28,10 +28,17 @@ function stateFor(r: Resource, quals: Qualification[], reqs: Requirement[]): Ind
   return latestStatus(r.required_qualification_id, quals)
 }
 
-function prerequisiteName(r: Resource, quals: Qualification[], reqs: Requirement[]): string | undefined {
+function missingPrerequisite(r: Resource, quals: Qualification[], reqs: Requirement[]): Requirement | undefined {
   const requirement = reqs.find((item) => item.id === r.required_qualification_id)
   const missing = requirement?.prerequisite_ids.find((id) => latestStatus(id, quals) !== 'VERIFIED')
-  return missing ? reqs.find((item) => item.id === missing)?.name : undefined
+  return missing ? reqs.find((item) => item.id === missing) : undefined
+}
+
+/** 2026-11-16 (Loy): where the card's induction chip leads when the student still has evidence to submit. */
+function inductionLink(r: Resource, state: InductionState, prerequisite: Requirement | undefined): string | undefined {
+  if (state === 'PREREQUISITE_REQUIRED') return prerequisite && `/induction?requirement=${prerequisite.id}`
+  if (state === 'NOT_SUBMITTED' || state === 'REJECTED' || state === 'EXPIRED') return `/induction?requirement=${r.required_qualification_id}`
+  return undefined
 }
 
 type View = 'ROOM' | 'EQUIPMENT'
@@ -85,58 +92,11 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
     : equipment.filter((item) => !roomFilter || item.room_id === roomFilter)
   const anyCapacity = rooms.some((room) => room.capacity)
 
-  // One entry per induction requirement that active resources need.
-  const banners = useMemo(
-    () =>
-      reqs
-        .map((req) => {
-          const rs = resources.filter((r) => r.required_qualification_id === req.id)
-          const latest = quals
-            .filter((x) => x.requirement_id === req.id)
-            .sort((a, b) => b.submitted_at.localeCompare(a.submitted_at))[0]
-          const missing = req.prerequisite_ids.find((id) => latestStatus(id, quals) !== 'VERIFIED')
-          const lockedBy = missing ? reqs.find((item) => item.id === missing)?.name ?? 'the prerequisite induction' : null
-          return { req, state: latest ? latest.effective_status : 'NOT_SUBMITTED', used: rs.length > 0, lockedBy }
-        })
-        .filter((b) => b.used),
-    [reqs, resources, quals],
-  )
-  const verifiedCount = banners.filter((item) => item.state === 'VERIFIED' && !item.lockedBy).length
-
   return (
     <>
-      <h1>Book a resource</h1>{/* Sprint 3 (internal-tool UI, AI-2): no introduction line */}
-
-      {/* Sprint 3 (compact page top): one line for all inductions instead of a large banner each.
-          Sprint 3 (workspace UI): folded under "Training requirements"; review R2: open while any is not verified,
-          so what blocks a booking is never hidden. */}
-      {banners.length > 0 && (
-        <details className="bk-access-summary" open={verifiedCount < banners.length}>
-          <summary>
-            Training requirements <span className={verifiedCount < banners.length ? 'is-warn' : 'is-ok'}>{verifiedCount}/{banners.length} verified</span>
-          </summary>
-          <div className={`bk-induction-strip ${verifiedCount === banners.length ? 'is-ok' : 'is-warn'}`}
-            role="group" aria-label="Your inductions">
-          <span className="bk-muted">Inductions:</span>
-          {banners.map(({ req, state, lockedBy }) => {
-            const ok = state === 'VERIFIED' && !lockedBy
-            // Evidence for an advanced induction is accepted only after its prerequisite is verified.
-            const locked = lockedBy !== null && state !== 'VERIFIED' && state !== 'PENDING'
-            const text = ok ? 'verified' : locked ? `needs ${lockedBy} first` : state === 'PENDING' ? 'under review'
-              : state === 'VERIFIED' ? `also needs ${lockedBy}` : state === 'NOT_SUBMITTED' ? 'not submitted' : state === 'REJECTED' ? 'rejected' : 'expired'
-            return (
-              <span key={req.id} className={`bk-induction-item ${ok ? 'is-ok' : 'is-warn'}`} title={req.description || undefined}>
-                {ok ? <CheckIcon size={14} /> : <AlertIcon size={14} />}
-                <b>{req.name}</b> <span>{text}</span>
-                {!ok && !locked && state !== 'PENDING' && state !== 'VERIFIED' && (
-                  <Link to={`/induction?requirement=${req.id}`}><UploadIcon size={14} /> Upload</Link>
-                )}
-              </span>
-            )
-          })}
-          </div>
-        </details>
-      )}
+      {/* Sprint 3 (internal-tool UI, AI-2): no introduction line.
+          2026-11-16 (Loy): no induction list here; each card's induction chip links to the induction page. */}
+      <h1>Book a resource</h1>
 
       <div className="bk-pills bk-mode" role="tablist" aria-label="How to book">
         {([['browse', 'Browse resources'], ['find', 'Find a free time']] as const).map(([key, label]) => (
@@ -201,14 +161,17 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
         </div>
       )}
       <div className="bk-grid">
-        {shown.map((r) => (
-          <ResourceCard
+        {shown.map((r) => {
+          const state = stateFor(r, quals, reqs)
+          const prerequisite = missingPrerequisite(r, quals, reqs)
+          return <ResourceCard
             key={r.id}
             testOverride={Boolean(user?.bypass_booking_rules)}
             managerOverride={isManager}
             resource={r}
-            state={stateFor(r, quals, reqs)}
-            prerequisiteName={prerequisiteName(r, quals, reqs)}
+            state={state}
+            prerequisiteName={prerequisite?.name}
+            inductionHref={inductionLink(r, state, prerequisite)}
             onOpen={() => (forAdditionalHours ? setAdditional(r) : setOpen(r))}
             openLabel={forAdditionalHours ? 'Request additional hours' : undefined}
             onAdditionalHours={forAdditionalHours ? undefined : () => setAdditional(r)}
@@ -218,7 +181,7 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
             onShowEquipment={r.kind === 'ROOM' ? () => { setView('EQUIPMENT'); setRoomFilter(r.id) } : undefined}
             onRepeat={isStaff ? () => setRepeat(r) : undefined}
           />
-        ))}
+        })}
       </div>
       {shown.length === 0 && !error && <p className="bk-muted">{term ? 'Nothing matches your search.' : 'Nothing to show here yet.'}</p>}
       </>}

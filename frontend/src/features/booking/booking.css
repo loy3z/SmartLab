@@ -85,6 +85,7 @@
 .bk-for-person input { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; background: var(--card); width: 140px; }
 .bk-for-found { color: var(--ink); }
 .bk-urgent { display: flex; gap: 8px; align-items: center; font-weight: 500; margin: 4px 0 10px; }
+.bk-urgent-note { margin: -4px 0 10px; }
 .bk-chip.is-urgent, .ui-badge-urgent { background: #fde2e1; color: #9b1c1c; border: 1px solid #f5b5b2; border-radius: 999px; padding: 1px 8px; font-size: 12px; font-weight: 700; letter-spacing: .02em; }
 
 /* My bookings */
@@ -150,15 +151,10 @@
 /* Sprint 3: resource setup dialog (Manager) */
 .mr-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 12px; }
 
-/* Sprint 3: compact page tops (induction strip on Book a resource, calendar button and series card on My bookings). */
-.bk-induction-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 8px 12px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
-.bk-induction-strip.is-ok { background: #f6fbf7; border-color: #d9eedf; }
-.bk-induction-strip.is-warn { background: #fffbef; border-color: #f3e2a6; }
-.bk-induction-item { display: inline-flex; align-items: center; gap: 5px; }
-.bk-induction-item.is-ok svg { color: #2e7d32; }
-.bk-induction-item.is-warn svg { color: #b26a00; }
-.bk-induction-item.is-warn > span { color: #8a5300; }
-.bk-induction-item a { display: inline-flex; align-items: center; gap: 3px; margin-left: 4px; font-weight: 600; }
+/* 2026-11-16: the induction chip on a resource card links to the induction page while evidence is still needed. */
+.bk-chip-link { text-decoration: none; }
+.bk-chip-link:hover, .bk-chip-link:focus-visible { text-decoration: underline; }
+/* Sprint 3: compact page tops (calendar button and series card on My bookings). */
 .bk-calsub-button { display: flex; justify-content: flex-end; margin: -8px 0 12px; }
 .bk-series-dates { list-style: none; margin: 6px 0 0; padding: 0; width: 100%; border-top: 1px solid var(--line); }
 .bk-series-dates li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
@@ -206,13 +202,6 @@
 @media (max-width: 600px) {
   .bk-mode { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .bk-mode .bk-pill { padding: 10px 8px; font-size: 14px; }
-  .bk-induction-strip { align-items: stretch; gap: 10px; padding: 12px; }
-  .bk-induction-strip > .bk-muted { flex-basis: 100%; font-weight: 600; }
-  .bk-induction-item { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 2px 6px; align-items: start; flex: 1 0 100%; min-width: 0; }
-  .bk-induction-item > svg { grid-column: 1; grid-row: 1; margin-top: 3px; }
-  .bk-induction-item > b { grid-column: 2; grid-row: 1; font-size: 14px; }
-  .bk-induction-item > span { grid-column: 2; grid-row: 2; font-size: 14px; }
-  .bk-induction-item > a { grid-column: 3; grid-row: 1 / 3; align-self: center; margin-left: 2px; font-size: 14px; white-space: nowrap; }
   /* Phones: the submit button and the chosen time stay at the bottom of the booking dialog. */
   .bk-modal .bk-submit-row { position: sticky; bottom: -28px; z-index: 3; margin: 0 -28px -28px; padding: 12px 28px 16px; background: var(--card); box-shadow: 0 -6px 16px rgba(17, 24, 39, .08); }
   .bk-modal { padding: 22px 18px 28px; }

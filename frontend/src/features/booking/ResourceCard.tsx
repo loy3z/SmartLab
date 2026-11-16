@@ -1,3 +1,4 @@
+import { Link } from 'react-router'
 import { fmtHours } from './format' // Sprint 3 (internal-tool UI, AI-6)
 import { AlertIcon, CheckIcon, ClockIcon, PinIcon } from './icons'
 import type { Resource } from '../../api/types/index.ts'
@@ -35,6 +36,8 @@ interface Props {
   roomName?: string
   /** Name of the unverified prerequisite induction, when state is PREREQUISITE_REQUIRED. */
   prerequisiteName?: string
+  /** 2026-11-16: the induction page for the evidence still to submit; makes the induction chip a link. */
+  inductionHref?: string
   /** Sprint 3, staff only: book the same time every week. */
   onRepeat?: () => void
   onAdditionalHours?: () => void
@@ -46,7 +49,7 @@ interface Props {
   openLabel?: string
 }
 
-export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEquipment, roomName, prerequisiteName, onRepeat, onAdditionalHours, onLongBooking, testOverride, managerOverride, openLabel }: Props) {
+export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEquipment, roomName, prerequisiteName, inductionHref, onRepeat, onAdditionalHours, onLongBooking, testOverride, managerOverride, openLabel }: Props) {
   const chip = testOverride ? { text: 'Test override enabled', ok: true }
     : managerOverride ? { text: 'Manager booking: no induction needed', ok: true }
     : state === 'PREREQUISITE_REQUIRED' && prerequisiteName ? { text: `${prerequisiteName} needed first`, ok: false } : CHIP[state]
@@ -55,6 +58,8 @@ export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEq
     : NOTE[state]
   const unavailable = resource.status !== 'AVAILABLE'
   const blocked = !testOverride && !managerOverride && state === 'NOT_CONFIGURED'
+  const chipBody = <>{chip.ok ? <CheckIcon size={16} /> : <AlertIcon size={16} />} {chip.text}</>
+  const chipClass = `bk-chip ${chip.ok ? 'is-ok' : 'is-warn'}`
   const longest = managerOverride ? resource.max_booking_minutes : resource.effective_max_booking_minutes ?? resource.max_booking_minutes
   return (
     <article className={`bk-rcard${unavailable ? ' is-unavailable' : ''}`}>
@@ -78,9 +83,9 @@ export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEq
               <span className="bk-note">{testOverride ? ' Test overrides allow booking this resource.' : ` New requests are paused; choose another ${resource.kind === 'ROOM' ? 'room' : 'item'} or check back later.`}</span>
             </div>
           )}
-          <span className={`bk-chip ${chip.ok ? 'is-ok' : 'is-warn'}`}>
-            {chip.ok ? <CheckIcon size={16} /> : <AlertIcon size={16} />} {chip.text}
-          </span>
+          {inductionHref && !chip.ok
+            ? <Link to={inductionHref} className={`${chipClass} bk-chip-link`}>{chipBody} →</Link>
+            : <span className={chipClass}>{chipBody}</span>}
           {!testOverride && !managerOverride && !unavailable && note && <p className="bk-note">{note}</p>}
           {equipmentCount !== undefined && onShowEquipment && (
             <button type="button" className="bk-linkbtn" onClick={onShowEquipment}>

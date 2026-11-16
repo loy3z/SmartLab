@@ -44,6 +44,10 @@ class AnnouncementDetailView(APIView):
         serializer.is_valid(raise_exception=True)
         return Response(announcement_json(service.update_announcement(request.user, str(announcement_id), serializer.validated_data)))
 
+    def delete(self, request, announcement_id):
+        get_service().delete_announcement(request.user, str(announcement_id))
+        return Response(status=204)
+
 
 class AnnouncementRemoveView(APIView):
     def post(self, request, announcement_id):

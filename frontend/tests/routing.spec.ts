@@ -1816,8 +1816,8 @@ test('my bookings shows a weekly series as one card', async ({ page }) => {
   expect(cancelled).toEqual(['d3'])
 })
 
-// Sprint 3: the inductions are one line at the top of Book a resource.
-test('book a resource keeps missing inductions open with an upload link', async ({ page }) => {
+// 2026-11-16 (Loy): no induction list at the top of Book a resource; the chip on each card leads to the induction page.
+test('book a resource links a missing induction from the resource card', async ({ page }) => {
   const room = { id: 'room-1', name: 'Lab Room 1', kind: 'ROOM', location: 'Demo laboratory', description: '', active: true,
     required_qualification_id: 'req-2', slot_minutes: 30, max_booking_minutes: 240, opening_time: '08:00:00', closing_time: '20:00:00',
     timezone: 'Australia/Sydney', pending_hold_minutes: 1440, status: 'AVAILABLE', status_reason: null, room_id: null, category: null }
@@ -1836,31 +1836,44 @@ test('book a resource keeps missing inductions open with an upload link', async 
       ] } })
     }
     if (path === 'qualifications/') return route.fulfill({ json: { count: quals.length, results: quals } })
+    if (path === 'resources/room-2/availability/') return route.fulfill({ json: seriesAvailability({ resource_id: 'room-2' }) })
+    if (path === 'resources/room-1/availability/') {
+      return route.fulfill({ json: seriesAvailability({ can_request: quals.length > 1, qualification_status: quals.length > 1 ? 'VERIFIED' : 'NOT_SUBMITTED' }) })
+    }
     return route.fallback()
   })
   await page.goto('/#/login')
   await signIn(page, 'STUDENT')
   await page.goto('/#/resources')
-  // Sprint 3 (review R2): one induction is missing, so the details are open and the count is not shown as done.
-  const strip = page.getByRole('group', { name: 'Your inductions' })
-  await expect(strip).toBeVisible()
-  await expect(page.locator('.bk-access-summary > summary > span')).toHaveText('1/2 verified')
-  await expect(page.locator('.bk-access-summary > summary > span')).toHaveClass('is-warn')
-  await expect(strip).toContainText('General verified')
-  await expect(strip).toContainText('Advanced not submitted')
-  await expect(strip).toHaveClass(/is-warn/)
-  await strip.getByRole('link', { name: 'Upload', exact: true }).click()
+  await expect(page.getByText('Training requirements')).toHaveCount(0)
+  const missing = page.locator('.bk-rcard', { hasText: 'Lab Room 1' })
+  const done = page.locator('.bk-rcard', { hasText: 'Lab Room 2' })
+  await expect(done.getByText('Induction verified')).toBeVisible()
+  await expect(done.getByRole('link')).toHaveCount(0)
+  // 2026-11-16 (U7): without the induction nothing can be requested, so the form offers no urgent request either.
+  await missing.getByRole('button', { name: 'View availability' }).click()
+  await expect(page.getByRole('dialog')).toContainText('You cannot request this resource yet')
+  await expect(page.getByRole('dialog').getByLabel(/Urgent request/)).toHaveCount(0)
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Make an urgent request' })).toHaveCount(0)
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
+  await missing.getByRole('link', { name: /Induction not submitted/ }).click()
   await expect(page).toHaveURL(/#\/induction\?requirement=req-2$/)
-  // Wait until the induction page has rendered: going back before then can collapse both navigations into one.
   await expect(page.getByRole('heading', { name: 'Induction & training', exact: true })).toBeVisible()
 
-  // With every induction verified the details fold away behind the summary.
+  // Once it is verified the chip is plain text again.
   quals.push(verified('q2', 'req-2', 'Advanced'))
   await page.goto('/#/resources')
-  await expect(page.locator('.bk-access-summary > summary > span')).toHaveText('2/2 verified')
-  await expect(strip).toBeHidden()
-  await page.getByText('Training requirements', { exact: false }).click()
-  await expect(strip).toHaveClass(/is-ok/)
+  await expect(missing.getByText('Induction verified')).toBeVisible()
+  await expect(missing.getByRole('link')).toHaveCount(0)
+
+  // 2026-11-16 (Loy): the urgent explanation sits below the time picker, where the normal purpose is.
+  await done.getByRole('button', { name: 'View availability' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('button', { name: 'Make an urgent request' })).toBeVisible()
+  await dialog.getByLabel(/Urgent request/).check()
+  const below = await dialog.getByLabel(/Purpose and urgency/).evaluate((box) =>
+    Boolean(document.querySelector('.ui-tl-head')!.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING))
+  expect(below).toBe(true)
 })
 
 // Sprint 3: staff change their own password on the Account page.
@@ -2361,6 +2374,34 @@ for (const role of ['STUDENT', 'ADMIN', 'MANAGER'] as Role[]) {
     await expect(page).toHaveURL(/#\/settings\/notifications$/)
   })
 }
+
+// 2026-11-16 (Loy): whoever posted an announcement can delete it from the history once it has ended.
+test('announcements: only the author sees Delete on an ended notice, and it leaves the history', async ({ page }) => {
+  const ended = { id: 'mine', title: 'Old notice', body: 'Finished.', kind: 'MANUAL', resource_id: null,
+    created_by: users.ADMIN.id, author_role: 'ADMIN', author: { id: users.ADMIN.id, display_name: 'Test Admin', role: 'ADMIN' },
+    created_at: '2026-10-26T00:00:00Z', updated_at: '2026-10-26T00:00:00Z', expires_at: null, expected_back: null,
+    removed_at: '2026-10-27T00:00:00Z', active: false }
+  const notices = [ended, { ...ended, id: 'theirs', title: 'Manager notice', created_by: users.MANAGER.id }]
+  const deleted: string[] = []
+  await page.route('**/api/v1/announcements/**', async route => {
+    if (route.request().method() === 'DELETE') {
+      deleted.push(new URL(route.request().url()).pathname)
+      notices.shift()
+      return route.fulfill({ status: 204 })
+    }
+    return route.fulfill({ json: { count: notices.length, results: notices } })
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'ADMIN')
+  await page.goto('/#/admin/announcements')
+  await expect(page.getByRole('button', { name: 'Delete Manager notice' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Delete Old notice', exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText('This cannot be undone.')
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete announcement', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Old notice' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Manager notice' })).toBeVisible()
+  expect(deleted).toEqual(['/api/v1/announcements/mine/'])
+})
 
 test('1.19 announcements: staff manage own notices; public boards show signatures; no 390px overflow', async ({ page }, testInfo) => {
   const base = { id: 'own', title: 'Safety update', body: 'Read the updated lab guidance.', kind: 'MANUAL', resource_id: null,

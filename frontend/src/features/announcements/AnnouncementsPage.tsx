@@ -1,7 +1,7 @@
 // Sprint 3 (1.19.0): staff manual announcements with server-enforced ownership.
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import { useAuth } from '../auth/auth-context'
-import { createAnnouncement, listAnnouncements, removeAnnouncement, updateAnnouncement } from '../../api/index.ts'
+import { createAnnouncement, deleteAnnouncement, listAnnouncements, removeAnnouncement, updateAnnouncement } from '../../api/index.ts'
 import { errorMessage } from '../booking/format'
 import { Modal } from '../booking/Modal'
 import type { Announcement } from '../../api/types/index.ts'
@@ -17,6 +17,8 @@ export function AnnouncementsPage() {
   const [expires, setExpires] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
   const [removing, setRemoving] = useState<Announcement | null>(null)
+  // 2026-11-16 (Loy): an ended announcement can be deleted for good, by the person who posted it only.
+  const forever = Boolean(removing && !removing.active)
   const [error, setError] = useState('')
   const [removeError, setRemoveError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -46,7 +48,7 @@ export function AnnouncementsPage() {
     if (!removing || busy) return
     setBusy(true); setRemoveError('')
     try {
-      await removeAnnouncement(removing.id)
+      await (forever ? deleteAnnouncement : removeAnnouncement)(removing.id)
       setRemoving(null); setRevision(value => value + 1)
     } catch (reason) { setRemoveError(errorMessage(reason)) }
     finally { setBusy(false) }
@@ -82,14 +84,18 @@ export function AnnouncementsPage() {
             }}>Edit</button>}
             {(item.created_by === user?.id || user?.role === 'MANAGER') && <button className="ui-btn ui-btn-reject ui-btn-sm" disabled={busy} aria-label={`Remove ${item.title}`} onClick={() => { setRemoveError(''); setRemoving(item) }}>Remove</button>}
           </div>}
+          {!item.active && item.created_by === user?.id && <div className="announcement-card-actions">
+            <button className="ui-btn ui-btn-reject ui-btn-sm" disabled={busy} aria-label={`Delete ${item.title}`} onClick={() => { setRemoveError(''); setRemoving(item) }}>Delete</button>
+          </div>}
         </div>
         <AnnouncementText item={item} />
       </article>)}
     </section>
-    {removing && <Modal label="Remove announcement" onClose={() => { if (!busy) setRemoving(null) }}>
-      <h2>Remove announcement</h2><p>Remove “{removing.title}” from the home pages?</p>
+    {removing && <Modal label={forever ? 'Delete announcement' : 'Remove announcement'} onClose={() => { if (!busy) setRemoving(null) }}>
+      <h2>{forever ? 'Delete announcement' : 'Remove announcement'}</h2>
+      <p>{forever ? `Delete “${removing.title}” from this history? This cannot be undone.` : `Remove “${removing.title}” from the home pages?`}</p>
       {removeError && <p className="bk-error" role="alert">{removeError}</p>}
-      <div className="announcement-actions"><button className="ui-btn ui-btn-reject" disabled={busy} onClick={() => void remove()}>{busy ? 'Removing…' : 'Remove announcement'}</button>
+      <div className="announcement-actions"><button className="ui-btn ui-btn-reject" disabled={busy} onClick={() => void remove()}>{busy ? (forever ? 'Deleting…' : 'Removing…') : forever ? 'Delete announcement' : 'Remove announcement'}</button>
         <button className="ui-btn ui-btn-ghost" disabled={busy} onClick={() => setRemoving(null)}>Keep announcement</button></div>
     </Modal>}
   </div>

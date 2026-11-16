@@ -123,6 +123,29 @@ class Acceptance119:
         self.assertTrue({'ANNOUNCEMENT_CREATED', 'ANNOUNCEMENT_UPDATED', 'ANNOUNCEMENT_REMOVED'} <=
                         {item.action for item in self.repo.list_audit()})
 
+    def test_only_the_author_deletes_an_ended_announcement(self):
+        # 2026-11-16 (Loy): whoever posted it can clear it from the history; nobody else, a Manager included.
+        item = self.service.create_announcement(self.admin, 'Notice', 'Details')
+        with self.assertRaises(DomainError) as active:
+            self.service.delete_announcement(self.admin, item.id)
+        self.assertEqual(active.exception.code, 'ANNOUNCEMENT_ACTIVE')
+        self.service.remove_announcement(self.manager, item.id)
+        self.denied(self.service.delete_announcement, self.manager, item.id)
+        self.denied(self.service.delete_announcement, self.student, item.id)
+        self.assertIsNotNone(self.repo.get_announcement(item.id))
+        self.service.delete_announcement(self.admin, item.id)
+        self.assertIsNone(self.repo.get_announcement(item.id))
+        self.assertIn('ANNOUNCEMENT_DELETED', {record.action for record in self.repo.list_audit()})
+        # An expired one counts as ended; a status announcement belongs to the Manager who changed the status.
+        expired = self.service.create_announcement(self.manager, 'Short', 'Details', self.now + timedelta(minutes=1))
+        self.now += timedelta(minutes=2)
+        self.service.delete_announcement(self.manager, expired.id)
+        self.service.set_resource_status(self.manager, self.room.id, 'MAINTENANCE', 'Leak')
+        status = next(entry for entry in self.repo.list_announcements() if entry.resource_id == self.room.id)
+        self.service.set_resource_status(self.manager, self.room.id, 'AVAILABLE')
+        self.service.delete_announcement(self.manager, status.id)
+        self.assertEqual(self.repo.list_announcements(), [])
+
     def test_status_announcement_upsert_expected_back_reopen_and_equipment(self):
         back = self.now + timedelta(hours=2)
         for resource in [self.room, replace(self.room, id=str(uuid4()), name='Microscope', kind=ResourceKind.EQUIPMENT)]:
@@ -198,6 +221,13 @@ class API119Tests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(self.admin.patch(manager_path, {'title': 'Changed'}, format='json').status_code, 403)
         self.assertEqual(self.admin.post(manager_path + 'remove/', {}, format='json').status_code, 403)
         self.assertEqual(self.manager.patch(f'/api/v1/announcements/{announcement_id}/', {'title': 'Changed'}, format='json').status_code, 403)
+        # 2026-11-16: DELETE is for the author only, and only once the announcement has ended.
+        own_path = f'/api/v1/announcements/{announcement_id}/'
+        self.assertEqual(self.student.delete(own_path).status_code, 403)
+        self.assertEqual(self.admin.delete(own_path).status_code, 409)
         self.assertEqual(self.manager.post(f'/api/v1/announcements/{announcement_id}/remove/', {}, format='json').status_code, 200)
         self.assertEqual(self.student.get('/api/v1/announcements/?include_ended=true').status_code, 403)
         self.assertEqual(self.student.get('/api/v1/announcements/').status_code, 200)
+        self.assertEqual(self.manager.delete(own_path).status_code, 403)
+        self.assertEqual(self.admin.delete(own_path).status_code, 204)
+        self.assertEqual(self.admin.delete(own_path).status_code, 404)

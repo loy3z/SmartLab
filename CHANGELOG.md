@@ -2,6 +2,15 @@
 
 This file records what changed in each update and why. Other documents describe only the current rules. Version numbers refer to the API version in `backend/docs/openapi.json`, and migrations refer to scripts in `backend/database/migrations/`. The newest entries appear first.
 
+## 1.28.0: The Author Can Delete an Ended Announcement (2026-11-16, no migration)
+
+Based on Loy's feedback in `claude/reports/2026-11-16-announcement-delete-feedback.md`: whoever posted an announcement can delete it from the history.
+
+- New `DELETE announcements/{id}/`. Only the person who posted the announcement may call it, for manual and resource-status announcements alike; a Manager who is not the author receives 403. The announcement must have ended (removed or expired); one still shown on the home pages returns 409 `ANNOUNCEMENT_ACTIVE` and has to be removed first. The row is deleted permanently; the audit log keeps `ANNOUNCEMENT_DELETED` with the title (`services/announcements.py`, `views/announcements.py`).
+- The repository interface gains `delete_announcement(announcement_id)`, implemented by the in-memory and PostgreSQL adapters. No schema change.
+- Announcements page: an ended announcement shows **Delete** to its author, with a confirmation that it cannot be undone (`AnnouncementsPage.tsx`).
+- Tests: service and HTTP permission cases in `test_119.py` (run against both adapters), one browser case in `routing.spec.ts`.
+
 ## After 1.27.0: Book a Resource Layout (2026-11-16, frontend only)
 
 Based on Loy's feedback in `claude/reports/2026-11-16-book-page-layout-feedback.md`.

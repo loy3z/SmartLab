@@ -2,6 +2,11 @@
 
 The API base path is `/api/v1/`, and every path ends with `/`. See [openapi.json](openapi.json) for the authoritative schema; after startup, `GET /api/schema/` returns the same definition.
 
+## 1.28.0: The Author Deletes an Ended Announcement (no migration)
+
+- `DELETE announcements/{id}/`: only the person who posted the announcement (`created_by`), for manual and resource-status announcements alike; anyone else, a Manager included, receives 403. The announcement must have ended (removed or expired), otherwise 409 `ANNOUNCEMENT_ACTIVE`. Returns 204; the row is deleted permanently and the audit log keeps `ANNOUNCEMENT_DELETED` with the title.
+- UI: on the Announcements page, an ended announcement shows **Delete** to its author, with a confirmation that it cannot be undone.
+
 ## 1.27.0: Extensions Require Manager Approval (migration 016)
 
 - `POST bookings/{id}/extend/ {end}`: a booking-holder request no longer applies immediately. The returned booking contains `extension_end` while `end` remains unchanged, and the Manager receives `EXTENSION_REQUESTED`. Submitting again replaces the request. A Manager call still applies immediately. Submission checks only opening hours, the resource's own maximum duration, time step, and whether later time is free; the Manager decides the three-hour per-booking and weekly-hours limits.
@@ -617,6 +622,7 @@ PUT changes only the submitted columns. Unknown categories, unknown columns, or 
 | POST | `announcements/` | Admin/Manager; `{title,body,expires_at?}`, 201 |
 | PATCH | `announcements/{id}/` | Author of a manual announcement only; partially update `title`, `body`, `expires_at`, 200 |
 | POST | `announcements/{id}/remove/` | Author or Manager; empty object, soft archive, 200; repeated removal does not duplicate the audit record |
+| DELETE | `announcements/{id}/` | 1.28.0, author only, ended announcements only; permanent, 204; 409 `ANNOUNCEMENT_ACTIVE` while still shown |
 
 A student calling any announcement write endpoint receives 403 before request-body validation, even with an invalid body; form errors are not returned first. After trimming whitespace, `title` must contain 1–120 characters and `body` 1–1000 characters. `expires_at` is a timezone-aware ISO datetime or null (never expires). Requests cannot specify fields such as `kind`, `resource_id`, author, or status; doing so returns 400. A Manager may remove another person's manual announcement but may not edit it. An Admin may not edit or remove another person's announcement. Status announcements return 403 through these write endpoints.
 

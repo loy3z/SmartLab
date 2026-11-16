@@ -2365,6 +2365,34 @@ for (const role of ['STUDENT', 'ADMIN', 'MANAGER'] as Role[]) {
   })
 }
 
+// 2026-11-16 (Loy): whoever posted an announcement can delete it from the history once it has ended.
+test('announcements: only the author sees Delete on an ended notice, and it leaves the history', async ({ page }) => {
+  const ended = { id: 'mine', title: 'Old notice', body: 'Finished.', kind: 'MANUAL', resource_id: null,
+    created_by: users.ADMIN.id, author_role: 'ADMIN', author: { id: users.ADMIN.id, display_name: 'Test Admin', role: 'ADMIN' },
+    created_at: '2026-10-26T00:00:00Z', updated_at: '2026-10-26T00:00:00Z', expires_at: null, expected_back: null,
+    removed_at: '2026-10-27T00:00:00Z', active: false }
+  const notices = [ended, { ...ended, id: 'theirs', title: 'Manager notice', created_by: users.MANAGER.id }]
+  const deleted: string[] = []
+  await page.route('**/api/v1/announcements/**', async route => {
+    if (route.request().method() === 'DELETE') {
+      deleted.push(new URL(route.request().url()).pathname)
+      notices.shift()
+      return route.fulfill({ status: 204 })
+    }
+    return route.fulfill({ json: { count: notices.length, results: notices } })
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'ADMIN')
+  await page.goto('/#/admin/announcements')
+  await expect(page.getByRole('button', { name: 'Delete Manager notice' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Delete Old notice', exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText('This cannot be undone.')
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete announcement', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Old notice' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Manager notice' })).toBeVisible()
+  expect(deleted).toEqual(['/api/v1/announcements/mine/'])
+})
+
 test('1.19 announcements: staff manage own notices; public boards show signatures; no 390px overflow', async ({ page }, testInfo) => {
   const base = { id: 'own', title: 'Safety update', body: 'Read the updated lab guidance.', kind: 'MANUAL', resource_id: null,
     created_by: users.ADMIN.id, author_role: 'ADMIN', author: { id: users.ADMIN.id, display_name: 'Test Admin', role: 'ADMIN' },

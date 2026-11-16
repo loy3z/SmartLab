@@ -411,6 +411,10 @@ class PostgresRepository:
     def list_announcements(self):
         return _filtered(Announcement)
 
+    def delete_announcement(self, announcement_id):
+        with connection.cursor() as cursor:
+            cursor.execute('DELETE FROM public.announcement WHERE id = %s', [_uuid(announcement_id)])
+
     def get_calendar_feed(self, principal_id):
         return _get(CalendarFeed, principal_id)
 

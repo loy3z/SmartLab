@@ -72,6 +72,18 @@ class AnnouncementsMixin:
                 self._audit(actor.id, 'ANNOUNCEMENT_REMOVED', 'announcement', item.id)
             return item
 
+    def delete_announcement(self, actor, announcement_id):
+        """2026-11-16 (Loy): only the person who posted it clears an ended announcement from the history, for good."""
+        self.require_staff(actor)
+        with self.repo.atomic():
+            item = self._announcement(announcement_id)
+            if actor.id != item.created_by:
+                raise DomainError('FORBIDDEN', 'Only the person who posted an announcement can delete it.', 403)
+            if item.removed_at is None and (item.expires_at is None or item.expires_at > self.now()):
+                raise DomainError('ANNOUNCEMENT_ACTIVE', 'Remove this announcement from the home pages before deleting it.', 409)
+            self.repo.delete_announcement(item.id)
+            self._audit(actor.id, 'ANNOUNCEMENT_DELETED', 'announcement', item.id, title=item.title)
+
     def _status_announcement(self, actor, resource, expected_back=None):
         """Only set_resource_status calls this, inside its existing resource transaction.
 

@@ -12,3 +12,6 @@ export const createAnnouncement = (values: { title: string; body: string; expire
 export const updateAnnouncement = (id: string, values: { title: string; body: string; expires_at: string | null }) => request<Announcement>(`announcements/${id}/`, { method: 'PATCH', body: JSON.stringify(values) })
 
 export const removeAnnouncement = (id: string) => post<Announcement>(`announcements/${id}/remove/`, {})
+
+// 2026-11-16: the author clears an ended announcement from the history for good.
+export const deleteAnnouncement = (id: string) => request<void>(`announcements/${id}/`, { method: 'DELETE' })

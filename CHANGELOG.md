@@ -2,6 +2,10 @@
 
 This file records what changed in each update and why. Other documents describe only the current rules. Version numbers refer to the API version in `backend/docs/openapi.json`, and migrations refer to scripts in `backend/database/migrations/`. The newest entries appear first.
 
+## After 1.28.0: The Change-Time Dialog Counts the Week Without the Booking Being Moved (2026-11-17, API unchanged)
+
+- A student whose week was full (12 h) opened “Change time” on one booking and read “0 h left of your 12 h”, although moving it within the same week is allowed: submitting a change already leaves the old booking out of the weekly count. `availability` now does the same for `week_hours` when `exclude_booking_id` is given (`services/availability.py`, `checks.py` `week_hours`), so the dialog shows the hours the move can use (3 h in this example). The booking dialog and the Dashboard are unchanged. Test: `test_change_requests.py` `test_the_change_window_shows_the_hours_the_moved_booking_gives_back` (failed before the change).
+
 ## After 1.28.0: Running Migration 005 Again Keeps Changed Staff Passwords (2026-11-17, no new migration)
 
 - `005_resource_category_demo_password.sql` set the two demo staff accounts (z9000001, z9000002) to the demo password every time it ran, so running the whole set of migrations again, as `backend/database/README.md` recommends, undid a password that had been changed. It now replaces only the earlier demo password from 003. A database upgraded from before 005 ends up the same as before; a database where the password was changed keeps it. Checked in a temporary database: before the change a changed password was reset, after it the password is kept on the first and the second run.

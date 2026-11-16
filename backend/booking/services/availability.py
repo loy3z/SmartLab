@@ -48,7 +48,8 @@ class AvailabilityMixin:
         result = self._availability(actor, self.resource(resource_id), day, duration_minutes, exclude_booking_id,
                                     for_zid, urgent, additional_hours=additional_hours, long_booking=long_booking)
         # 2026-11-10 (U1): the allowance of the week being booked (not in the day overview: one extra read per resource).
-        result["week_hours"] = self.week_hours(result["booking_for"]["id"], day)
+        # The booking being moved gives its hours back, as it does when the change is submitted.
+        result["week_hours"] = self.week_hours(result["booking_for"]["id"], day, exclude_booking_id)
         return result
 
     def _availability(self, actor, resource, day, duration_minutes=30, exclude_booking_id=None, for_zid=None,

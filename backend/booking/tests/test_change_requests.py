@@ -115,6 +115,14 @@ class ChangeRequestTests(Sprint3Fixture, SimpleTestCase):
         change = self.change(week[0], days=1, hour=14, minutes=180)
         self.assertEqual(change.status, BookingStatus.PENDING_APPROVAL)
 
+    def test_the_change_window_shows_the_hours_the_moved_booking_gives_back(self):
+        week = [self.approved(days=day, hour=8, minutes=180) for day in (1, 2, 3, 4)]
+        day = self.today + timedelta(days=2)
+        booking_window = self.service.availability(self.student, self.room.id, day)
+        change_window = self.service.availability(self.student, self.room.id, day, exclude_booking_id=week[0].id)
+        self.assertEqual(booking_window["week_hours"]["used_hours"], 12)
+        self.assertEqual(change_window["week_hours"]["used_hours"], 9)
+
     def test_pending_change_preserves_the_remaining_weekly_allowance(self):
         week = [self.approved(days=day, hour=8, minutes=180) for day in (1, 2, 3)]
         change = self.change(week[0], days=1, hour=14, minutes=180)

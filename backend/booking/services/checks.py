@@ -244,8 +244,10 @@ class ChecksMixin:
         return self._weekly_limit_violation(booking.student_id, self.resource(booking.resource_id),
                                             booking.start, booking.end, exclude_id=booking.id)
 
-    def week_hours(self, student_id, day=None):
+    def week_hours(self, student_id, day=None, exclude_id=None):
         """Hours booked against the weekly allowance in the Sydney week of ``day`` (default: this week).
+
+        exclude_id: a booking that is being moved, so its own hours do not count.
 
         Dashboard (2026-11-03) shows this week; the booking window (2026-11-10, U1) shows the week being booked.
         """
@@ -254,7 +256,7 @@ class ChecksMixin:
         day = day or self.now().astimezone(zone).date()
         week_start = day - timedelta(days=day.weekday())
         hours = lambda slots: slots * rules.booking_slot_minutes / 60  # noqa: E731
-        return {"week_start": week_start.isoformat(), "used_hours": hours(self._week_slots_used(student_id, zone, week_start)),
+        return {"week_start": week_start.isoformat(), "used_hours": hours(self._week_slots_used(student_id, zone, week_start, exclude_id)),
                 "limit_hours": hours(rules.max_slots_per_week)}
 
     def _future_booking_limit_violation(self, student_id, exclude_id=None, additional_count=0):

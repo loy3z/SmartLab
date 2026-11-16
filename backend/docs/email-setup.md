@@ -34,7 +34,7 @@ Demo zIDs might belong to real students, so by default no email is sent to an ad
 | `redirect` | Redirect every message to `EMAIL_REDIRECT_TO` and identify the original recipient in the body. **Use this for demonstrations** so every user's email reaches your own mailbox |
 | `all` | Send to every user's university email address; use only in production |
 
-## First-time setup (Loy's computer, PowerShell)
+## First-time setup (PowerShell)
 
 1. Create a Gmail account for the system mailbox and enable two-step verification.
 2. Open <https://myaccount.google.com/apppasswords>, create an app password named SmartLab and copy the 16 letters. **Never send this password through chat or put it in documentation or code.**

@@ -2,8 +2,7 @@
 # Sprint 3 (2026-10-25): wait for PostgreSQL, create the schema (and, for a demo, the demo data) when the
 # database is new, then serve with gunicorn.
 #
-# Migrations are NOT run on every start (review 2026-10-25): schema.sql is already the latest structure, and
-# migration 005 resets the demo staff passwords, so re-running it would undo password changes. When a later
+# Migrations are NOT run on every start: schema.sql is already the latest structure. When a later
 # release adds a migration, apply it once with the new image before switching containers (DEPLOY.md section 3):
 #   docker compose --env-file .env.docker build
 #   docker compose --env-file .env.docker run --rm api migrate database/migrations/009_example.sql

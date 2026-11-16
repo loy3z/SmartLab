@@ -18,7 +18,7 @@ One person should be able to run the project locally within 10 minutes and demon
 | S2-4 | Workflow refinement | Known defects exist | Fix the blank state after changing dates in SlotPicker, layout shifts on 17 busy buttons, and five pieces of dead code (bell movement, two page fade-ins, double dialog entrance, two reduced-motion rules and the unused `App.css`) | Changing dates displays `Loading times…`; button width stays fixed while busy; bell behaviour is explicit (either it rings or is removed completely) | ○ |
 | S2-5 | Remove remaining AI-like presentation | First pass (copy, font size, font and naming) complete | Replace decoration with information, replace demonstration data with realistic data, and accept work by task | Check each item against Section 4 of `claude/reports/2026-10-25-ai-flavor-sources.md` | ◐ |
 | S2-6 | Local deployment | `start-backend.ps1` (migration + startup), in-memory/PostgreSQL modes and frontend `npm run dev` exist | Add a beginner-friendly startup guide covering what to install, commands to run, seed data, demonstration accounts and common errors | A new machine can run the project and sign in by following the guide | ◐ |
-| S2-7 | Stability | Unknown | Run the complete `claude-tools/check-local.sh` suite and fix failures | env, backend, pg, OpenAPI, unit, lint, build and e2e all PASS, or the reason for each SKIP is documented | ○ |
+| S2-7 | Stability | Unknown | Run the complete local check suite and fix failures | env, backend, pg, OpenAPI, unit, lint, build and e2e all PASS, or the reason for each SKIP is documented | ○ |
 
 ## Explicitly out of Sprint 2 scope
 
@@ -34,7 +34,7 @@ One person should be able to run the project locally within 10 minutes and demon
 | Calendar subscription | `backend/booking/ics.py`, `features/booking/CalendarSubscribe.tsx` |
 | Outlook through the main account | `backend/booking/outlook.py`, `calendar_sync.py`, `OUTLOOK_INVITE_MODE` |
 | Local startup | `backend/start-backend.ps1` (local file, not committed to Git), `npm run dev` in `frontend` |
-| Tests | `claude-tools/check-local.sh` |
+| Tests | `python manage.py test booking` in `backend`; `npm test`, `npm run lint`, `npm run build` and `npx playwright test` in `frontend` |
 
 ## Acceptance
 

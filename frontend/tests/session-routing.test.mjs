@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { canAccess, homePath, isKnownPath, loginDestination, normalizePath } from '../src/app/routes.ts'
 
-// Everyone books under the same rules (client, 17 Oct). Staff also review and manage; the dashboard is the student home.
+// Everyone books under the same rules. Staff also review and manage; the dashboard is the student home.
 const bookingPaths = ['/resources', '/bookings', '/induction']
 const staffPaths = ['/admin/qualifications', '/admin/bookings', '/admin/calendar-sync']
 const sharedPaths = ['/account', '/help']
@@ -10,7 +10,7 @@ const roles = ['STUDENT', 'ADMIN', 'MANAGER']
 
 test('each role lands on a page it can actually access', () => {
   assert.equal(homePath('STUDENT'), '/dashboard')
-  // Sprint 3 (1.16.0): staff start on Today; 2026-11-07: a Manager starts on the Lab overview.
+  // Staff start on Today; a Manager starts on the Lab overview.
   assert.equal(homePath('ADMIN'), '/admin/today')
   assert.equal(homePath('MANAGER'), '/manager/home')
   for (const role of roles) {
@@ -78,9 +78,9 @@ test('login rejects forbidden, unknown, external and malformed return destinatio
     assert.equal(loginDestination({ from }, 'STUDENT'), '/dashboard')
   }
   for (const state of [null, undefined, {}, 'invalid', { from: '/dashboard' }]) {
-    assert.equal(loginDestination(state, 'ADMIN'), '/admin/today') // Sprint 3 (1.16.0)
+    assert.equal(loginDestination(state, 'ADMIN'), '/admin/today')
   }
-  assert.equal(loginDestination({ from: '/dashboard' }, 'MANAGER'), '/manager/home') // 2026-11-07: Manager home page
+  assert.equal(loginDestination({ from: '/dashboard' }, 'MANAGER'), '/manager/home') // Manager home page
   assert.equal(loginDestination({ from: '/manager/users' }, 'ADMIN'), '/admin/today')
   assert.equal(loginDestination({ from: '/resources' }, 'MANAGER'), '/resources')
 })

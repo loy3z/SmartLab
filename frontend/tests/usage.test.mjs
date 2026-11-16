@@ -1,4 +1,4 @@
-// Sprint 3: display helpers of the Manager usage report.
+// Display helpers of the Manager usage report.
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { lastFourWeeks, percent, sortUsage } from '../src/features/manager/usage.ts'

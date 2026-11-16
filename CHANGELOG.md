@@ -8,6 +8,7 @@ Code comments no longer start with tags such as “Sprint 3 (1.16.0):”, “202
 
 - `backend/booking/` and `backend/config/`: comments and docstrings. Section headers that only said “Sprint 3” now name what follows.
 - `frontend/src/`: comments in TypeScript, TSX and CSS. Two CSS comments that only recorded where an old rule had been (`app/shell.css`, `index.css`) are deleted.
+- `frontend/tests/`: comments only; test names are unchanged.
 
 ## After 1.28.0: Running Migration 005 Again Keeps Changed Staff Passwords (2026-11-17, no new migration)
 

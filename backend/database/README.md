@@ -46,7 +46,7 @@ If creation succeeds but import fails, fix the cause and rerun only the import c
 
 ### Upgrade an existing database to the latest structure
 
-To avoid rebuilding, apply every script in `database/migrations/` in numerical order. Each script is repeatable, skips work already complete and, except where explicitly noted below, does not delete data. Running them against an up-to-date database makes no change, so it is safe to run the complete set without first finding the current version:
+To avoid rebuilding, apply every script in `database/migrations/` in numerical order. Each script is repeatable, skips work already complete and, except where explicitly noted below, does not delete data. It is safe to run the complete set without first finding the current version. Running them against an up-to-date database changes one thing only: 001 sets the review deadline of any resource that is exactly 30 minutes (the original default) to 1440 minutes. Staff passwords are never reset: 005 replaces only the earlier demo password from 003.
 
 ```powershell
 Get-ChildItem .\database\migrations\*.sql | Sort-Object Name | ForEach-Object {
@@ -63,7 +63,7 @@ Each file prompts once for the PostgreSQL password. Set `$pgBin` and `$dbName` a
 | `002_week5_rules.sql` | Induction prerequisites `prerequisite_ids`, containing room `room_id`; demo Advanced → General and equipment rooms |
 | `003_staff_sign_in.sql` | New `staff_credential` table for password hashes and invites; demo passwords set, other existing staff receive activation invites |
 | `004_staff_booking_urgent.sql` | Add `created_by`, `urgent`, `urgent_reason` to `booking`; existing `created_by` becomes `student_id` |
-| `005_resource_category_demo_password.sql` | Add `bookable_resource.category`, populate fictional categories only when empty; set demo z9000001/z9000002 password to `123` |
+| `005_resource_category_demo_password.sql` | Add `bookable_resource.category`, populate fictional categories only when empty; change demo z9000001/z9000002 from the earlier demo password to `123` (a password changed since then is kept) |
 | `006_calendar_notifications_attendance_series.sql` | Add `notification`, `calendar_feed`, `unfreeze_request`, `booking_series`; add `no_show_count`, `frozen_until` to `app_users`; add `series_id`, `attendance`, `checked_in_at` to `booking`. On first run, approved bookings already started become `NOT_TRACKED`, not absent |
 | `007_change_requests_guidance_details_contact.sql` | 1.16.0: add `booking.replaces_id` for change requests and a partial unique index for one unresolved change per booking; add four guidance fields to `qualification_requirement`; add room-only `capacity` 1–1000 and `details` JSON array to resources; add one-row `site_contact`. Existing data unchanged |
 | `008_notification_preferences.sql` | Per-person/category in-app switch `notification_preference.enabled` |
@@ -75,59 +75,6 @@ Each file prompts once for the PostgreSQL password. Set `$pgBin` and `$dbName` a
 | `014_remove_booking_freeze.sql` | 1.25.0: remove freeze table `unfreeze_request`, `app_users.no_show_count`, `frozen_until` and constraints. **Deletes freeze data**, while `booking.attendance` remains. Before rolling back to pre-1.25 code, rerun 006 to restore empty columns/tables |
 | `015_resource_internal_info.sql` | 1.26.0: new one-row-per-resource `resource_internal_info` for owner, UNSW asset number, source and specifications, Manager-only; cascades on resource deletion. Adds only a table |
 | `016_extension_requests.sql` | 1.27.0: add `booking.extension_end`, a requested later end awaiting Manager approval, with a later-than-`end` constraint; existing rows are NULL |
-
-### Upgrade an existing database for long-booking requests
-
-Apply 012 before 013, then start a backend with long-booking support. Migration 013 only adds `long_booking`, `long_booking_reason` and consistency constraints and is repeatable. Existing normal and 012 additional-hours bookings retain time, state, review and hold data. A new `schema.sql` database already includes both.
-
-```powershell
-& "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\012_additional_hours_requests.sql' --file='.\database\migrations\013_long_booking_requests.sql'
-if ($LASTEXITCODE -ne 0) { throw '012/013 upgrade failed and the transaction was rolled back.' }
-```
-
-`long_booking=true` requires a non-empty reason, `urgent=false`, `additional_hours=false` and `series_id=NULL`. It uses ordinary pending holds and first-come waitlisting, so `hold_until` and `review_due_at` are permitted. The business layer requires an explicit Manager decision and never auto-approves it. `start`/`end` and `reviewed_by`/`reviewed_at` store the exact authorised interval and review.
-
-### Upgrade an existing database for additional weekly hours
-
-Before deploying this backend against a database at 011, apply 012. Apply missing earlier scripts first in order. It adds four fields and consistency constraints without changing existing state, time, review or hold information and is repeatable. New databases already have the same structure.
-
-```powershell
-& "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\012_additional_hours_requests.sql'
-if ($LASTEXITCODE -ne 0) { throw '012 upgrade failed and the transaction was rolled back.' }
-```
-
-`additional_hours` and `additional_hours_reason` store the request and reason. `active_data_collection` and `data_collection_reason` store the applicant's claim. `hold_until` and `review_due_at` must be empty: it can be submitted early, holds no time while awaiting a Manager and is outside ordinary automatic approval. A Manager may approve only within the configured pre-start window, default 48 hours. An unresolved request expires at the start and occupies time under existing `APPROVED` rules only after approval. `start`/`end`, `reviewed_by`/`reviewed_at` store the approved scope; the audit stores priority basis, order, approval window and confirmation of the collection claim.
-
-### Upgrade an existing database for the durable email queue
-
-Apply 011 before deploying reliable email retries. It adds a table and indexes. A database that ran the original 011 has its generated foreign-key name changed to `email_delivery_notification_fk`, retaining the constraint and email records. It changes no booking or notification and is repeatable:
-
-```powershell
-& "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\011_durable_email_delivery.sql'
-if ($LASTEXITCODE -ne 0) { throw '011 upgrade failed and the transaction was rolled back.' }
-```
-
-### Upgrade an existing database to 1.20.0 (Sprint 3)
-
-For a database at 009, apply `010_booking_history_removal.sql`. It is repeatable and does not change existing bookings. New databases contain the table in `schema.sql`. Old backend code ignores the additional table; migrate before sending traffic to the new backend.
-
-```powershell
-& "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\010_booking_history_removal.sql'
-if ($LASTEXITCODE -ne 0) { throw '010 upgrade failed and the transaction was rolled back.' }
-```
-
-`booking_history_removal(principal_id, booking_id, removed_at)` affects only personal-list visibility, not reporting, attendance or calendar data. Verify new/upgrade schema consistency with `bash claude-tools/check-local.sh schema`. This iteration was not deployed.
-
-### Upgrade an existing database to 1.19.0 (Sprint 3)
-
-For a database at 008, apply only 009. It preserves old in-app choices and enables email by default. Announcement `author_role` stores the publishing role; `expected_back` is an estimate; a status announcement must have `expires_at = null`. Manual announcements have no resource or recovery estimate. `removed_by` and `created_by` retain foreign keys and soft-removal history.
-
-```powershell
-& "$pgBin\psql.exe" --host=localhost --port=5432 --username=postgres --password --dbname=$dbName --no-psqlrc --set=ON_ERROR_STOP=1 --single-transaction --file='.\database\migrations\009_announcements_notification_channels.sql'
-if ($LASTEXITCODE -ne 0) { throw '009 upgrade failed and the transaction was rolled back.' }
-```
-
-Migration 009 is repeatable. Use `bash claude-tools/check-local.sh schema` to verify structural equality between a new database and an upgraded HEAD database after running migrations twice. This local check uses temporary databases and is not a production upgrade. EC2 was not redeployed in this iteration. Do not rerun old migration 005 merely to reach 009 because it resets demo staff passwords.
 
 The schema-only dump of an upgraded database must exactly match one created from `schema.sql` and seeds. For every schema change, create one new database and one from old scripts, run every migration twice on the latter, and compare `pg_dump --schema-only`.
 
@@ -246,6 +193,6 @@ Other tests, `python manage.py test booking`, use memory storage. Clear `REPOSIT
 
 Section 6 integration tests and Section 2 upgrade verification pass on PostgreSQL 16. `process_due` runs in database mode. Full-stack upload, review, request, approval and room-status changes persist after backend restart.
 
-This adapter is for local integration. Database advisory locks serialise writes. Tests cover correctness for concurrent requests to the same time, but this alone does not constitute production performance acceptance.
+Database advisory locks serialise writes. Tests cover correctness for concurrent requests to the same time, but this alone does not constitute production performance acceptance.
 
 When committing, select only the documentation, initial SQL, adapter and configuration changes. Never commit `.env`, database passwords, complete data backups or personal test attachments.

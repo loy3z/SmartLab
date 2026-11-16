@@ -1,4 +1,4 @@
-"""Sprint 3: Managers add, edit, archive and restore rooms and equipment on the website (booking/services/resources.py)."""
+"""Managers add, edit, archive and restore rooms and equipment on the website (booking/services/resources.py)."""
 
 from datetime import time, timedelta
 from uuid import uuid4

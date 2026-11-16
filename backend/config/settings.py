@@ -30,7 +30,7 @@ DATABASES = {
         "PASSWORD": os.getenv("DB_PASSWORD", ""),
         "HOST": os.getenv("DB_HOST", "localhost"),
         "PORT": os.getenv("DB_PORT", "5432"),
-        # 2026-10-29 (load test S3): keep a worker's connection for this many seconds instead of opening one per
+        # Keep a worker's connection for this many seconds instead of opening one per
         # request (about 12 ms each); 0 turns reuse off. Health checks drop a connection the server has closed.
         # Safe with the write lock: pg_advisory_xact_lock ends with its transaction.
         "CONN_MAX_AGE": int(os.getenv("DB_CONN_MAX_AGE", "60")),
@@ -53,12 +53,12 @@ AUTH_PROVIDER = os.getenv("AUTH_PROVIDER", "booking.authentication.DemoIdentityP
 REPOSITORY_FACTORY = os.getenv("REPOSITORY_FACTORY", "booking.repository.MemoryRepository")
 FILE_STORAGE_FACTORY = os.getenv("FILE_STORAGE_FACTORY", "booking.storage.MemoryFileStorage")
 SEED_DEMO_DATA = DEBUG and os.getenv("SEED_DEMO_DATA", "true").lower() == "true"
-DEMO_TOKEN_TTL_SECONDS = 8 * 3600  # 2026-11-10 (U5): one hour ended the session in the middle of a form
+DEMO_TOKEN_TTL_SECONDS = 8 * 3600  # One hour ended the session in the middle of a form
 # Review window for the demo resources: a pending request holds its slot this long while an Admin decides;
 # if nobody does, the system approves it when it still follows the rules and rejects it otherwise.
-# Default 24 hours (client meeting); a Manager may change it per resource (1 to 20160 minutes).
+# Default 24 hours (the client's choice); a Manager may change it per resource (1 to 20160 minutes).
 DEFAULT_PENDING_HOLD_MINUTES = int(os.getenv("DEFAULT_PENDING_HOLD_MINUTES", "1440"))
-# Sprint 1 fixed policy: verified induction lasts one term, counted in days from approval.
+# Fixed policy: verified induction lasts one term, counted in days from approval.
 # The demo uses this default while the client policy is unconfirmed. See backend/README.md for qualification sources and expiry.
 QUALIFICATION_VALIDITY_DAYS = int(os.getenv("QUALIFICATION_VALIDITY_DAYS", "120"))
 if not 1 <= QUALIFICATION_VALIDITY_DAYS <= 3650:
@@ -77,7 +77,7 @@ if not 0 <= MIN_ADVANCE_DAYS <= MAX_ADVANCE_DAYS <= 365 or MAX_ADVANCE_DAYS < 1:
 # Fair-use rules confirmed by the client, validated by booking.rules.BookingRules. One quota slot is
 # 30 minutes; a normal request may use 6 slots, a person may hold 24 slots per local week,
 # and at most 8 active future bookings.
-# Check-in and the longest weekly series remain configurable below (the booking freeze was removed on 2026-11-07).
+# Check-in and the longest weekly series remain configurable below (the booking freeze was removed).
 BOOKING_SLOT_MINUTES = int(os.getenv("BOOKING_SLOT_MINUTES", "30"))
 MAX_SLOTS_PER_BOOKING = int(os.getenv("MAX_SLOTS_PER_BOOKING", "6"))
 MAX_SLOTS_PER_WEEK = int(os.getenv("MAX_SLOTS_PER_WEEK", "24"))
@@ -86,14 +86,14 @@ ADDITIONAL_HOURS_APPROVAL_WINDOW_HOURS = int(os.getenv("ADDITIONAL_HOURS_APPROVA
 CHECK_IN_OPENS_MINUTES = int(os.getenv("CHECK_IN_OPENS_MINUTES", "15"))
 CHECK_IN_CLOSES_MINUTES = int(os.getenv("CHECK_IN_CLOSES_MINUTES", "30"))
 MAX_SERIES_WEEKS = int(os.getenv("MAX_SERIES_WEEKS", "14"))
-# Sprint 3 reminders in the notification bell.
+# Reminders in the notification bell.
 REMINDER_HOURS_BEFORE = int(os.getenv("REMINDER_HOURS_BEFORE", "24"))
 INDUCTION_REMINDER_DAYS = int(os.getenv("INDUCTION_REMINDER_DAYS", "14"))
-# Sprint 3: extra delivery channels for notifications (website notifications are always stored). Comma-separated dotted
+# Extra delivery channels for notifications (website notifications are always stored). Comma-separated dotted
 # paths of classes implementing booking.notification_channels.NotificationChannel (e.g. a future Outlook mail channel).
 NOTIFICATION_CHANNELS = [x.strip() for x in os.getenv("NOTIFICATION_CHANNELS", "").split(",") if x.strip()]
 
-# Sprint 3: email notifications from a system mailbox (Gmail SMTP with an app password; see docs/email-setup.md).
+# Email notifications from a system mailbox (Gmail SMTP with an app password; see docs/email-setup.md).
 # Set the password only as an environment variable; never put it in a file in the repository.
 EMAIL_ENABLED = os.getenv("EMAIL_ENABLED", "false").lower() == "true"
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
@@ -121,15 +121,15 @@ EMAIL_NOTIFICATION_KINDS = [x.strip() for x in os.getenv("EMAIL_NOTIFICATION_KIN
     "BOOKING_SUBMITTED", "BOOKING_CREATED_FOR_YOU", "SERIES_CREATED", "SERIES_CREATED_FOR_YOU",
     "BOOKING_APPROVED", "BOOKING_REJECTED", "BOOKING_EXPIRED", "BOOKING_PROMOTED", "BOOKING_RESCHEDULED",
     "BOOKING_CANCELLED", "BOOKING_REMINDER", "INDUCTION_EXPIRING",
-    # Sprint 3 (1.16.0): change requests and resources going out of / back into service.
+    # Change requests and resources going out of / back into service.
     "CHANGE_REQUESTED", "CHANGE_APPROVED", "CHANGE_REJECTED", "RESOURCE_OUT_OF_SERVICE", "RESOURCE_REOPENED",
-    # 2026-11-07: the decision on an extension request (the person may already be in the lab).
+    # The decision on an extension request (the person may already be in the lab).
     "EXTENSION_APPROVED", "EXTENSION_REJECTED"])).split(",") if x.strip()]
 # Address of the web app, used for links in emails.
 SITE_URL = os.getenv("SITE_URL", "http://localhost:5173").strip()
 if EMAIL_ENABLED and "booking.email_channel.EmailChannel" not in NOTIFICATION_CHANNELS:
     NOTIFICATION_CHANNELS.append("booking.email_channel.EmailChannel")
-# 2026-10-27: print the booking app's INFO lines (email sent / skipped, with times) in the server log
+# Print the booking app's INFO lines (email sent / skipped, with times) in the server log
 # (docker compose logs api). Without this, Python showed only warnings and errors.
 LOGGING = {
     "version": 1,

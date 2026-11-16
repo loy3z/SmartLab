@@ -1,4 +1,4 @@
-"""Sprint 3: Calendar subscription link: each person's approved bookings as an iCalendar feed (see booking/ics.py).
+"""Calendar subscription link: each person's approved bookings as an iCalendar feed (see booking/ics.py).
 
 The link contains a random token generated here; it is the only key to the feed, so a person can make a new one
 at any time and the old link stops working. No Microsoft sign-in or permission is involved.

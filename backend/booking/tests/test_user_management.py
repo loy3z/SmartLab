@@ -114,7 +114,7 @@ class UserManagementAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual((booking.status.value, booking.reason_code), ("REJECTED", "ACCOUNT_DEACTIVATED"))
 
     def test_deactivating_a_student_cancels_their_future_approved_bookings(self):
-        # 2026-11-10 (U3): an approved booking of a deactivated person no longer holds the time; they are told.
+        # An approved booking of a deactivated person no longer holds the time; they are told.
         approved = self.create_approved()
         self.assertEqual(approved["status"], "APPROVED")
         self.patch("z1000001", {"active": False})
@@ -145,7 +145,7 @@ class UserManagementAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(self.verified.get("/api/v1/auth/me/").status_code, 200)
 
     def test_a_deactivated_student_is_told_so_at_sign_in(self):
-        # 2026-11-10 (U4): before, they were told to create the account first, and creating it said the zID existed.
+        # Before, they were told to create the account first, and creating it said the zID existed.
         self.patch("z1000001", {"active": False})
         response = self.client.post("/api/v1/auth/demo-login/", {"zid": "z1000001"}, format="json")
         self.assert_error(response, 403)

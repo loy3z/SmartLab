@@ -1,4 +1,4 @@
-"""HTTP views: series (split from booking/views.py on 2026-10-25)."""
+"""HTTP views: series (split from booking/views.py)."""
 
 from ._common import *  # noqa: F401,F403 - shared imports, helpers and PublicView.
 
@@ -43,4 +43,4 @@ class SeriesCancelView(APIView):
         return Response(series_json(*service.series_detail(request.user, series.id)))
 
 
-# Sprint 3: resource setup (Manager) -------------------------------------------------------------------------
+# Resource setup (Manager) -------------------------------------------------------------------------

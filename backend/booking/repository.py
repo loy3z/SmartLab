@@ -15,10 +15,10 @@ from threading import RLock
 from typing import ContextManager, Iterator, Protocol, Sequence
 
 from .domain import (
-    SiteContact,  # Sprint 3 (1.16.0)
-    ResourceInternalInfo,  # 2026-11-07
-    Announcement,  # Sprint 3 (1.19.0)
-    NotificationPreference,  # Sprint 3 (2026-10-25)
+    SiteContact,
+    ResourceInternalInfo,
+    Announcement,
+    NotificationPreference,
     AuditRecord,
     Booking,
     BookingSeries,
@@ -41,12 +41,12 @@ def booking_matches(booking: Booking, *, statuses: Sequence[BookingStatus] | Non
                     end_from: datetime | None = None, due_by: datetime | None = None,
                     created_by: str | None = None, unmarked: bool = False,
                     extension_end_after: datetime | None = None) -> bool:
-    """The list_bookings keyword filters (2026-10-29, load test R1); PostgresRepository applies the same ones in SQL.
+    """The list_bookings keyword filters; PostgresRepository applies the same ones in SQL.
 
     Every bound is inclusive, so a filter only narrows what is read: callers still apply their own exact checks.
     due_by keeps bookings whose start or review deadline is at or before it (time processing);
     unmarked keeps bookings with no attendance recorded.
-    extension_end_after (Sprint 3) keeps requests whose proposed end has not yet passed (exclusive).
+    extension_end_after keeps requests whose proposed end has not yet passed (exclusive).
     """
     return ((statuses is None or booking.status in statuses)
             and (start_from is None or booking.start >= start_from)
@@ -63,7 +63,7 @@ def booking_matches(booking: Booking, *, statuses: Sequence[BookingStatus] | Non
 def submission_matches(submission: QualificationSubmission, *, student_ids: Sequence[str] | None = None,
                        statuses: Sequence[QualificationStatus] | None = None,
                        valid_from: datetime | None = None, valid_to: datetime | None = None) -> bool:
-    """The list_submissions keyword filters (2026-10-29, load test S8); PostgresRepository applies them in SQL.
+    """The list_submissions keyword filters; PostgresRepository applies them in SQL.
     valid_from / valid_to bound valid_until (inclusive) and skip submissions without one."""
     return ((student_ids is None or submission.student_id in student_ids)
             and (statuses is None or submission.status in statuses)
@@ -88,7 +88,7 @@ class Repository(Protocol):
     def list_requirements(self) -> list[QualificationRequirement]: ...
     def save_requirement(self, requirement: QualificationRequirement) -> None: ...
     def get_submission(self, submission_id: str) -> QualificationSubmission | None: ...
-    # 2026-10-29 (load test S8): keyword filters as for list_bookings (inclusive bounds; see submission_matches).
+    # Keyword filters as for list_bookings (inclusive bounds; see submission_matches).
     def list_submissions(
         self,
         student_id: str | None = None,
@@ -101,7 +101,7 @@ class Repository(Protocol):
     ) -> list[QualificationSubmission]: ...
     def save_submission(self, submission: QualificationSubmission) -> None: ...
     def get_booking(self, booking_id: str) -> Booking | None: ...
-    # 2026-10-29 (load test R1): the keyword filters let callers read only the rows they may need instead of every
+    # The keyword filters let callers read only the rows they may need instead of every
     # booking ever made. Time bounds are inclusive; callers keep their exact checks (see booking_matches above).
     def list_bookings(
         self,
@@ -118,7 +118,7 @@ class Repository(Protocol):
         extension_end_after: datetime | None = None,
     ) -> list[Booking]: ...
     def save_booking(self, booking: Booking) -> None: ...
-    # Sprint 3 (1.20.0): per-person visibility, separate from the shared booking.
+    # Per-person visibility, separate from the shared booking.
     def hidden_booking_ids(self, principal_id: str) -> set[str]: ...
     def hide_booking(self, principal_id: str, booking_id: str, at: datetime) -> None: ...
     def list_blocking_bookings(
@@ -132,13 +132,13 @@ class Repository(Protocol):
     def save_outlook_sync(self, record: OutlookSyncRecord) -> None: ...
     def get_credential(self, principal_id: str) -> StaffCredential | None: ...
     def save_credential(self, credential: StaffCredential) -> None: ...
-    # Sprint 3: notifications (newest first).
+    # Notifications (newest first).
     def save_notification(self, notification: Notification) -> None: ...
     def get_notification(self, notification_id: str) -> Notification | None: ...
     def list_notifications(self, recipient_id: str) -> list[Notification]: ...
-    # 2026-10-29 (load test S1): notifications of one kind about any of these bookings, for reminder de-duplication.
+    # Notifications of one kind about any of these bookings, for reminder de-duplication.
     def list_booking_notifications(self, kind: str, booking_ids: Sequence[str]) -> list[Notification]: ...
-    # 2026-10-29 (load test S8): notifications of one kind to any of these people (induction reminder de-duplication).
+    # Notifications of one kind to any of these people (induction reminder de-duplication).
     def list_kind_notifications(self, kind: str, recipient_ids: Sequence[str]) -> list[Notification]: ...
     def save_email_delivery(self, delivery: EmailDelivery) -> None: ...
     def get_email_delivery(self, notification_id: str) -> EmailDelivery | None: ...
@@ -146,12 +146,12 @@ class Repository(Protocol):
     def claim_email_deliveries(
         self, now: datetime, limit: int, worker_id: str, lease_until: datetime,
     ) -> list[EmailDelivery]: ...
-    # Sprint 3 (2026-10-25): per-person notification category choices (a missing row means enabled).
-    # Sprint 3 (1.19.0): announcement storage port.
+    # Per-person notification category choices (a missing row means enabled).
+    # Announcement storage port.
     def save_announcement(self, announcement: Announcement) -> None: ...
     def get_announcement(self, announcement_id: str) -> Announcement | None: ...
     def list_announcements(self) -> list[Announcement]: ...
-    def delete_announcement(self, announcement_id: str) -> None: ...  # 2026-11-16: the author clears an ended one
+    def delete_announcement(self, announcement_id: str) -> None: ...  # The author clears an ended one
     def save_notification_preference(self, preference: NotificationPreference) -> None: ...
     def list_notification_preferences(self, principal_id: str) -> list[NotificationPreference]: ...
     # Calendar subscription addresses (one per person).
@@ -161,10 +161,10 @@ class Repository(Protocol):
     # Weekly series made by staff; the occurrences are ordinary bookings with series_id.
     def save_series(self, series: BookingSeries) -> None: ...
     def get_series(self, series_id: str) -> BookingSeries | None: ...
-    # Sprint 3 (1.16.0): the lab's contact details (one record; None until a Manager saves it).
+    # The lab's contact details (one record; None until a Manager saves it).
     def get_site_contact(self) -> SiteContact | None: ...
     def save_site_contact(self, contact: SiteContact) -> None: ...
-    # 2026-11-07: Manager-only internal information, one record per resource.
+    # Manager-only internal information, one record per resource.
     def get_resource_internal_info(self, resource_id: str) -> ResourceInternalInfo | None: ...
     def save_resource_internal_info(self, info: ResourceInternalInfo) -> None: ...
 
@@ -184,18 +184,18 @@ class MemoryRepository:
         self._requirements: dict[str, QualificationRequirement] = {}
         self._submissions: dict[str, QualificationSubmission] = {}
         self._bookings: dict[str, Booking] = {}
-        self._hidden_bookings: dict[tuple[str, str], datetime] = {}  # Sprint 3 (1.20.0)
+        self._hidden_bookings: dict[tuple[str, str], datetime] = {}
         self._audit: list[AuditRecord] = []
         self._outlook_sync: dict[str, OutlookSyncRecord] = {}
         self._credentials: dict[str, StaffCredential] = {}
         self._notifications: dict[str, Notification] = {}
         self._email_deliveries: dict[str, EmailDelivery] = {}
         self._notification_preferences: dict[str, NotificationPreference] = {}
-        self._announcements: dict[str, Announcement] = {}  # Sprint 3 (1.19.0)
+        self._announcements: dict[str, Announcement] = {}
         self._calendar_feeds: dict[str, CalendarFeed] = {}
         self._series: dict[str, BookingSeries] = {}
-        self._site_contact: SiteContact | None = None  # Sprint 3 (1.16.0)
-        self._resource_internal: dict[str, ResourceInternalInfo] = {}  # 2026-11-07
+        self._site_contact: SiteContact | None = None
+        self._resource_internal: dict[str, ResourceInternalInfo] = {}
 
     @contextmanager
     def atomic(
@@ -210,7 +210,7 @@ class MemoryRepository:
                 self._requirements.copy(),
                 self._submissions.copy(),
                 self._bookings.copy(),
-                self._hidden_bookings.copy(),  # Sprint 3 (1.20.0): include visibility in rollback.
+                self._hidden_bookings.copy(),  # Include visibility in rollback.
                 deepcopy(self._audit),
                 self._outlook_sync.copy(),
                 self._credentials.copy(),
@@ -218,9 +218,9 @@ class MemoryRepository:
                 self._email_deliveries.copy(),
                 self._calendar_feeds.copy(),
                 self._series.copy(),
-                self._site_contact,  # Sprint 3 (1.16.0)
-                self._resource_internal.copy(),  # 2026-11-07
-                self._notification_preferences.copy(), self._announcements.copy(),  # Sprint 3 (1.19.0)
+                self._site_contact,
+                self._resource_internal.copy(),
+                self._notification_preferences.copy(), self._announcements.copy(),
             )
             try:
                 yield
@@ -241,7 +241,7 @@ class MemoryRepository:
                     self._series,
                     self._site_contact,
                     self._resource_internal,
-                    self._notification_preferences, self._announcements,  # Sprint 3 (1.19.0)
+                    self._notification_preferences, self._announcements,
                 ) = snapshot
                 raise
 
@@ -327,7 +327,7 @@ class MemoryRepository:
         with self._lock:
             self._bookings[booking.id] = booking
 
-    # Sprint 3 (1.20.0): never remove the shared booking or change its status.
+    # Never remove the shared booking or change its status.
     def hidden_booking_ids(self, principal_id: str) -> set[str]:
         with self._lock:
             return {booking_id for person_id, booking_id in self._hidden_bookings if person_id == principal_id}
@@ -390,7 +390,7 @@ class MemoryRepository:
         with self._lock:
             self._credentials[credential.principal_id] = credential
 
-    # Sprint 3 records -------------------------------------------------------------------------------------
+    # Notifications, email, preferences, announcements, calendar feeds, series and resource details --------
 
     def save_notification(self, notification: Notification) -> None:
         with self._lock:
@@ -450,7 +450,7 @@ class MemoryRepository:
                 claimed.append(item)
             return claimed
 
-    # Sprint 3 (2026-10-25): notification category choices.
+    # Notification category choices.
     def save_notification_preference(self, preference: NotificationPreference) -> None:
         with self._lock:
             self._notification_preferences[preference.id] = preference
@@ -480,7 +480,6 @@ class MemoryRepository:
         with self._lock:
             return self._series.get(series_id)
 
-    # Sprint 3 (1.16.0)
     def get_site_contact(self) -> SiteContact | None:
         with self._lock:
             return self._site_contact
@@ -497,7 +496,7 @@ class MemoryRepository:
         with self._lock:
             self._resource_internal[info.resource_id] = info
 
-    # Sprint 3 (1.19.0): records participate in the same rollback snapshot as resource status.
+    # Records participate in the same rollback snapshot as resource status.
     def save_announcement(self, announcement: Announcement) -> None:
         with self._lock:
             self._announcements[announcement.id] = announcement

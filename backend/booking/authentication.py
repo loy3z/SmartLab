@@ -51,7 +51,7 @@ class DemoIdentityProvider:
                 identity = test_identity(principal, payload["test_role"], payload["test_bypass"])
             except (KeyError, ValueError):
                 raise AuthenticationFailed("Invalid test session.", code="INVALID_TOKEN")
-            # Sprint 3: active test sessions also receive any inductions added after sign-in.
+            # Active test sessions also receive any inductions added after sign-in.
             get_test_account(service)
             return identity
         return principal

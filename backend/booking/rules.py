@@ -55,7 +55,7 @@ class BookingRules:
     check_in_closes_minutes: int = 30
     # Longest weekly series pattern; every kept date must also fit the booking window.
     max_series_weeks: int = 14
-    # Sprint 3 reminders: this many hours before an approved booking, and days before a verified induction expires.
+    # Reminders: this many hours before an approved booking, and days before a verified induction expires.
     reminder_hours_before: int = 24
     induction_reminder_days: int = 14
 

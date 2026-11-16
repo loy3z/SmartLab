@@ -1,4 +1,4 @@
-"""Sprint 3 (1.19.0): shared Memory/PostgreSQL acceptance cases and HTTP permissions."""
+"""Shared Memory/PostgreSQL acceptance cases and HTTP permissions."""
 from dataclasses import replace
 from datetime import UTC, datetime, time, timedelta
 from unittest.mock import Mock, patch
@@ -93,7 +93,7 @@ class Acceptance119:
         self.denied(self.service.list_announcements, self.student, include_ended=True)
 
     def test_removal_time_must_be_in_the_future(self):
-        # Review 1.19.0 R1: a past "Remove at" used to publish an announcement that no home page showed.
+        # A past "Remove at" used to publish an announcement that no home page showed.
         for when in [self.now, self.now - timedelta(minutes=1)]:
             with self.subTest(when=when):
                 with self.assertRaises(DomainError) as error:
@@ -124,7 +124,7 @@ class Acceptance119:
                         {item.action for item in self.repo.list_audit()})
 
     def test_only_the_author_deletes_an_ended_announcement(self):
-        # 2026-11-16 (Loy): whoever posted it can clear it from the history; nobody else, a Manager included.
+        # Whoever posted it can clear it from the history; nobody else, a Manager included.
         item = self.service.create_announcement(self.admin, 'Notice', 'Details')
         with self.assertRaises(DomainError) as active:
             self.service.delete_announcement(self.admin, item.id)
@@ -221,7 +221,7 @@ class API119Tests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(self.admin.patch(manager_path, {'title': 'Changed'}, format='json').status_code, 403)
         self.assertEqual(self.admin.post(manager_path + 'remove/', {}, format='json').status_code, 403)
         self.assertEqual(self.manager.patch(f'/api/v1/announcements/{announcement_id}/', {'title': 'Changed'}, format='json').status_code, 403)
-        # 2026-11-16: DELETE is for the author only, and only once the announcement has ended.
+        # DELETE is for the author only, and only once the announcement has ended.
         own_path = f'/api/v1/announcements/{announcement_id}/'
         self.assertEqual(self.student.delete(own_path).status_code, 403)
         self.assertEqual(self.admin.delete(own_path).status_code, 409)

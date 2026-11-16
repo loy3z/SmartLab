@@ -144,7 +144,7 @@ class BookingAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(valid.data["user"]["university_email"], "z2000001@ad.unsw.edu.au")
 
     def test_demo_sign_in_lasts_eight_hours(self):
-        # 2026-11-10 (U5): one hour ended the session in the middle of a form.
+        # One hour ended the session in the middle of a form.
         response = self.client.post("/api/v1/auth/demo-login/", {"zid": "z1000001"}, format="json")
         self.assertEqual(response.data["expires_in"], 8 * 3600)
 

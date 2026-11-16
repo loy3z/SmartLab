@@ -9,13 +9,13 @@ from django.db import connection, transaction
 from psycopg.types.json import Jsonb
 
 from .domain import (
-    Announcement,  # Sprint 3 (1.19.0)
+    Announcement,
     AuditRecord, Booking, BookingSeries, BookingStatus, CalendarFeed, EmailDelivery, Notification, NotificationPreference,
     OutlookSyncRecord, Principal,
     QualificationRequirement, QualificationStatus, QualificationSubmission,
     Resource, ResourceKind, Role, StaffCredential,
-    SITE_CONTACT_ID, SiteContact,  # Sprint 3 (1.16.0)
-    ResourceInternalInfo,  # 2026-11-07
+    SITE_CONTACT_ID, SiteContact,
+    ResourceInternalInfo,
 )
 from .storage import StoredFile
 
@@ -34,12 +34,12 @@ _TABLES = {
     EmailDelivery: 'email_delivery',
     CalendarFeed: 'calendar_feed',
     BookingSeries: 'booking_series',
-    SiteContact: 'site_contact',  # Sprint 3 (1.16.0)
-    ResourceInternalInfo: 'resource_internal_info',  # 2026-11-07
-    Announcement: 'announcement',  # Sprint 3 (1.19.0)
-    NotificationPreference: 'notification_preference',  # Sprint 3 (2026-10-25)
+    SiteContact: 'site_contact',
+    ResourceInternalInfo: 'resource_internal_info',
+    Announcement: 'announcement',
+    NotificationPreference: 'notification_preference',
 }
-# Sprint 3 (1.16.0): fields kept as JSON (jsonb) lists of objects rather than uuid[] arrays.
+# Fields kept as JSON (jsonb) lists of objects rather than uuid[] arrays.
 _JSON_LISTS = {(Resource, 'details')}
 _ENUMS = {
     Principal: {'role': Role},
@@ -57,7 +57,7 @@ _ORDER = {
     BookingSeries: 'created_at, id',
     SiteContact: 'id',
     ResourceInternalInfo: 'resource_id',
-    Announcement: 'created_at DESC, id DESC',  # Sprint 3 (1.19.0)
+    Announcement: 'created_at DESC, id DESC',
     NotificationPreference: 'category',
 }
 _KEYS = {OutlookSyncRecord: 'booking_id', StaffCredential: 'principal_id', CalendarFeed: 'principal_id',
@@ -84,7 +84,7 @@ def _decode(record_type, row):
     values = dict(zip(_columns(record_type), row, strict=True))
     for key, value in values.items():
         if (record_type, key) in _JSON_LISTS:
-            # Sprint 3 (1.16.0): Django returns jsonb as text; the dataclass turns the objects back into records.
+            # Django returns jsonb as text; the dataclass turns the objects back into records.
             values[key] = json.loads(value) if isinstance(value, str) else value
             continue
         if isinstance(value, UUID):
@@ -224,7 +224,7 @@ class PostgresRepository:
 
     def list_submissions(self, student_id=None, requirement_id=None, *, student_ids=None, statuses=None,
                          valid_from=None, valid_to=None):
-        """2026-10-29 (load test S8): the same keyword filters as repository.submission_matches, in SQL."""
+        """The same keyword filters as repository.submission_matches, in SQL."""
         if student_ids is None and statuses is None and valid_from is None and valid_to is None:
             return _filtered(QualificationSubmission, student_id=student_id, requirement_id=requirement_id)
         clauses, params = [], []
@@ -254,7 +254,7 @@ class PostgresRepository:
 
     def list_bookings(self, student_id=None, resource_id=None, *, statuses=None, start_from=None, start_to=None,
                       end_from=None, due_by=None, created_by=None, unmarked=False, extension_end_after=None):
-        """2026-10-29 (load test R1): the same keyword filters as repository.booking_matches, applied in SQL so only
+        """The same keyword filters as repository.booking_matches, applied in SQL so only
         the rows a caller may need are read and decoded."""
         clauses, params = [], []
         for column, value in (('student_id', student_id), ('resource_id', resource_id), ('created_by', created_by)):
@@ -281,7 +281,7 @@ class PostgresRepository:
     def save_booking(self, booking):
         _insert(booking, upsert=True)
 
-    # Sprint 3 (1.20.0): personal history visibility survives sessions and adapter instances.
+    # Personal history visibility survives sessions and adapter instances.
     def hidden_booking_ids(self, principal_id):
         with connection.cursor() as cursor:
             cursor.execute('SELECT booking_id FROM public.booking_history_removal WHERE principal_id = %s',
@@ -329,7 +329,7 @@ class PostgresRepository:
     def save_credential(self, credential):
         _insert(credential, upsert=True)
 
-    # Sprint 3 records ------------------------------------------------------------------------------------
+    # Notifications, email, preferences, announcements, calendar feeds, series and resource details -------
 
     def save_notification(self, notification):
         _insert(notification, upsert=True)
@@ -341,14 +341,14 @@ class PostgresRepository:
         return _filtered(Notification, recipient_id=recipient_id)
 
     def list_booking_notifications(self, kind, booking_ids):
-        # 2026-10-29 (load test S1): one query for reminder de-duplication instead of one per booking.
+        # One query for reminder de-duplication instead of one per booking.
         ids = [normalized for item in booking_ids if (normalized := _uuid(item)) is not None]
         if not ids:
             return []
         return _select(Notification, 'kind = %s AND booking_id = ANY(%s::uuid[])', [kind, ids])
 
     def list_kind_notifications(self, kind, recipient_ids):
-        # 2026-10-29 (load test S8): one query for induction reminder de-duplication instead of one per person.
+        # One query for induction reminder de-duplication instead of one per person.
         ids = [normalized for item in recipient_ids if (normalized := _uuid(item)) is not None]
         if not ids:
             return []
@@ -394,14 +394,14 @@ class PostgresRepository:
                 claimed = [_decode(EmailDelivery, row) for row in cursor.fetchall()]
         return sorted(claimed, key=lambda item: (item.created_at, item.notification_id))
 
-    # Sprint 3 (2026-10-25): notification category choices.
+    # Notification category choices.
     def save_notification_preference(self, preference):
         _insert(preference, upsert=True)
 
     def list_notification_preferences(self, principal_id):
         return _filtered(NotificationPreference, principal_id=principal_id)
 
-    # Sprint 3 (1.19.0): same record contract as the memory adapter.
+    # Same record contract as the memory adapter.
     def save_announcement(self, announcement):
         _insert(announcement, upsert=True)
 
@@ -433,14 +433,12 @@ class PostgresRepository:
     def get_series(self, series_id):
         return _get(BookingSeries, series_id)
 
-    # Sprint 3 (1.16.0)
     def get_site_contact(self):
         return _get(SiteContact, SITE_CONTACT_ID)
 
     def save_site_contact(self, contact):
         _insert(contact, upsert=True)
 
-    # 2026-11-07
     def get_resource_internal_info(self, resource_id):
         return _get(ResourceInternalInfo, resource_id)
 

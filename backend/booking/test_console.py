@@ -1,7 +1,7 @@
-"""Sprint 3 (1.17.0): the local test account 1 (development only). Session overrides never change stored roles.
+"""The local test account 1 (development only). Session overrides never change stored roles.
 
 Switched on only when all five conditions hold (``test_console_enabled``): DEBUG, ENABLE_DEMO_AUTH,
-ENABLE_TEST_CONSOLE, the demo identity provider, and the in-memory store. The last one (Loy, 2026-10-25) keeps
+ENABLE_TEST_CONSOLE, the demo identity provider, and the in-memory store. The last one keeps
 test bookings out of the PostgreSQL database, so they never appear in real records, reports or the Today page and
 never take a real time slot; restarting the backend throws them away.
 """
@@ -24,7 +24,7 @@ def test_console_enabled():
     return bool(settings.DEBUG and settings.ENABLE_DEMO_AUTH
                 and settings.ENABLE_TEST_CONSOLE
                 and settings.AUTH_PROVIDER == "booking.authentication.DemoIdentityProvider"
-                and settings.REPOSITORY_FACTORY == MEMORY_REPOSITORY)  # Sprint 3 (1.17.0): memory mode only
+                and settings.REPOSITORY_FACTORY == MEMORY_REPOSITORY)  # Memory mode only
 
 
 def require_test_console():
@@ -68,7 +68,7 @@ def get_test_account(service):
 
 
 def _grant_test_inductions(service):
-    """Sprint 3: account 1 owns every induction permanently, including newly added requirements.
+    """Account 1 owns every induction permanently, including newly added requirements.
 
     Called only after the local-memory test-console gate and identity checks, under its account lock.
     Batch-read this account's records once. Grants have no evidence file: they are explicit test access,

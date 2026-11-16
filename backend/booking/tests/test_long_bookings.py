@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 from django.test import SimpleTestCase, override_settings
 
-from booking.domain import Booking, BookingStatus, Principal, Role
+from booking.domain import BookingStatus, Principal, Role
 from booking.errors import DomainError
 from booking.test_console import TEST_ACCOUNT_ID, test_identity as make_test_identity
 from booking.tests.test_services import BookingFixtureMixin

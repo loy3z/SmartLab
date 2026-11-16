@@ -2,6 +2,14 @@
 
 This file records what changed in each update and why. Other documents describe only the current rules. Version numbers refer to the API version in `backend/docs/openapi.json`, and migrations refer to scripts in `backend/database/migrations/`. The newest entries appear first.
 
+## After 1.28.0: Backend Top-Level Clean-up (2026-11-16, no behaviour change)
+
+First pass of a file-by-file review of `backend/`, for a teammate to check.
+
+- Delete `backend/demo.http`: hand-written sample requests from Sprint 1 with dates that have passed. `backend/docs/openapi.json` is the complete API definition.
+- Delete `backend/requirements.txt`: a second, unpinned copy of the dependency list used only by the local setup instructions. Local setup now installs `requirements-lock.txt`, the pinned list that Docker already uses (`README.md`, `backend/README.md`). `requirements-postgres.txt` (pinned list plus the PostgreSQL driver) is unchanged.
+- Update two stale “Sprint 1” descriptions (`requirements-lock.txt`, `booking/__init__.py`).
+
 ## After 1.28.0: Two Small Interface Fixes (2026-11-16, frontend only)
 
 From the user-perspective walkthrough (`claude/reports/2026-11-10-user-perspective-audit.md`, U7 and U9).

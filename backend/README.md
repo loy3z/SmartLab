@@ -92,7 +92,7 @@ Run from this directory:
 
 ```powershell
 py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt
 $env:DEBUG = "true"
 $env:ENABLE_DEMO_AUTH = "true"
 $env:DJANGO_SECRET_KEY = "local-demo-only-change-this-key"
@@ -122,7 +122,7 @@ Demo identities:
 | `z9000001` | ADMIN | Staff sign-in, demo password `123` |
 | `z9000002` | MANAGER | Staff sign-in, demo password `123` |
 
-Obtain a student token with `POST /api/v1/auth/demo-login/` and `{"zid":"z1000001"}`. Staff use `POST /api/v1/auth/staff-sign-in/` with `{"zid":"z9000002","password":"123"}`. The demo password applies only to those two fictional accounts. `demo-register` creates only STUDENT and never accepts a requested staff role. [demo.http](demo.http) demonstrates the complete flow.
+Obtain a student token with `POST /api/v1/auth/demo-login/` and `{"zid":"z1000001"}`. Staff use `POST /api/v1/auth/staff-sign-in/` with `{"zid":"z9000002","password":"123"}`. The demo password applies only to those two fictional accounts. `demo-register` creates only STUDENT and never accepts a requested staff role. [docs/openapi.json](docs/openapi.json) lists every endpoint.
 
 Demo registration requires `zid`, `display_name` and `university_email`. It validates only email format, not university membership or ownership. Production authentication receives trusted SSO claims. Seed identities use matching `zID@ad.unsw.edu.au` demo addresses.
 

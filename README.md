@@ -53,7 +53,7 @@ Windows PowerShell:
 
 ```powershell
 py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt
 $env:DEBUG = "true"
 $env:ENABLE_DEMO_AUTH = "true"
 $env:DJANGO_SECRET_KEY = "local-demo-only-change-this-key"
@@ -64,7 +64,7 @@ macOS / Linux:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -r requirements-lock.txt
 export DEBUG=true ENABLE_DEMO_AUTH=true DJANGO_SECRET_KEY=local-demo-only-change-this-key
 .venv/bin/python manage.py runserver 127.0.0.1:8000 --noreload
 ```

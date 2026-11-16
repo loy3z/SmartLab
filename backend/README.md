@@ -207,7 +207,7 @@ If the client later wants Moodle completion to establish qualification, add an a
 
 The adapter implements `get_outlook_sync(booking_id)`, `list_outlook_sync()` and `save_outlook_sync(record)` for `OutlookSyncRecord`. Booking, sync record and audit save in one `atomic` transaction. Claim a processing lease under the same resource/student locks, perform the network call outside the transaction, then reread the version and update it. Retain event mappings for cancelled bookings.
 
-Memory mode tries sync after booking API calls. Staff can process failures through Calendar sync or `admin/outlook/process/` and `admin/bookings/{id}/outlook-retry/`. With a shared database, schedule `python manage.py process_outlook --limit 10`. An independent process cannot access the demo server's memory, so the command rejects the memory adapter.
+Memory mode tries sync after booking API calls. Staff can process failures through Calendar sync or `admin/outlook/process/` and `admin/bookings/{id}/outlook-retry/`. With a shared database, schedule `python manage.py process_due --outlook-limit 10` (the Docker `scheduler` already does this). An independent process cannot access the demo server's memory, so the command rejects the memory adapter.
 
 ## Scheduled due processing
 

@@ -20,7 +20,7 @@ from ..serializers import (AvailabilityQuerySerializer, DayOverviewQuerySerializ
                           DemoLoginSerializer, DemoRegisterSerializer, StaffActivateSerializer, StaffSignInSerializer, QualificationCreateSerializer, QualificationReviewSerializer,
                           OutlookProcessSerializer, BookingPolicySerializer, AuditQuerySerializer,
                           UserListQuerySerializer, UserUpdateSerializer, ManagerCreateSerializer, ResourceStatusSerializer,
-                          AdminBookingQuerySerializer, StaffCreateSerializer, PrerequisiteSerializer,
+                          AdminBookingQuerySerializer, StaffCreateSerializer,
                           PersonLookupSerializer, NotificationQuerySerializer,
                           SeriesPlanSerializer, SeriesCreateSerializer, ResourceFieldsSerializer,
                           ResourceCreateSerializer, UsageReportQuerySerializer, ChangePasswordSerializer,
@@ -28,7 +28,7 @@ from ..serializers import (AvailabilityQuerySerializer, DayOverviewQuerySerializ
                           ResourceInternalInfoSerializer)  # Sprint 3 (1.16.0)
 from ..ics import render_calendar
 from ..test_console import (TestPrincipal, get_test_account, require_test_console,
-                           test_console_enabled, test_identity, TEST_ACCOUNT_ID, booking_rules_bypassed)
+                           test_console_enabled, test_identity, TEST_ACCOUNT_ID)
 from ..serializers import TestLoginSerializer, TestSessionSerializer, AdditionalHoursCreateSerializer, LongBookingCreateSerializer
 from ..services.base import UNDECIDED_STATUSES  # 2026-10-29 (load test S2)
 

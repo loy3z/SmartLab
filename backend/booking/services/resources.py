@@ -241,9 +241,6 @@ class ResourcesMixin:
 
     # Review window and maintenance status ----------------------------------------------------------------
 
-    def set_pending_hold_minutes(self, actor, resource_id, minutes):
-        return self.set_booking_policy(actor, resource_id, pending_hold_minutes=minutes)
-
     def set_booking_policy(self, actor, resource_id, pending_hold_minutes):
         """Manager only: how long a pending request waits for an Admin (holding its slot) before the system decides.
 

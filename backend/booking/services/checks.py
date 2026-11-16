@@ -296,9 +296,3 @@ class ChecksMixin:
     def _review_deadline(self, resource, start):
         """End of the Admin review window: pending_hold_minutes from now, but never after the booking starts."""
         return min(start, self.now() + timedelta(minutes=resource.pending_hold_minutes))
-
-    def _require_eligible(self, actor_id, resource, end):
-        """Only someone whose induction (and its prerequisites) is verified and valid at the end may request it."""
-        error = self._qualification_violation(actor_id, resource, end)
-        if error:
-            raise error

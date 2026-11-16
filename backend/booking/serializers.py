@@ -217,10 +217,6 @@ class StaffCreateSerializer(ManagerCreateSerializer):
     role = serializers.ChoiceField(choices=["ADMIN", "MANAGER"])
 
 
-class PrerequisiteSerializer(StrictSerializer):
-    prerequisite_ids = serializers.ListField(child=serializers.UUIDField(), max_length=20, allow_empty=True)
-
-
 class RequirementFieldsSerializer(StrictSerializer):
     """Sprint 3 (1.16.0): induction texts a Manager writes. Limits are checked again in qualifications.py."""
     name = serializers.CharField(required=False, max_length=120)

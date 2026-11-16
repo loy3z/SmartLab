@@ -125,7 +125,7 @@ Success displays `All live Outlook checks passed.`. A failure partway through st
 
 ## 6. Scheduled processing
 
-The Docker Compose `scheduler` service periodically processes due reviews and pending Outlook updates. Other PostgreSQL deployments can run `manage.py run_scheduler` continuously, or use Windows Task Scheduler or cron to run `manage.py process_due` every few minutes; `--outlook-limit` defaults to 10. To process only Outlook, use `manage.py process_outlook --limit 10`. These commands refuse to run in memory mode. Use Sync now on the page or `POST admin/outlook/process/` instead.
+The Docker Compose `scheduler` service periodically processes due reviews and pending Outlook updates. Other PostgreSQL deployments can run `manage.py run_scheduler` continuously, or use Windows Task Scheduler or cron to run `manage.py process_due` every few minutes; `--outlook-limit` defaults to 10. These commands refuse to run in memory mode. Use Sync now on the page or `POST admin/outlook/process/` instead.
 
 ## 7. Status and retrying failures
 

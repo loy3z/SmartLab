@@ -2,6 +2,10 @@
 
 This file records what changed in each update and why. Other documents describe only the current rules. Version numbers refer to the API version in `backend/docs/openapi.json`, and migrations refer to scripts in `backend/database/migrations/`. The newest entries appear first.
 
+## After 1.28.0: The Bell Keeps the Count After a Notification Is Opened (2026-11-17, frontend only)
+
+- Opening the bell panel starts a reload. On a slow connection its answer could arrive after the person had already clicked a notification: the unread count went down by one, then jumped back, and the notification showed as unread again until the next reload (up to a minute). The bell now ignores an answer that was requested before the click, and any answer that is not the newest one (`NotificationBell.tsx`). `routing.spec.ts` has a new case with a 700 ms delay; it failed before the change.
+
 ## After 1.28.0: Backend Top-Level Clean-up (2026-11-16, no behaviour change)
 
 First pass of a file-by-file review of `backend/`, for a teammate to check.

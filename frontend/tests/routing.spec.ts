@@ -1222,6 +1222,40 @@ test('the bell shows unread notifications and opens the linked page', async ({ p
   await expect(page.getByRole('button', { name: 'Notifications', exact: true })).toBeVisible()
 })
 
+// 2026-11-17: opening the panel starts a reload; its answer used to arrive after a click and bring the old count back.
+test('a slow reload does not bring back a notification that was just opened', async ({ page }) => {
+  const read: string[] = []
+  let slow = false
+  await page.route('**/api/v1/notifications/**', async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname.replace('/api/v1/', '')
+    if (path === 'notifications/' && request.method() === 'GET') {
+      const n1Read = read.length > 0 // what the server knew when the request arrived
+      if (slow) await new Promise((resolve) => setTimeout(resolve, 700))
+      return route.fulfill({ json: { count: 2, unread_count: n1Read ? 1 : 2, results: [
+        { id: 'n1', recipient_id: 'test-student', kind: 'BOOKING_APPROVED', title: 'Booking approved', body: 'Lab Room 1 was approved.',
+          created_at: '2030-01-01T00:00:00Z', link: '/bookings', booking_id: 'bk-1', read_at: n1Read ? '2030-01-01T00:01:00Z' : null },
+        { id: 'n2', recipient_id: 'test-student', kind: 'QUALIFICATION_VERIFIED', title: 'Induction approved', body: 'Your evidence was approved.',
+          created_at: '2029-12-31T00:00:00Z', link: '/induction', booking_id: null, read_at: null },
+      ] } })
+    }
+    if (path === 'notifications/n1/read/' && request.method() === 'POST') {
+      read.push('n1')
+      return route.fulfill({ json: { id: 'n1', read_at: '2030-01-01T00:01:00Z' } })
+    }
+    return route.fallback()
+  })
+  await page.goto('/#/login')
+  await signIn(page, 'STUDENT')
+  await expect(page.getByRole('button', { name: 'Notifications, 2 unread' })).toBeVisible()
+  slow = true
+  await page.getByRole('button', { name: 'Notifications, 2 unread' }).click()
+  await page.getByRole('region', { name: 'Notifications' }).getByRole('button', { name: /Booking approved/ }).click()
+  await expect(page.getByRole('button', { name: 'Notifications, 1 unread' })).toBeVisible()
+  await page.waitForTimeout(1000) // the slow answer (still 2 unread) has arrived by now
+  await expect(page.getByRole('button', { name: 'Notifications, 1 unread' })).toBeVisible()
+})
+
 // Sprint 3 (1.15.0): the badge used to inherit 27px from ".app-icon-button > span" and covered the bell.
 test('the bell badge stays small, and the panel groups notifications with an icon each', async ({ page }) => {
   const now = new Date()

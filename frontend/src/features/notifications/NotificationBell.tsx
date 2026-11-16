@@ -24,9 +24,15 @@ export function NotificationBell() {
   const lastUnread = useRef<number | null>(null)
   const [ringKey, setRingKey] = useState(0)
 
+  // 2026-11-17: only the newest answer counts. Opening a notification also moves this on, so a reload that was
+  // already on its way cannot bring the old unread count back.
+  const newest = useRef(0)
+
   const load = useCallback(async () => {
+    const mine = ++newest.current
     try {
       const data = await listNotifications({ limit: 20 })
+      if (mine !== newest.current) return
       setItems(data.results)
       setUnread(data.unread_count)
       if (shouldRing(lastUnread.current, data.unread_count)) setRingKey((key) => key + 1)
@@ -34,7 +40,7 @@ export function NotificationBell() {
       setNow(Date.now())
       setError('')
     } catch (e) {
-      setError(errorMessage(e))
+      if (mine === newest.current) setError(errorMessage(e))
     }
   }, [])
 
@@ -62,6 +68,7 @@ export function NotificationBell() {
   async function openItem(item: AppNotification) {
     setOpen(false)
     if (!item.read_at) {
+      newest.current++
       setItems((list) => list.map((entry) => entry.id === item.id ? { ...entry, read_at: new Date().toISOString() } : entry))
       setUnread((count) => Math.max(0, count - 1))
       if (lastUnread.current !== null) lastUnread.current = Math.max(0, lastUnread.current - 1)

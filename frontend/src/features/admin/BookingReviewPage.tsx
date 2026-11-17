@@ -72,7 +72,7 @@ export function BookingReviewPage() {
   // Replace nested ternaries with separate selection, filtering and sorting steps
   // to make the rules easier to maintain without changing existing behaviour.
   const rows = useMemo(() => {
-    let source = pending
+    let source: Booking[]
 
     switch (tab) {
       case 'WAITLISTED':

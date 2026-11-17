@@ -82,7 +82,9 @@ A real Microsoft Graph Outlook adapter is provided. Approval creates an event, M
 
 The booking page supports browsing resource cards or **Find a free time**, which filters by date, duration, kind, room and equipment category, displays all resources' daily availability in one table and opens a booking from a free time. Endpoint: `GET resources/day-overview/`; see [frontend-api.md](docs/frontend-api.md). Equipment `category` values in demo data are fictional.
 
-**Not implemented:** real university SSO, Outlook email notification (Gmail SMTP email exists), equipment collection/return, student recurring bookings, and complete Manager configuration of global rules, which currently use environment variables.
+**Not implemented:** real university SSO, Outlook email notification (Gmail SMTP email exists), student recurring bookings, and complete Manager configuration of global rules, which currently use environment variables.
+
+**Not tracked, by decision:** picking up and returning equipment. Equipment is booked for a time like a room; handing it over happens in the lab and is left to trust, as the lab does not want to rely on penalties. A "returned" button could not prove that an item came back either.
 
 **Two storage modes:** the default in-memory demonstration adapter loses demo data, attachments and event mappings on process restart and supports only one process. The PostgreSQL adapter persists them; see [database/README.md](database/README.md). See [DEPLOY.md](../DEPLOY.md) for the Docker Compose server deployment with PostgreSQL, gunicorn and nginx.
 

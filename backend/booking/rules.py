@@ -93,19 +93,28 @@ class StaticRulesProvider:
         return self._rules
 
 
+def slots_for_hours(name, hours, slot_minutes):
+    """An hour limit as a number of counting steps, e.g. 3 hours in 30-minute steps is 6."""
+    slots = hours * 60 / slot_minutes
+    if slots != int(slots):
+        raise ValueError(f"{name} must be a whole number of {slot_minutes}-minute steps.")
+    return int(slots)
+
+
 class SettingsRulesProvider:
     """Reads the rule environment variables listed in config/settings.py and .env.example."""
 
     def current(self) -> BookingRules:
         from django.conf import settings
+        step = settings.BOOKING_SLOT_MINUTES
         return BookingRules(
             min_advance_days=settings.MIN_ADVANCE_DAYS,
             max_advance_days=settings.MAX_ADVANCE_DAYS,
             qualification_validity_days=settings.QUALIFICATION_VALIDITY_DAYS,
             default_review_window_minutes=settings.DEFAULT_PENDING_HOLD_MINUTES,
             booking_slot_minutes=settings.BOOKING_SLOT_MINUTES,
-            max_slots_per_booking=settings.MAX_SLOTS_PER_BOOKING,
-            max_slots_per_week=settings.MAX_SLOTS_PER_WEEK,
+            max_slots_per_booking=slots_for_hours("MAX_HOURS_PER_BOOKING", settings.MAX_HOURS_PER_BOOKING, step),
+            max_slots_per_week=slots_for_hours("MAX_HOURS_PER_WEEK", settings.MAX_HOURS_PER_WEEK, step),
             max_active_future_bookings=settings.MAX_ACTIVE_FUTURE_BOOKINGS,
             additional_hours_approval_window_hours=settings.ADDITIONAL_HOURS_APPROVAL_WINDOW_HOURS,
             check_in_opens_minutes=settings.CHECK_IN_OPENS_MINUTES,

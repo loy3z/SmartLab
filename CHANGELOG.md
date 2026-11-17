@@ -2,6 +2,10 @@
 
 This file records what changed in each update and why. Other documents describe only the current rules. Version numbers refer to the API version in `backend/docs/openapi.json`, and migrations refer to scripts in `backend/database/migrations/`. The newest entries appear first.
 
+## After 1.28.0: Extensions and the Weekly Limit, Written Down (2026-11-17, documentation only)
+
+- Extending a booking in progress has never counted towards the 12-hour weekly limit, but no document said so. The product owner confirmed that this is the rule: an extension always needs a Manager's approval, and the Manager decides whether the extra time is reasonable. `backend/README.md` now states it next to the weekly limit. No code changed.
+
 ## After 1.28.0: `authentication.py` Explains Itself (2026-11-17, comments only)
 
 - `backend/booking/authentication.py` had one line of explanation for 80 lines of code. Its module docstring now says what the file does, why no role from the user is trusted, and the three steps for connecting real university SSO; each class and function has a one-line docstring. No code changed.

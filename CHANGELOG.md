@@ -2,6 +2,10 @@
 
 This file records what changed in each update and why. Other documents describe only the current rules. Version numbers refer to the API version in `backend/docs/openapi.json`, and migrations refer to scripts in `backend/database/migrations/`. The newest entries appear first.
 
+## After 1.28.0: `authentication.py` Explains Itself (2026-11-17, comments only)
+
+- `backend/booking/authentication.py` had one line of explanation for 80 lines of code. Its module docstring now says what the file does, why no role from the user is trusted, and the three steps for connecting real university SSO; each class and function has a one-line docstring. No code changed.
+
 ## After 1.28.0: Booking Limits Are Configured in Hours (2026-11-17, API unchanged)
 
 - The two fair-use limits were set as numbers of 30-minute slots (`MAX_SLOTS_PER_BOOKING=6`, `MAX_SLOTS_PER_WEEK=24`), which had to be multiplied out to read as 3 h and 12 h. They are now `MAX_HOURS_PER_BOOKING=3` and `MAX_HOURS_PER_WEEK=12`. `BOOKING_SLOT_MINUTES` stays as the step in which hours are counted; `SettingsRulesProvider` (`booking/rules.py`) converts each hour limit into that many steps and refuses a value that is not a whole number of steps. The rule checks, API fields and defaults are unchanged.

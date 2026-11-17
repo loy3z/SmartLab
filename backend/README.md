@@ -63,9 +63,9 @@ Global numbers the client may adjust are centralised in `BookingRules` in `booki
 | Maximum advance days | `max_advance_days` | 28 (4 weeks) | `MAX_ADVANCE_DAYS` |
 | Induction validity days | `qualification_validity_days` | 120 | `QUALIFICATION_VALIDITY_DAYS` |
 | Default review window for new resources, minutes | `default_review_window_minutes` | 1440 | `DEFAULT_PENDING_HOLD_MINUTES` |
-| Fair-use slot length, minutes | `booking_slot_minutes` | 30 | `BOOKING_SLOT_MINUTES` |
-| Maximum slots per normal booking | `max_slots_per_booking` | 6 | `MAX_SLOTS_PER_BOOKING` |
-| Maximum slots per person per week | `max_slots_per_week` | 24 | `MAX_SLOTS_PER_WEEK` |
+| Longest normal booking, hours | `max_slots_per_booking` | 3 | `MAX_HOURS_PER_BOOKING` |
+| Hours one person may hold per week | `max_slots_per_week` | 12 | `MAX_HOURS_PER_WEEK` |
+| Step in which hours are counted, minutes (both hour limits must be whole steps) | `booking_slot_minutes` | 30 | `BOOKING_SLOT_MINUTES` |
 | Maximum active future bookings per person | `max_active_future_bookings` | 8 | `MAX_ACTIVE_FUTURE_BOOKINGS` |
 | Hours before start when additional hours may be approved | `additional_hours_approval_window_hours` | 48 | `ADDITIONAL_HOURS_APPROVAL_WINDOW_HOURS` |
 | Check-in opens this many minutes before start | `check_in_opens_minutes` | 15 | `CHECK_IN_OPENS_MINUTES` |

@@ -6,6 +6,11 @@ This file records what changed in each update and why. Other documents describe 
 
 - `backend/booking/authentication.py` had one line of explanation for 80 lines of code. Its module docstring now says what the file does, why no role from the user is trusted, and the three steps for connecting real university SSO; each class and function has a one-line docstring. No code changed.
 
+## After 1.28.0: Booking Limits Are Configured in Hours (2026-11-17, API unchanged)
+
+- The two fair-use limits were set as numbers of 30-minute slots (`MAX_SLOTS_PER_BOOKING=6`, `MAX_SLOTS_PER_WEEK=24`), which had to be multiplied out to read as 3 h and 12 h. They are now `MAX_HOURS_PER_BOOKING=3` and `MAX_HOURS_PER_WEEK=12`. `BOOKING_SLOT_MINUTES` stays as the step in which hours are counted; `SettingsRulesProvider` (`booking/rules.py`) converts each hour limit into that many steps and refuses a value that is not a whole number of steps. The rule checks, API fields and defaults are unchanged.
+- **Deployment note:** the old names are no longer read. A `.env.docker` that sets `MAX_SLOTS_PER_BOOKING` or `MAX_SLOTS_PER_WEEK` to something other than 6 and 24 must set the hour values instead; with the old defaults nothing changes. `docker-compose.yml`, `.env.docker.example`, `backend/.env.example` and the rule table in `backend/README.md` use the new names. Test: `test_booking_window.py` `test_hour_limits_from_settings_become_counting_steps`.
+
 ## After 1.28.0: Running Migration 005 Again Keeps Changed Staff Passwords (2026-11-17, no new migration)
 
 - `005_resource_category_demo_password.sql` set the two demo staff accounts (z9000001, z9000002) to the demo password every time it ran, so running the whole set of migrations again, as `backend/database/README.md` recommends, undid a password that had been changed. It now replaces only the earlier demo password from 003. A database upgraded from before 005 ends up the same as before; a database where the password was changed keeps it. Checked in a temporary database: before the change a changed password was reset, after it the password is kept on the first and the second run.

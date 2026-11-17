@@ -191,7 +191,26 @@ export function MockSsoPage({ notice = '' }: { notice?: string }) {
             <h2>SmartLab demonstration</h2>
             <p>University SSO is not connected. Use an existing demo account; no university password is required.</p>
             <p>Need a test account? Open <strong>Sign-in options</strong> below to see the demo zIDs.</p>
-            <Link to="/login" state={location.state} replace>Back to SmartLab</Link>
+            <Link
+              to="/login"
+              state={location.state}
+              replace
+              onClick={(event) => {
+                // Invalidate pending authentication before navigating in the current tab.
+                if (
+                  event.defaultPrevented ||
+                  event.button !== 0 ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey
+                ) return
+
+                requestId.current += 1
+              }}
+            >
+              Back to SmartLab
+            </Link>
           </aside>
         </section>
         {config?.demo_auth_enabled && <details className="mock-sso-options" ref={optionsRef}>

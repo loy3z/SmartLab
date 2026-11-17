@@ -2,6 +2,10 @@
 
 This file records what changed in each update and why. Other documents describe only the current rules. Version numbers refer to the API version in `backend/docs/openapi.json`, and migrations refer to scripts in `backend/database/migrations/`. The newest entries appear first.
 
+## After 1.28.0: `authentication.py` Explains Itself (2026-11-17, comments only)
+
+- `backend/booking/authentication.py` had one line of explanation for 80 lines of code. Its module docstring now says what the file does, why no role from the user is trusted, and the three steps for connecting real university SSO; each class and function has a one-line docstring. No code changed.
+
 ## After 1.28.0: Running Migration 005 Again Keeps Changed Staff Passwords (2026-11-17, no new migration)
 
 - `005_resource_category_demo_password.sql` set the two demo staff accounts (z9000001, z9000002) to the demo password every time it ran, so running the whole set of migrations again, as `backend/database/README.md` recommends, undid a password that had been changed. It now replaces only the earlier demo password from 003. A database upgraded from before 005 ends up the same as before; a database where the password was changed keeps it. Checked in a temporary database: before the change a changed password was reset, after it the password is kept on the first and the second run.

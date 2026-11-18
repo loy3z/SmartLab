@@ -6,6 +6,20 @@ This file records what changed in each update and why. Other documents describe 
 
 - A student whose week was full (12 h) opened “Change time” on one booking and read “0 h left of your 12 h”, although moving it within the same week is allowed: submitting a change already leaves the old booking out of the weekly count. `availability` now does the same for `week_hours` when `exclude_booking_id` is given (`services/availability.py`, `checks.py` `week_hours`), so the dialog shows the hours the move can use (3 h in this example). The booking dialog and the Dashboard are unchanged. Test: `test_change_requests.py` `test_the_change_window_shows_the_hours_the_moved_booking_gives_back` (failed before the change).
 
+## After 1.28.0: Two Rules Written Down: Extensions and Equipment Return (2026-11-18, documentation only)
+
+- Extending a booking in progress has never counted towards the 12-hour weekly limit, but no document said so. The product owner confirmed that this is the rule: an extension always needs a Manager's approval, and the Manager decides whether the extra time is reasonable. `backend/README.md` now states it next to the weekly limit. No code changed.
+- `backend/README.md` listed equipment collection and return as not implemented. It is a decision, not a gap: picking up and returning an item happens in the lab and is left to trust, in line with the client's wish (Week 8 meeting) not to rely on penalties, and a "returned" button could not prove that an item came back. The README now says so in its own line.
+
+## After 1.28.0: `authentication.py` Explains Itself (2026-11-17, comments only)
+
+- `backend/booking/authentication.py` had one line of explanation for 80 lines of code. Its module docstring now says what the file does, why no role from the user is trusted, and the three steps for connecting real university SSO; each class and function has a one-line docstring. No code changed.
+
+## After 1.28.0: Booking Limits Are Configured in Hours (2026-11-17, API unchanged)
+
+- The two fair-use limits were set as numbers of 30-minute slots (`MAX_SLOTS_PER_BOOKING=6`, `MAX_SLOTS_PER_WEEK=24`), which had to be multiplied out to read as 3 h and 12 h. They are now `MAX_HOURS_PER_BOOKING=3` and `MAX_HOURS_PER_WEEK=12`. `BOOKING_SLOT_MINUTES` stays as the step in which hours are counted; `SettingsRulesProvider` (`booking/rules.py`) converts each hour limit into that many steps and refuses a value that is not a whole number of steps. The rule checks, API fields and defaults are unchanged.
+- **Deployment note:** the old names are no longer read. A `.env.docker` that sets `MAX_SLOTS_PER_BOOKING` or `MAX_SLOTS_PER_WEEK` to something other than 6 and 24 must set the hour values instead; with the old defaults nothing changes. `docker-compose.yml`, `.env.docker.example`, `backend/.env.example` and the rule table in `backend/README.md` use the new names. Test: `test_booking_window.py` `test_hour_limits_from_settings_become_counting_steps`.
+
 ## After 1.28.0: Running Migration 005 Again Keeps Changed Staff Passwords (2026-11-17, no new migration)
 
 - `005_resource_category_demo_password.sql` set the two demo staff accounts (z9000001, z9000002) to the demo password every time it ran, so running the whole set of migrations again, as `backend/database/README.md` recommends, undid a password that had been changed. It now replaces only the earlier demo password from 003. A database upgraded from before 005 ends up the same as before; a database where the password was changed keeps it. Checked in a temporary database: before the change a changed password was reset, after it the password is kept on the first and the second run.

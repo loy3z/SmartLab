@@ -2,6 +2,13 @@
 
 This file records what changed in each update and why. Other documents describe only the current rules. Version numbers refer to the API version in `backend/docs/openapi.json`, and migrations refer to scripts in `backend/database/migrations/`. The newest entries appear first.
 
+## After 1.30.0: Edge-Case Tests for the Handover (2026-11-18, tests only)
+
+- The client asked (meeting 5) how the system reacts in difficult cases, not only the normal path. Two new test files check them; no feature code changed.
+- `test_edge_cases.py`: permissions (403 for students and Admins on Manager actions, 401 when signed out), expired inductions and missing prerequisites, cancelling keeps the record and a repeated cancel changes nothing, opening hours, crossing midnight, Sydney daylight-saving days and the exact 12-hour weekly limit.
+- `test_edge_hunt.py`: parallel duplicate requests, a review deadline reached while the resource is under maintenance, the mail server failing (the booking stays, the bell notice stays, the email is retried and stops after the last attempt), archiving after cancellation keeps history, and resources and inductions cannot be deleted. One test is an expected failure on purpose: email is delivered at least once, so if two mail workers ran and one was very slow, a message could be sent twice; only one worker runs in the delivered setup.
+- The search also found that approved extensions used the weekly allowance; fixed in the entry below.
+
 ## After 1.30.0: An Approved Extension No Longer Uses the Weekly Allowance (2026-11-18, migration 017, API unchanged)
 
 - **Bug:** extending a booking in progress overwrote its end, and the weekly allowance counted the whole booking, so an approved extension used up the 12 hours. `backend/README.md` says extensions do not count (a Manager approves each one). Example: 7 h booked, a 1 h booking extended by 3 h; the week showed 10 h and a later 3 h request was refused as 13 h. Found by the edge-case review after client meeting 5.

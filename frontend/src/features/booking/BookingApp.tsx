@@ -1,3 +1,5 @@
+// Book a resource: browse rooms and equipment (search, people filter, room filter) or find a free time, then open the
+// booking dialogs. Authentication, routing and the page layout belong to app/.
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { useAuth } from '../auth/auth-context'
@@ -13,6 +15,7 @@ import { RecurringBookingForm } from './RecurringBookingForm' // Sprint 3
 import { ResourceCard, type InductionState } from './ResourceCard'
 import type { Qualification, Requirement, Resource } from '../../api/types/index.ts'
 
+/** The newest evidence decides the status, not any older approval (the same rule as the server). */
 function latestStatus(requirementId: string, quals: Qualification[]) {
   const latest = quals
     .filter((q) => q.requirement_id === requirementId)
@@ -28,6 +31,7 @@ function stateFor(r: Resource, quals: Qualification[], reqs: Requirement[]): Ind
   return latestStatus(r.required_qualification_id, quals)
 }
 
+/** The first prerequisite induction that is not verified yet, for the "needed first" chip. */
 function missingPrerequisite(r: Resource, quals: Qualification[], reqs: Requirement[]): Requirement | undefined {
   const requirement = reqs.find((item) => item.id === r.required_qualification_id)
   const missing = requirement?.prerequisite_ids.find((id) => latestStatus(id, quals) !== 'VERIFIED')
@@ -41,8 +45,11 @@ function inductionLink(r: Resource, state: InductionState, prerequisite: Require
   return undefined
 }
 
+/** Rooms and devices are booked separately (a room booking does not include the devices in it). */
 type View = 'ROOM' | 'EQUIPMENT'
+/** "Find a free time" starts from a day and length; "browse" starts from a resource. */
 type Mode = 'browse' | 'find'
+/** A time chosen in Find a free time, handed to the booking dialog as its starting selection. */
 interface Picked { resource: Resource; start: string; minutes: number; date: string }
 
 /** Frontend B's resource page; authentication, routing and layout are owned by app/. */
@@ -70,6 +77,7 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
   const [picked, setPicked] = useState<Picked | null>(null)
   const [people, setPeople] = useState('') // Sprint 3 (1.16.0): rooms that fit at least this many people
 
+  // Reload induction evidence when a dialog closes: the person may have just come back from the induction page.
   useEffect(() => {
     Promise.all([listRequirements(), listQualifications()])
       .then(([r, qs]) => (setReqs(r.results), setQuals(qs.results)))
@@ -82,6 +90,7 @@ export function BookingApp({ onBooked }: { onBooked: () => void }) {
       .catch((e) => setError(errorMessage(e)))
   }, [term])
 
+  // The server returns one list; rooms and devices are split here. Devices know their room through room_id.
   const rooms = resources.filter((r) => r.kind === 'ROOM')
   const equipment = resources.filter((r) => r.kind === 'EQUIPMENT')
   const roomName = (id: string | null) => (id ? rooms.find((room) => room.id === id)?.name : undefined)

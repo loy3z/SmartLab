@@ -1,14 +1,21 @@
+// The booking dialog for one room or device: pick a time on the timeline, say what it is for, and send the request.
+// The server decides the outcome (Approved, Awaiting approval or Waitlisted); this form only shows what it returns.
 import { useRef, useState } from 'react'
 import { useAuth } from '../auth/auth-context'
 import { useFeedback } from '../../ui/feedback-context'
 import { createBooking, lookupPerson } from '../../api/index.ts'
-import { errorMessage, fmtDuration, fmtHours, fmtRange, newIdempotencyKey, SEPARATE_BOOKING_TEXT, submitBlocker, submittedMessage } from './format'
+import { bookingRef, errorMessage, fmtDuration, fmtHours, fmtRange, newIdempotencyKey, SEPARATE_BOOKING_TEXT, submitBlocker, submittedMessage } from './format'
 import { ResourceFacts } from './ResourceCard' // Sprint 3 (1.16.0)
 import { SlotPicker, type SlotRange } from './SlotPicker'
 import type { PersonBrief, Resource } from '../../api/types/index.ts'
 
+/** Admin/Manager can book for themselves or for another person (by zID). Students always book for themselves. */
 type BookFor = 'self' | 'other'
 
+/**
+ * One booking dialog. A submit is one logical request: it carries an Idempotency-Key, so a double click or a retry
+ * after a network error cannot create two bookings. The key changes whenever the chosen time or person changes.
+ */
 export function BookingForm({ resource, onBooked, initialDate, initialStart, initialMinutes }: {
   resource: Resource
   onBooked: () => void
@@ -24,6 +31,7 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
   const [purpose, setPurpose] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // Bumped after a failed request so the picker reloads the day (the time may have just been taken).
   const [refreshKey, setRefreshKey] = useState(0)
   const [canRequest, setCanRequest] = useState(true)
   // The last loaded day said this person cannot request the resource (canRequest is also false while a day loads).
@@ -100,9 +108,11 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
         },
         keyRef.current,
       )
+      // The request is done: the next submit is a new logical request and needs a new key.
       keyRef.current = newIdempotencyKey()
       const { title, message } = submittedMessage(b)
-      feedback.success(message, title)
+      // Show the server's status text (never a bare "success"), plus the short reference the student can quote.
+      feedback.success(`${message} Reference: ${bookingRef(b.id)}.`, title)
       onBooked()
     } catch (err) {
       const text = errorMessage(err)
@@ -127,6 +137,18 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
       </p>
       {/* Sprint 3 (1.16.0): everything the Manager wrote about it, and what the booking does not include.
           Sprint 3 (workspace UI): folded under "Resource details". */}
+      {/* Story 21: a device is borrowed for its booked time, so the conditions and the return time are stated here.
+          There is no separate loan or return flow on the server: the booking end is the return time. */}
+      {resource.kind === 'EQUIPMENT' && (
+        <div className="bk-loan-box">
+          <b>Borrowing conditions</b>
+          <ul>
+            <li>A valid induction covering the whole borrowing period is required.</li>
+            <li>Borrowing period: up to {fmtDuration(normalMaximum)} per booking, within {fmtHours(resource.opening_time, resource.closing_time)}.</li>
+            <li>Return the equipment by the end of your booked time{range ? ` (${fmtRange(range.start, range.end)})` : ''}.</li>
+          </ul>
+        </div>
+      )}
       <details className="bk-resource-details"><summary>Resource details</summary>
         {resource.description && <p className="bk-muted">{resource.description}</p>}
         <ResourceFacts resource={resource} />

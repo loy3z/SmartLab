@@ -25,7 +25,7 @@ const STAFF_HELP: Record<StaffRole, string> = {
 }
 
 function InductionSummary({ user, now }: { user: ManagedUser; now: number }) {
-  // Everyone books under the same induction rules, staff included.
+  // Count verified qualifications that were still valid when the list was loaded.
   const items = user.inductions ?? []
   const ok = items.filter((item) => current(item, now)).length
   const tone = items.length && ok === items.length ? 'is-green' : ok ? 'is-amber' : 'is-grey'
@@ -114,10 +114,10 @@ export function ManagerUsersPage() {
       title: deactivate ? `Deactivate ${user.display_name}?` : `Reactivate ${user.display_name}?`,
       details: [{ label: 'zID', value: user.zid }, { label: 'Role', value: ROLE_LABEL[user.role] }],
       message: !deactivate
-        ? `They can sign in again as ${ROLE_LABEL[user.role]}.`
+        ? `They can sign in again as ${ROLE_LABEL[user.role]}. Previously rejected requests and cancelled bookings are not restored.`
         : user.role === 'STUDENT'
-          ? 'They can no longer sign in. Their requests that are awaiting approval or on the waitlist are rejected now and the time passes to the next person; approved bookings stay and can be reviewed in Room booking management.'
-          : 'They can no longer sign in. Use this when someone leaves the role; add their replacement with Add staff.',
+          ? 'They can no longer sign in. Their pending and waitlisted requests will be rejected, and their approved bookings that have not started will be cancelled. Released time will be offered to eligible waitlisted requests. Reactivating the account will not restore these requests or bookings.'
+          : 'They can no longer sign in. Their own pending and waitlisted requests will be rejected, and their own approved bookings that have not started will be cancelled. Reactivating the account will not restore these requests or bookings. Use Add staff to create a replacement staff account.',
       confirmLabel: deactivate ? 'Deactivate' : 'Reactivate',
       danger: deactivate,
     })

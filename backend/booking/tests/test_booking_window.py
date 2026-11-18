@@ -187,6 +187,15 @@ class BookingWindowAPITests(BookingAPIFixtureMixin, SimpleTestCase):
             service = reset_runtime()
             self.assertEqual((service.min_advance_days, service.max_advance_days), (3, 14))
 
+    def test_hour_limits_from_settings_become_counting_steps(self):
+        rules = reset_runtime().rules()
+        self.assertEqual((rules.max_slots_per_booking, rules.max_slots_per_week), (6, 24))  # 3 h and 12 h in 30-minute steps
+        with override_settings(MAX_HOURS_PER_BOOKING=1.5, MAX_HOURS_PER_WEEK=10):
+            rules = reset_runtime().rules()
+            self.assertEqual((rules.max_slots_per_booking, rules.max_slots_per_week), (3, 20))
+        with override_settings(MAX_HOURS_PER_WEEK=10.25), self.assertRaises(ValueError):
+            reset_runtime().rules()
+
     def test_too_soon_and_too_far_errors_carry_the_window(self):
         today = NOW.astimezone(SYDNEY).date()
         for offset, code in ((3, "BOOKING_TOO_SOON"), (29, "BOOKING_TOO_FAR_AHEAD")):

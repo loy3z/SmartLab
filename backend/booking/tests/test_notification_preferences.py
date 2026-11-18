@@ -1,4 +1,4 @@
-"""Sprint 3 (2026-10-25): per-person notification category choices and the induction-submitted notice."""
+"""Per-person notification category choices and the induction-submitted notice."""
 from uuid import uuid4
 
 from django.test import SimpleTestCase
@@ -12,7 +12,7 @@ class NotificationPreferenceTests(Sprint3Fixture, SimpleTestCase):
     def test_every_category_is_on_until_the_person_turns_it_off(self):
         preferences = self.service.notification_preferences(self.student)
         self.assertEqual([item["category"] for item in preferences], list(NOTIFICATION_CATEGORIES))
-        self.assertTrue(all(item["in_app"] and item["email"] for item in preferences))  # Sprint 3 (1.19.0)
+        self.assertTrue(all(item["in_app"] and item["email"] for item in preferences))
 
     def test_turning_bookings_off_stops_booking_notices_and_turning_it_on_restores_them(self):
         self.service.save_notification_preferences(self.student, {"bookings": {"in_app": False, "email": False}})
@@ -32,7 +32,7 @@ class NotificationPreferenceTests(Sprint3Fixture, SimpleTestCase):
                      self.student, {"everything": False})
 
     def test_a_refused_save_changes_nothing(self):
-        # Review D2 (2026-10-25): a valid name next to an unknown one must not be saved on its own.
+        # A valid name next to an unknown one must not be saved on its own.
         self.refused("VALIDATION_ERROR", self.service.save_notification_preferences,
                      self.student, {"bookings": False, "everything": False})
         self.assertTrue(all(item["in_app"] for item in self.service.notification_preferences(self.student)))

@@ -25,7 +25,7 @@ export function LoginPage({ notice = '' }: { notice?: string }) {
 
   return (
     <AuthShell crumb="Sign in">
-          {/* Sprint 3 (internal-tool UI, AI-2): no eyebrow above the form title. */}
+          {/* No eyebrow above the form title. */}
           <h2 id="auth-title" tabIndex={-1}>Sign in</h2>
           <p className="auth-description">Access your bookings and training records.</p>
           {notice && <p className="auth-notice" role="status">{notice}</p>}

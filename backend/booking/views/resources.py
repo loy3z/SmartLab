@@ -1,8 +1,8 @@
-"""HTTP views: resources (split from booking/views.py on 2026-10-25)."""
+"""HTTP views: resources (split from booking/views.py)."""
 
 from ._common import *  # noqa: F401,F403 - shared imports, helpers and PublicView.
 
-__all__ = ["ResourceListView", "DayOverviewView", "ResourceDetailView", "RequirementListView", "AvailabilityView", "QualificationListView", "QualificationDetailView", "QualificationFileView", "RequirementDetailView", "RequirementCreateView", "policy_json", "ResourceBookingPolicyView"]
+__all__ = ["ResourceListView", "DayOverviewView", "ResourceDetailView", "RequirementListView", "AvailabilityView", "QualificationListView", "QualificationDetailView", "QualificationFileView", "RequirementDetailView", "RequirementCreateView"]
 
 
 def resource_json(service, resource):
@@ -96,7 +96,7 @@ class QualificationFileView(APIView):
 class RequirementDetailView(APIView):
     """Manager only: set which inductions must be verified first (e.g. Advanced needs General).
 
-    Sprint 3 (1.16.0): also changes the name, description and guidance texts; send any of them."""
+    It also changes the name, description and guidance texts; send any of them."""
     def patch(self, request, requirement_id):
         service = get_service()
         service.require_manager(request.user)
@@ -114,27 +114,7 @@ class RequirementDetailView(APIView):
         return Response(json_value(updated))
 
 class RequirementCreateView(APIView):
-    """Sprint 3 (1.16.0), Manager only: add an induction type."""
+    """Manager only: add an induction type."""
     def post(self, request):
         data = validated(RequirementFieldsSerializer, request.data)
         return Response(json_value(get_service().create_requirement(request.user, data)), status=201)
-
-def policy_json(resource):
-    return {"resource_id": resource.id, "pending_hold_minutes": resource.pending_hold_minutes}
-
-class ResourceBookingPolicyView(APIView):
-    """Manager only (Admins approve and review; rules belong to Managers)."""
-    def get(self, request, resource_id):
-        service = get_service()
-        service.require_manager(request.user)
-        return Response(policy_json(service.resource(str(resource_id))))
-
-    def patch(self, request, resource_id):
-        service = get_service()
-        service.require_manager(request.user)
-        data = validated(BookingPolicySerializer, request.data)
-        resource = service.set_booking_policy(request.user, str(resource_id), data["pending_hold_minutes"])
-        return Response(policy_json(resource))
-
-
-# Sprint 3: calendar subscription link ------------------------------------------------------------------------

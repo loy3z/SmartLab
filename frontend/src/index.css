@@ -13,7 +13,7 @@
   --red: #b3261e;
   --red-bg: #fde7e5;
   --grey-bg: #eceef2;
-  /* Sprint 3 (1.15.0): motion tokens. Short and quiet: fast = hover/press, base = panels and dialogs. */
+  /* Motion tokens. Short and quiet: fast = hover/press, base = panels and dialogs. */
   --motion-fast: 150ms;
   --motion-base: 220ms;
   --ease-out: cubic-bezier(.2, .7, .3, 1);
@@ -28,5 +28,3 @@
 body { margin: 0; }
 h1, h2, h3, h4, p { margin: 0; }
 button, input, select, textarea { font: inherit; color: inherit; }
-
-/* Sprint 3 (1.15.0) reduced-motion rule lived here; the one active rule is in ui/workspace.css (2026-10-25 cleanup, includes ::backdrop). */

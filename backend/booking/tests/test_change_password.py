@@ -1,4 +1,4 @@
-"""Sprint 3: an Admin or Manager changes their own password (POST auth/change-password/)."""
+"""An Admin or Manager changes their own password (POST auth/change-password/)."""
 
 from django.test import SimpleTestCase, override_settings
 from rest_framework.test import APIClient

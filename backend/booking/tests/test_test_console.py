@@ -1,4 +1,4 @@
-"""Sprint 3 (1.17.0): the opt-in test console is a signed session, not an editable user role or a request flag."""
+"""The opt-in test console is a signed session, not an editable user role or a request flag."""
 from datetime import timedelta
 
 from django.core import signing
@@ -76,8 +76,9 @@ class TestConsoleAPITests(BookingAPIFixtureMixin, SimpleTestCase):
             self.assertEqual(len(dashboard.data['qualifications']), len(required))
             self.assertTrue(all(item['effective_status'] == 'VERIFIED' for item in dashboard.data['qualifications']))
         for resource in self.service.repo.list_resources():
+            expected = ('VERIFIED', True) if resource.required_qualification_id else ('NOT_REQUIRED', True)
             self.assertEqual(self.service.qualification_state(TEST_ACCOUNT_ID, resource,
-                             NOW + timedelta(days=3650)), ('VERIFIED', True))
+                             NOW + timedelta(days=3650)), expected)
         self.assertFalse(self.student.get('/api/v1/qualifications/').data['results'])
 
     def test_existing_session_receives_new_requirements_without_duplicate_grants(self):
@@ -166,7 +167,7 @@ class TestConsoleAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(self.authorized(tampered).get('/api/v1/auth/me/').status_code, 401)
 
     def test_test_override_does_not_extend_to_bookings_for_someone_else(self):
-        # An Admin: since 2026-11-06 a Manager overrides the rules for anyone (Manager override, not the test one).
+        # An Admin: a Manager overrides the rules for anyone (Manager override, not the test one).
         admin = self.switch('ADMIN')
         response = admin.post('/api/v1/bookings/', {**self.payload(day_offset=8), 'on_behalf_of_zid': 'z1000002'}, format='json')
         self.assertEqual(response.status_code, 403, response.data)

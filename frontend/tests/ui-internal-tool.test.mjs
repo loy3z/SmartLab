@@ -1,4 +1,4 @@
-// Sprint 3 (internal-tool UI): acceptance checks for the plain "school internal tool" pass (claude/tasks-ui-internal-tool.md):
+// Acceptance checks for the plain "school internal tool" pass (claude/tasks-ui-internal-tool.md):
 // one type scale, one font, two corner radii, no slogans or eyebrows, and one name per page. They read the source, so a
 // later change that brings any of these back fails here instead of in a screenshot review.
 import assert from 'node:assert/strict'

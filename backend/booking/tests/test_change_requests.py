@@ -1,4 +1,4 @@
-"""Sprint 3 (1.16.0): change requests (the person asks to move an approved booking), maintenance notices, and why
+"""Change requests (the person asks to move an approved booking), maintenance notices, and why
 Find a free time hides resources (too long for them, or not bookable by this person)."""
 
 from dataclasses import replace
@@ -115,6 +115,14 @@ class ChangeRequestTests(Sprint3Fixture, SimpleTestCase):
         change = self.change(week[0], days=1, hour=14, minutes=180)
         self.assertEqual(change.status, BookingStatus.PENDING_APPROVAL)
 
+    def test_the_change_window_shows_the_hours_the_moved_booking_gives_back(self):
+        week = [self.approved(days=day, hour=8, minutes=180) for day in (1, 2, 3, 4)]
+        day = self.today + timedelta(days=2)
+        booking_window = self.service.availability(self.student, self.room.id, day)
+        change_window = self.service.availability(self.student, self.room.id, day, exclude_booking_id=week[0].id)
+        self.assertEqual(booking_window["week_hours"]["used_hours"], 12)
+        self.assertEqual(change_window["week_hours"]["used_hours"], 9)
+
     def test_pending_change_preserves_the_remaining_weekly_allowance(self):
         week = [self.approved(days=day, hour=8, minutes=180) for day in (1, 2, 3)]
         change = self.change(week[0], days=1, hour=14, minutes=180)
@@ -195,7 +203,7 @@ class ChangeRequestTests(Sprint3Fixture, SimpleTestCase):
 
 
 class ExtendBookingTests(Sprint3Fixture, SimpleTestCase):
-    """2026-11-07 (client, Week 8): the person asks to finish a booking in progress later; a Manager decides."""
+    """The person asks to finish a booking in progress later; a Manager decides."""
 
     def at_hour(self, booking, hour, minute=0):
         return datetime.combine(booking.start.astimezone(SYDNEY).date(), time(hour, minute), SYDNEY)
@@ -273,6 +281,33 @@ class ExtendBookingTests(Sprint3Fixture, SimpleTestCase):
         approved = self.service.review_extension(self.manager, booking.id, "APPROVED", expected_end=replaced.extension_end)
         self.assertEqual(approved.end, replaced.extension_end)
 
+    def week_with_an_extended_booking(self):
+        """1 h + 3 h + 3 h booked this week (7 h), then the 1 h booking is extended by 3 h."""
+        booking = self.approved(days=1)
+        self.approved(days=2, minutes=180)
+        self.approved(days=3, minutes=180)
+        self.now = booking.start + timedelta(minutes=10)
+        self.service.extend_booking(self.student, booking.id, booking.end + timedelta(hours=3))
+        return self.service.review_extension(self.manager, booking.id, "APPROVED"), booking.end
+
+    def test_an_approved_extension_does_not_count_towards_the_weekly_allowance(self):
+        extended, booked_end = self.week_with_an_extended_booking()
+        self.assertEqual(extended.end_before_extension, booked_end)
+        self.assertEqual(self.service.week_hours(self.student.id)["used_hours"], 7)
+
+    def test_an_extension_does_not_block_a_later_normal_request(self):
+        self.week_with_an_extended_booking()
+        later = self.request(days=4, minutes=180)  # 7 h + 3 h = 10 h, within 12 h
+        self.assertEqual(later.status, BookingStatus.PENDING_APPROVAL)
+
+    def test_a_second_extension_keeps_the_end_from_before_the_first(self):
+        booking = self.approved(days=3, hour=10)  # 10:00-11:00
+        self.now = booking.start + timedelta(minutes=10)
+        self.extend(booking, 12, actor=self.manager)  # a Manager's extension applies at once
+        twice = self.extend(booking, 13, actor=self.manager)
+        self.assertEqual((twice.end, twice.end_before_extension), (self.at_hour(booking, 13), booking.end))
+        self.assertEqual(self.service.week_hours(self.student.id, booking.start.astimezone(SYDNEY).date())["used_hours"], 1)
+
 
 class MaintenanceNoticeTests(Sprint3Fixture, SimpleTestCase):
     def test_people_with_bookings_are_told_when_a_room_goes_out_of_service_and_reopens(self):
@@ -339,7 +374,7 @@ class ChangeRequestAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(other.status_code, 404)
 
     def test_extend_a_booking_in_progress(self):
-        """2026-11-07: the person asks, a Manager approves."""
+        """The person asks, a Manager approves."""
         payload = self.payload(day_offset=3, hour=10)
         created = self.verified.post("/api/v1/bookings/", payload, format="json")
         self.admin.post(f"/api/v1/admin/bookings/{created.data['id']}/review/", {"decision": "APPROVED"}, format="json")

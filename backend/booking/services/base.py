@@ -27,7 +27,6 @@ _promoted_ids = ContextVar("booking_promoted_ids", default=None)
 _AUTO_REJECT_CODES = {
     "ACCOUNT_INACTIVE": "AUTO_REJECTED_ACCOUNT_INACTIVE",
     "RESOURCE_UNAVAILABLE": "AUTO_REJECTED_RESOURCE_UNAVAILABLE",
-    "RESOURCE_POLICY_NOT_CONFIGURED": "AUTO_REJECTED_QUALIFICATION",
     "QUALIFICATION_REQUIRED": "AUTO_REJECTED_QUALIFICATION",
 }
 
@@ -79,11 +78,11 @@ class ServiceBase:
         self.repo.save_booking(booking)
         if self.calendar_sync and booking.student_id != TEST_ACCOUNT_ID:
             self.calendar_sync.schedule(booking)
-        self._booking_changed(previous, booking)  # Sprint 3: notifications
-        self._apply_time_change(previous, booking)  # Sprint 3 (1.16.0): approved change request replaces the old booking
+        self._booking_changed(previous, booking)  # notifications
+        self._apply_time_change(previous, booking)  # Approved change request replaces the old booking
 
     def _remember_changed(self, bookings):
-        """Sprint 3: bookings changed as a side effect of this request (waitlist promotion), so the HTTP layer syncs Outlook."""
+        """Bookings changed as a side effect of this request (waitlist promotion), so the HTTP layer syncs Outlook."""
         ids = _promoted_ids.get()
         if ids is None:
             ids = []

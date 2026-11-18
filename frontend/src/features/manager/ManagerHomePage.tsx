@@ -1,4 +1,4 @@
-// 2026-11-07 (client, Week 8): the Manager home page. Admins land on Today (the review queue); a Manager lands here and
+// The Manager home page. Admins land on Today (the review queue); a Manager lands here and
 // sees the whole lab: what only a Manager decides, rooms and equipment, this week's use, and the booking history lookup.
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
@@ -10,7 +10,7 @@ import type { Booking } from '../../api/types/index.ts'
 import { MANAGER_DECIDES, todoCards } from '../admin/today'
 import { percent } from './usage'
 import { busiest, cleanZid, currentWeek, segments, statusCounts } from './manager-home'
-import { useAutoRefresh } from '../../lib/use-auto-refresh' // 2026-11-07
+import { useAutoRefresh } from '../../lib/use-auto-refresh'
 
 export function ManagerHomePage() {
   const navigate = useNavigate()
@@ -85,7 +85,7 @@ export function ManagerHomePage() {
       <SectionStatus section={overviewSection} name="manager approvals" onRetry={reloadOverview} />
       {overview && (
         <>
-          {/* 2026-11-09 (Loy feedback): one row of small counts instead of a wall of big cards that are mostly 0. */}
+          {/* One row of small counts instead of a wall of big cards that are mostly 0. */}
           {decisions.every((card) => card.count === 0) && <p className="mh-clear">Nothing is waiting for your decision.</p>}
           <div className="mh-chips">
             {decisions.map((card) => (
@@ -200,7 +200,7 @@ export function ManagerHomePage() {
 
 type SectionState<T> = { data: T | null; error: string; loading: boolean; updatedAt: number | null }
 
-// Sprint 3: approvals, resource status and usage each keep their last successful results.
+// Approvals, resource status and usage each keep their last successful results.
 function useSection<T>(fetchSection: () => Promise<T>) {
   const [section, setSection] = useState<SectionState<T>>({ data: null, error: '', loading: true, updatedAt: null })
   const generation = useRef(0)
@@ -244,7 +244,7 @@ function SectionStatus({ section, name, onRetry }: { section: SectionState<unkno
   return section.loading && section.data === null ? <p className="mh-section-status" role="status">Loading {name}…</p> : null
 }
 
-/** 2026-11-09: a split bar with its legend, e.g. 20 open · 1 under maintenance · 1 closed. The legend carries the numbers. */
+/** A split bar with its legend, e.g. 20 open · 1 under maintenance · 1 closed. The legend carries the numbers. */
 function SplitBar({ parts, empty }: { parts: { label: string; count: number; color: string }[]; empty: string }) {
   const shown = segments(parts)
   if (shown.length === 0) return <p className="today-empty">{empty}</p>
@@ -262,7 +262,7 @@ function SplitBar({ parts, empty }: { parts: { label: string; count: number; col
   )
 }
 
-/** 2026-11-07: one extension request with Approve, or Reject with a reason (shown to the person). */
+/** One extension request with Approve, or Reject with a reason (shown to the person). */
 function ExtensionRow({ booking, resourceName, onDecided }: { booking: Booking; resourceName: string; onDecided: () => void }) {
   const feedback = useFeedback()
   const [rejecting, setRejecting] = useState(false)

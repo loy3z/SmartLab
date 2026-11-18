@@ -1,4 +1,4 @@
-// Sprint 3 (2026-10-25 cleanup): moved out of MyBookings.tsx so the page file stays readable.
+// Moved out of MyBookings.tsx so the page file stays readable.
 import { useState } from 'react'
 import { useFeedback } from '../../ui/feedback-context'
 import { useAuth } from '../auth/auth-context'
@@ -18,7 +18,7 @@ export function RescheduleBox({ booking, resource, onDone, onClose }: {
   const { user } = useAuth()
   const [range, setRange] = useState<SlotRange | null>(null)
   const [busy, setBusy] = useState(false)
-  // Sprint 3 (review R1): Room Management shows this box in a Modal, where a toast is hidden under the backdrop.
+  // Room Management shows this box in a Modal, where a toast is hidden under the backdrop.
   const [error, setError] = useState('')
   const duration = minutesBetween(booking.start, booking.end)
 

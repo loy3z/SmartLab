@@ -1,4 +1,4 @@
-// Sprint 3: maintenance card A (M1①, B1, V3) acceptance; every API response is synthetic and intercepted.
+// Room management and resource status; every API response is synthetic and intercepted.
 import { expect, test as base } from '@playwright/test'
 
 const room = {

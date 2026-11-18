@@ -1,4 +1,4 @@
-// Sprint 3: calendar link, notifications, check-in and weekly series helpers.
+// Calendar link, notifications, check-in and weekly series helpers.
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { badgeText, notificationTarget, notificationTone } from '../src/features/notifications/notifications.ts'

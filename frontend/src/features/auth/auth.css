@@ -9,7 +9,7 @@
   flex-direction: column;
   color: var(--auth-black);
   background: #f7f7f7;
-  font-family: Manrope, 'Segoe UI', sans-serif; /* Sprint 3 (internal-tool UI, AI-5): the same font as the signed-in app */
+  font-family: Manrope, 'Segoe UI', sans-serif; /* The same font as the signed-in app */
   line-height: 1.5;
 }
 .auth-container { width: min(1240px, calc(100% - 96px)); margin-inline: auto; }
@@ -39,11 +39,11 @@
 .auth-main { flex: 1; padding-bottom: 54px; }
 .auth-breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 24px 0 34px; font-size: 12px; color: #626262; }
 .auth-breadcrumb strong { color: #252525; font-weight: 400; }
-.auth-breadcrumb a { color: inherit; text-decoration: underline; text-underline-offset: 3px; } /* Sprint 3 (feedback L4) */
+.auth-breadcrumb a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 .auth-breadcrumb > span[aria-hidden] { color: #969696; }
 .auth-content-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 438px); gap: clamp(44px, 6vw, 92px); align-items: start; }
 .auth-introduction { min-width: 0; }
-/* Sprint 3 (internal-tool UI): the H1 size comes from the shared rule in ui/workspace.css. */
+/* The H1 size comes from the shared rule in ui/workspace.css. */
 .auth-title-rule { width: 68px; height: 6px; margin: 24px 0; background: var(--auth-yellow); }
 .auth-intro-description { max-width: 530px; color: #505050; font-size: 14px; line-height: 1.7; }
 .auth-campus { margin: 27px 0 0; position: relative; overflow: hidden; background: #e5e5e5; }
@@ -57,7 +57,7 @@
 .auth-demo-notice { border-left: 3px solid var(--auth-yellow); padding: 12px 15px; background: #f5f5f5; margin-bottom: 24px; }
 .auth-demo-notice > span { font-size: 12px; font-weight: 700; }
 .auth-demo-notice p { font-size: 12px; color: #555; line-height: 1.6; margin-top: 4px; }
-.auth-demo-notice code { font-family: inherit; font-weight: 700; } /* Sprint 3 (internal-tool UI, AI-5): one font on the page */
+.auth-demo-notice code { font-family: inherit; font-weight: 700; } /* One font on the page */
 .auth-form fieldset { display: flex; flex-direction: column; min-width: 0; margin: 0; padding: 0; border: 0; }
 .auth-form label { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
 .auth-form input { width: 100%; min-height: 48px; border: 1px solid #888; border-radius: 0; background: #fff; padding: 12px 13px; font-size: 14px; color: #141414; }

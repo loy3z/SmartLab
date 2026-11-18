@@ -1,4 +1,4 @@
-// Sprint 3 (2026-10-27): the site's API layer, re-exported from one place.
+// The site's API layer, re-exported from one place.
 export { ApiError, getToken, setToken } from '../lib/api-client'
 export * from './auth'
 export * from './bookings'

@@ -90,11 +90,11 @@ class WaitlistMixin:
         without a check-in are marked as missed (see attendance.py).
         """
         changed, released = [], set()
-        # 2026-10-29 (load test S1): read only undecided requests that may be due, not every booking ever made
+        # Read only undecided requests that may be due, not every booking ever made
         # (5000 past bookings made each API request about 0.8 s slower). The exact checks below are unchanged.
         for candidate in self.repo.list_bookings(statuses=UNDECIDED_STATUSES, due_by=self.now()):
             # Every API request runs this, so a request that is not due yet is skipped before taking any lock
-            # (2026-10-27, performance P5: 200 waiting requests added about 0.5 s to each API request).
+            # (200 waiting requests used to add about 0.5 s to each API request).
             # The same check is repeated under the lock below.
             if candidate.status not in UNDECIDED_STATUSES or not self._due_for_processing(candidate, self.now()):
                 continue
@@ -132,8 +132,8 @@ class WaitlistMixin:
                 ids = []
                 _promoted_ids.set(ids)
             ids.extend(item.id for item in changed if item.status == BookingStatus.APPROVED)
-        # Sprint 3 check-in: approved bookings whose check-in time passed without one count as missed.
+        # Check-in: approved bookings whose check-in time passed without one count as missed.
         self._process_attendance()
-        # Sprint 3: reminders (booking tomorrow, induction expiring soon); each is sent once.
+        # Reminders (booking tomorrow, induction expiring soon); each is sent once.
         self._send_reminders()
         return changed

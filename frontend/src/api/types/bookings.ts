@@ -1,4 +1,4 @@
-// Sprint 3 (2026-10-27): moved from the booking feature folder; definitions unchanged.
+// Moved from the booking feature folder; definitions unchanged.
 import type { PersonBrief, Qualification } from './resources'
 
 export type BookingStatus =
@@ -98,7 +98,7 @@ export interface Booking {
   urgent_reason?: string | null
   long_booking?: boolean
   long_booking_reason?: string | null
-  /** 2026-11-07: a later end the person asked for; waits for a Manager (null when nothing is waiting). */
+  /** A later end the person asked for; waits for a Manager (null when nothing is waiting). */
   extension_end?: string | null
   /** Separate request for unused capacity beyond the normal weekly allowance. */
   additional_hours?: boolean
@@ -106,19 +106,19 @@ export interface Booking {
   active_data_collection?: boolean
   data_collection_reason?: string | null
   additional_hours_review?: AdditionalHoursReview | null
-  /** Sprint 3: weekly series made by staff; null for single bookings. */
+  /** Weekly series made by staff; null for single bookings. */
   series_id?: string | null
-  /** Sprint 3: CHECKED_IN, NO_SHOW (missed), EXCUSED (resource unavailable), NOT_TRACKED, or null (not yet). */
+  /** CHECKED_IN, NO_SHOW (missed), EXCUSED (resource unavailable), NOT_TRACKED, or null (not yet). */
   attendance?: Attendance | null
   checked_in_at?: string | null
   /** True while the "I'm here" check-in button should show. */
   check_in_open?: boolean
   check_in_opens_at?: string | null
   check_in_closes_at?: string | null
-  /** Sprint 3 (1.16.0): on a change request, the approved booking it would replace (cancelled once this is approved). */
+  /** On a change request, the approved booking it would replace (cancelled once this is approved). */
   replaces_id?: string | null
   replaces_booking?: BookingTimeRef | null
-  /** Sprint 3 (1.16.0): on an approved booking, its change request that is still waiting (pending or waitlisted). */
+  /** On an approved booking, its change request that is still waiting (pending or waitlisted). */
   open_change?: BookingTimeRef | null
 }
 
@@ -154,7 +154,7 @@ export interface LongBookingRequest {
   on_behalf_of_zid?: string
 }
 
-/** Sprint 3 (1.16.0): the time and status of a linked booking (change requests). */
+/** The time and status of a linked booking (change requests). */
 export interface BookingTimeRef {
   id: string
   start: string
@@ -162,7 +162,7 @@ export interface BookingTimeRef {
   status: BookingStatus
 }
 
-// Sprint 3: check-in, notifications, calendar link, weekly series -------------- ----------------------------
+// Check-in, notifications, calendar link, weekly series --------------------------------------------
 
 export type Attendance = 'CHECKED_IN' | 'NO_SHOW' | 'EXCUSED' | 'NOT_TRACKED'
 
@@ -214,7 +214,7 @@ export interface Dashboard {
   bookings: Booking[]
   qualifications: Qualification[]
   counts: Record<BookingStatus, number>
-  /** 2026-11-03: hours of the weekly allowance booked this Sydney week (Monday to Sunday); additional hours not counted. */
+  /** Hours of the weekly allowance booked this Sydney week (Monday to Sunday); additional hours not counted. */
   week_hours: { week_start: string; used_hours: number; limit_hours: number }
 }
 

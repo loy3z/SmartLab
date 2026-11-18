@@ -1,4 +1,4 @@
-"""Booking page filters: equipment categories and the one-day grid of every matching resource (18 Oct)."""
+"""Booking page filters: equipment categories and the one-day grid of every matching resource."""
 from datetime import timedelta
 
 from django.test import SimpleTestCase, override_settings
@@ -50,7 +50,9 @@ class DayOverviewTests(BookingAPIFixtureMixin, SimpleTestCase):
         everything = self.overview(bookable_only="true")
         self.assertNotIn("Lab Room 2", self.names(everything))  # needs Advanced training
         self.assertIn("Lab Room 1", self.names(everything))
-        self.assertEqual(self.overview(self.student, bookable_only="true")["count"], 0)  # no induction yet
+        # No induction yet: only the devices that need none (the two multimeters), not their room.
+        self.assertEqual(set(self.names(self.overview(self.student, bookable_only="true"))),
+                         {"Digital Multimeter 001", "Digital Multimeter 002"})
 
     def test_free_at_keeps_only_resources_free_for_the_whole_duration(self):
         self.create_approved(payload=self.payload(hour=10, minutes=60))  # Lab Room 1, 10:00-11:00
@@ -68,7 +70,7 @@ class DayOverviewTests(BookingAPIFixtureMixin, SimpleTestCase):
 
     def test_invalid_queries_are_refused(self):
         self.assertEqual(self.verified.get("/api/v1/resources/day-overview/").status_code, 400)
-        # Sprint 3 (1.16.0): a length no resource allows is no longer an error; those resources are counted in too_long.
+        # A length no resource allows is no longer an error; those resources are counted in too_long.
         odd = self.verified.get("/api/v1/resources/day-overview/", {"date": DAY, "duration_minutes": 45})
         self.assertEqual((odd.status_code, odd.data["count"]), (200, 0))
         self.assertGreater(odd.data["too_long"], 0)

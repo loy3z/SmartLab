@@ -1,11 +1,11 @@
-"""HTTP views: misc (split from booking/views.py on 2026-10-25)."""
+"""HTTP views: misc (split from booking/views.py)."""
 
 from ._common import *  # noqa: F401,F403 - shared imports, helpers and PublicView.
 
 __all__ = ["SiteContactView", "StaffOverviewView", "ProcessDueView"]
 
 class SiteContactView(APIView):
-    """Sprint 3 (1.16.0): the lab's contact details. Anyone signed in reads them; a Manager changes them."""
+    """The lab's contact details. Anyone signed in reads them; a Manager changes them."""
     def get(self, request):
         return Response(json_value(get_service().site_contact()))
 
@@ -14,7 +14,7 @@ class SiteContactView(APIView):
         return Response(json_value(get_service().update_site_contact(request.user, data)))
 
 class StaffOverviewView(APIView):
-    """Sprint 3 (1.16.0), Admin and Manager: the "Today" page (services/overview.py)."""
+    """Admin and Manager: the "Today" page (services/overview.py)."""
     def get(self, request):
         return Response(json_value(get_service().staff_overview(request.user)))
 

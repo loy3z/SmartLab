@@ -1,4 +1,4 @@
-"""Sprint 3: manage.py create_manager makes a Manager (e.g. the first one) without writing SQL."""
+"""Manage.py create_manager makes a Manager (e.g. the first one) without writing SQL."""
 
 from io import StringIO
 from unittest import mock

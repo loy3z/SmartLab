@@ -8,10 +8,10 @@ import {
   HelpIcon,
   LogoutIcon,
   UserIcon,
-  SlidersIcon, // Sprint 3 (1.16.0)
+  SlidersIcon,
 } from '../features/booking/icons'
 import type { User } from '../api/types/index.ts'
-import { NotificationBell } from '../features/notifications/NotificationBell' // Sprint 3
+import { NotificationBell } from '../features/notifications/NotificationBell'
 import { homePath } from './routes'
 import { TestConsoleBar } from '../features/auth/TestConsoleBar'
 
@@ -94,16 +94,16 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
         { path: '/bookings', label: 'My bookings', icon: <CalendarIcon /> },
         { path: '/induction', label: 'Induction & training', icon: <CapIcon /> },
       ]
-  // Sprint 3 (1.19.0): settings visible in both navigation variants.
+  // Settings visible in both navigation variants.
   mainItems.push({ path: '/settings/notifications', label: 'Notifications', icon: <SlidersIcon /> })
-  // Sprint 3 (internal-tool UI, AI-6): every page has one sentence-case name, the same here, in its H1 and in
+  // Every page has one sentence-case name, the same here, in its H1 and in
   // AppRouter's PAGE_TITLES (browser tab).
   const staffSections: NavSection[] = isStaff ? [
     {
       label: 'Daily work',
       items: [
         { path: '/admin/today', label: 'Today', icon: <DashboardIcon /> },
-        { path: '/admin/announcements', label: 'Announcements', icon: <FileIcon /> }, // Sprint 3 (1.19.0)
+        { path: '/admin/announcements', label: 'Announcements', icon: <FileIcon /> },
         { path: '/admin/qualifications', label: 'Induction review', icon: <CapIcon /> },
         { path: '/admin/bookings', label: 'Booking review', icon: <FileIcon /> },
       ],
@@ -111,7 +111,7 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
     ...(user.role === 'MANAGER' ? [{
       label: 'Lab management',
       items: [
-        { path: '/manager/home', label: 'Lab overview', icon: <DashboardIcon /> }, // 2026-11-07 (client, Week 8)
+        { path: '/manager/home', label: 'Lab overview', icon: <DashboardIcon /> },
         { path: '/manager/bookings', label: 'Room management', icon: <CalendarIcon /> },
         { path: '/manager/resources', label: 'Resources', icon: <FileIcon /> },
         { path: '/manager/users', label: 'User management', icon: <UserIcon /> },
@@ -186,7 +186,7 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
         <Link to={homePath(user.role)} aria-label="UNSW SmartLab portal home" onClick={mobile ? closeMobile : undefined}><AppBrand /></Link>
         {mobile && <button className="app-icon-button" aria-label="Close navigation" onClick={closeMobile}><span aria-hidden="true">×</span></button>}
       </div>
-      <div className="app-product-label">SmartLab<span>Lab &amp; resource booking</span></div>{/* Sprint 3 (internal-tool UI, AI-2): no capitals */}
+      <div className="app-product-label">SmartLab<span>Lab &amp; resource booking</span></div>{/* No capitals */}
       <nav aria-label={mobile ? 'Mobile navigation' : 'Main navigation'} className={`app-navigation${isStaff ? ' is-staff' : ''}`}>
         {isStaff && <p className="app-nav-label">Personal bookings</p>}
         {mainItems.map((item) => navLink(item, mobile))}
@@ -242,11 +242,11 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
-            {/* Sprint 3 (internal-tool UI, AI-2 / D7): no "<role> Portal" title; the role shows in the account button. */}
-            {/* 2026-11-07 (client, Week 8): the three roles look clearly different, so the role is named on every page. */}
+            {/* No "<role> Portal" title; the role shows in the account button. */}
+            {/* The three roles look clearly different, so the role is named on every page. */}
             <span className={`app-role-badge is-${user.role.toLowerCase()}`}>{roleLabel} view</span>
           </div>
-          <NotificationBell />{/* Sprint 3 */}
+          <NotificationBell />
           <div className="app-account" ref={accountRef} onBlur={(event) => {
             if (!event.currentTarget.contains(event.relatedTarget)) setAccountOpen(false)
           }}>
@@ -273,7 +273,7 @@ export function AppLayout({ user, onSignOut }: AppLayoutProps) {
         </header>
         {user.test_account && <TestConsoleBar user={user} />}
         <main className="app-content" id="app-main" tabIndex={-1}>
-          {/* Sprint 3 (1.15.0): key={pathname} re-mounts this wrapper on each page change, so the page fades in.
+          {/* key={pathname} re-mounts this wrapper on each page change, so the page fades in.
               Query changes (e.g. switching tabs) keep the same key and do not fade. */}
           <div key={pathname} className="app-page"><Outlet /></div>
         </main>

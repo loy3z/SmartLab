@@ -48,6 +48,9 @@ DEMO_RESOURCES = [
 
 ROOM_IDS = {"Lab Room 1": fixed_id(101), "Lab Room 2": fixed_id(102)}
 
+# Simple devices anyone may borrow: no induction, not even their room's.
+NO_INDUCTION_IDS = {209, 210}
+
 # Demo equipment categories for the booking page filter (made up; replace with the client's equipment list).
 DEMO_CATEGORIES = {
     "Microscope": "Microscopy", "Camera": "Imaging", "Thermal Camera": "Imaging",
@@ -72,7 +75,7 @@ def seed_demo_data(service):
     service.repo.save_requirement(advanced)
     for number, name, kind, location, needs_advanced in DEMO_RESOURCES:
         service.repo.save_resource(Resource(fixed_id(number), name, kind, location, "Single resource; demonstration data.",
-            required_qualification_id=advanced.id if needs_advanced else requirement.id,
+            required_qualification_id=None if number in NO_INDUCTION_IDS else advanced.id if needs_advanced else requirement.id,
             pending_hold_minutes=service.rules().default_review_window_minutes,
             room_id=ROOM_IDS.get(location) if kind == ResourceKind.EQUIPMENT else None,
             category=demo_category(name, kind)))
@@ -98,7 +101,7 @@ def get_service():
         if _service is None:
             repo = import_string(settings.REPOSITORY_FACTORY)()
             storage = import_string(settings.FILE_STORAGE_FACTORY)()
-            from .repository import MemoryRepository
+            from .memory import MemoryRepository
             from .storage import MemoryFileStorage
             if not settings.DEBUG and (isinstance(repo, MemoryRepository) or isinstance(storage, MemoryFileStorage)):
                 raise ImproperlyConfigured("Configure durable repository and private file-storage adapters outside DEBUG mode.")

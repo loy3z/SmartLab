@@ -14,7 +14,7 @@ import { evidenceProblem } from './evidence'
 export function InductionPage() {
   const feedback = useFeedback()
   const { user } = useAuth()
-  const testAccount = Boolean(user?.test_account) // Sprint 3 (1.17.1): automatic grants need no evidence form.
+  const testAccount = Boolean(user?.test_account) // Automatic grants need no evidence form.
   const [params, setParams] = useSearchParams()
   const [requirements, setRequirements] = useState<Requirement[]>([])
   const [qualifications, setQualifications] = useState<Qualification[]>([])
@@ -121,7 +121,7 @@ export function InductionPage() {
 
   return (
     <div>
-      {/* Sprint 3 (internal-tool UI, AI-2 / AI-6): sentence-case name; the introduction line only for test account 1. */}
+      {/* Sentence-case name; the introduction line only for test account 1. */}
       <h1>Induction &amp; training</h1>
       {testAccount && <p className="bk-sub">All inductions are automatically verified for test account 1. No evidence upload is required.</p>}
 

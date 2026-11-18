@@ -1,4 +1,4 @@
-"""Client email, 17 Oct: staff booking, booking on behalf of someone, urgent requests, Manager-only reschedule.
+"""Staff booking, booking on behalf of someone, urgent requests, Manager-only reschedule.
 
 - Admins and Managers may book for themselves and on behalf of other users; the booking records both the
   person it is for (student_id) and who created it (created_by).
@@ -77,7 +77,7 @@ class StaffBookingServiceTests(BookingFixtureMixin, SimpleTestCase):
         self.refused("DUPLICATE_BOOKING", self.request, self.admin, on_behalf_of_zid=self.student.zid)
 
     def test_admins_follow_the_normal_window_and_conflict_rules(self):
-        """Managers override these since 2026-11-06 (test_approval_flow); Admins do not."""
+        """Managers override these (test_approval_flow); Admins do not."""
         self.qualification(self.admin)
         self.refused("BOOKING_TOO_SOON", self.request, self.admin, days=2)
         self.request(self.student)
@@ -116,7 +116,7 @@ class StaffBookingServiceTests(BookingFixtureMixin, SimpleTestCase):
         self.assertEqual(self.repo.get_booking(booking.id).status, BookingStatus.EXPIRED)
 
     def test_a_manager_urgent_booking_for_someone_is_approved_at_once(self):
-        """2026-11-06 (client, Week 8): before, it waited for a second Manager (the creator may not review it)."""
+        """Before, it waited for a second Manager (the creator may not review it)."""
         booking = self.request(self.manager, days=2, on_behalf_of_zid=self.student.zid, urgent=True, urgent_reason="Visiting examiner")
         self.assertEqual((booking.student_id, booking.created_by, booking.status, booking.urgent),
                          (self.student.id, self.manager.id, BookingStatus.APPROVED, True))
@@ -136,7 +136,7 @@ class StaffBookingServiceTests(BookingFixtureMixin, SimpleTestCase):
         self.refused("FORBIDDEN", self.service.availability, self.student, self.room.id, day, 60, for_zid=self.other.zid)
 
     def test_a_manager_sees_times_inside_the_window_and_the_full_length(self):
-        """2026-11-06 (client, Week 8): the Manager override in the time picker (the manager has no induction)."""
+        """The Manager override in the time picker (the manager has no induction)."""
         day = self.today + timedelta(days=2)
         mine = self.service.availability(self.manager, self.room.id, day, 60)
         self.assertEqual((mine["can_request"], mine["manager_override"], mine["latest_date"]), (True, True, None))

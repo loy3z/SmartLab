@@ -2,7 +2,8 @@
 maintenance/closed status, and the bookings report.
 
 Resource setup rules (all checked in _check_resource_fields):
-- Every resource needs a name, a location and the induction people must have to book it.
+- Every resource needs a name and a location. The Manager chooses its induction, or no induction
+  (simple equipment such as a smart watch), when adding it; equipment never inherits its room's induction.
 - Names are unique among listed (not archived) resources, ignoring upper/lower case.
 - A room has no room and no category. Equipment may name the listed room it is kept in, and a category.
 - Bookings use slot_minutes steps (15, 30 or 60). Opening and closing times fall on those steps, closing is
@@ -25,11 +26,11 @@ SLOT_CHOICES = (15, 30, 60)
 # Fields a Manager may set when adding a resource; editing may change all of them except kind.
 EDITABLE_FIELDS = ("name", "location", "description", "required_qualification_id", "room_id", "category",
                    "slot_minutes", "max_booking_minutes", "opening_time", "closing_time", "pending_hold_minutes",
-                   "capacity", "details")  # Sprint 3 (1.16.0): capacity, details
-MAX_DETAILS = 12  # Sprint 3 (1.16.0): "label: value" lines per resource
-# 2026-11-07 (client, Week 8): Admins see bookings that ended at most this many days ago; full history is for Managers.
+                   "capacity", "details")  # Capacity, details
+MAX_DETAILS = 12  # "label: value" lines per resource
+# Admins see bookings that ended at most this many days ago; full history is for Managers.
 ADMIN_HISTORY_DAYS = 7
-# 2026-11-07 (client, Week 8): Manager-only internal fields and their longest length.
+# Manager-only internal fields and their longest length.
 INTERNAL_FIELDS = {"owner": 120, "asset_number": 60, "provided_by": 120, "specifications": 2000}
 
 
@@ -49,9 +50,13 @@ class ResourcesMixin:
         unknown = set(fields) - set(EDITABLE_FIELDS)
         if unknown:
             raise DomainError("VALIDATION_ERROR", f"Unknown fields: {', '.join(sorted(unknown))}.")
+        if "required_qualification_id" not in fields:
+            # No induction must be a choice (null), not a field left out by mistake.
+            message = "Choose the induction people need, or no induction."
+            raise DomainError("VALIDATION_ERROR", message, 400, {"required_qualification_id": [message]})
         defaults = dict(description="", slot_minutes=30, max_booking_minutes=480, opening_time=time(8), closing_time=time(20),
                         pending_hold_minutes=self.rules().default_review_window_minutes, room_id=None, category=None,
-                        capacity=None, details=())  # Sprint 3 (1.16.0)
+                        capacity=None, details=())
         values = {**defaults, **{key: value for key, value in fields.items() if value is not None}}
         with self.repo.atomic():
             resource = self._check_resource_fields(ResourceKind(kind), values, resource_id=None)
@@ -83,7 +88,7 @@ class ResourcesMixin:
             return updated, self._bookings_outside_rules(updated)
 
     def resource_internal_info(self, actor, resource_id):
-        """Manager only (client, Week 8): owner, UNSW asset number, where it came from, specifications. Empty until saved."""
+        """Manager only: owner, UNSW asset number, where it came from, specifications. Empty until saved."""
         self.require_manager(actor)
         resource = self.resource(resource_id)
         return self.repo.get_resource_internal_info(resource.id) or ResourceInternalInfo(resource.id)
@@ -160,9 +165,9 @@ class ResourcesMixin:
         if same_name:
             raise DomainError("RESOURCE_NAME_TAKEN", "Another listed resource already has this name.", 409, {"name": name})
 
-        requirement_id = values.get("required_qualification_id")
-        if not requirement_id or self.repo.get_requirement(str(requirement_id)) is None:
-            invalid("required_qualification_id", "Choose the induction people need to book this resource.")
+        requirement_id = values.get("required_qualification_id") or None
+        if requirement_id and self.repo.get_requirement(str(requirement_id)) is None:
+            invalid("required_qualification_id", "Choose a listed induction, or no induction.")
 
         room_id = values.get("room_id") or None
         category = (values.get("category") or "").strip() or None
@@ -193,7 +198,7 @@ class ResourcesMixin:
         if isinstance(hold, bool) or not isinstance(hold, int) or not 1 <= hold <= MAX_PENDING_HOLD_MINUTES:
             invalid("pending_hold_minutes", f"The review window must be 1 to {MAX_PENDING_HOLD_MINUTES} minutes.")
 
-        # Sprint 3 (1.16.0): capacity (rooms only, 1-1000 people) and up to MAX_DETAILS "label: value" lines.
+        # Capacity (rooms only, 1-1000 people) and up to MAX_DETAILS "label: value" lines.
         capacity = values.get("capacity")
         if capacity is not None:
             if kind != ResourceKind.ROOM:
@@ -213,7 +218,7 @@ class ResourcesMixin:
         if len(details) > MAX_DETAILS:
             invalid("details", f"Add at most {MAX_DETAILS} details.")
 
-        return dict(name=name, location=location, description=description, required_qualification_id=str(requirement_id),
+        return dict(name=name, location=location, description=description, required_qualification_id=str(requirement_id) if requirement_id else None,
                     room_id=str(room_id) if room_id else None, category=category, slot_minutes=slot,
                     max_booking_minutes=longest, opening_time=opening, closing_time=closing, pending_hold_minutes=hold,
                     capacity=capacity, details=tuple(details))
@@ -235,28 +240,11 @@ class ResourcesMixin:
 
     @staticmethod
     def _audit_value(value):
-        if isinstance(value, tuple):  # Sprint 3 (1.16.0): details as [label, value] pairs in the audit record
+        if isinstance(value, tuple):  # Details as [label, value] pairs in the audit record
             return [[item.label, item.value] for item in value]
         return value.strftime("%H:%M") if isinstance(value, time) else value
 
     # Review window and maintenance status ----------------------------------------------------------------
-
-    def set_booking_policy(self, actor, resource_id, pending_hold_minutes):
-        """Manager only: how long a pending request waits for an Admin (holding its slot) before the system decides.
-
-        Applies to requests that become pending afterwards; existing deadlines stay unchanged.
-        """
-        self.require_manager(actor)
-        if isinstance(pending_hold_minutes, bool) or not isinstance(pending_hold_minutes, int) \
-                or not 1 <= pending_hold_minutes <= MAX_PENDING_HOLD_MINUTES:
-            raise DomainError("VALIDATION_ERROR", f"pending_hold_minutes must be an integer from 1 to {MAX_PENDING_HOLD_MINUTES}.")
-        with self.repo.atomic(resource_ids=[str(resource_id)]):
-            current = self.resource(resource_id)
-            updated = replace(current, pending_hold_minutes=pending_hold_minutes)
-            self.repo.save_resource(updated)
-            self._audit(actor.id, "RESOURCE_BOOKING_POLICY_UPDATED", "resource", current.id,
-                        previous_minutes=current.pending_hold_minutes, pending_hold_minutes=pending_hold_minutes)
-            return updated
 
     def set_resource_status(self, actor, resource_id, status, reason=None, expected_back=None):
         """Manager only: open a resource or take it out of service (MAINTENANCE / CLOSED).
@@ -265,7 +253,7 @@ class ResourcesMixin:
         Manager can decide whether to cancel them (they are returned as affected_bookings). Reopening the
         resource offers freed time to its waitlist again.
 
-        Sprint 3 (1.16.0): when the status changes, everyone with a future booking or request on this resource is
+        When the status changes, everyone with a future booking or request on this resource is
         told (website notification, and email when email is on): see ``_notify_status_change``. Bookings on
         equipment kept in a room are not affected by the room's status, so they are not told.
         """
@@ -285,17 +273,17 @@ class ResourcesMixin:
                             previous_status=current.status.value, status=updated.status.value, reason=updated.status_reason)
                 if updated.bookable:
                     self._promote_waitlist(updated.id)
-            # Sprint 3 (1.19.0): status and its public announcement commit or roll back together.
+            # Status and its public announcement commit or roll back together.
             self._status_announcement(actor, updated, expected_back)
             affected = sorted((item for item in self.repo.list_bookings(resource_id=updated.id)
                                if item.status in ACTIVE_REQUEST_STATUSES and item.end > self.now()),
                               key=lambda item: (item.start, item.id))
             if updated.status != current.status:
-                self._notify_status_change(updated, affected)  # Sprint 3 (1.16.0)
+                self._notify_status_change(updated, affected)
             return updated, affected
 
     def _notify_status_change(self, resource, affected):
-        """Sprint 3 (1.16.0): tell each person with a future booking or request on this resource that its status changed.
+        """Tell each person with a future booking or request on this resource that its status changed.
 
         Out of service (MAINTENANCE / CLOSED): RESOURCE_OUT_OF_SERVICE with the Manager's reason. Bookings are kept
         (the Manager decides whether to cancel or move them, which sends its own notice); undecided requests cannot be
@@ -318,8 +306,8 @@ class ResourcesMixin:
     def booking_report(self, actor, statuses=None, resource_id=None, student_id=None, since=None, until=None, query=None):
         """Admin/Manager: every booking matching the filters, ordered by start time (for lists, print and CSV).
 
-        Sprint 3: query matches part of the zID or name of the person booked for or of the person who created it.
-        2026-11-07 (client, Week 8): an Admin only sees bookings that ended in the last ADMIN_HISTORY_DAYS days or later;
+        query matches part of the zID or name of the person booked for or of the person who created it.
+        An Admin only sees bookings that ended in the last ADMIN_HISTORY_DAYS days or later;
         the full history is for Managers.
         """
         self.require_staff(actor)
@@ -329,7 +317,7 @@ class ResourcesMixin:
             since = max(since, earliest) if since else earliest
         query = (query or "").strip().casefold()
         people = {item.id: f"{item.zid} {item.display_name}".casefold() for item in self.repo.list_principals()} if query else {}
-        # 2026-10-29 (load test S2): the repository narrows the rows read (inclusive bounds); the checks below are unchanged.
+        # The repository narrows the rows read (inclusive bounds); the checks below are unchanged.
         stored = self.repo.list_bookings(str(student_id) if student_id is not None else None,
                                          str(resource_id) if resource_id is not None else None,
                                          statuses=[BookingStatus(value) for value in statuses] if statuses else None,

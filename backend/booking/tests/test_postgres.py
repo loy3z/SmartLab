@@ -20,28 +20,28 @@ from zoneinfo import ZoneInfo
 from unittest.mock import patch
 
 from django.conf import settings
-from django.db import IntegrityError, connection, connections, transaction  # Sprint 3 (1.16.0): IntegrityError, transaction
-from django.db import close_old_connections  # 2026-10-29 (load test S3)
+from django.db import IntegrityError, connection, connections, transaction  # IntegrityError, transaction
+from django.db import close_old_connections
 from django.test import override_settings, TransactionTestCase
 from django.test.utils import CaptureQueriesContext
 
 from booking.domain import (
     AuditRecord, Booking, BookingStatus, EmailDelivery, Principal, QualificationRequirement, QualificationStatus,
-    QualificationSubmission,  # 2026-10-29 (load test S8)
+    QualificationSubmission,
     Resource, ResourceKind, ResourceStatus, Role,
 )
-from booking.repository import MemoryRepository  # 2026-10-29 (load test R1)
+from booking.memory import MemoryRepository
 from booking.exceptions import DomainError
 from booking.services import BookingService
 
 SYDNEY = ZoneInfo("Australia/Sydney")
-from booking.tests.test_119 import Acceptance119  # Sprint 3 (1.19.0): identical adapter acceptance cases.
+from booking.tests.test_119 import Acceptance119  # Identical adapter acceptance cases.
 SCHEMA = Path(settings.BASE_DIR) / "database" / "schema.sql"
 
 
 @unittest.skipUnless(getattr(settings, "USE_POSTGRES", False), "PostgreSQL adapter not configured.")
 class Postgres119Tests(Acceptance119, TransactionTestCase):
-    """Sprint 3 (1.19.0): real database channels, announcement permissions, lifecycle and atomicity."""
+    """Real database channels, announcement permissions, lifecycle and atomicity."""
     databases = {"default"}
 
     @classmethod
@@ -96,7 +96,7 @@ class PostgresAdapterTests(TransactionTestCase):
         # Each test uses its own people and resources, so tests never see each other's rows
         # (audit records are append-only and cannot be truncated between tests).
         from booking.postgres import PostgresFileStorage, PostgresRepository
-        # Sprint 3 (2026-11-01): email claiming reads the global queue, unlike person/resource-scoped fixtures.
+        # Email claiming reads the global queue, unlike person/resource-scoped fixtures.
         with connection.cursor() as cursor:
             cursor.execute('DELETE FROM public.email_delivery')
         self.now = datetime(2030, 1, 7, 0, tzinfo=timezone.utc)
@@ -180,7 +180,7 @@ class PostgresAdapterTests(TransactionTestCase):
         new_audit = [item for item in reloaded.list_audit() if item not in audit_before]
         self.assertCountEqual([item.action for item in new_audit], ["REQUIREMENT_UPDATED", "REQUIREMENT_PREREQUISITES_UPDATED"])
 
-    # Sprint 3 (1.20.0): persisted personal visibility and atomic rollback, on a real database.
+    # Persisted personal visibility and atomic rollback, on a real database.
     def test_history_removal_persists_per_person_without_deleting_the_booking(self):
         from booking.postgres import PostgresRepository
         self.verified(self.a)
@@ -209,6 +209,22 @@ class PostgresAdapterTests(TransactionTestCase):
             cursor.execute(migration.read_text())
             cursor.execute(migration.read_text())
         self.assertEqual(self.repo.hidden_booking_ids(self.a.id), {booking.id})
+
+    def test_017_backfills_the_end_before_the_first_extension(self):
+        start = datetime(2030, 1, 9, 23, tzinfo=timezone.utc)  # 10:00-13:00 Sydney after two extensions
+        booking = replace(self.raw_booking(start, BookingStatus.APPROVED), end=start + timedelta(hours=3))
+        self.repo.save_booking(booking)
+        migration = Path(settings.BASE_DIR) / 'database/migrations/017_end_before_extension.sql'
+        with connection.cursor() as cursor:
+            # Two extensions recorded at the same moment, the later one stored first: ordering by time cannot tell.
+            for old_end in (start + timedelta(hours=2), start + timedelta(hours=1)):
+                cursor.execute("""INSERT INTO public.audit_record(actor_id, action, entity_type, entity_id, at, details)
+                                  VALUES (%s, 'BOOKING_EXTENDED', 'booking', %s, %s, %s::jsonb)""",
+                               [self.manager.id, booking.id, start + timedelta(minutes=10),
+                                '{"old_end": "%s"}' % old_end.isoformat()])
+            cursor.execute(migration.read_text())
+            cursor.execute(migration.read_text())
+        self.assertEqual(self.repo.get_booking(booking.id).end_before_extension, start + timedelta(hours=1))
 
     def test_011_email_migration_can_run_twice(self):
         migration = Path(settings.BASE_DIR) / 'database/migrations/011_durable_email_delivery.sql'
@@ -365,7 +381,7 @@ class PostgresAdapterTests(TransactionTestCase):
                 self.assertEqual((restored.long_booking, restored.long_booking_reason), (False, None))
             transaction.set_rollback(True)
 
-    # Sprint 3 (2026-11-01): an existing table from main's original 011 must also converge.
+    # An existing table from main's original 011 must also converge.
     def test_011_normalizes_the_legacy_foreign_key_without_losing_email(self):
         from booking.domain import Notification
         notice = Notification(str(uuid4()), self.a.id, "BOOKING_REMINDER", "Title", "Body", self.now)
@@ -483,7 +499,7 @@ class PostgresAdapterTests(TransactionTestCase):
         self.assertIn("NO_SHOW_RECORDED", kinds)
 
     def test_resource_setup_is_persisted(self):
-        # Sprint 3: a Manager adds, edits, archives and restores a resource on the website.
+        # A Manager adds, edits, archives and restores a resource on the website.
         name = f"Spectrometer {uuid4().hex[:6]}"
         item = self.service.create_resource(self.manager, "EQUIPMENT", {
             "name": name, "location": "Lab", "required_qualification_id": self.room.required_qualification_id,
@@ -502,7 +518,7 @@ class PostgresAdapterTests(TransactionTestCase):
         self.assertEqual((stored.status, stored.status_reason), (ResourceStatus.MAINTENANCE, "Repairs"))
 
     def test_guidance_details_and_contact_are_persisted(self):
-        # Sprint 3 (1.16.0): induction guidance texts, room capacity and details (jsonb), the lab's contact row.
+        # Induction guidance texts, room capacity and details (jsonb), the lab's contact row.
         requirement = self.service.create_requirement(self.manager, {"name": f"Laser {uuid4().hex[:6]}", "accepted_evidence": "Sheet"})
         self.assertEqual(self.repo.get_requirement(requirement.id), requirement)
         room, _ = self.service.update_resource(self.manager, self.room.id, {  # rooms of other tests share the name
@@ -513,7 +529,7 @@ class PostgresAdapterTests(TransactionTestCase):
         self.assertEqual(self.repo.get_site_contact(), saved)
 
     def test_extension_request_is_persisted(self):
-        # 2026-11-07: booking.extension_end, and the check that it is later than the end.
+        # Booking.extension_end, and the check that it is later than the end.
         self.verified(self.a)
         booking = self.service.review_booking(self.admin, self.book(self.a).id, "APPROVED")
         asked = replace(booking, extension_end=booking.end + timedelta(hours=1))
@@ -527,7 +543,7 @@ class PostgresAdapterTests(TransactionTestCase):
             self.repo.save_booking(replace(booking, extension_end=booking.end))
 
     def test_resource_internal_info_is_persisted(self):
-        # 2026-11-07 (client, Week 8): table resource_internal_info, one row per resource, updated in place.
+        # Table resource_internal_info, one row per resource, updated in place.
         self.assertIsNone(self.repo.get_resource_internal_info(self.room.id))
         first = self.service.update_resource_internal_info(self.manager, self.room.id, {"owner": "Dr Example", "asset_number": "A-1"})
         self.assertEqual(self.repo.get_resource_internal_info(self.room.id), first)
@@ -536,7 +552,7 @@ class PostgresAdapterTests(TransactionTestCase):
         self.assertEqual(self.repo.get_resource_internal_info(self.room.id), second)
 
     def test_change_request_is_persisted_and_replaces_the_old_booking(self):
-        # Sprint 3 (1.16.0): replaces_id column, the one-open-change index and the automatic cancellation.
+        # replaces_id column, the one-open-change index and the automatic cancellation.
         self.verified(self.a)
         old = self.service.review_booking(self.admin, self.book(self.a).id, "APPROVED")
         change = self.service.request_time_change(self.a, old.id, self.start + timedelta(hours=4), self.end + timedelta(hours=4))[0]
@@ -632,7 +648,7 @@ class PostgresAdapterTests(TransactionTestCase):
         self.assertEqual(errors, [])
         self.assertEqual(sorted(s.value for s in results), ["PENDING_APPROVAL", "WAITLISTED"])
 
-    # 2026-10-29 (tasks-load-2026-10-29.md R1, S1, S5, S3): per-request work must not grow with past bookings.
+    # Per-request work must not grow with past bookings.
 
     def raw_booking(self, start, status, student=None, **fields):
         """Save a booking directly (no rules), as history or a fixture for time processing."""
@@ -718,7 +734,6 @@ class PostgresAdapterTests(TransactionTestCase):
         close_old_connections()  # what Django runs at the end of every request
         self.assertEqual(backend_pid(), first)
 
-    # 2026-10-29 (tasks-load-2026-10-29.md round 2: S2, S6).
 
     def test_load_availability_reads_each_resource_once_for_the_whole_day(self):
         short = Resource(str(uuid4()), "Short day", ResourceKind.ROOM, "Building A", "Test room",
@@ -796,7 +811,6 @@ class PostgresAdapterTests(TransactionTestCase):
         large = queries()
         self.assertEqual((large[0], large[1]), (small[0], small[1] + 40))
 
-    # 2026-10-29 (tasks-load-2026-10-29.md round 3: S7, S8).
 
     def extra_room(self, name, requirement_id):
         room = Resource(str(uuid4()), name, ResourceKind.ROOM, "Building A", "Test room",
@@ -858,7 +872,7 @@ class PostgresAdapterTests(TransactionTestCase):
         self.assertEqual((reminders(c), reminders(d)), (1, 0))
 
     def test_load_submission_filters_match_the_memory_repository(self):
-        # Sprint 3 (2026-11-01): NULL validity, inclusive bounds, empty filters and invalid UUID list members.
+        # NULL validity, inclusive bounds, empty filters and invalid UUID list members.
         memory = MemoryRepository()
         self.verified(self.a)
         record = self.repo.list_submissions(student_id=self.a.id)[0]
@@ -911,7 +925,7 @@ class PostgresAdapterTests(TransactionTestCase):
         self.assertEqual(sorted(len(items) for items in claims), [0, 1])
 
     def test_scheduler_recovers_when_the_database_connection_is_lost(self):
-        # 2026-11-01: the scheduler has no requests, so nothing else clears a connection the server has closed.
+        # The scheduler has no requests, so nothing else clears a connection the server has closed.
         from io import StringIO
         from types import SimpleNamespace
         from django.core.management import call_command
@@ -951,7 +965,7 @@ class PostgresAdapterTests(TransactionTestCase):
         self.assertEqual(cycles, ["ok", "ok", "ok"])
 
     def test_email_worker_recovers_without_closing_the_request_transaction(self):
-        # Sprint 3 (2026-11-01): real background connection, expired lifetime and server disconnect.
+        # Real background connection, expired lifetime and server disconnect.
         from types import SimpleNamespace
         from booking.email_channel import EmailOutbox
         pids, wrappers = [], []

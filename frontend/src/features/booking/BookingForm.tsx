@@ -5,7 +5,7 @@ import { useAuth } from '../auth/auth-context'
 import { useFeedback } from '../../ui/feedback-context'
 import { createBooking, lookupPerson } from '../../api/index.ts'
 import { bookingRef, errorMessage, fmtDuration, fmtHours, fmtRange, newIdempotencyKey, SEPARATE_BOOKING_TEXT, submitBlocker, submittedMessage } from './format'
-import { ResourceFacts } from './ResourceCard' // Sprint 3 (1.16.0)
+import { ResourceFacts } from './ResourceCard'
 import { SlotPicker, type SlotRange } from './SlotPicker'
 import type { PersonBrief, Resource } from '../../api/types/index.ts'
 
@@ -48,7 +48,7 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
   const bookingPurpose = urgent ? urgentReason.trim() : purpose.trim()
   const normalMaximum = resource.effective_max_booking_minutes ?? resource.max_booking_minutes
   const testBypass = Boolean(user?.bypass_booking_rules && bookFor === 'self')
-  // 1.24.0 (client, Week 8): a Manager's booking skips induction, window and limits, and is approved at once.
+  // A Manager's booking skips induction, window and limits, and is approved at once.
   const isManager = user?.role === 'MANAGER'
   const direct = testBypass || isManager
   // One key per logical request: reused on retry, regenerated when inputs change.
@@ -59,7 +59,7 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
     setError('')
     keyRef.current = newIdempotencyKey()
   }
-  // 2026-10-29 (Loy): after a failed request the day reloads and the picker clears its selection; that must not also
+  // After a failed request the day reloads and the picker clears its selection; that must not also
   // clear the error, or the dialog shows nothing (the toast sits under the dialog's backdrop). Choosing a new time does.
   const fromPicker = (r: SlotRange | null) => {
     if (r) return pick(r)
@@ -125,7 +125,7 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
   }
 
   const minutes = range ? (Date.parse(range.end) - Date.parse(range.start)) / 60000 : 0
-  // Sprint 3 (1.16.0): why the submit button is disabled, in the order the form is filled in.
+  // Why the submit button is disabled, in the order the form is filled in.
   const missing = busy ? '' : submitBlocker({ ready, canRequest, hasTime: Boolean(range), hasPurpose: urgent || Boolean(purpose.trim()),
     needsReason: urgent && !urgentReason.trim() })
 
@@ -135,15 +135,17 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
       <p className="bk-muted">
         {resource.location} · {testBypass ? 'test booking: any future time, up to 24 h' : `open ${fmtHours(resource.opening_time, resource.closing_time)} · ${isManager ? `Manager booking up to ${fmtDuration(resource.max_booking_minutes)}` : `normal booking up to ${fmtDuration(normalMaximum)}`}`}
       </p>
-      {/* Sprint 3 (1.16.0): everything the Manager wrote about it, and what the booking does not include.
-          Sprint 3 (workspace UI): folded under "Resource details". */}
+      {/* Everything the Manager wrote about it, and what the booking does not include.
+          Folded under "Resource details". */}
       {/* Story 21: a device is borrowed for its booked time, so the conditions and the return time are stated here.
           There is no separate loan or return flow on the server: the booking end is the return time. */}
       {resource.kind === 'EQUIPMENT' && (
         <div className="bk-loan-box">
           <b>Borrowing conditions</b>
           <ul>
-            <li>A valid induction covering the whole borrowing period is required.</li>
+            <li>{resource.required_qualification_id
+              ? 'A valid induction covering the whole borrowing period is required.'
+              : 'No induction is needed for this equipment.'}</li>
             <li>Borrowing period: up to {fmtDuration(normalMaximum)} per booking, within {fmtHours(resource.opening_time, resource.closing_time)}.</li>
             <li>Return the equipment by the end of your booked time{range ? ` (${fmtRange(range.start, range.end)})` : ''}.</li>
           </ul>
@@ -178,7 +180,7 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
         </fieldset>
       )}
 
-      {/* 2026-11-16 (U7): no urgent entry while the person cannot request this resource at all (induction, closed). */}
+      {/* No urgent entry while the person cannot request this resource at all (induction, closed). */}
       {!isManager && !barred && <label className="bk-urgent">
         <input type="checkbox" checked={urgent} onChange={(e) => { setUrgent(e.target.checked); pick(null) }} />
         Urgent request (sooner than the normal booking window)
@@ -189,19 +191,19 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
         <SlotPicker resource={resource} onSelect={fromPicker} refreshKey={refreshKey} onEligibility={setCanRequest}
           onAvailability={(day) => setBarred(!day.can_request && !urgent)}
           forZid={forZid} urgent={urgent} initialDate={initialDate} initialStart={initialStart} initialMinutes={initialMinutes}
-          /* Sprint 3 (1.16.0): route someone who wants an earlier day to the urgent request */
+          /* Route someone who wants an earlier day to the urgent request */
           onAskEarlier={() => { setUrgent(true); pick(null) }} />
       ) : (
         <div className="ui-hint">Enter the person's zID and check it to see their availability.</div>
       )}
-      {/* 2026-11-16 (Loy): the urgent explanation sits where the normal purpose does, below the time picker. */}
+      {/* The urgent explanation sits where the normal purpose does, below the time picker. */}
       {urgent ? <label className="bk-block">
         <span>Purpose and urgency <span className="bk-required">Required</span></span>
         <textarea value={urgentReason} maxLength={500} rows={3} required
           placeholder="Briefly describe what you’ll use it for and why it cannot wait."
           onChange={(e) => setUrgentReason(e.target.value)} />
       </label> : <label className="bk-block">
-        <span>Purpose <span className="bk-required">Required</span></span>{/* Sprint 3 (1.16.0) */}
+        <span>Purpose <span className="bk-required">Required</span></span>
         <textarea
           value={purpose}
           maxLength={1000}
@@ -211,15 +213,15 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
           rows={3}
         />
       </label>}
-      {/* Sprint 3 (1.16.0): bk-submit-row stays at the bottom of the dialog on phones, with the chosen time. */}
+      {/* bk-submit-row stays at the bottom of the dialog on phones, with the chosen time. */}
       <div className="bk-submit-row">
         {range && <span className="bk-submit-time">{fmtRange(range.start, range.end)}</span>}
         <button className="bk-btn-yellow" type="submit"
           disabled={!range || busy || !bookingPurpose || !canRequest || !ready}>
           {busy ? 'Submitting…' : range ? `${direct ? 'Book' : 'Request'} ${fmtDuration(minutes)}${urgent ? ' (urgent)' : ''}` : direct ? 'Book' : 'Request booking'}
         </button>
-        {/* Sprint 3 (1.16.0): say what is still missing instead of leaving a grey button to guess at.
-            2026-10-29 (Loy): a failed request is shown here first, next to the button, so it is seen in the dialog. */}
+        {/* Say what is still missing instead of leaving a grey button to guess at.
+            A failed request is shown here first, next to the button, so it is seen in the dialog. */}
         {error ? <span className="bk-error" role="alert">Request not submitted: {error}</span>
           : missing ? <span className="bk-missing" role="status">{missing}</span> : canRequest && !urgent && (
             <span className="bk-muted">{testBypass ? 'Test booking: approved immediately. Existing bookings cannot be displaced.'

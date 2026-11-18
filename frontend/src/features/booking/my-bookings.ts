@@ -9,6 +9,11 @@ export function canRemoveBookingHistory(booking: Booking, now: number): boolean 
   return ['CANCELLED', 'REJECTED', 'EXPIRED'].includes(booking.status) || Date.parse(booking.end) <= now
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/** Story 21: an approved device booking that must be returned within the next 24 hours (its end time is the return time). */
+export const isDueSoon = (end: string, now: number) => Date.parse(end) - now < DAY_MS
+
 const SYDNEY = 'Australia/Sydney'
 const WEEKDAY_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const weekdayOf = new Intl.DateTimeFormat('en-AU', { weekday: 'short', timeZone: SYDNEY })

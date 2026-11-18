@@ -1,5 +1,5 @@
 # Sprint 3 (2026-11-09): CI pipeline. Runs the tests on every push and merge request; it does not deploy.
-# Deployment stays manual with claude-tools/deploy-ec2 (DEPLOY.md section 3), because some migrations delete data.
+# Deployment stays manual (DEPLOY.md section 3), because some migrations delete data.
 stages:
   - test
 

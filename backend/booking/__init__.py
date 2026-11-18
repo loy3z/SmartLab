@@ -1,1 +1,1 @@
-"""Sprint 1 booking application."""
+"""SmartLab booking application: rules, storage adapters, API views and background jobs."""

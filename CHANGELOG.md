@@ -1,530 +1,594 @@
-# 变更记录
+# Changelog
 
-这里记录每次改了什么、为什么改。其他文档只写现在的规则。版本号是 `backend/docs/openapi.json` 的接口版本，迁移指 `backend/database/migrations/` 里的脚本。最新的在最上面。
+This file records what changed in each update and why. Other documents describe only the current rules. Version numbers refer to the API version in `backend/docs/openapi.json`, and migrations refer to scripts in `backend/database/migrations/`. The newest entries appear first.
 
-## 1.27.0 之后：CI 加上 PostgreSQL 和浏览器测试（2026-11-12，不改网站）
+## After 1.28.0: Docker Deployment Reads the Mail Server and All Rule Settings (2026-11-17, no code change)
 
-- `.gitlab-ci.yml` 新增两个 job：`postgres-tests`（PostgreSQL 集成测试，连 job 自带的临时数据库）和 `e2e-tests`（Playwright）。原因：这两类测试以前只在本机跑，直接合进 `main` 的改动没人拦。仍然不自动部署。
+- `docker-compose.yml` did not hand ten settings to the API and scheduler containers, so changing them in `.env.docker` had no effect and the defaults in `config/settings.py` always applied: the mail server (`EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`), which made a mailbox other than Gmail impossible under Docker, and seven rules from the table in `backend/README.md` (`QUALIFICATION_VALIDITY_DAYS`, `DEFAULT_PENDING_HOLD_MINUTES`, `CHECK_IN_OPENS_MINUTES`, `CHECK_IN_CLOSES_MINUTES`, `MAX_SERIES_WEEKS`, `REMINDER_HOURS_BEFORE`, `INDUCTION_REMINDER_DAYS`). The compose file now passes them with the same defaults, and `.env.docker.example` lists them. An existing `.env.docker` without these lines behaves as before.
 
-## 1.27.0 之后：取消原预约时一并撤回改期申请（2026-11-12，只改后端，接口不变）
+## After 1.28.0: Two Rules Written Down: Extensions and Equipment Return (2026-11-18, documentation only)
 
-依据 `claude/reports/2026-11-12-delivery-acceptance.md` 第 1 条，Loy 2026-11-12 定。
+- Extending a booking in progress has never counted towards the 12-hour weekly limit, but no document said so. The product owner confirmed that this is the rule: an extension always needs a Manager's approval, and the Manager decides whether the extra time is reasonable. `backend/README.md` now states it next to the weekly limit. No code changed.
+- `backend/README.md` listed equipment collection and return as not implemented. It is a decision, not a gap: picking up and returning an item happens in the lab and is left to trust, in line with the client's wish (Week 8 meeting) not to rely on penalties, and a "returned" button could not prove that an item came back. The README now says so in its own line.
 
-- 以前取消一个有改期申请在等的预约，改期申请还留着，之后可能被批准，学生多出一个以为已经取消的预约。现在本人或员工取消原预约时，还在等的改期申请一并取消，原因和原预约相同，占着的时间马上放出来（`bookings.py` `cancel_booking`）。
+## After 1.28.0: `authentication.py` Explains Itself (2026-11-17, comments only)
 
-## 1.27.0 之后：操作成功后刷新失败时不再停在旧状态（2026-11-12，只改前端）
+- `backend/booking/authentication.py` had one line of explanation for 80 lines of code. Its module docstring now says what the file does, why no role from the user is trusted, and the three steps for connecting real university SSO; each class and function has a one-line docstring. No code changed.
 
-依据 `claude/reports/2026-11-12-delivery-acceptance.md` 第 2、3 条。
+## After 1.28.0: Booking Limits Are Configured in Hours (2026-11-17, API unchanged)
 
-- **Booking review**：批准或拒绝成功后，这一行立即从列表里拿掉，不再等刷新；刷新失败时写明“Showing the previous results.”（`BookingReviewPage.tsx`）。
-- **My bookings**：改期、取消、延长、签到成功后，用接口返回的结果直接更新卡片；刷新失败时保留筛选和已有卡片，并写明显示的是旧数据（`MyBookings.tsx`、`ChangeTimeBox.tsx`）。
+- The two fair-use limits were set as numbers of 30-minute slots (`MAX_SLOTS_PER_BOOKING=6`, `MAX_SLOTS_PER_WEEK=24`), which had to be multiplied out to read as 3 h and 12 h. They are now `MAX_HOURS_PER_BOOKING=3` and `MAX_HOURS_PER_WEEK=12`. `BOOKING_SLOT_MINUTES` stays as the step in which hours are counted; `SettingsRulesProvider` (`booking/rules.py`) converts each hour limit into that many steps and refuses a value that is not a whole number of steps. The rule checks, API fields and defaults are unchanged.
+- **Deployment note:** the old names are no longer read. A `.env.docker` that sets `MAX_SLOTS_PER_BOOKING` or `MAX_SLOTS_PER_WEEK` to something other than 6 and 24 must set the hour values instead; with the old defaults nothing changes. `docker-compose.yml`, `.env.docker.example`, `backend/.env.example` and the rule table in `backend/README.md` use the new names. Test: `test_booking_window.py` `test_hour_limits_from_settings_become_counting_steps`.
 
-## 1.27.0 之后：Lab overview 审查修复（2026-11-12，只改前端）
+## After 1.28.0: Running Migration 005 Again Keeps Changed Staff Passwords (2026-11-17, no new migration)
 
-- 待办、资源状态和周报独立加载，失败时可就地重试。审批延长后立即更新待办并显示确认。修正延长申请跳转和 zID 报错的键盘焦点，手机上允许长资源名换行。
+- `005_resource_category_demo_password.sql` set the two demo staff accounts (z9000001, z9000002) to the demo password every time it ran, so running the whole set of migrations again, as `backend/database/README.md` recommends, undid a password that had been changed. It now replaces only the earlier demo password from 003. A database upgraded from before 005 ends up the same as before; a database where the password was changed keeps it. Checked in a temporary database: before the change a changed password was reset, after it the password is kept on the first and the second run.
+- `backend/database/README.md`, `DEPLOY.md` and the comment in `backend/entrypoint.sh` no longer warn against running 005 again. The README now names the one change a repeated run still makes (001 moves a 30-minute review deadline to 1440 minutes).
 
-## 1.27.0 之后：选时间和改期额度的修复（2026-11-12，接口不变）
+## After 1.28.0: Backend Top-Level Clean-up (2026-11-16, no behaviour change)
 
-- **改 Length 或 Start 后放不下，旧时间仍能提交**（BB 反馈，`claude/reports/2026-11-12-bb-length-past-closing.md`）：下拉或时间轴的选择被拒绝时，清掉原来的选择，提交按钮变灰（`SlotPicker.tsx`）。
-- **被拒绝后下拉不乱跳**：Start 和 Length 继续显示红字所说的那个时间；换一个放得下的 Length 就直接选上，不用重选 Start。
-- **时间轴和 Length 同步**：用下拉选过长度后再点时间轴，Length 跟着时间轴变。
-- **改期待审时每周额度不重复计算**：原预约还没开始时，同一周的原预约和改期申请只算较长的一项；跨周各算各周；原预约已经开始后两条分开算，批准、自动批准、候补递补时都会重查额度（`checks.py`，详见 `backend/README.md`）。
+First pass of a file-by-file review of `backend/`, for a teammate to check.
 
-## 1.27.0 之后：代码注释改为英文（2026-11-12）
+- Delete `backend/demo.http`: hand-written sample requests from Sprint 1 with dates that have passed. `backend/docs/openapi.json` is the complete API definition.
+- Delete `backend/requirements.txt`: a second, unpinned copy of the dependency list used only by the local setup instructions. Local setup now installs `requirements-lock.txt`, the pinned list that Docker already uses (`README.md`, `backend/README.md`). `requirements-postgres.txt` (pinned list plus the PostgreSQL driver) is unchanged.
+- Update two stale “Sprint 1” descriptions (`requirements-lock.txt`, `booking/__init__.py`).
+- Delete three service methods that nothing calls, tests included: `_require_eligible` (`checks.py`; callers use `_qualification_violation`), `require_student` (`base.py`; replaced by `require_booking_user` when staff were allowed to book) and `set_pending_hold_minutes` (`resources.py`; a one-line alias of `set_booking_policy`).
+- Delete `PrerequisiteSerializer` (`serializers.py`), which was defined and imported but never used, and an unused import of `booking_rules_bypassed` in `views/_common.py`.
+- Remove three unused imports from the tests (`test_long_bookings.py`, `test_test_console.py`, `test_user_management.py`).
+- Delete the management command `process_outlook`: `process_due --outlook-limit N` already pushes the due Outlook updates, and the Docker `scheduler` runs it every minute. The test that a separate worker refuses the in-memory repository now calls `process_due` (`test_outlook.py`); `backend/README.md`, `backend/docs/outlook-setup.md` and `ARCHITECTURE.md` no longer mention the command.
+- Frontend `src/`, top level: delete `src/assets/` (three images from the Vite template that nothing references; the site's images are in `frontend/public/`), `features/booking/Layout.tsx` (the Sprint 1 shell, replaced by `app/AppLayout.tsx` and imported nowhere) and `features/manager/ManagerUsagePage.tsx` (replaced by `features/records/UsageTab.tsx` in 1.14.0 and imported nowhere). `features/manager/usage.ts` stays: `UsageTab.tsx` uses it.
+- `backend/database/` and `backend/docs/`, documents only (2026-11-17): `backend/database/README.md` loses five “upgrade an existing database for …” subsections that repeated the migration table above them, two leftover notes about an earlier iteration not being deployed, and the line calling the PostgreSQL adapter local-only (the Docker deployment uses it); it now says exactly what running every migration again changes. `database-interface.md` said scripts 001–011 are repeatable; all of them are. `email-setup.md` no longer names one person's computer in a heading. Documents and the CI file describe checks by what they do instead of naming helper scripts that are not in this repository.
 
-- 将后端资格有效期设置和 EC2 压测脚本里的中文注释改为英文。
+## After 1.28.0: Two Small Interface Fixes (2026-11-16, frontend only)
 
-## 1.27.0 之后：以用户身份走查的六处修改（2026-11-10，接口只加一个字段，版本号不变）
+From the user-perspective walkthrough (`claude/reports/2026-11-10-user-perspective-audit.md`, U7 and U9).
 
-依据 `claude/reports/2026-11-10-user-perspective-audit.md` 第一节 U1–U6。
+- **No urgent-request entry when nothing can be requested.** A student without the induction for a resource (or looking at a closed resource) saw the “Urgent request” checkbox and the “Make an urgent request” button, although neither could lead to a request. Both are now hidden in that case (`BookingForm.tsx`, `SlotPicker.tsx`).
+- **Calendar sync page speaks to Admins.** With synchronisation off, the page said “Set OUTLOOK_ENABLED=true on the server”. It now says that approved bookings are not written to Outlook on this site and that people can still subscribe from My bookings; “Check connection” is disabled together with “Sync now” (`calendar-sync.ts`, `CalendarSyncPage.tsx`).
 
-- **U1**：预约窗口在日期下面写“Week of 16 Nov: 2 h left of your 12 h.”，是所选日期那一周的剩余；单个资源的 `availability` 响应加 `week_hours`（只加字段）。首页卡片没改。
-- **U2**：铃铛图标和角标的 React key 都是数字 1，同时出现时叠成两个铃铛；加了不同前缀（`ring-`、`badge-`）。
-- **U3**：停用学生时，除了拒绝待审批申请，也取消他还没开始的已批准预约（按“staff 取消”处理，学生收到通知，时段释放）；重新启用不恢复。
-- **U4**：被停用的学生登录时看到 “This account has been deactivated. Contact the lab.”（403 `ACCOUNT_DEACTIVATED`），不再被叫去创建账号。
-- **U5**：登录有效期从 1 小时改成 8 小时（`DEMO_TOKEN_TTL_SECONDS`）。
-- **U6**：学生的 Help 页加 Booking rules 一段，删掉“Refresh the page to see the latest status.”。规则里的 7–28 天、3 h、12 h 是默认值，写在 `frontend/src/app/booking-rules.ts`；Manager 改了限额不会自动跟着变。
+## After 1.28.0: README Sections for Docker and Testing (2026-11-16, documentation only)
 
-## 1.27.0 之后：Lab overview 和长表单弹窗（2026-11-09，只改前端，接口不变）
+- `README.md` gains “Run with Docker” (copy `.env.docker.example`, one `docker compose` command, `http://localhost`) and “Testing approach and coverage” (what each test layer covers, the counts, backend line coverage of 94.8%, how races and external services are tested, and what is checked by hand). The old “Tests” section is folded into the latter.
 
-依据 Loy 的反馈 `claude/reports/2026-11-09-loy-feedback-lab-rules-overview.md`：Lab overview “太丑”，编辑资源的弹窗“竖着一溜”而且没有退出按钮。
+## 1.28.0: The Author Can Delete an Ended Announcement (2026-11-16, no migration)
 
-- **Lab overview**（`ManagerHomePage.tsx`）：只有 Manager 决定的四种申请和给 Admin 的待办，从五张大卡片改成一行小标签，全是 0 时写 Nothing is waiting for your decision.；房间和设备的开放／维修／关闭、本周签到／缺席／请假改成分段条加图例；本周预约最多的 6 个资源改成横向条形图。数据和以前一样，没有新接口。
-- **长表单弹窗**：编辑资源和 Lab setup 编辑 induction 的弹窗加宽到 960px；资源表单分左右两栏（资源信息｜Booking rules，Details｜Managers only），induction 的四个说明框两两一行，手机上变回一栏；中间内容滚动时，标题和底部的 Cancel／Save 保持可见。
-- **关闭按钮**：这两个弹窗和 Add staff 弹窗的标题旁加了 ×（`DialogTitle`），Esc 照样能关。
+Based on Loy's feedback in `claude/reports/2026-11-16-announcement-delete-feedback.md`: whoever posted an announcement can delete it from the history.
 
-## 1.27.0 之后：GitLab CI（2026-11-09，不改网站）
+- New `DELETE announcements/{id}/`. Only the person who posted the announcement may call it, for manual and resource-status announcements alike; a Manager who is not the author receives 403. The announcement must have ended (removed or expired); one still shown on the home pages returns 409 `ANNOUNCEMENT_ACTIVE` and has to be removed first. The row is deleted permanently; the audit log keeps `ANNOUNCEMENT_DELETED` with the title (`services/announcements.py`, `views/announcements.py`).
+- The repository interface gains `delete_announcement(announcement_id)`, implemented by the in-memory and PostgreSQL adapters. No schema change.
+- Announcements page: an ended announcement shows **Delete** to its author, with a confirmation that it cannot be undone (`AnnouncementsPage.tsx`).
+- Tests: service and HTTP permission cases in `test_119.py` (run against both adapters), one browser case in `routing.spec.ts`.
 
-依据课程 Week 9 团队协作评估要看工程实践（CI/CD）。
+## After 1.27.0: Book a Resource Layout (2026-11-16, frontend only)
 
-- **新增 `.gitlab-ci.yml`**：每次 push 和 MR 都跑两个 job：`backend-tests`（`python:3.12-slim`，`manage.py test booking`，内存存储）和 `frontend-checks`（`node:22-alpine`，`npm test`、`npm run lint`、`npm run build`）。镜像和装依赖的方式与两个 Dockerfile 一致。2026-11-09 首次在学校 GitLab 上跑通。
-- **不自动部署**：部署仍用 `claude-tools/deploy-ec2` 先 `--dry-run` 再人工确认（`DEPLOY.md` 第三节），因为有的迁移会删数据（如 014），而且自动部署要把服务器 SSH 密钥放进 GitLab。
-- PostgreSQL 集成测试和 Playwright e2e 没放进 CI，仍在本地用 `check-local.sh` 跑。
+Based on Loy's feedback in `claude/reports/2026-11-16-book-page-layout-feedback.md`.
 
-## 1.27.0 之后：三角色走查的五处修改（2026-11-07，只改前端，接口不变）
+- **No induction list at the top of Book a resource.** The “Training requirements” row grew with every new induction and room and pushed the page layout around. It is removed. On each resource card, the induction chip (“Induction not submitted”, “rejected”, “expired”, or “… needed first”) is now a link to the Induction page for the evidence still to submit (`BookingApp.tsx`, `ResourceCard.tsx`). This replaces R2 below.
+- **Urgent request: the explanation is below the time picker.** Ticking “Urgent request” used to show “Purpose and urgency” above the time picker, while the normal “Purpose” is below it. Both now sit in the same place; the note about Manager approval stays under the checkbox (`BookingForm.tsx`).
 
-依据 Loy 的走查 `claude/reports/2026-11-07-three-role-walkthrough.md`。
+## After 1.27.0: Add PostgreSQL and Browser Tests to CI (2026-11-12, no website change)
 
-- **页面自己刷新**：Today、Lab overview、My bookings、Dashboard 每 30 秒、以及切回这个标签页时重新读取（`lib/use-auto-refresh.ts`）。学生提交后 Admin 不用 F5 就能看到，Admin 批准后学生也能看到。
-- **写对审批人**：紧急、额外时数、超长申请在 My bookings、Dashboard、Booking review 都显示 Waiting for Manager approval（`format.ts` `statusText`）。之前紧急申请写 admin。
-- **Manager 的资源卡片**：显示 Manager booking: no induction needed 和资源自身最长时长，不再提示先交 induction、最多 3 小时。
-- **额外时数入口**：Dashboard 的 Request additional hours 打开 `/resources?for=additional-hours`，每张卡片的主按钮直接打开额外时数申请。
-- **延长申请卡片**：链接到 `/manager/home?focus=extensions`，页面滚到审批列表（手机上也是）。
+- Add two jobs to `.gitlab-ci.yml`: `postgres-tests` (PostgreSQL integration tests against the temporary database provided by the job) and `e2e-tests` (Playwright). These tests previously ran only locally, so nothing blocked changes merged directly into `main`. Automatic deployment is still disabled.
 
-## 1.27.0：延长改为拖动时间轴、由 Manager 批准（2026-11-07，迁移 016）
+## After 1.27.0: Withdraw a Time-Change Request When Its Original Booking Is Cancelled (2026-11-12, backend only, API unchanged)
 
-- Loy 2026-11-07 按会议 14:11–15:53 的原意定：学生在时间轴上拖动预约的结束时间（像在日历里拖），发出延长申请，由 Manager 批准；不再立即生效。Manager 自己延长仍然立即生效。
-- 申请存在预约的 `extension_end` 上（迁移 016），再次申请会替换；申请时和批准时都检查后面是否空闲、开放时间和资源最长时长；等待期间不占用后面的时间。
-- Manager 在 Lab overview 的 Extension requests 里批准或拒绝（拒绝要写原因），Today 和 Lab overview 有 Extension requests 卡片；双方都收到通知，批准和拒绝也发邮件。新接口 `POST bookings/{id}/extend/review/`。
-- 1.24.0 的下拉框换成可拖动、也可用方向键的时间轴；学生的延长不再受单次 3 小时和每周时数限制（由 Manager 决定）。
-- Week 8 复查：延长申请留在待审列表直至申请的新结束时间，拒绝对已替换的时间作决定；修正 Manager 查空闲和重复预约的日期／时长、设备内部资料保存失败后的重试，以及执行 014 后部署失败的恢复提示和流程。
+Based on Item 1 of `claude/reports/2026-11-12-delivery-acceptance.md`, decided by Loy on 2026-11-12.
 
-## 1.26.0：三个角色看到的明显不同（2026-11-07，迁移 015）
+- Previously, cancelling a booking with a pending time-change request left the request active. It could later be approved, giving the student a booking they believed they had cancelled. Now, when the booking holder or staff cancels the original booking, any pending time-change request is also cancelled with the same reason and its held time is released immediately (`cancel_booking` in `bookings.py`).
 
-依据客户 Week 8 会议（02:33–04:48、19:49–20:56：面板可以相似，数据访问要完全不同；Admin 不需要全部历史，Manager 需要）。任务卡 `tasks-week8-2026-11-06.md` W5–W7。
+## After 1.27.0: Do Not Leave Stale State After a Successful Action Followed by a Failed Refresh (2026-11-12, frontend only)
 
-- **W5 Manager 首页**：Manager 登录后进 Lab overview（`/manager/home`）：只有 Manager 能决定的事、房间和设备状态、本周使用情况、按 zID 查一年历史、实验室管理入口。Admin 的 Today 只留审批工作（不再显示紧急、额外时数、超长三张 Manager 卡片）。页面顶部显示 Student／Admin／Manager view 标识。
-- **W6 Admin 只看近期历史**：Booking Records 和 CSV 对 Admin 只返回 7 天内结束及以后的预约；使用情况报表改为只有 Manager 能看。
-- **W7 只给 Manager 看的设备资料**：负责人、UNSW 资产编号、来源、规格。存在单独的表 `resource_internal_info`（迁移 015），Manager 在 Resources 编辑弹窗里填写，接口 `GET/PATCH admin/resources/{id}/internal/`；普通资源数据里没有这些字段。
+Based on Items 2 and 3 of `claude/reports/2026-11-12-delivery-acceptance.md`.
 
-## 1.25.0：删除冻结（2026-11-07，迁移 014）
+- **Booking review**: after a successful approval or rejection, remove the row immediately instead of waiting for a refresh. If the refresh fails, show “Showing the previous results.” (`BookingReviewPage.tsx`).
+- **My bookings**: after a successful time change, cancellation, extension, or check-in, update the card directly with the endpoint response. If the refresh fails, retain the filters and existing cards and state that the displayed data is stale (`MyBookings.tsx`, `ChangeTimeBox.tsx`).
 
-- Loy 2026-11-07：客户 Week 8 会议不想用缺席处罚，1.24.0 的“默认关闭”改为整个删除。
-- 删除：缺席 N 次冻结、冻结时取消之后的预约、解冻申请和 Booking freezes 页面、5 个接口、用户的 `no_show_count`／`frozen_until`／`booking_frozen` 字段、`FREEZE_AFTER_NO_SHOWS`／`FREEZE_DAYS` 配置。
-- 保留：到场确认（I'm here）、每个预约的缺席标记和使用情况报表；缺席时通知本人以后来不了要取消。旧数据里因冻结取消的预约照常显示原因。
-- 迁移 014 删表 `unfreeze_request` 和两列，会删掉这些数据；回滚旧代码前要重跑 006（见 `DEPLOY.md`）。
+## After 1.27.0: Lab Overview Review Fixes (2026-11-12, frontend only)
 
-## 1.24.0：客户 Week 8 会议的三项（2026-11-06，无迁移）
+- Load tasks, resource status, and the weekly report independently, with an inline retry after failure. After an extension is reviewed, update the task list immediately and show confirmation. Fix the extension-request link and keyboard focus for zID errors, and allow long resource names to wrap on phones.
 
-依据：客户 11-04 会议（项目文档 `reports/2026-11-04-client-meeting-week8.md`）。任务卡 `tasks-week8-2026-11-06.md`。
+## After 1.27.0: Time Selection and Change-Request Quota Fixes (2026-11-12, API unchanged)
 
-- **Manager 可以越过规则**（会议 00:41–02:28、07:15–08:42）：Manager 给自己或代别人预约时直接批准，不检查 induction、提前 7–28 天、单次 3 小时、每周 12 小时、8 个未来预约和冻结；资源可预约、开放时间、资源自身最长时长和时段空闲照常检查，不挤掉别人。Manager 改期同样不再查 induction 和这些限额。这推翻了 10-17 “induction 不能绕过”的决定。Admin 不变。
-- **延长进行中的预约**（14:19–15:53）：新接口 `POST bookings/{id}/extend/`；My bookings 和 Manager 的 Room bookings 有 Extend 按钮。后面空闲就立即生效，Manager 收到通知；学生超过 3 小时或周额度时请 Manager 延长。
-- **冻结默认关闭**（15:56–17:27）：客户不想第一阶段就处罚。`FREEZE_AFTER_NO_SHOWS` 默认改为 0（不冻结），缺席仍记录，通知改为提醒及时取消。功能保留，设为正数即恢复。
-- 按实验室分别配置规则（会议第 1 项）这次没有做，方案和要问客户的问题在任务卡。
+- **Old time remained submittable when a changed Length or Start no longer fit** (BB feedback, `claude/reports/2026-11-12-bb-length-past-closing.md`): when a selection from the dropdown or timeline is rejected, clear the previous selection and disable the submit button (`SlotPicker.tsx`).
+- **Dropdowns no longer jump after rejection**: Start and Length continue to display the time described by the red error. Choosing a Length that fits selects it directly without requiring Start to be selected again.
+- **Timeline and Length stay synchronised**: after selecting a length from the dropdown, clicking the timeline updates Length to match the timeline selection.
+- **Weekly quota does not double-count a pending change request**: if the original booking has not started, the original booking and change request in the same week count only the longer of the two. If they are in different weeks, each counts in its own week. After the original booking starts, the two count separately. The quota is rechecked during approval, automatic approval, and waitlist promotion (`checks.py`; see `backend/README.md` for details).
 
-## 1.23.0：Dashboard 显示本周还剩多少小时（2026-11-03）
+## After 1.27.0: Translate Code Comments into English (2026-11-12)
 
-- Loy 2026-11-03：学生看不到自己本周还能约多少小时，只有超额被拒时才知道。学生 Dashboard 加第四个框“Hours left this week”，显示剩余小时和“已约 x / 12 h”，点框进入 Book a resource，并提示可以申请额外时数。8 个未来预约不另加显示：Upcoming bookings 加 Pending requests 就是这个数。
-- 接口：`GET dashboard/` 增加 `week_hours`（`week_start`、`used_hours`、`limit_hours`），按悉尼时间本周计算，与每周上限用同一个函数 `_week_slots_used`，额外时数不算。
+- Translate Chinese comments in the backend qualification-validity setting and EC2 load-test scripts into English.
 
-## 1.22.0 之后：限额在服务器上可调（2026-11-03，接口不变）
+## After 1.27.0: Six Changes from a User-Perspective Walkthrough (2026-11-10, one API field added, version unchanged)
 
-- 客户 11-02 邮件要求 3 小时、12 小时这些数字容易调整。`docker-compose.yml` 和 `.env.docker.example` 补上 `BOOKING_SLOT_MINUTES`、`MAX_SLOTS_PER_BOOKING`、`MAX_SLOTS_PER_WEEK`、`MAX_ACTIVE_FUTURE_BOOKINGS`；之前容器收不到这几个变量，服务器上改了不生效。
-- Find a free time 的时长选项跟随资源的 `effective_max_booking_minutes`，不再写死到 3 小时。
+Based on U1–U6 in Section 1 of `claude/reports/2026-11-10-user-perspective-audit.md`.
 
-## 1.22.0：超长预约申请（迁移 013）
+- **U1**: below the date, the booking window says “Week of 16 Nov: 2 h left of your 12 h.”, showing the remaining quota for the selected date's week. Add `week_hours` to an individual resource's `availability` response (field addition only). Home-page cards are unchanged.
+- **U2**: the bell icon and badge both used numeric React key 1, causing two bells to overlap when they appeared together. Add distinct prefixes (`ring-` and `badge-`).
+- **U3**: when a student is deactivated, reject pending requests and also cancel approved bookings that have not started (treated as a staff cancellation, with a notification to the student and the time released). Reactivation does not restore them.
+- **U4**: a deactivated student who signs in sees “This account has been deactivated. Contact the lab.” (403 `ACCOUNT_DEACTIVATED`) instead of being sent to create an account.
+- **U5**: increase sign-in validity from one hour to eight hours (`DEMO_TOKEN_TTL_SECONDS`).
+- **U6**: add a Booking rules section to the student's Help page and remove “Refresh the page to see the latest status.” The 7–28 days, 3 h, and 12 h in the guidance are defaults in `frontend/src/app/booking-rules.ts`; they do not update automatically when a Manager changes the limits.
 
-- 新增独立超长预约表单和 API，只放宽普通单次时长上限；每周时数、未来预约数量、正常提前预约窗口和资源自身限制继续由后端执行，员工代约同样受限，不与额外时数、紧急或循环预约合并。
-- 超长申请沿用占位和先到先得候补，只有 Manager 可人工批准或拒绝，禁止自审和审批本人创建的申请。审批到期未处理则过期并释放时段，不会自动批准；审批在锁内再次检查期限、资格、额度和容量。
-- 新增专用审批标签、待办计数、申请理由和期限文案。获批豁免仅用于原时段，禁止普通改期入口转移授权；迁移 013 在 012 之后执行，保留历史预约，API 升至 1.22.0。
+## After 1.27.0: Lab Overview and Long-Form Dialogs (2026-11-09, frontend only, API unchanged)
 
-## 1.21.0：额外时数申请（迁移 012）
+Based on Loy's feedback in `claude/reports/2026-11-09-loy-feedback-lab-rules-overview.md`: the Lab overview was “too ugly,” and the resource-edit dialog was “one long vertical list” without a close button.
 
-- 新增独立额外时数申请入口及 API，记录申请理由、采集声明和说明。申请不预占资源，不消耗普通每周额度，仍计入未来预约数量；单次时长、开放时间、资格和最长提前预约窗口照常检查。
-- Manager 只能在预约开始前配置的时间窗口内批准（默认 48 小时），且不得自审或审批本人创建的申请。审批在事务内重新检查空闲容量；无本周已签到使用记录与正在采集数据的申请同属优先组，组内先到先得。采集声明需 Manager 明确确认，审批依据和授权时段写入审计。
-- 待审申请不自动批准，开始时未处理则过期；额外授权固定到申请的时段，改期须取消后重新申请。前端增加独立审批标签、可批准时间、优先依据、阻塞原因和待办计数。
-- 新增 012 可重复执行迁移，保留原预约记录；API 升至 1.21.0。审批列表在单次响应内复用资格和队列计算，实际审批始终重新校验。
+- **Lab overview** (`ManagerHomePage.tsx`): replace five large cards with one row of small labels for the four request types decided only by Managers and the Admin task list. When all are zero, show “Nothing is waiting for your decision.” Replace room/equipment open/maintenance/closed data and this week's check-in/absence/excused data with segmented bars and legends. Show the six most-booked resources this week as horizontal bars. Data is unchanged and there is no new endpoint.
+- **Long-form dialogs**: widen resource editing and Lab setup induction editing dialogs to 960px. Split the resource form into two columns (resource information | Booking rules, Details | Managers only), arrange the four induction guidance fields two per row, and return to one column on phones. Keep the title and bottom Cancel/Save buttons visible while the middle content scrolls.
+- **Close button**: add × beside the title (`DialogTitle`) in these two dialogs and the Add staff dialog. Esc still closes them.
 
-## 1.20.0 之后：最多提前四周预约（2026-11-02）
+## After 1.27.0: GitLab CI (2026-11-09, no website change)
 
-- 按客户要求，将默认最长提前预约时间从 30 天改为 28 天（四周），按资源当地日期计算；第 28 天可约，第 29 天起不可约。最少提前 7 天的现有规则保留，两个值仍可配置。
-- 员工循环预约的每个日期也检查同一预约窗口，预览标出超出范围的日期，创建时禁止保留这些日期；员工代预约和 Manager 改期继续遵守最长提前时间。
-- 循环预约表单读取后端日期范围，日期选择和默认范围随配置变化；Docker 的 API 和 scheduler 共用预约窗口环境变量。同步当前接口及使用说明。
+Based on the Week 9 course teamwork assessment requirement to demonstrate engineering practice (CI/CD).
 
-## 1.20.0 之后：性能三轮与合并复查修复（2026-11-01）
+- **Add `.gitlab-ci.yml`**: run two jobs on every push and MR: `backend-tests` (`python:3.12-slim`, `manage.py test booking`, memory storage) and `frontend-checks` (`node:22-alpine`, `npm test`, `npm run lint`, and `npm run build`). Images and dependency installation match the two Dockerfiles. The pipeline first passed on the university GitLab on 2026-11-09.
+- **No automatic deployment**: deployment stays manual, a dry run followed by manual confirmation (Section 3 of `DEPLOY.md`), because some migrations delete data (such as 014), and automatic deployment would require storing the server SSH key in GitLab.
+- PostgreSQL integration tests and Playwright e2e are not included in CI and continue to run locally.
 
-- 修复并发提醒重复：保留性能三轮的批量去重查询，发送前在 `_notify` 的写锁内再次核对收件人和预约／induction 链接，通知与邮件队列仍在同一事务内写入。内存与 PostgreSQL 都有并发回归测试，修复前各生成两条通知和两条邮件记录，修复后各一条。
-- 011 重跑时兼容原版自动生成的外键名，改为与 `schema.sql` 相同的 `email_delivery_notification_fk`，保留外键与已有邮件。增加旧库记录保留测试，并验证 010 和原版 011 两条升级路径的结构一致。
-- 补充邮件后台线程断连、连接过期恢复及主线程事务不受影响的 PostgreSQL 实测；补齐 submission 筛选的双仓库边界对照，并隔离 PostgreSQL 测试的全局邮件队列。
+## After 1.27.0: Five Changes from the Three-Role Walkthrough (2026-11-07, frontend only, API unchanged)
 
-## 1.20.0 之后：合并 main 的后台定时任务和邮件可靠发送（2026-11-01，迁移 011）
+Based on Loy's walkthrough in `claude/reports/2026-11-07-three-role-walkthrough.md`.
 
-把 Alaric Nan 合进 `main` 的两项功能（`13bac3d` 后台定时任务，`a39bf59` 邮件可靠发送和重试）合进 `backend/week5-fixes`。冲突只在 `postgres.py`、`repository.py`、`test_postgres.py`，都是两边各自新增，两边都保留。合并时修了 3 个缺陷：
+- **Automatic page refresh**: Today, Lab overview, My bookings, and Dashboard reread data every 30 seconds and when the user returns to the browser tab (`lib/use-auto-refresh.ts`). An Admin can see a student's submission without pressing F5, and the student can see the Admin's approval.
+- **Correct reviewer wording**: urgent, additional-hours, and long-booking requests show “Waiting for Manager approval” in My bookings, Dashboard, and Booking review (`statusText` in `format.ts`). Urgent requests previously said admin.
+- **Manager resource cards**: show “Manager booking: no induction needed” and the resource's own maximum duration instead of prompting for induction and saying the limit is three hours.
+- **Additional-hours entry point**: Request additional hours on Dashboard opens `/resources?for=additional-hours`; the primary button on each card directly opens an additional-hours request.
+- **Extension-request card**: links to `/manager/home?focus=extensions`, and the page scrolls to the review list, including on phones.
 
-- **断连后不恢复**：Django 只在网页请求前后清理失效的数据库连接。`run_scheduler` 和后台发邮件线程没有请求，数据库重启后会一直失败，直到容器重启。现在每轮开始前调用 `close_old_connections()`。新测试 `test_scheduler_recovers_when_the_database_connection_is_lost` 真的断开连接来验证，修复前只有第一轮成功。
-- **迁移不能重复执行**：有了 011 的外键后，重跑 006 会因为要删除 `notification_pkey` 而失败。006 改成主键不存在时才添加。
-- **新建库和升级库结构不一致**：011 的外键没有写名字，和 `schema.sql` 的 `email_delivery_notification_fk` 不同。011 改成写明名字。已经跑过旧版 011 的库，外键名字还是自动生成的，不影响功能。
+## 1.27.0: Extension Changed to Timeline Dragging and Manager Approval (2026-11-07, migration 016)
 
-## 1.20.0 之后：压力测试脚本进入仓库（2026-11-01，不改网站）
+- Decided by Loy on 2026-11-07 according to the original intent of meeting 14:11–15:53: a student drags the booking end time on a timeline (like dragging in a calendar) to submit an extension request for Manager approval; it no longer takes effect immediately. A Manager extending their own booking still applies immediately.
+- Store the request in `extension_end` on the booking (migration 016); a new request replaces the existing one. At request and approval time, check that later time is free, within opening hours, and within the resource's maximum duration. The later time is not held while the request is pending.
+- A Manager approves or rejects in Extension requests on Lab overview (a rejection requires a reason). Today and Lab overview have Extension requests cards. Both parties receive notifications, and approvals and rejections are also emailed. New endpoint: `POST bookings/{id}/extend/review/`.
+- Replace the 1.24.0 dropdown with a draggable, arrow-key-accessible timeline. Student extensions are no longer subject to the three-hour per-booking limit or weekly-hours limit because the Manager decides.
+- Week 8 follow-up: retain extension requests in the pending list until the requested new end time, and make rejection decide the currently replaced time. Fix dates/durations for Manager availability and recurring bookings, retry after saving internal equipment information fails, and recovery guidance and flow after deployment fails following migration 014.
 
-Loy 要求把压力测试放进 Git，新建 `load-test/`（说明和三轮结果见其中的 README）。之前脚本只在团队成员本地。服务器地址不写进仓库，运行时用 `EC2_HOST` 传入。同时修复 `report.py` 把 `-history-worktree` 目录标成“不带历史数据”的问题。
+## 1.26.0: Clear Differences Between the Three Roles (2026-11-07, migration 015)
 
-## 1.20.0 之后：压力测试性能修复第三轮（2026-10-29，接口和数据库结构不变）
+Based on the client Week 8 meeting (02:33–04:48 and 19:49–20:56: dashboards may look similar, but data access must differ completely; Admin does not need all history, while Manager does). Task card W5–W7 in `tasks-week8-2026-11-06.md`.
 
-任务卡 `claude/tasks-load-2026-10-29.md` 的 S7 和 S8（第二轮压测后新发现，Loy 定做第三轮）。规则和返回的数据不变。
+- **W5 Manager home page**: after signing in, a Manager lands on Lab overview (`/manager/home`), which shows decisions only Managers can make, room and equipment status, this week's usage, one-year zID history lookup, and lab-management links. Admin Today retains only approval work and no longer displays the three Manager cards for urgent, additional-hours, and long-booking requests. The top of each page shows a Student/Admin/Manager view badge.
+- **W6 Admin sees only recent history**: Booking Records and CSV return only bookings that ended within the last seven days or later for Admin. The usage report becomes Manager-only.
+- **W7 Manager-only equipment information**: person responsible, UNSW asset number, source, and specifications. Stored in separate table `resource_internal_info` (migration 015), edited by a Manager in the Resources dialog, through `GET/PATCH admin/resources/{id}/internal/`. Normal resource data does not contain these fields.
 
-- **S7**：Find a free time 不再对每个资源分别查这个人的 induction 记录、冻结状态、已有申请和当天占用，改为一次读出、各资源共用（`EligibilitySources`、`_DaySources`）。induction 判断（含前置要求）用的是同一段代码，只是数据来源不同。之前 22 个资源约 130 条 SQL。
-- **S8**：induction 到期提醒不再每个请求读全部 induction 提交。先查有没有“已认证、在提醒期内到期”的提交（平时没有，只查 1 次）；有的话只读这些人的提交来判断哪条是最新的，已发过的提醒一次查完。`list_submissions` 加了关键字筛选，新增 `list_kind_notifications`；不再使用的 `_already_sent` 删除。
-- 测试：`test_postgres.py` 新增 2 个（多 5 个资源时 Find a free time 的查询数不变，且每个资源的结果和单独查询相同，包括缺前置要求的情况；30 条不到期的 induction 不会被读出，最新一条决定是否提醒），在 `b5964d7` 上都会失败。
+## 1.25.0: Remove Freezing (2026-11-07, migration 014)
 
-## 1.20.0 之后：压力测试性能修复第二轮（2026-10-29，接口和数据库结构不变）
+- Loy, 2026-11-07: the client did not want an absence penalty at the Week 8 meeting, so the 1.24.0 “disabled by default” policy was changed to complete removal.
+- Remove: freezing after N absences, cancellation of later bookings during freezing, unfreeze requests and the Booking freezes page, five endpoints, user fields `no_show_count`/`frozen_until`/`booking_frozen`, and configuration `FREEZE_AFTER_NO_SHOWS`/`FREEZE_DAYS`.
+- Retain: check-in (I'm here), the absence marker on each booking, and the usage report. When a user is absent, notify them to cancel in future if they cannot attend. Bookings cancelled by freezing in old data continue to show their reason.
+- Migration 014 drops table `unfreeze_request` and two columns, deleting that data. Before rolling back to old code, rerun 006 (see `DEPLOY.md`).
 
-任务卡 `claude/tasks-load-2026-10-29.md` 的 S2 和 S6（S6 是第一轮压测时新发现的，Loy 定并入这一轮）。返回的数据不变。
+## 1.24.0: Three Items from the Client Week 8 Meeting (2026-11-06, no migration)
 
-- **S2**：Booking Records 和审批队列不再逐条查库。之前每条预约还要单独查预约人、创建人、被替换的预约、改期申请和候补排位，5000 条时超过 9000 条 SQL。现在由 `BookingListLookups` 一次取齐（未决定的预约只有少数，一次读出）；`booking_json` 在单条预约和员工长列表里共用，输出相同。`booking_report` 的状态、资源、学生、日期筛选也交给数据库。5000 条历史预约时，Booking Records 9.1 秒 → 约 1 秒，审批队列 1.2 秒 → 81 毫秒。
-- **S6**：可用时间（Find a free time 和单个资源的日视图）每个资源只查一次当天的占用，再逐格判断；之前每个半小时格子都查一次，22 个资源一次请求 500 多条 SQL。
-- 测试：`test_postgres.py` 新增 3 个（可用时间的查询数不随格子数增长；员工列表共享查询和逐条查询输出相同，Outlook 开关两种情况；Booking Records 多 40 条预约时 SQL 条数不变），在 `ec5c4b1` 上都会失败。
+Source: client meeting on 11-04 (project document `reports/2026-11-04-client-meeting-week8.md`). Task card `tasks-week8-2026-11-06.md`.
 
-## 1.20.0 之后：预约弹窗里显示提交失败的原因（2026-10-29，只改前端）
+- **Manager can override rules** (meeting 00:41–02:28 and 07:15–08:42): a booking made by a Manager for themselves or on behalf of someone else is approved directly without checking induction, the 7–28-day window, three-hour booking limit, 12-hour weekly limit, eight-future-booking limit, or freezing. The resource must still be bookable and free, within opening hours, and within its own maximum duration; other users are never displaced. A Manager's reschedule also skips induction and these limits. This reverses the 10-17 decision that induction could not be bypassed. Admin is unchanged.
+- **Extend an in-progress booking** (14:19–15:53): new endpoint `POST bookings/{id}/extend/`; Extend buttons in My bookings and Manager Room bookings. It takes effect immediately if later time is free, and the Manager is notified. A student asks a Manager to extend beyond three hours or the weekly quota.
+- **Freezing disabled by default** (15:56–17:27): the client did not want penalties in the first phase. Change the default `FREEZE_AFTER_NO_SHOWS` to 0 (no freezing); absences are still recorded, and the notification reminds users to cancel promptly. The feature remains and is restored by setting a positive value.
+- Per-lab rule configuration (Item 1 of the meeting) was not implemented in this update. The proposal and questions for the client are in the task card.
 
-依据 Loy 的截图反馈 `claude/reports/2026-10-29-weekly-limit-dialog.md`：达到每周上限时，报错只出现在弹窗背后的提示框里，弹窗里什么都没有。原因是提交失败后重新读取当天时间、清空选择时，把表单里的错误也清掉了；提示框在原生 `<dialog>` 的遮罩下面看不到。现在重新读取不再清掉错误，错误显示在提交按钮旁边（`Request not submitted: …`），直到重新选时间。e2e 新增 `a refused booking request is explained inside the booking dialog`。
+## 1.23.0: Dashboard Shows Hours Remaining This Week (2026-11-03)
 
-## 1.20.0 之后：压力测试性能修复第一轮（2026-10-29，接口和数据库结构不变）
+- Loy, 2026-11-03: students could not see how many hours they could still book that week and learned only after an over-limit request was rejected. Add a fourth “Hours left this week” card to the student Dashboard, showing remaining hours and “x booked / 12 h.” Selecting it opens Book a resource and explains that additional hours may be requested. Do not add a separate display for the eight-future-booking limit: Upcoming bookings plus Pending requests already equals that count.
+- Endpoint: add `week_hours` (`week_start`, `used_hours`, and `limit_hours`) to `GET dashboard/`, calculated for the current Sydney-time week through the same `_week_slots_used` function as the weekly limit. Additional-hours bookings do not count.
 
-依据压力测试 `claude/reports/2026-10-29-stress-test.md`（200 学生 + 10 Admin + 2 Manager 没有通过：每个请求都把全部预约读进内存），任务卡 `claude/tasks-load-2026-10-29.md` 的 R1、S1、S5、S3。业务规则和返回的数据不变。
+## After 1.22.0: Limits Configurable on the Server (2026-11-03, API unchanged)
 
-- **R1**：`list_bookings` 加关键字筛选（状态、开始和结束时间、到期时间、创建人、未记到场），PostgreSQL 在 SQL 里过滤，内存版用同一个 `booking_matches`。筛选只缩小读的范围，调用方原来的判断都保留。新增 `list_booking_notifications`，提醒去重一次查完。
-- **S1**：到期处理、记缺席、明天的提醒只读可能要处理的预约（未决定且已到期的；已批准、未记到场、已开始的；已批准、未记到场、提醒时间内的），不再每个请求读三遍全部预约。之前的 P6 就是这个问题。
-- **S5**：Admin 首页只读未决定的、还没结束的已批准预约和今天的预约；员工的 My bookings 按创建人查询，不再读全部预约找“我替别人建的”。
-- **S3**：数据库连接在同一个进程里复用 60 秒（`DB_CONN_MAX_AGE`，设为 0 关闭），不再每个请求新建（约 12 ms）。写锁是事务级的，复用连接不会把锁带到下一个请求。
-- 测试：`test_postgres.py` 新增 4 个测试（两个实现的筛选结果一致；200 条历史预约时到期处理和员工页面一行都不读；1 条和 20 条已提醒预约时查询数相同；连接复用），在 `3377dd1` 上都会失败。
+- The client's 11-02 email required values such as three hours and 12 hours to be easy to change. Add `BOOKING_SLOT_MINUTES`, `MAX_SLOTS_PER_BOOKING`, `MAX_SLOTS_PER_WEEK`, and `MAX_ACTIVE_FUTURE_BOOKINGS` to `docker-compose.yml` and `.env.docker.example`. Previously, the containers did not receive these variables, so server changes had no effect.
+- Find a free time duration options now follow the resource's `effective_max_booking_minutes` instead of being hard-coded to three hours.
 
-## 1.20.0 之后：线上试用反馈 L1–L5（2026-10-28，接口不变）
+## 1.22.0: Long-Booking Requests (migration 013)
 
-依据 Loy 部署后的试用反馈 `claude/reports/2026-10-28-live-feedback.md`。只改前端。
+- Add a separate long-booking request form and API that relaxes only the normal per-booking duration limit. Weekly hours, future-booking count, normal advance window, and the resource's own limits remain enforced by the backend. Staff proxy bookings follow the same limits. Long bookings cannot be combined with additional-hours, urgent, or recurring bookings.
+- Long requests retain time holds and the first-in, first-out waitlist. Only a Manager may manually approve or reject them, and self-review or review of a request created by the reviewer is forbidden. An unreviewed request expires at its review deadline and releases the time; it is never auto-approved. Approval rechecks the deadline, qualification, quotas, and capacity inside the lock.
+- Add a dedicated review tab, task count, request reason, and deadline wording. An approved exemption applies only to the original time, so the normal reschedule path cannot transfer it. Migration 013 runs after 012 and preserves historical bookings. API version becomes 1.22.0.
 
-- L1：用员工账号在大学登录页登录时，提示里的“Staff sign-in page”改成链接，直接打开员工登录页。
-- L2：Today 页的待办卡在电脑上固定每行 3 张，只有一张时不再拉满整行；“Decide soon”和“Out of service”只出现一个时占满整行。右边的绿勾只在没有待审事项时显示。
-- L3：公告卡片的 Edit／Remove 挪到右上角。真删除和 7 天折叠区不做，作为提议问客户。
-- L4：登录页面包屑里的“SmartLab”改成链接，可以回到登录首页；员工登录页不再是死胡同。
-- L5：Today 页的 Urgent 卡片顶部加红线，数字改成红色，和黄线的普通待办区分开。
-- 顺带删掉一条死规则 `.today-brief p`：页面上已经没有这个元素。
+## 1.21.0: Additional-Hours Requests (migration 012)
 
-## 1.20.0：Booking 筛选、个人历史与首页（2026-10-28，迁移 010）
+- Add a separate entry point and API for additional-hours requests, recording the reason, data-collection declaration, and explanation. A request does not reserve the resource and does not consume the normal weekly quota, but still counts toward future bookings. Per-booking duration, opening hours, qualification, and maximum advance window remain enforced.
+- A Manager may approve only within a configurable period before the booking starts (48 hours by default) and may not review their own request or one they created. Approval rechecks free capacity inside the transaction. Requests from users with no checked-in usage that week and requests for active data collection share the priority group; requests within the group are first-come, first-served. The Manager must explicitly confirm a data-collection declaration, and the approval basis and authorised time are audited.
+- Pending requests are never auto-approved and expire if unreviewed at their start time. Additional authorisation is fixed to the requested time; rescheduling requires cancellation and a new request. The frontend adds a separate review tab, approval time, priority basis, blocking reason, and task count.
+- Add repeatable migration 012 while preserving existing booking records. API version becomes 1.21.0. The review list reuses qualification and queue calculations within one response; actual approval always revalidates.
 
-依据 Loy 对 eDoc 的分析及随后“直接动手改”的授权，任务卡 `claude/tasks-booking-history-2026-10-28.md`。
+## After 1.20.0: Book at Most Four Weeks in Advance (2026-11-02)
 
-- My bookings 在现有分类下增加 Resource 筛选、匹配数量和 Clear filters；URL 同时记住分类和资源，切换本地筛选不重取预约。
-- 学生、Admin、Manager 可逐条移除自己的已结束／取消／拒绝／过期历史；重复预约逐日期处理。服务端按用户保存隐藏记录，代约双方独立。原预约、员工报表、缺席、通知和日历保留，未来或进行中的有效预约须先取消／撤回。
-- 学生 Dashboard 独立统计卡、缩小 Next session，后续预约与它同栏；员工 Today 缩小状态横幅。保留公告、培训、审批与维修信息，不加图表或日期筛选。
+- At the client's request, change the default maximum advance booking window from 30 days to 28 days (four weeks), calculated using the resource's local date. Day 28 is bookable; day 29 onward is not. Retain the existing minimum seven-day advance rule; both values remain configurable.
+- Check every date in a staff recurring series against the same booking window. Preview marks out-of-range dates, and creation cannot retain them. Staff proxy bookings and Manager rescheduling continue to follow the maximum advance limit.
+- The recurring-booking form reads the backend date range, so its date picker and default range follow the configuration. Docker API and scheduler share the booking-window environment variables. Update the current API and usage documentation.
 
-## 维修链路 A 卡（2026-10-28，接口仍为 1.19.0）
+## After 1.20.0: Three Performance Rounds and Merge-Review Fixes (2026-11-01)
 
-依据项目任务卡 `claude/tasks-maintenance-2026-10-27.md`（Loy 2026-10-27 定 B1 只显示合计数，并把卡 A 收窄为只改前端的最简版本）。来源：Codex 维修流程审查 M1、B1、V3 和 Claude Code 的复查。
+- Fix duplicate concurrent reminders: retain the batch deduplication query from the three performance rounds, then recheck the recipient and booking/induction link inside `_notify`'s write lock before sending. Notifications and email queue records are still written in the same transaction. Both Memory and PostgreSQL have concurrency regression tests; before the fix each created two notifications and two email records, and after the fix each creates one.
+- When rerunning 011, support the automatically generated foreign-key name from the original migration, then rename it to `email_delivery_notification_fk` to match `schema.sql` while preserving the foreign key and existing emails. Add an old-database record-preservation test and verify identical structures through both the 010 and original-011 upgrade paths.
+- Add PostgreSQL tests for email-background-thread disconnection, expired-connection recovery, and isolation from the main-thread transaction. Complete cross-repository boundary comparisons for submission filters and isolate the global email queue in PostgreSQL tests.
 
-- **M1①**：Room management 不再取回全部历史已批准预约，改为只请求还没结束的预约和申请（`status=APPROVED,PENDING_APPROVAL,WAITLISTED,WAITING_QUALIFICATION&since=<现在>`，现有接口参数）。本机 5000 条合成预约时，保存后的刷新从约 3.7 秒降到约 0.76 秒（线上预约很少，没有线上实测）。`listApprovedBookings` 换成 `listUnfinishedBookings`。
-- **B1**：维修、关闭、重开弹窗的人数改为已批准预约加待审批、候补申请的合计，和后端实际通知的范围一致；之前只算已批准的，只有申请时会显示 0。页面上的预约表和 Upcoming 列仍只算已批准的。弹窗文案：`N upcoming bookings and requests affected.`
-- **V3**：保存成功后立即用接口返回的房间状态更新这一行，再照旧刷新（重开会推进候补）；刷新完成前，房间的状态按钮不能点，避免在旧状态上再点一次又发一轮通知。
-- 先不做（Loy：系统已有点臃肿）：M1② 序列化批量查询、M3、M4；按类型分开显示人数等细节作为和客户提的想法。
-- 验证入口：`frontend/tests/maintenance.spec.ts`（拦截全部 API）。
+## After 1.20.0: Merge `main` Background Scheduling and Reliable Email Delivery (2026-11-01, migration 011)
 
-## 页面流畅度 B 卡（2026-10-27，接口仍为 1.19.0）
+Merge two features that Alaric Nan had merged into `main` (`13bac3d` background scheduler and `a39bf59` reliable email delivery and retry) into `backend/week5-fixes`. Conflicts occurred only in `postgres.py`, `repository.py`, and `test_postgres.py`; both sides contained separate additions, so both were retained. Three defects were fixed during the merge:
 
-依据项目任务卡 `claude/tasks-fluency-2026-10-27.md` 中 Loy 已确认的 V2、V4、V5、V6、V8。仅改前端，不改接口、后端或维修业务链路。
+- **No recovery after disconnection**: Django cleans invalid database connections only before and after web requests. `run_scheduler` and the background email thread have no requests, so after a database restart they kept failing until the container restarted. Each round now begins with `close_old_connections()`. New test `test_scheduler_recovers_when_the_database_connection_is_lost` disconnects a real connection; before the fix only the first round succeeded.
+- **Migration not repeatable**: after 011 adds its foreign key, rerunning 006 failed when it attempted to drop `notification_pkey`. Migration 006 now adds the primary key only when it does not exist.
+- **New and upgraded database structures differ**: the foreign key in 011 was unnamed and differed from `email_delivery_notification_fk` in `schema.sql`. Migration 011 now names it explicitly. Databases that already ran the old 011 retain the auto-generated name without affecting behaviour.
 
-- **V2**：人数筛选和 Equipment 的房间下拉移到资源标签下方独立一行，标签滚动区只包含标签；320px、390px 下不必横向滚动才能看完整个筛选。
-- **V4**：Booking records 切换条件时保留旧结果并变淡，表格标记 `aria-busy`，显示 `Updating…`，暂时禁用 Print/Export。成功后更新数量、行和对应条件；失败后保留旧结果、显示错误并恢复按钮，CSV 按这张表原本对应的条件导出，避免与可见结果不一致。
-- **V5**：学生 Dashboard 和员工 Today 都等首页数据与公告请求结束后再显示首屏内容；公告失败仍显示首页及原来的错误/重试，没有公告时不留空白。共用 `useAnnouncements` 管理首次公告结果，重试不卸载已有首页。只等首次显示：之后点 Refresh overview / Refresh now，公告保持不动（复查修复：学生 Dashboard 原先刷新时会把公告一起收起）。
-- **V6**：Room management 首次加载失败时不再显示 Loading，错误下方提供 `Try again`；其他页面的 RefreshStamp、维修弹窗及其刷新方式不变。
-- **V8**：删除整页装饰性淡入及其无用关键帧，保留控件反馈和减少动画设置。
-- 验证入口：`frontend/tests/fluency.spec.ts`（拦截全部 API；延迟、失败、重试、筛选结果/CSV 一致性、公告首次位置和 reduced-motion）。改动前失败和前后截图放在项目外 `9900/output/fluency-2026-10-27/`；验收结果见任务卡。
+## After 1.20.0: Add Load-Test Scripts to the Repository (2026-11-01, no website change)
 
-## 邮件改为后台发送、到期处理不再逐条加锁（2026-10-27，接口仍为 1.19.0）
+At Loy's request, add the load tests to Git under new directory `load-test/` (see its README for instructions and the three rounds of results). The scripts previously existed only on team members' machines. The server address is not committed and is supplied at runtime through `EC2_HOST`. Also fix `report.py`, which incorrectly marked a `-history-worktree` directory as “without historical data.”
 
-依据 `claude/tasks-performance-2026-10-27.md` P1–P4（Loy 2026-10-27 说“开始”）。线上开了邮件之后，提交预约要卡 2–3 秒。原因是请求返回前同步发邮件，而从 EC2 连接、加密、登录 Gmail 的中位数是 1875 ms（只连不发，连测 5 次），每封邮件都新建一次连接。
+## After 1.20.0: Load-Test Performance Fixes, Round Three (2026-10-29, API and schema unchanged)
 
-- **P1 后台发送**：`booking/email_channel.py` 的 `EmailOutbox`。请求里只把写好的邮件放进队列，每个后端进程一个后台线程负责发送，接口响应不再等邮件服务器。发送失败照旧只记日志。代价：进程被强行杀掉时，队列里还没发出的邮件会丢；正常关闭时最多等 `EMAIL_TIMEOUT` 秒发完。`manage.py process_due` 退出前等邮件发完（最多 60 秒）。
-- **P2 共用连接**：同时在排队的邮件（约 0.2 秒内进来的）用一条 SMTP 连接发出。
-- **P3 发送日志**：每批记连接耗时；每封记通知编号、收件人域名、排队时间和发送耗时。`config/settings.py` 新增 `LOGGING`，把 `booking` 的 INFO 日志打到控制台（可用 `LOG_LEVEL` 调）。以前没有日志配置，Python 默认只显示 WARNING 以上，INFO 级别的“邮件跳过”在服务器日志里看不到。
-- **P4**：`EMAIL_TIMEOUT` 保持 10 秒；`backend/docs/email-setup.md` 写了它现在的作用、日志格式和局限。
-- 本机效果（PostgreSQL 临时库 5000 条预约；用假邮件后端模拟 Gmail：连接 1.9 秒，每封 0.3 秒）：提交预约的中位数从 2729 ms 降到 491 ms；5 封邮件都发出，用了 3 条连接（改前是 5 条）。剩下的约 0.5 秒是 `process_due_requests`（见任务卡，本轮没改）。
-- 邮件晚到约 4 分钟不是应用的原因：看邮件头，时间花在 UNSW 那边（Proofpoint 2 分 30 秒、Microsoft 365 1 分 19 秒，`claude/reports/2026-10-27-email-headers.md`），这次的改动不会让邮件更早到。
-- 测试：`test_email_channel.py` 新增 4 个，改动前都失败；原有的邮件测试改为等后台发完再检查。
-- **P5 到期处理先判断再加锁**（Loy 2026-10-27 说“开始”）：每个 API 请求都会跑 `process_due_requests`（`services/waitlist.py`），它以前对每条还没决定的申请都开事务、加锁、重读，哪怕还没到期。本机 200 条待审批时，每个请求要多跑约 1200 条 SQL、多花约 0.2 秒，并且每次都锁住这些资源和学生行。现在先用读到的数据判断（`_due_for_processing`：开始时间已过，或审批期已到），没到期就跳过；加锁后照旧再判断一次，规则不变。本机 `process_due_requests` 从 1204 条 SQL、521 ms 降到 4 条 SQL、329 ms；各接口从约 530 ms 降到约 335 ms。测试 `test_approval_flow.py` `test_requests_that_are_not_due_yet_are_not_locked`（改前失败：2 != 0）。
-- 剩下的约 330 ms（本机 5000 条预约）：`process_due_requests`、`_process_attendance`、`_booking_reminders` 每次请求各把**全部**预约读出来再在 Python 里筛，一次约 110 ms，随历史预约总数线性增长。本轮没改。
+S7 and S8 from task card `claude/tasks-load-2026-10-29.md` (new findings after the second load-test round; Loy decided to run a third round). Rules and returned data are unchanged.
 
-## 结构整理 S1 + S3（2026-10-27，接口仍为 1.19.0）
+- **S7**: Find a free time no longer separately queries the person's induction records, freezing state, existing requests, and daily occupancy for each resource. Read them once and share across resources (`EligibilitySources`, `_DaySources`). Induction evaluation, including prerequisites, uses the same code with a different data source. Previously, 22 resources required about 130 SQL statements.
+- **S8**: induction-expiry reminders no longer read every induction submission on every request. First query whether any verified submissions expire within the reminder period (normally none, requiring one query). If any exist, read only those users' submissions to determine the latest one, and fetch already-sent reminders in one query. Add keyword filters to `list_submissions`, add `list_kind_notifications`, and remove unused `_already_sent`.
+- Tests: add two tests to `test_postgres.py` (adding five resources does not increase Find a free time query count and each resource's result matches an individual query, including missing prerequisites; 30 inductions that are not near expiry are not read, and the latest submission determines whether to remind). Both fail on `b5964d7`.
 
-按 `reports/2026-10-27-code-structure-review.md` 的 4.3、4.4 节，只做搬移和删除，不改任何行为：没有接口、数据库、预约规则、界面文案或样式效果的变化。
+## After 1.20.0: Load-Test Performance Fixes, Round Two (2026-10-29, API and schema unchanged)
 
-- **S1：删掉 31 个没用过的 CSS 类名**：`features/booking/booking.css` 21 个、`ui/workspace.css` 8 个、`app/shell.css` 3 个、`features/auth/auth.css` 2 个（有 3 个类名在两个文件里都有规则）。审查清单原来写 32 个，其中 `ttf` 是字体地址 `manrope-regular.ttf` 被误认成类名，实际没有这个类，也没有删任何东西。删前对每个类名在 `frontend/src` 和 `frontend/tests` 里搜过 `.ts`、`.tsx`、`.mjs`，全部只出现在 CSS 里。含 `:is()` 的选择器只移除它里面的目标成员（例如手机断点的 `.app-shell :is(.ui-tabs, .bk-pills, .bk-mode-tabs)` 保留前两个）。
-- **S3：接口层搬到 `src/api/`**：`features/booking/api.ts`（73 个函数）和 `types.ts`（52 个类型）按领域拆成 `src/api/{auth,bookings,resources,admin,notifications,announcements,site}.ts`、`src/api/client.ts` 和 `src/api/types/<领域>.ts`，`src/api/index.ts` 和 `src/api/types/index.ts` 统一导出。函数体和类型定义一个字没改；旧文件删除，不留转发。原文件里局部定义的 `BookingRequest` 一并移到 `types/bookings.ts`。审查时发现拆分把 19 条说明注释挂到了别的声明上（例如 `lookupPerson` 的说明跑到了 `listBookings` 上面），已全部放回原位（Claude Code，`claude/reports/2026-10-27-review-structure.md` R1）。
-- 所有使用方改成从 `src/api`（`index.ts`）导入；Node 单元测试导入的文件仍写完整 `.ts` 扩展名、类型用 `import type`。
-- 行为不变的证据：`check-local.sh` 全通过（backend 379、pg 26、openapi 1.19.0 / 72 路由、unit 72、lint、build、e2e 75）；截图比对：22 个页面 × 桌面 1440×900 / 手机 390×844 = 44 张，每张改动后的截图都能和改动前（`8ae931f`）的某一次截图逐像素相同（有 5 个页面同一版本连截两次也会有几十到上千像素的随机差异，对这些页面多截了几次）。交付时写的“44 张全部一致”不成立：当时的比较脚本只看透明通道、不看颜色，且其中 8 张是白屏，已修正脚本并重新截图（审查报告 R2）。
-- 文档：`ARCHITECTURE.md` 第 7 节、`frontend/README.md` 的路径说明；`SPRINT3.md` 第 25 节列了搬移和删除。旧的 SPRINT3 小节是历史记录，没有改。
+S2 and S6 from task card `claude/tasks-load-2026-10-29.md` (S6 was discovered during the first round and Loy added it to this round). Returned data is unchanged.
 
-## 1.19.0：通知设置页和署名公告（2026-10-26，Sprint 3）
+- **S2**: Booking Records and the review queue no longer query the database per row. Previously, every booking separately loaded the booking holder, creator, replaced booking, change request, and waitlist position, producing more than 9,000 SQL statements for 5,000 bookings. `BookingListLookups` now loads them together (there are few undecided bookings, loaded once). `booking_json` is shared between individual bookings and long staff lists with identical output. Status, resource, student, and date filters for `booking_report` are also executed by the database. With 5,000 historical bookings, Booking Records improves from 9.1 seconds to about 1 second, and the review queue from 1.2 seconds to 81 ms.
+- **S6**: availability (Find a free time and an individual resource's day view) queries each resource's daily occupancy once, then evaluates each cell. Previously every half-hour cell queried separately, resulting in more than 500 SQL statements for one request across 22 resources.
+- Tests: add three tests to `test_postgres.py` (availability query count does not grow with the number of cells; a shared-query staff list matches per-row output with Outlook both on and off; adding 40 Booking Records entries does not change the SQL count). All fail on `ec5c4b1`.
 
-依据 Loy 确认的 `claude/tasks-1.19.0.md`（N1、N2、A1–A4、D1）。通知设置原来藏在 Account 页，且一个开关同时控制站内和邮件；现在侧栏 **Notifications** 独立显示五个类别，两列 **In the bell / By email** 分别即时保存。Account 只保留设置链接。网站关闭邮件时，邮件列禁用并说明原因。
+## After 1.20.0: Show Submission Failure Inside the Booking Dialog (2026-10-29, frontend only)
 
-- 通知渠道在生成记录时分别保存；只发邮件的记录永久不进入铃铛或未读计数；两列都关闭时不生成通知。Manager 的 urgent 工作通知保留。原有 `enabled` 继续表示站内，升级后邮件默认开启。
-- 所有角色的首页顶部显示生效公告和发布人署名；无公告时不占位置。公告不产生个人铃铛或邮件。员工 **Announcements** 页维护手动公告，显示生效及已结束记录；标题限 120、正文限 1000 字符，可设下架时间。
-- 发布人可以编辑和下架自己的手动公告；Manager 还可下架别人的，不能编辑别人的；Admin 不能处理别人的。学生写接口均返回 403。请求不能指定公告种类、资源或作者，操作写审计。
-- Manager 维修／关闭房间或设备时，在同一事务生成状态公告；改原因更新同一条，重新开放时自动下架。可选 **Expected back** 是悉尼时间的恢复估计，不是公告有效期，不会自动重新开放。状态公告不能通过手动公告接口编辑或下架。受影响预约人的原有通知保留。
-- 迁移 `009_announcements_notification_channels.sql` 可重复执行；新表 `announcement`、通知渠道快照和偏好邮件列同步到 `schema.sql`。`author_role` 保存发布时的角色，`expected_back` 与 `expires_at` 分开；资源状态公告有部分唯一索引。
-- 接口升到 1.19.0，72 条路由均有 OpenAPI；新增行为覆盖 Memory / PostgreSQL、HTTP 权限、日期转换和 390px 浏览器检查。代码索引见 SPRINT3 第 24 节。
-- 本轮不做 D2；EC2 未更新，Docker 和部署文件未改。
-- 审查修复（Claude Code，`claude/reports/2026-10-26-review-1.19.0.md` R1）：手动公告的下架时间（Remove at）以前可以填过去的时间，公告一发布就是已过期，哪个首页都看不到，也没有提示；现在发布和修改时必须晚于当前时间，否则返回 400。
-- 部署说明更正（`DEPLOY.md` 第三节、`backend/entrypoint.sh` 注释）：原来写的是先 `up -d --build` 换上新代码、再 `exec` 跑迁移，这样新代码会先在旧结构的库上运行；改为先 `build`、用新镜像 `run --rm api migrate <文件>`，再 `up -d`。
-- 审查 Q1（Loy 2026-10-27 定）：网站没开邮件时，Notifications 页的 **By email** 列以前是灰色但按保存的偏好显示打勾，容易以为邮件是开着的；现在整列显示为不勾选。保存的偏好不变，网站开邮件后恢复显示。只改前端显示，接口不变。
+Based on Loy's screenshot feedback in `claude/reports/2026-10-29-weekly-limit-dialog.md`: after reaching the weekly limit, the error appeared only in the message box behind the dialog, while the dialog itself showed nothing. Reloading the day's times and clearing the selection after a failed submission also cleared the form error, and the message box was hidden beneath the native `<dialog>` backdrop. Reloading no longer clears the error. It appears beside the submit button as `Request not submitted: …` until the user selects a new time. Add e2e test `a refused booking request is explained inside the booking dialog`.
 
-## 1.18.0 审查修复、学生注册入口、Docker 部署（2026-10-25，接口仍为 1.18.0）
+## After 1.20.0: Load-Test Performance Fixes, Round One (2026-10-29, API and schema unchanged)
 
-依据 Claude Code 对上一轮（`05f7752`）的审查（项目文档 `claude/reports/2026-10-25-review-1.18.0.md`，编号同报告）和 Loy 的决定。没有接口、数据库或预约规则的改动。
+Based on load test `claude/reports/2026-10-29-stress-test.md` (200 students + 10 Admins + 2 Managers failed because every request loaded all bookings into memory) and R1, S1, S5, and S3 in task card `claude/tasks-load-2026-10-29.md`. Business rules and returned data are unchanged.
 
-- **D1 时间轴滚轮**：滚轮监听器挂在第一次渲染时还不存在的元素上，换日期后也会丢，正常使用时基本不生效。改为数据变化时重新挂；滚到两头时把滚轮还给页面，鼠标停在时间轴上也能继续滚动页面。
-- **D2 通知偏好**：一次保存里有未知类别时，以前会先保存前面的类别再报错；改为先全部检查，再在一个事务里保存。
-- **学生注册入口**（Loy 定）：1.18.0 删掉登录页直登时，Create student account 也一起没了，网页上无法新建学生。模拟 SSO 页加 **No demo account? Create one**（zID、姓名、大学邮箱，调用原有 `auth/demo-register/`；后端关闭演示注册时不显示）。
-- **Docker 部署**（新增 `DEPLOY.md`）：
-  - D4：PostgreSQL 下不再在运行时注入演示数据（`SEED_DEMO_DATA` 固定为 false，否则每个 worker 启动都会覆盖网页上改过的房间、设备和员工密码）；改为新建数据库时由 `entrypoint.sh` 导入 `seed_*.sql` 一次（`LOAD_DEMO_DATA`）。
-  - 迁移不再每次启动都重跑（迁移 005 会把演示员工密码改回演示密码）；新迁移用 `./entrypoint.sh migrate <文件>` 手动执行一次。
-  - D5：`ALLOWED_HOSTS` 总是包含 `127.0.0.1`，改成公网 IP 后健康检查不再失败。D6：`.dockerignore` 排除 `.venv`。D7：镜像按 `requirements-postgres.txt` 安装锁定版本，`gunicorn` 锁版本。D8：传入 `SITE_URL`。
+- **R1**: add keyword filters to `list_bookings` (status, start/end time, expiry, creator, and attendance not recorded). PostgreSQL filters in SQL; the memory implementation uses the same `booking_matches`. Filters only narrow reads, preserving all caller-side checks. Add `list_booking_notifications` to perform reminder deduplication in one query.
+- **S1**: expiry processing, absence marking, and tomorrow's reminders read only bookings that may require processing (undecided and expired; approved, attendance not recorded, and started; approved, attendance not recorded, and within the reminder period). They no longer read all bookings three times on every request. This was the previous P6 issue.
+- **S5**: the Admin home page reads only undecided bookings, approved bookings that have not ended, and today's bookings. Staff My bookings queries by creator instead of reading all bookings to find “created by me for someone else.”
+- **S3**: reuse database connections for 60 seconds within a process (`DB_CONN_MAX_AGE`; set to 0 to disable) instead of creating one per request (about 12 ms). Write locks are transaction-scoped, so connection reuse does not carry a lock into the next request.
+- Tests: add four tests to `test_postgres.py` (both implementations return identical filtered results; expiry processing and one staff page read no rows among 200 historical bookings; query count is identical for one and 20 already-reminded bookings; connection reuse). All fail on `3377dd1`.
 
-## 1.18.0（2026-10-25）
+## After 1.20.0: Live Trial Feedback L1–L5 (2026-10-28, API unchanged)
 
-依据 Loy 试用后的反馈。新增通知偏好，补上 induction 提交的通知，把 urgent 入口做成按钮，删掉登录页里没有意义的直接 demo 登录。
+Based on Loy's post-deployment trial feedback in `claude/reports/2026-10-28-live-feedback.md`. Frontend only.
 
-- **通知偏好**（`GET/PUT notifications/preferences/`）：Account 页新增 Notifications 卡片，学生和员工可以按类别关掉站内通知（Booking updates、Reminders、Induction and training、Account and booking freeze、Room and equipment status）。没有保存过的类别默认开启；Manager 的 urgent-request 通知不受影响。偏好按人保存（表 `notification_preference`，迁移 008）。
-- **induction 提交通知**：学生提交 induction 证明后，铃铛收到 "Induction evidence received"（`INDUCTION_SUBMITTED`），属于 induction 类别，可以关掉。以前提交是静默的。
-- **Urgent 入口**：时间轴上方 "Need a date before …? Make an urgent request" 从蓝色文字链接改成黄色按钮，一眼能看出来是紧急通道。
-- **登录页**：删掉 "Other demo sign-in options"（直接输 zID 登录 + Create student account）。演示登录走 "University sign-in (Demo)"，员工走 Staff sign-in，本地测试走 Test console。`auth/demo-login/` 和 `auth/demo-register/` 接口保留，供模拟 SSO 页和测试使用。
-- 接口 1.18.0（新增 `GET/PUT notifications/preferences/`）；迁移 008；OpenAPI 69 路由；无预约规则改动。
+- L1: when a staff account is used on the university sign-in page, make “Staff sign-in page” in the message a link directly to staff sign-in.
+- L2: Today task cards use exactly three columns per row on desktop and no longer stretch a single card across the row. A sole “Decide soon” or “Out of service” card spans the row. The green tick on the right appears only when nothing is pending review.
+- L3: move Edit/Remove on announcement cards to the top-right. True deletion and a collapsed seven-day section are not implemented and remain proposals for the client.
+- L4: make “SmartLab” in the sign-in breadcrumb a link back to the sign-in home page, so staff sign-in is no longer a dead end.
+- L5: add a red line to the top of Urgent cards on Today and make the number red, distinguishing them from normal yellow task cards.
+- Also remove dead rule `.today-brief p`; the page no longer contains that element.
 
-## 代码结构清理（2026-10-25，接口仍为 1.17.1）
+## 1.20.0: Booking Filters, Personal History, and Home Page (2026-10-28, migration 010)
 
-按结构审查（项目文档 `claude/reports/2026-10-25-code-structure-review.md`）清理死代码并拆分过大的文件。没有接口、数据库或预约规则的改动。
+Based on Loy's analysis of the eDoc and subsequent authorisation to “go ahead and change it,” task card `claude/tasks-booking-history-2026-10-28.md`.
 
-- **后端**：`backend/booking/views.py`（840 行、69 个类）拆成 `views/` 包，按领域分 10 个模块，公共导入和辅助函数在 `views/_common.py`；`from booking.views import X` 的写法不变。
-- **前端**：删掉没有引用的 `src/App.css`；`MyBookings.tsx` 里的 `RescheduleBox` 和 `SeriesCard` 拆成同名文件；`SlotPicker.tsx` 的日期辅助函数移到 `slot-picker.ts`；`ACTIVE` 状态组移到 `my-bookings.ts` 共用。
-- **动效死代码**：删掉重复的页面淡入（`.app-page` 只保留 `workspace.css` 一条）、重复的 dialog 进场（只保留 `booking.css` 的 `.bk-modal`）、被覆盖的 reduced-motion 规则（只保留 `workspace.css` 一条，并补上 `::backdrop`）、被覆盖的按钮按压缩放，以及覆盖铃铛摆动的 `animation: none`。铃铛摆动现在会真正播放。
-- **样式分层**：`frontend/README.md` 新增「Style layers」，规定新样式只写进 `workspace.css`，`ui.css` 冻结、逐组件搬移。
-- 验证：后端 355 通过（18 个 PostgreSQL 跳过），前端单元 68、lint、build 通过；Playwright 与全套脚本结果见交付记录。
+- Under existing My bookings categories, add a Resource filter, match count, and Clear filters. The URL remembers both category and resource; changing local filters does not refetch bookings.
+- Students, Admins, and Managers can remove their own ended/cancelled/rejected/expired history one item at a time; recurring bookings are handled by date. The server stores hidden records per user, independently for both parties in a proxy booking. The source booking, staff reports, absences, notifications, and calendar remain. Active future or in-progress bookings must first be cancelled or withdrawn.
+- Give the student Dashboard separate statistics cards, make Next session smaller, and place later bookings beside it. Reduce the status banner on staff Today. Preserve announcements, training, review, and maintenance information; do not add charts or date filters.
 
-## 内部工具风格：去掉 AI 味第一步（2026-10-25，接口仍为 1.17.1）
+## Maintenance Flow Card A (2026-10-28, API remains 1.19.0)
 
-Loy 定的方向：界面按“学校的内部工具”做，不再参考获奖网站。这一轮做文案、字号、字体、命名四件事（任务清单在项目文档 `claude/tasks-ui-internal-tool.md`，D1–D8 都按建议定）。没有接口、数据库、预约规则的改动。
+Based on project task card `claude/tasks-maintenance-2026-10-27.md` (on 2026-10-27 Loy decided B1 should show only the total and narrowed Card A to the smallest frontend-only version). Sources: Codex maintenance-flow review M1, B1, and V3, plus Claude Code's follow-up review.
 
-- **AI-2：文案像在聊天。**
-  - 删掉营销句、眉标和标题下的说明句：首页的问候、Find a free time 的标语和步骤、Today 的 “Everything is in good order.”、资源卡的 “SHARED SPACE”、登录页的 “SPACES TO LEARN…” 和特点栏、顶栏的 “Student Portal”、404 页的 “PAGE NOT FOUND”。
-  - 标题不再以句号结尾。
-  - 员工页只在 4 页保留一句说明：Booking review、Booking freezes、Resources、User management。
-  - 首页标题改为 “Dashboard”；登录页只写 “SmartLab” 加一句 “Book lab rooms and equipment at UNSW.”。
-- **AI-3：字号两极。**
-  - 字号收成 28／20／16／14／12 五级，手机上 H1 是 24。全站没有小于 12px 的字。
-  - H1 只在一条共用规则里定义。
-  - 侧栏、表头以外的大写字距小标签改成普通写法。
-- **AI-5：衬线体加无衬线体的“编辑风”组合。**
-  - 删掉 Instrument Serif 和它的字体文件，全站只用 Manrope，登录页也一样。模拟学校 SSO 的页面例外：它代表微软的登录页，保留原样。
-  - 圆角收成 8px（按钮、输入框、徽章）和 12px（卡片、弹窗、表格），头像和药丸形用圆形。
-- **AI-6：同一页面几个名字。**
-  - 导航、H1、浏览器标签统一成句首大写的同一个名字；Qualification Review 改名为 Induction review，和学生看到的 Induction & training 用同一个词。
-  - 营业时间统一写成 “8:00 am – 8:00 pm”，和全站其他时间一致（`format.ts` 的 `fmtClock`、`fmtHours`）。
+- **M1①**: Room management no longer retrieves every historical approved booking. It requests only unfinished bookings and requests (`status=APPROVED,PENDING_APPROVAL,WAITLISTED,WAITING_QUALIFICATION&since=<now>`, using existing endpoint parameters). With 5,000 synthetic local bookings, the post-save refresh improves from about 3.7 seconds to about 0.76 seconds (few bookings exist online, so no online measurement). Replace `listApprovedBookings` with `listUnfinishedBookings`.
+- **B1**: maintenance, closure, and reopening dialogs show the total of approved bookings plus pending and waitlisted requests, matching the scope actually notified by the backend. Previously they counted only approved bookings and showed 0 when only requests existed. The booking table and Upcoming column continue to count only approved bookings. Dialog copy: `N upcoming bookings and requests affected.`
+- **V3**: after a successful save, immediately update the row with the resource status returned by the endpoint, then refresh as before (reopening advances the waitlist). Disable resource status buttons until refresh completes to prevent another action against stale state from sending another notification round.
+- Not implemented yet (Loy: the system is already somewhat bloated): M1② serialisation batch queries, M3, and M4. Details such as separate counts by type remain ideas to discuss with the client.
+- Verification entry point: `frontend/tests/maintenance.spec.ts` (intercepts all APIs).
 
-上面的验收条件写成了单元测试 `tests/ui-internal-tool.test.mjs`，以后有人把这些改回去会直接失败。代码位置见 `SPRINT3.md` 第 20 节。
+## Page Fluency Card B (2026-10-27, API remains 1.19.0)
 
-## 1.17.1（2026-10-25）
+Based on V2, V4, V5, V6, and V8 confirmed by Loy in project task card `claude/tasks-fluency-2026-10-27.md`. Frontend only; no API, backend, or maintenance business-flow change.
 
-- **FC-04：账号 1 仍显示 induction 未提交。** Loy 明确要求这个测试账号拥有全部 induction，不再上传证明。现在后台自动授予所有培训资格，永久有效；之后新增的要求在该账号下一次请求时自动补齐。切换三种角色、关闭 booking-rule bypass 都保留资格。界面移除该账号的 evidence 表单，并给出英文说明。自动授权记录不伪造附件，`file_id`、`file_url` 为空；重复请求不产生重复记录。普通账号仍需上传和审核。测试控制台仍只在显式开启的本地内存模式可用，冲突保护不变，无数据库迁移。
+- **V2**: move the capacity filter and Equipment room dropdown to a separate row below resource tabs, leaving only tabs in the scroll area. At 320px and 390px, users no longer need to scroll horizontally to see the complete filters.
+- **V4**: when Booking records criteria change, retain and fade old results, mark the table `aria-busy`, show `Updating…`, and temporarily disable Print/Export. On success, update the count, rows, and associated criteria. On failure, retain old results, show the error, and re-enable buttons. Export CSV using the criteria originally associated with the visible table to avoid mismatch.
+- **V5**: student Dashboard and staff Today both wait for home data and announcement requests before showing first-screen content. If announcements fail, still show the home page and existing error/retry; leave no blank area when there are no announcements. Shared `useAnnouncements` manages the first announcement result, and retry does not unmount the existing home page. Waiting applies only to first display: later Refresh overview / Refresh now keeps announcements in place (review fix: student Dashboard previously collapsed announcements during refresh).
+- **V6**: after the initial Room management load fails, stop showing Loading and provide `Try again` below the error. RefreshStamp, maintenance dialogs, and refresh behaviour on other pages are unchanged.
+- **V8**: remove the decorative full-page fade-in and its unused keyframes while retaining control feedback and reduced-motion settings.
+- Verification entry point: `frontend/tests/fluency.spec.ts` (intercepts all APIs; covers delay, failure, retry, filter-result/CSV consistency, initial announcement position, and reduced-motion). Pre-change failures and before/after screenshots are outside the project in `9900/output/fluency-2026-10-27/`; see the task card for acceptance results.
 
-## Workspace UI iteration（2026-10-25，接口仍为 1.17.0）
+## Move Email to Background Delivery and Stop Per-Row Locking for Expiry Processing (2026-10-27, API remains 1.19.0)
 
-Loy 要求先做一版有完整设计感、能实际使用的网页，再看成果。按排版、留白、视觉层次、色彩、动效、微交互、响应式、原创性检查；不以“已获奖”或“无可改进”作为事实陈述。无接口、数据库或预约规则变化。
+Based on P1–P4 in `claude/tasks-performance-2026-10-27.md` (Loy said “start” on 2026-10-27). After email was enabled online, submitting a booking stalled for 2–3 seconds because email was sent synchronously before the response returned. Connecting, encrypting, and signing in to Gmail from EC2 took a median 1,875 ms (five connect-only trials), and every email opened a new connection.
 
-- **UI-01：各页面视觉语言不一致。** 工作区统一字体、墨绿／暖白／UNSW 黄、控件、表格、状态和导航；字体在本地提供，带开放许可证。
-- **UI-02：首页和资源页信息分散。** 学生首页突出下一场已批准预约；资源卡显示真实位置、规格和培训要求，减少装饰封面；员工 Today 优先展示有待办的模块，空的次要面板收起。
-- **UI-03：按时间找资源后要重新选时间。** Find a free time 只在提交搜索时请求数据，修改条件不会即时查询；返回紧凑结果列表，Review booking 保留所选时间，完整时间网格可展开。修改搜索条件后先重新搜索，避免使用旧结果。
-- **UI-04：预约列表缺少状态导航。** 新增本地筛选和数量，选中分类保存在 URL；切分类不重新请求预约数据。
-- **UI-05：手机弹窗长、键盘操作不稳。** 资源说明折叠；原生对话框约束焦点，Escape 关闭后返回原按钮，手机保留底部提交区，并处理减弱动效偏好。
+- **P1 background delivery**: `EmailOutbox` in `booking/email_channel.py`. A request only enqueues the composed email; one background thread per backend process sends it, so the API response no longer waits for the mail server. Delivery failures remain log-only. Trade-off: if the process is killed forcibly, queued unsent emails are lost; a normal shutdown waits up to `EMAIL_TIMEOUT` seconds to finish. `manage.py process_due` waits up to 60 seconds for email before exiting.
+- **P2 shared connection**: emails queued together (arriving within about 0.2 seconds) use one SMTP connection.
+- **P3 delivery logs**: log connection time per batch; for each email log notification ID, recipient domain, queue time, and delivery time. Add `LOGGING` to `config/settings.py` to send `booking` INFO logs to the console (adjustable with `LOG_LEVEL`). Previously there was no logging configuration; Python showed only WARNING and above, so INFO-level “email skipped” messages were absent from server logs.
+- **P4**: keep `EMAIL_TIMEOUT` at 10 seconds; `backend/docs/email-setup.md` documents its current purpose, log format, and limits.
+- Local result (temporary PostgreSQL with 5,000 bookings; fake email backend simulating Gmail at 1.9 seconds to connect and 0.3 seconds per email): median booking submission falls from 2,729 ms to 491 ms; all five emails are sent using three connections instead of five. The remaining about 0.5 seconds is `process_due_requests` (see task card; unchanged in this round).
+- About four minutes of email delivery delay is not caused by the application: message headers show the time is spent at UNSW (Proofpoint 2m30s, Microsoft 365 1m19s, `claude/reports/2026-10-27-email-headers.md`), so these changes do not make final delivery earlier.
+- Tests: add four to `test_email_channel.py`, all failing before the change. Existing email tests now wait for background delivery before checking.
+- **P5 evaluate before locking during expiry processing** (Loy said “start” on 2026-10-27): every API request runs `process_due_requests` (`services/waitlist.py`). Previously, it opened a transaction, locked, and reread every undecided request even when it was not due. With 200 local pending requests, every request ran about 1,200 extra SQL statements, added about 0.2 seconds, and locked those resource and student rows every time. It now checks loaded data first (`_due_for_processing`: start time passed or review deadline reached) and skips items not due; it rechecks after locking as before, so rules are unchanged. Locally, `process_due_requests` improves from 1,204 SQL / 521 ms to 4 SQL / 329 ms; endpoints improve from about 530 ms to about 335 ms. Test `test_requests_that_are_not_due_yet_are_not_locked` in `test_approval_flow.py` failed before the change (2 != 0).
+- Remaining about 330 ms (local 5,000 bookings): `process_due_requests`, `_process_attendance`, and `_booking_reminders` each read **all** bookings on every request and filter in Python, about 110 ms each, growing linearly with historical bookings. Not changed in this round.
 
-代码与测试位置见 `SPRINT3.md` 第 18 节。后端仍重新校验资格、冲突和时间规则；本轮没有减少后台时间格计算或优化数据库查询。
+## Structure Cleanup S1 + S3 (2026-10-27, API remains 1.19.0)
 
-Claude 审阅后的修改（审阅原文在项目文档 `claude/reports/2026-10-25-workspace-ui-review.md`，编号相同）：
+Following Sections 4.3 and 4.4 of `reports/2026-10-27-code-structure-review.md`, make moves and deletions only, without changing behaviour: no API, database, booking-rule, UI-copy, or visual-style changes.
 
-- **R1：弹窗里的报错看不见。** 原生对话框打开时，外面的 toast 被盖在背景下面，也点不动。Room Management 的改期失败原来只有 toast，现在在弹窗里同时显示错误（`RescheduleBox`）；`Modal` 的说明写明弹窗内容要有行内错误。
-- **R2：培训要求被折叠。** 有没验证的 induction 时，“Training requirements” 默认展开，计数用琥珀色；全部验证后才折叠。
-- **R4：拖选文字会关掉弹窗。** 只有按下和松开都在背景上才关闭，在输入框里选字、松手落在背景上不再丢失已填内容。
-- **R5：弹窗名字。** 每个弹窗按标题命名（`Book <资源>`、`Repeat weekly: <资源>`、`Reschedule booking`），原来一律是 “Booking details”。
-- **R7：整理。** 补 `Sprint 3` 标注，拆开挤在一行的 JSX，删掉不再使用的 `.bk-overlay` 样式。
-- **界面复查第 1 条：手机上页面被撑宽。** 复查原文在项目文档 `claude/reports/2026-10-25-ui-review.md`。
-  - 现象：390px 宽时，Room Management、Resources、Lab Setup、User Management 和学生的 My Bookings 被撑到 478–579px，在手机上会整页缩小或者可以左右拖动；学生看不到 “Cancelled” 标签。
-  - 原因一：表头里只给屏幕阅读器读的 “Actions” 是绝对定位，跑出了表格的横向滚动区。现在表格外框 `.ui-table-wrap` 加了 `position: relative`。
-  - 原因二：标签页那一行不换行。现在在手机上，标签页在自己的范围里横向滚动。
+- **S1: remove 31 unused CSS class names**: 21 from `features/booking/booking.css`, 8 from `ui/workspace.css`, 3 from `app/shell.css`, and 2 from `features/auth/auth.css` (three class names had rules in two files). The review checklist originally listed 32; `ttf` was the font URL `manrope-regular.ttf` misidentified as a class, so no such class existed and nothing was removed for it. Before deletion, each class was searched in `.ts`, `.tsx`, and `.mjs` under `frontend/src` and `frontend/tests`; all appeared only in CSS. For selectors containing `:is()`, remove only the target member (for example, the mobile `.app-shell :is(.ui-tabs, .bk-pills, .bk-mode-tabs)` retains the first two).
+- **S3: move the API layer to `src/api/`**: split `features/booking/api.ts` (73 functions) and `types.ts` (52 types) by domain into `src/api/{auth,bookings,resources,admin,notifications,announcements,site}.ts`, `src/api/client.ts`, and `src/api/types/<domain>.ts`, with unified exports from `src/api/index.ts` and `src/api/types/index.ts`. Function bodies and type definitions are unchanged. Delete old files without forwarders. Move locally defined `BookingRequest` to `types/bookings.ts`. Review found that the split attached 19 explanatory comments to the wrong declarations (for example, the `lookupPerson` explanation moved above `listBookings`); restore all to their original declarations (Claude Code, R1 in `claude/reports/2026-10-27-review-structure.md`).
+- Change all consumers to import from `src/api` (`index.ts`). Node unit tests continue to use full `.ts` extensions, and types use `import type`.
+- Evidence of unchanged behaviour: all local checks pass (backend 379, pg 26, OpenAPI 1.19.0 / 72 routes, unit 72, lint, build, e2e 75). Screenshot comparison: 22 pages × desktop 1440×900 / phone 390×844 = 44 images; every updated screenshot is pixel-identical to one pre-change (`8ae931f`) screenshot (five pages show tens to thousands of random pixel differences even between consecutive captures of the same version, so they were captured several times). The delivery claim “all 44 images match” was invalid because the comparison script checked only the alpha channel, not colour, and eight images were blank. The script was fixed and screenshots retaken (review report R2).
+- Documentation: Section 7 of `ARCHITECTURE.md` and the path explanation in `frontend/README.md`; Section 25 of `SPRINT3.md` lists the moves and deletions. The older SPRINT3 section is a historical record and remains unchanged.
 
-## 1.17.0（2026-10-25）
+## 1.19.0: Notification Settings Page and Attributed Announcements (2026-10-26, Sprint 3)
 
-按 Loy 在本机截图后的功能决定实现；这一轮以功能为先，不做整体视觉重做。没有数据库结构改动。
+Based on `claude/tasks-1.19.0.md` confirmed by Loy (N1, N2, A1–A4, and D1). Notification settings were previously hidden on Account, with one switch controlling both in-app and email delivery. The separate **Notifications** sidebar page now shows five categories with independently and immediately saved **In the bell / By email** columns. Account retains only a settings link. When site email is disabled, the email column is disabled with an explanation.
 
-- **FC-01：Urgent 重复填写说明。** Urgent 表单只留一个必填的 **Purpose and urgency**，同一份文字发送为 `purpose` 与 `urgent_reason`；普通预约仍显示 Purpose。普通账号的紧急请求仍需 Manager 审批。
-- **FC-02：每次测试要换账号、等审批、受预约窗口限制。** 增加显式开启的本地 Test console，登录 ID `1`，不需密码；同一账号可切 Student、Admin、Manager，并开关 booking-rule bypass。开关打开时，本人预约／改期立即批准，跳过提前天数、资格、开放时间、维修状态、最长时长、每周次数及冻结限制；周重复预约也支持本人测试。保留未来有效时间、24 h 单次上限、重复和冲突保护，重复系列最多 52 周。切到其他人时仍按那个人的正常规则。权限只存在服务端签名的会话中，不修改持久角色；默认关闭且正式认证模式不可用。测试预约保留站内通知与审计，不发邮件或同步 Outlook。
-  - **只在内存模式可用**（Loy 2026-10-25 审阅后定）：`test_console_enabled` 多一个条件 `REPOSITORY_FACTORY` 是内存存储。原因：连 PostgreSQL 时测试预约会写进正式库，出现在 Booking Records、Usage statistics 和 Today 里，还会占住真实时段。不为测试账号单独建表；重启后端就清空。本机 `start-backend.ps1 -TestConsole` 自动用内存模式。
-  - 审阅时顺手改的小问题：`TestPrincipal` 的 bypass 默认值改为关（各处本来都显式传值，行为不变）；bypass 时间格的结束时间改为第二天的本地 0 点（夏令时那天不再差一小时）；重复预约的逐日检查和外层检查写法统一为 `booking_rules_bypassed(actor, person.id)`（接口不接受把 `1` 当 zID，以前的写法实际走不到不同结果，只是读起来不一致）；补上 `Sprint 3` 文件标注，改正 `create_test_booking` 的说明。登录后默认打开 bypass，保持不变（Loy 确认）。
-- **FC-03：上传 evidence 缺少必填说明。** 培训要求、标题、附件都标 Required；未选文件时直接提示需要上传证书，按钮保持不可提交；空文件、超限和不支持的格式显示英文提示。文件选择改为英文 Choose file／No file selected。
+- Save notification channels separately when creating a record. Email-only records never enter the bell or unread count. If both columns are disabled, no notification is created. Preserve Manager urgent-work notifications. Existing `enabled` continues to mean in-app delivery; email defaults to enabled after upgrade.
+- Show active announcements and author attribution at the top of every role's home page, taking no space when empty. Announcements do not create personal bell or email notifications. Staff maintain manual announcements on **Announcements**, which shows active and ended records. Titles are limited to 120 characters, bodies to 1,000, with an optional removal time.
+- Authors may edit and remove their own manual announcements. A Manager may also remove, but not edit, someone else's. An Admin cannot manage another author's. All student write endpoints return 403. Requests cannot choose announcement kind, resource, or author. Actions are audited.
+- When a Manager places a room or device under maintenance or closes it, create a status announcement in the same transaction. Changing the reason updates the same announcement; reopening removes it automatically. Optional **Expected back** is a Sydney-time recovery estimate, not an announcement expiry and does not reopen automatically. Status announcements cannot be edited or removed through manual-announcement endpoints. Existing notifications for affected booking holders remain.
+- Repeatable migration `009_announcements_notification_channels.sql`; synchronise new `announcement` table, notification-channel snapshots, and preference email column to `schema.sql`. `author_role` stores the role at publication; `expected_back` is separate from `expires_at`; resource-status announcements have a partial unique index.
+- API version becomes 1.19.0, with OpenAPI coverage for all 72 routes. New behaviour is covered in Memory/PostgreSQL, HTTP permissions, date conversion, and 390px browser checks. See Section 24 of SPRINT3 for the code index.
+- D2 is not included. EC2 was not updated; Docker and deployment files were unchanged.
+- Review fix (Claude Code, R1 in `claude/reports/2026-10-26-review-1.19.0.md`): Remove at for manual announcements previously allowed a past time, making a newly published announcement immediately expired and invisible on every home page without explanation. Publication and editing now require a future time or return 400.
+- Deployment-instruction correction (Section 3 of `DEPLOY.md`, comments in `backend/entrypoint.sh`): instructions previously said to replace the code with `up -d --build` before running the migration with `exec`, which briefly ran new code against the old schema. Now use `build`, run `run --rm api migrate <file>` with the new image, then run `up -d`.
+- Review Q1 (decided by Loy on 2026-10-27): when site email was disabled, **By email** on Notifications was grey but still checked according to saved preferences, suggesting email was active. The entire column now appears unchecked. Saved preferences remain unchanged and reappear when site email is enabled. Frontend display only; API unchanged.
 
-接口版本为 1.17.0；接口约定见 `backend/docs/frontend-api.md`，功能代码和测试索引见 `SPRINT3.md` 第 17 节。
+## 1.18.0 Review Fixes, Student Registration Entry, and Docker Deployment (2026-10-25, API remains 1.18.0)
 
-## 1.16.0（2026-10-25）
+Based on Claude Code's review of the previous round (`05f7752`) in project document `claude/reports/2026-10-25-review-1.18.0.md` (IDs match the report) and Loy's decisions. No API, database, or booking-rule changes.
 
-Sprint 3 的第五批：处理 2026-10-24 的第三方用户体验报告（14 项，基于 1.15.0）。下面按报告编号写，每项先写报告指出的问题（即修改原因），再写改法。Loy 定的方向：房间和设备分开预约，组合逻辑留给客户；学生可以申请改期，新时间被占时只能进候补；维修时自动通知。拿不准的 4 项（第 2、3、4、12 项）由 Loy 选定。**有数据库改动：迁移 007**。新增代码都标了 `Sprint 3 (1.16.0)`，清单见 [SPRINT3.md](SPRINT3.md) 第 16 节。
+- **D1 timeline wheel**: the wheel listener was attached to an element that did not exist during the first render and disappeared again after changing dates, so it rarely worked in normal use. Reattach on data changes. At either end, return wheel scrolling to the page so the page can continue scrolling while the pointer remains over the timeline.
+- **D2 notification preferences**: when one save included an unknown category, earlier categories were previously saved before the error. Validate all categories first, then save in one transaction.
+- **Student registration entry** (Loy's decision): when 1.18.0 removed direct demo sign-in from the login page, Create student account was also removed, leaving no way to create a student through the website. Add **No demo account? Create one** to the mock SSO page (zID, name, university email, using existing `auth/demo-register/`; hidden when demo registration is disabled on the backend).
+- **Docker deployment** (new `DEPLOY.md`):
+  - D4: under PostgreSQL, stop injecting demo data at runtime (`SEED_DEMO_DATA` fixed to false, otherwise every worker startup overwrites rooms, equipment, and staff passwords changed through the website). Instead, `entrypoint.sh` imports `seed_*.sql` once when creating a database (`LOAD_DEMO_DATA`).
+  - Stop rerunning migrations on every startup (migration 005 resets demo staff passwords). Run each new migration once through `./entrypoint.sh migrate <file>`.
+  - D5: always include `127.0.0.1` in `ALLOWED_HOSTS`, so health checks still work after configuring a public IP. D6: exclude `.venv` in `.dockerignore`. D7: install pinned versions from `requirements-postgres.txt` and pin `gunicorn`. D8: pass `SITE_URL`.
 
-1. **审批页看不到用途**：Booking Review 加 Purpose 列和明显的 Details 按钮（整行也能点开）。详情抽屉以前就有用途、资格和截止时间，只是入口不明显。改期申请在时间下面显示 Change from。
-2. **没有联系入口，学生不能自己申请改期**：
-   - 申请改期（`services/changes.py`，`POST bookings/{id}/change/`）：本人已批准的未来预约可以申请换时间。新时间空闲就待审批，被占用就进候补，选到被占用的时间时页面会先提示。原预约在新申请批准前一直保留，批准时自动取消（`REPLACED_BY_CHANGE`）并交给候补；被拒、撤回或过期时原预约不变。规则和普通申请相同，原预约不算冲突、重复或每周名额；一个预约同时只能有一个改期申请（数据库部分唯一索引保证）；不能紧急改期。以前只有 Manager 能改期，学生只能先取消再重订，中间可能被别人抢走。
-   - 联系方式（新表 `site_contact`，`GET/PATCH site/contact/`）：Loy 定由 Manager 在新的 Lab setup 页面填写邮箱、电话、答复时间和备注。显示在 Help 页面、已批准预约卡片（Contact the lab，邮件已带资源、时间和预约编号）和每项 induction 下面，只显示填了的字段。
-3. **新学生不知道怎么取得 induction**：每项 induction 多四段说明（怎么完成、接受什么证明、谁审核、找谁问），Induction & Training 页面显示 How to get this induction。Loy 定 Manager 可以在 Lab setup 新建 induction、改名称和全部说明、设前置（`POST admin/qualification-requirements/`、`PATCH …/{id}/`）；改文字不影响已经通过的人。
-4. **资源信息不足以选对**：Loy 定用可自定义的“标签：内容”列表加房间容量，因为每个实验室要写的内容不同。房间可以填容量（`capacity`），所有资源可以加最多 12 行 `details`。卡片显示容量和前 3 行，预约表单显示全部；房间列表可以按“至少 N 人”筛选；卡片封面缩小。
-5. **手机上选时间要双向滚动**：时间条下面可以直接选开始时间和时长；手机上所选时间和提交按钮固定在弹窗底部。
-6. **想约近期的人先撞上日期限制**：在最早可约的那天提示“更早要走紧急申请”，可以一键切换。提前天数不变。
-7. **维修后的预约要人工跨步骤处理**：按 Loy 的决定自动通知（`services/resources.py` `_notify_status_change`）。资源改成维修或关闭时，所有在它上面有未来预约或申请的人收到站内通知和邮件（带 Manager 写的原因），重新开放时也通知，只改原因不重复通知。已批准的预约仍保留，由 Manager 决定。确认框列出受影响的预约，列表标出它们，Today 页面显示维修中的资源和受影响数。
-8. **房间和设备的关系没讲清**：按 Loy 的决定分开预约、不做自动组合。页面写明“订房间不包含里面的设备”“订设备不占用房间”。
-9. **两种预约方式的时长不一致**：Find a free time 的时长到 8 小时。某个资源不能按所选时长预约时只跳过这个资源（计入 `too_long`），以前是整个请求 400、页面报错。
-10. **空结果把资格问题说成筛选问题**：按原因说明隐藏了什么（例如“19 hidden: 18 induction not submitted, 1 under maintenance”），有 induction 原因时给出 Induction & Training 链接（`day_overview` 的 `not_bookable`）。
-11. **日历订阅只讲 Outlook**：分别给 Outlook、Google 和 Apple 的步骤，说明更新有延迟、以网站为准，换新链接时说明要删掉旧订阅。
-12. **Manager 没有工作总览**：Loy 定改为员工首页 Today（`/admin/today`，`GET admin/overview/`）。Admin 和 Manager 登录后先看到待审 induction、待审预约、紧急申请、候补、改期申请、快到审批期限的申请、解冻申请、维修中的资源、今天的预约和缺席，每张卡片链接到处理它的页面。以前 Admin 落在 Qualification Review、Manager 落在 Room Management。
-13. **必填没标记、按钮为什么灰着不清楚**：Purpose 标为必填；按钮灰着时直接写还差什么（`submitBlocker`）。
-14. **管理表单用分钟**：资源设置的“最长预约”和“审批期”改用小时填写，并写明生效方式（例如“24 h (1 day) 后系统自动决定”）；接口仍是分钟。
+## 1.18.0 (2026-10-25)
 
-- 演示数据不变：联系方式、induction 说明、容量和资源信息都是空的，由 Manager 在网页上填。
-- 没有做：第 6 项的“先选日期再说明流程”、第 10 项的相邻日期推荐、第 11 项的单次事件下载、第 12 项的侧栏分组；真实照片；可视化的第二、三部分。
-- 迁移 007（`007_change_requests_guidance_details_contact.sql`，可重复执行）；OpenAPI 1.16.0。
+Based on Loy's trial feedback. Add notification preferences, add induction-submission notification, turn the urgent entry point into a button, and remove meaningless direct demo sign-in from the login page.
 
-## 1.15.0（2026-10-24）
+- **Notification preferences** (`GET/PUT notifications/preferences/`): add a Notifications card to Account. Students and staff can disable in-app notifications by category (Booking updates, Reminders, Induction and training, Account and booking freeze, Room and equipment status). Unsaved categories default to enabled. Manager urgent-request notifications are unaffected. Preferences are stored per person (`notification_preference` table, migration 008).
+- **Induction submission notification**: after a student submits induction evidence, the bell receives “Induction evidence received” (`INDUCTION_SUBMITTED`). It belongs to the induction category and may be disabled. Submission was previously silent.
+- **Urgent entry point**: change “Need a date before …? Make an urgent request” above the timeline from a blue text link to a yellow button, making the urgent path obvious.
+- **Login page**: remove “Other demo sign-in options” (direct zID sign-in + Create student account). Demo users use “University sign-in (Demo),” staff use Staff sign-in, and local testing uses Test console. Retain `auth/demo-login/` and `auth/demo-register/` for the mock SSO page and tests.
+- API 1.18.0 (adds `GET/PUT notifications/preferences/`); migration 008; 69 OpenAPI routes; no booking-rule changes.
 
-Sprint 3 的第四批：界面可视化的第一部分，依据 Loy 2026-10-24 以用户和领导角度的检查。只改前端，不改数据库，接口没有变化（版本号照规则同步）。新增代码都标了 `Sprint 3`，清单见 [SPRINT3.md](SPRINT3.md) 第 15 节。
+## Code Structure Cleanup (2026-10-25, API remains 1.17.1)
 
-- **通知铃铛**：
-  - 角标以前和铃铛一样大，把铃铛盖住了。原因是 `shell.css` 的 `.app-icon-button > span { font-size: 27px }` 压过了角标自己的 11px。现在角标用更具体的选择器，缩小并移到铃铛右上角，加一圈白边。
-  - 有新通知（未读数增加）时铃铛摆动一下，角标数字变化时弹一下；打开页面第一次加载时不摆，免得每次进站都晃。
-  - 手机上面板以前从铃铛往左展开，会超出屏幕左边；现在窄屏时面板固定在顶部栏下方，左右各留 16px。
-  - 面板：按“今天 / 更早”分组（按悉尼日期），每条按类型配图标（批准 ✓、拒绝或取消 ✗、提醒 时钟、其他 i），正文最多两行，未读用粗体标题和蓝点表示，不再整块铺蓝底。原因：以前每条三四行长句，一屏只能看两三条，也分不清哪种消息。
-- **资源卡片封面**：以前是名字首字母加渐变色，两个房间完全一样，看起来像占位图。现在按类型显示图标和配色：房间、显微、成像、电子测试、焊接、加工、分析，其他设备用通用图标；设备卡片左下角显示类别。按类别和名称里的关键词判断，所以 Manager 以后新建的类别（例如 “3D printing”）也能配上。等有真实照片再替换。
-- **时间格配色**（Book a resource 弹窗和 Find a free time）：以前“空闲”是最深的蓝色、铺满整屏，真正要注意的“已占用”反而是浅灰斜纹。现在空闲是浅蓝、鼠标移上去加深并出现蓝框；已占用是深灰实色；待审批和自己的申请仍是斜纹；不可预约是浅灰细斜纹；整条加了边框。当天营业时间内加一条红色“现在”竖线（图例里同时出现 Now）。
-- **基础动效**：统一的时长和缓动变量（`index.css`）；切换页面时内容淡入；资源卡片和首页数字卡片鼠标移上去轻微上浮；弹窗和确认框淡入上浮；按钮按下时轻微缩小。系统设置了“减少动态效果”时全部关闭。页面淡入只用透明度，不用位移，因为位移会让页面里固定定位的弹窗跑位。
-- 没有做：真实照片和 Manager 上传照片（等照片准备好）；Manager 在网页上管理 induction 类型（待定）。
-- OpenAPI 1.15.0（接口无变化）。
+Following the structure review in project document `claude/reports/2026-10-25-code-structure-review.md`, remove dead code and split oversized files. No API, database, or booking-rule changes.
 
-## 1.14.0（2026-10-24）
+- **Backend**: split `backend/booking/views.py` (840 lines and 69 classes) into a `views/` package with ten domain modules. Shared imports and helpers are in `views/_common.py`; `from booking.views import X` remains valid.
+- **Frontend**: delete unused `src/App.css`; move `RescheduleBox` and `SeriesCard` from `MyBookings.tsx` into same-named files; move date helpers from `SlotPicker.tsx` to `slot-picker.ts`; move the `ACTIVE` status group to shared `my-bookings.ts`.
+- **Dead animation code**: remove duplicate page fade-in (retain one `.app-page` rule in `workspace.css`), duplicate dialog entrance (retain `.bk-modal` in `booking.css`), overridden reduced-motion rules (retain one in `workspace.css` and add `::backdrop`), overridden button press scaling, and the `animation: none` that overrode bell ringing. Bell ringing now actually plays.
+- **Style layers**: add “Style layers” to `frontend/README.md`, requiring new styles to go only into `workspace.css`, freezing `ui.css`, and moving styles component by component.
+- Verification: 355 backend tests pass (18 PostgreSQL tests skipped); frontend unit 68, lint, and build pass. See the delivery record for Playwright and complete script results.
 
-Sprint 3 的第三批，依据 Loy 2026-10-24 试用后的反馈。不改数据库。新增代码都标了 `Sprint 3`，清单见 [SPRINT3.md](SPRINT3.md) 第 11–14 节。
+## Internal-Tool Style: First Step to Remove the AI Look (2026-10-25, API remains 1.17.1)
 
-- **邮件通知**（`booking/email_channel.py`）：
-  - 用一个 Gmail 系统邮箱（SMTP + 应用专用密码）发信，接在 1.12.0 留好的通知发送渠道上，业务代码不改。
-  - 发给预约人的大学邮箱：申请已收到、批准或拒绝（含系统自动决定）、过期、候补转正、改期、被员工取消、提醒、员工替你预约或建了重复预约。主题带资源和时间，正文带网站链接。
-  - 开关 `EMAIL_ENABLED`（默认关）；收件范围 `EMAIL_MODE`：`none`／`allowlist`（默认，只发名单里的地址）／`redirect`（全部改发到一个地址，演示用）／`all`。演示数据的 zID 可能是真实学生的，所以默认不会发给名单外的人。
-  - 发送失败只记日志，不影响预约。新命令 `manage.py send_test_email --to` 检查配置。
-  - 为什么用 Gmail：Outlook.com 2024 年 9 月起不再接受密码登录 SMTP，要走微软授权且 Token 会过期。配置见 [email-setup.md](backend/docs/email-setup.md)。
-- **新通知“申请已收到”**（`BOOKING_SUBMITTED`）：自己提交申请后，铃铛里（和邮件里）确认收到，并说明是在等审批还是在候补、什么时候会有结果。员工自己的重复预约也有确认（`SERIES_CREATED`）。原因：以前提交后没有任何书面确认。
-- **Booking Records 页面**（Admin 和 Manager，`/admin/records`）：
-  - Records 标签：按日期、资源、状态、姓名或 zID 查所有人的预约，显示预约人、创建人、状态和到场；Export CSV 导出同样的列表。
-  - Usage statistics 标签：原来的 Usage Report 页面挪到这里，菜单里去掉 Usage Report（旧地址自动跳转）。
-  - 接口：`GET admin/bookings/` 和 `export/` 新增 `q`（zID 或姓名的一部分，预约人或创建人）；导出 CSV 和使用情况报表对 Admin 开放；CSV 新增 Weekly series 和 Attendance 两列。
-  - Room Management 只保留 Manager 的操作（开关房间、改期、取消），导出挪到 Booking Records。
-  - 原因：客户要能查“谁在什么时候订了什么”，Admin 也需要。
-- **界面**：
-  - 时长统一用小时（`0.5 h`、`1 h`、`1.5 h`）。只有资源设置表单的时间步长仍用分钟。
-  - My Bookings 里的重复预约合成一张卡片：规律（每周几、几点）、起止日期、还剩几次、下一次；当天的 I'm here 按钮直接显示在卡片上；Show dates 展开每个日期，可以单独取消；员工可以 Cancel the rest。以前一组 10 次会显示成 10 张卡片。
-  - Book a Resource 顶部的大块 induction 横幅改成一行（`General ✓ · Advanced ✗ Upload`），有缺的才用提醒色。My Bookings 的日历订阅改成一个小按钮，点了才显示链接。
-- OpenAPI 1.14.0。
+Loy's direction: design the interface as a “school internal tool” rather than referring to award-winning websites. This round covers copy, font sizes, typeface, and naming (task list in project document `claude/tasks-ui-internal-tool.md`; D1–D8 accepted as recommended). No API, database, or booking-rule changes.
 
-## 1.13.0（2026-10-23）
+- **AI-2: conversational copy.**
+  - Remove marketing lines, eyebrow labels, and explanatory sentences below headings: home-page greeting, Find a free time slogan and steps, “Everything is in good order.” on Today, “SHARED SPACE” on resource cards, “SPACES TO LEARN…” and feature strip on sign-in, “Student Portal” in the top bar, and “PAGE NOT FOUND” on 404.
+  - Headings no longer end in full stops.
+  - Only four staff pages retain a one-sentence description: Booking review, Booking freezes, Resources, and User management.
+  - Change the home-page title to “Dashboard.” The sign-in page shows only “SmartLab” plus “Book lab rooms and equipment at UNSW.”
+- **AI-3: polarised type sizes.**
+  - Reduce type sizes to five levels: 28/20/16/14/12, with H1 at 24 on phones. No text is smaller than 12px.
+  - Define H1 in one shared rule only.
+  - Change small uppercase, letter-spaced labels outside the sidebar and table headers to normal text.
+- **AI-5: editorial serif/sans pairing.**
+  - Remove Instrument Serif and its font files; use only Manrope everywhere, including sign-in. The mock university SSO page is the exception: it represents Microsoft's sign-in page and remains unchanged.
+  - Consolidate radii to 8px (buttons, inputs, badges) and 12px (cards, dialogs, tables), with circles for avatars and pill shapes.
+- **AI-6: multiple names for one page.**
+  - Use the same sentence-case name in navigation, H1, and browser tab. Rename Qualification Review to Induction review, using the same term as the student's Induction & training.
+  - Format opening hours consistently as “8:00 am – 8:00 pm,” matching other times across the site (`fmtClock` and `fmtHours` in `format.ts`).
 
-Sprint 3 的第二批。不改数据库。新增的代码都标了 `Sprint 3`，清单见 [SPRINT3.md](SPRINT3.md)。
+The acceptance criteria above are encoded in unit test `tests/ui-internal-tool.test.mjs`, so reverting these choices causes an immediate failure. See Section 20 of `SPRINT3.md` for code locations.
 
-- **Manager 在网页上管理房间和设备**（新页面 Resources）：
-  - 新增、编辑、下架、恢复：`GET/POST admin/resources/`、`PATCH admin/resources/{id}/`、`POST …/archive/`、`POST …/restore/`。
-  - 原因：以前加资源要手写 SQL，交给客户之后他自己没法维护。
-  - 修改不动已有预约，只列出不再符合新规则的未来预约，由 Manager 决定怎么处理。这样改开放时间不会悄悄取消别人的预约。
-  - 只下架不删除，所以预约和审计记录始终能找到这个资源。
-- **提醒**：预约开始前 24 小时提醒点 I'm here；induction 14 天内到期时提醒；候补或待审批的申请过期时通知。目的是减少“忘了来”和“资格过期才发现”。每条只发一次，靠查已有通知判断，不加表。新的可配置规则：`REMINDER_HOURS_BEFORE`、`INDUCTION_REMINDER_DAYS`。
-- **使用情况报表**（新页面 Usage Report，`GET admin/reports/usage/`）：每个资源的预约次数、小时数、占开放时间的比例、到场率和缺席数，给客户评估设备使用情况。
-- **员工修改自己的密码**（Account 页面，`POST auth/change-password/`）。以前只能让 Manager 重置。
-- **`manage.py create_manager`**：建第一个 Manager 不用再手写 SQL。它和 Add staff 共用同一个函数 `_create_staff_account`，规则一样。
-- **标注**：Sprint 3 的代码在文件里都标了 `Sprint 3`；ARCHITECTURE.md 新增“每条规则写在哪里”一节。
-- OpenAPI 1.13.0。
+## 1.17.1 (2026-10-25)
 
-## 1.12.0（2026-10-23）迁移 006
+- **FC-04: Account 1 still shows induction not submitted.** Loy explicitly required this test account to have all inductions without uploading evidence. The backend now automatically grants every training requirement permanently; new requirements are added on the account's next request. Qualifications remain when switching among all three roles or disabling booking-rule bypass. The UI removes the evidence form for this account and displays an English explanation. Automatic grants do not fake attachments: `file_id` and `file_url` are empty, and repeated requests do not create duplicate records. Normal accounts still require upload and review. The test console remains available only in explicitly enabled local memory mode, conflict protection is unchanged, and there is no database migration.
 
-依据 2026-10-23 团队定稿的需求（日历订阅、通知、到场确认、每周上限、重复预约）。参考了 LibreBooking／Booked Scheduler（签到、自动释放、配额、iCal）、NEMO（未到场处理）和 MRBS（重复预约）的做法。
+## Workspace UI Iteration (2026-10-25, API remains 1.17.0)
 
-- **日历订阅链接**：每人一条私密地址（`GET calendar/link/`，可以 `POST calendar/link/reset/` 重新生成），Outlook／Google／苹果日历自己定期读取 `GET calendar/{token}.ics`。不需要微软授权，解决了“进每个人自己的日历”的问题；更新频率由日历软件决定。
-- **站内通知**：顶部铃铛（`GET notifications/`、标为已读）。预约被批准或拒绝、候补转正、被 Manager 改期、被员工取消、员工替你预约、induction 审核结果、缺席、冻结和解冻都会通知；Manager 收到紧急申请。普通新申请不通知管理员。给 Outlook／邮件通知留了发送渠道接口（`booking/notification_channels.py`、`NOTIFICATION_CHANNELS`），这次没有实现。
-- **到场确认与冻结**：已批准的预约要在开始前 15 分钟到开始后 30 分钟内由本人点 I'm here（`POST bookings/{id}/check-in/`），否则记缺席（资源维修或关闭时不算）。第 4 次缺席冻结 30 天，并取消这个人之后所有的预约和申请；冻结只影响预约，员工照常审批。被冻结的人可以提交解冻申请，Admin／Manager 在新页面 Booking freezes 处理或直接解冻。
-  - 讨论过的取舍：网站按钮在哪里都能点，所以只能防“忘了取消”，防不住故意作弊；更可靠的方式（门口二维码）列为待问客户。
-- **每周上限**：每人每周（周一到周日）最多 3 个待审批、候补或已批准的预约（`WEEKLY_LIMIT_REACHED`），只在新建申请和 Manager 改期时检查，所以候补递补和超时自动处理不受影响。
-- **员工的重复预约**：资源卡片上的 Repeat weekly，先预览每个日期，有问题的日期跳过，其余**直接批准**（员工自己创建，不需要自己批自己）。可以突破“最多提前 30 天”，最长 14 周；不受每周上限限制。
-- 新的可配置规则：`MAX_BOOKINGS_PER_WEEK`、`CHECK_IN_OPENS_MINUTES`、`CHECK_IN_CLOSES_MINUTES`、`FREEZE_AFTER_NO_SHOWS`、`FREEZE_DAYS`、`MAX_SERIES_WEEKS`。
-- 迁移 006：新表 `notification`、`calendar_feed`、`unfreeze_request`、`booking_series`；用户加缺席次数和冻结截止时间；预约加系列、到场标记。已经开始的已批准预约标为 `NOT_TRACKED`，不会被算成缺席。
-- OpenAPI 1.12.0。另外修正了几处可空字段和 `ManagedUser` 的写法，让严格的校验器也能通过（接口本身不变）。
+Loy requested a complete, usable first design before reviewing the result. Review typography, spacing, visual hierarchy, colour, animation, micro-interactions, responsiveness, and originality. Do not state “award-winning” or “nothing to improve” as facts. No API, database, or booking-rule changes.
 
-## 1.11.1（2026-10-20）
+- **UI-01: inconsistent visual language across pages.** Unify fonts, dark green/warm white/UNSW yellow, controls, tables, states, and navigation across the workspace. Fonts are provided locally under open licences.
+- **UI-02: scattered information on home and resource pages.** Emphasise the student's next approved booking on the home page. Resource cards show real location, specifications, and training requirements with less decorative cover content. Staff Today prioritises modules with pending work and collapses empty secondary panels.
+- **UI-03: users must reselect time after finding a resource by time.** Find a free time requests data only when search is submitted; changing criteria does not trigger an immediate query. Return a compact result list. Review booking retains the selected time, and the full time grid can be expanded. After changing search criteria, require another search to avoid using stale results.
+- **UI-04: booking list lacks status navigation.** Add local filters and counts and store the selected category in the URL. Changing categories does not refetch booking data.
+- **UI-05: long phone dialogs and unstable keyboard interaction.** Collapse resource guidance. Native dialogs trap focus, Escape closes and returns focus to the original button, phones retain the bottom submit area, and reduced-motion preference is handled.
 
-接口没有变化。
+See Section 18 of `SPRINT3.md` for code and test locations. The backend still revalidates qualification, conflicts, and time rules. This round does not reduce backend slot calculations or optimise database queries.
 
-- **后端重构**：`booking/services.py` 拆成 `booking/services/` 目录，按主题分成 9 个文件（见 [ARCHITECTURE.md](ARCHITECTURE.md)）。只挪了代码位置，行为不变；`from booking.services import BookingService` 照常可用。
-- **文档整理**：
-  - 各文档只写现行规则，版本号、日期和“新增／原来”的说法挪到本文件。
-  - 新增 `ARCHITECTURE.md` 和 `CHANGELOG.md`，根目录 `README.md` 从 GitLab 模板换成项目说明。
-  - `backend/database/README.md` 的升级步骤改成按顺序执行全部迁移脚本（在已经是最新结构的库上执行也没有变化，已验证）。
-  - 修正了文档里过时的说法：dashboard 的 `counts` 是七种状态；员工也可以预约。
-- **OpenAPI**：只改说明文字（去掉 Sprint、日期和版本备注），版本号改为 1.11.1。
+Changes after Claude's review (original review in project document `claude/reports/2026-10-25-workspace-ui-review.md`, with the same IDs):
 
-## 1.11.0（2026-10-18）迁移 005
+- **R1: errors inside dialogs are invisible.** When a native dialog is open, an external toast sits beneath the backdrop and cannot be clicked. Room Management reschedule failures previously appeared only in a toast; the error now also appears inside the dialog (`RescheduleBox`). `Modal` documentation states that dialog content must provide inline errors.
+- **R2: training requirements are collapsed.** When any induction is unverified, “Training requirements” is expanded by default with an amber count; it collapses only when all are verified.
+- **R4: dragging to select text closes the dialog.** Close only when both pointer-down and pointer-up occur on the backdrop. Selecting text in an input and releasing over the backdrop no longer loses entered content.
+- **R5: dialog names.** Name each dialog after its title (`Book <resource>`, `Repeat weekly: <resource>`, `Reschedule booking`) instead of using “Booking details” for all.
+- **R7: cleanup.** Add missing `Sprint 3` markers, split JSX crowded onto one line, and delete unused `.bk-overlay` styles.
+- **UI follow-up Item 1: page overflows on phones.** Original follow-up in project document `claude/reports/2026-10-25-ui-review.md`.
+  - Symptom: at 390px wide, Room Management, Resources, Lab Setup, User Management, and student My Bookings expand to 478–579px, causing the whole page to shrink or scroll sideways; students cannot see the “Cancelled” tab.
+  - Cause 1: screen-reader-only “Actions” in the table header is absolutely positioned outside the table's horizontal scroll area. Add `position: relative` to table wrapper `.ui-table-wrap`.
+  - Cause 2: tab rows do not wrap. On phones, tabs now scroll horizontally within their own area.
 
-依据客户 2026-10-17 的邮件：第一阶段单向同步可以接受，但必须真正接入 Outlook 并实测；网站是唯一依据，Outlook 里的改动不能绕过规则，也不能变成已批准的预约。
+## 1.17.0 (2026-10-25)
 
-- **Outlook 真实接入（单向）**：
-  - 用 Microsoft Graph 写日历：批准后创建事件，Manager 改期时更新，取消时删除。
-  - 系统从不读取 Outlook。用户在自己日历里删改事件，系统不管；只有 Manager 改期时，如果事件已被删除，才按新时间重建（审计 `OUTLOOK_EVENT_RECREATED`）。
-  - 邀请开关 `OUTLOOK_INVITE_MODE`（`none`／`allowlist`／`all`，默认 `allowlist`）和 `OUTLOOK_ALLOWED_ATTENDEES`，避免给真实的人发邀请。
-  - 两种授权方式：`manage.py outlook_token`（粘贴 Graph Explorer Token），`manage.py outlook_login`（设备码登录，自动续期）。
-  - 实测命令 `manage.py outlook_live_check`：连接、创建、读回、改期、删除，共 5 步。
-  - 新接口 `POST admin/outlook/check/`；`GET admin/outlook/` 增加 `summary`、`items`、`last_check`、`invite_mode`。
-  - 前端加 Calendar Sync 开发页面（`/admin/calendar-sync`），正式交付前删除。
-- **讨论后决定不做**：检查 Outlook 事件是否被改动（drift check）和自动改回（restore）。理由：每个人管自己的日历，删改也没有惩罚，检查没有意义。
-- **预约页 Find a free time**：
-  - 新接口 `GET resources/day-overview/`：一张表列出所有符合筛选的资源当天的空闲和占用时间，用的是和单个资源时段相同的规则检查。
-  - 资源加 `category`（设备类别，演示类别是编的），`GET resources/` 支持 `category=` 筛选。
-- **演示 staff 密码**改为 `123`（z9000001、z9000002）。
-- 迁移 005：`bookable_resource.category` 和演示密码。
-- OpenAPI 里的可空字段统一改成 3.0 的写法。
+Implemented according to Loy's functional decisions after reviewing local screenshots. This round prioritises function and does not redesign the overall visuals. No database-schema changes.
 
-## 1.10.0（2026-10-17）迁移 004
+- **FC-01: duplicate explanation fields for Urgent.** Keep one required **Purpose and urgency** field in the Urgent form, sending the same text as both `purpose` and `urgent_reason`. Normal bookings still show Purpose. Urgent requests from normal accounts still require Manager approval.
+- **FC-02: every test requires switching accounts, waiting for approval, and following the booking window.** Add an explicitly enabled local Test console with sign-in ID `1` and no password. One account can switch among Student, Admin, and Manager and toggle booking-rule bypass. When enabled, self-bookings and self-reschedules are approved immediately, skipping advance days, qualifications, opening hours, maintenance state, maximum duration, weekly-count limit, and freezing. Self-testing supports weekly recurring bookings. Retain future-valid times, a 24-hour per-booking cap, duplicate and conflict protection, and a 52-week recurring-series maximum. When acting as another person, that person's normal rules apply. Permission exists only in a server-signed session and does not modify the persistent role; it defaults off and is unavailable under production authentication. Test bookings retain in-app notifications and audit, but do not send email or sync Outlook.
+  - **Available only in memory mode** (decided by Loy after the 2026-10-25 review): `test_console_enabled` additionally requires `REPOSITORY_FACTORY` to be memory storage. With PostgreSQL, test bookings would enter the production database, appear in Booking Records, Usage statistics, and Today, and occupy real times. Do not create a separate table for the test account; restarting the backend clears it. Local `start-backend.ps1 -TestConsole` automatically uses memory mode.
+  - Minor review fixes: default `TestPrincipal` bypass to off (all callers already passed it explicitly, so behaviour is unchanged); set bypass slot end to local midnight on the next day (avoiding a one-hour difference on daylight-saving days); use `booking_rules_bypassed(actor, person.id)` consistently for per-date and outer recurring checks (the endpoint does not accept `1` as a zID, so the previous version could not produce different behaviour but was inconsistent to read); add missing `Sprint 3` file markers and correct the `create_test_booking` explanation. Bypass still defaults on after sign-in (confirmed by Loy).
+- **FC-03: evidence upload lacks required guidance.** Mark training requirement, title, and attachment as Required. Without a selected file, directly explain that a certificate must be uploaded and keep the button disabled. Empty, oversized, and unsupported files show English errors. File selection uses English “Choose file / No file selected.”
 
-依据客户 2026-10-17 的邮件。
+API version is 1.17.0. See `backend/docs/frontend-api.md` for the API contract and Section 17 of `SPRINT3.md` for feature code and test indexes.
 
-- **所有人用同一套规则预约**：Admin 和 Manager 也可以预约，induction 不能绕过。
-- **代他人预约**：员工用 `on_behalf_of_zid` 替别人预约；预约属于被预约人（检查他的 induction），`created_by` 记录创建者。新接口 `GET people/lookup/`，availability 支持 `for_zid`。
-- **紧急申请**：`urgent` + `urgent_reason`，只跳过最短提前期；时段必须空闲；只有 Manager 能决定，不自动批准。
-- **改期改为只有 Manager 能做**，不受最短提前期限制。
-- 不能审批给自己的或自己创建的申请（`SELF_REVIEW_FORBIDDEN`）。
-- 迁移 004：`booking.created_by`、`urgent`、`urgent_reason`。
+## 1.16.0 (2026-10-25)
 
-## staff 登录（迁移 003）
+Sprint 3 batch five: address the third-party user-experience report from 2026-10-24 (14 items based on 1.15.0). Each numbered item below first states the reported issue (the reason for the change), then the solution. Loy's direction: book rooms and equipment separately, leaving combination logic to the client; students may request time changes, but an occupied new time can only join the waitlist; send automatic maintenance notifications. Loy chose among the uncertain options for Items 2, 3, 4, and 12. **Database change: migration 007.** New code is marked `Sprint 3 (1.16.0)`; see Section 16 of [SPRINT3.md](SPRINT3.md) for the checklist.
 
-当时没有单独记版本号，在 1.8.0 和 1.10.0 之间。
+1. **Purpose is missing on the review page**: add a Purpose column and prominent Details button to Booking Review (the entire row also opens it). The details drawer already contained purpose, qualification, and deadline, but its entry point was unclear. A time-change request shows Change from below the time.
+2. **No contact entry point, and students cannot request time changes themselves**:
+   - Time-change request (`services/changes.py`, `POST bookings/{id}/change/`): the booking holder may request a new time for an approved future booking. A free new time becomes pending approval; an occupied time joins the waitlist, with a warning before selection. Keep the original booking until the new request is approved, then automatically cancel it (`REPLACED_BY_CHANGE`) and hand its time to the waitlist. Rejection, withdrawal, or expiry leaves the original unchanged. Apply normal request rules, excluding the original from conflict, duplicate, and weekly-quota checks. A booking can have only one concurrent time-change request (database partial unique index). Urgent time changes are forbidden. Previously only a Manager could reschedule, so a student had to cancel and rebook, risking loss of the time.
+   - Contact details (new `site_contact` table, `GET/PATCH site/contact/`): Loy decided a Manager enters email, phone, response time, and notes on the new Lab setup page. Show entered fields only on Help, approved booking cards (Contact the lab, with resource, time, and booking ID prefilled in email), and under each induction.
+3. **New students do not know how to obtain induction**: add four guidance sections to each induction (how to complete, accepted evidence, reviewer, contact). Induction & Training shows How to get this induction. Loy decided a Manager can create an induction in Lab setup, change its name and all guidance, and set prerequisites (`POST admin/qualification-requirements/`, `PATCH …/{id}/`). Copy changes do not affect already verified users.
+4. **Insufficient resource information to choose correctly**: Loy chose a customisable “label: content” list plus room capacity because each lab needs different information. Rooms may specify `capacity`; all resources may have up to 12 `details` rows. Cards show capacity and the first three rows; the booking form shows all. Room lists can filter for “at least N people.” Card covers are smaller.
+5. **Selecting time on a phone requires scrolling in two directions**: allow direct selection of start time and duration below the time strip. On phones, fix the selected time and submit button to the bottom of the dialog.
+6. **Users wanting a near-term booking first hit the date restriction**: on the earliest bookable day, explain that earlier dates require an urgent request and provide one-click switching. Advance-day rules are unchanged.
+7. **Bookings after maintenance require manual multi-step handling**: send automatic notifications as decided by Loy (`_notify_status_change` in `services/resources.py`). When a resource enters maintenance or closes, everyone with a future booking or request receives an in-app notification and email containing the Manager's reason; reopening also notifies, while changing only the reason does not send duplicates. Approved bookings remain for the Manager to decide. The confirmation dialog lists affected bookings, the list marks them, and Today shows resources under maintenance and the affected count.
+8. **Room/equipment relationship is unclear**: as decided by Loy, book them separately without automatic combination. The page states that booking a room does not include its equipment and booking equipment does not reserve its room.
+9. **Duration differs between the two booking methods**: Find a free time offers up to eight hours. If one resource cannot support the selected duration, skip only that resource and count it in `too_long`; previously the entire request returned 400 and the page showed an error.
+10. **Empty results describe qualification issues as filter problems**: explain what was hidden by reason (for example, “19 hidden: 18 induction not submitted, 1 under maintenance”) and provide an Induction & Training link when induction is involved (`not_bookable` in `day_overview`).
+11. **Calendar subscription discusses only Outlook**: provide separate steps for Outlook, Google, and Apple; explain update delays and that the website is authoritative; when generating a new link, explain that the old subscription must be removed.
+12. **Manager has no work overview**: Loy chose a staff Today home page (`/admin/today`, `GET admin/overview/`). Admin and Manager initially see pending inductions, pending bookings, urgent requests, waitlists, time-change requests, requests near review deadline, unfreeze requests, resources under maintenance, today's bookings, and absences. Each card links to its handling page. Previously Admin landed on Qualification Review and Manager on Room Management.
+13. **Required fields are unmarked and disabled buttons unexplained**: mark Purpose required and directly state what is missing when the button is disabled (`submitBlocker`).
+14. **Management forms use minutes**: enter resource “maximum booking” and “review period” in hours and explain how the value applies (for example, “The system decides automatically after 24 h (1 day)”). The API remains in minutes.
 
-- 两个登录入口：学生用大学登录（演示版只填 zID），Admin／Manager 用 staff 登录页（zID + 密码）。两边互相拒绝对方的账号。
-- Manager 用 Add staff 建员工账号，系统发邀请码，员工首次激活时自己设密码；忘记密码由 Manager 点 Reset access 重发邀请码。
-- 迁移 003：新表 `staff_credential`，只存密码哈希和邀请码。
+- Demo data is unchanged: contact details, induction guidance, capacity, and resource information are empty for a Manager to complete through the website.
+- Not implemented: Item 6's “choose a date before explaining the process,” adjacent-date recommendations in Item 10, single-event download in Item 11, sidebar grouping in Item 12, real photographs, or visualisation parts two and three.
+- Migration 007 (`007_change_requests_guidance_details_contact.sql`, repeatable); OpenAPI 1.16.0.
 
-## 1.8.0（第 5 周，2026-10-14）迁移 002
+## 1.15.0 (2026-10-24)
 
-- **人员管理（只有 Manager）**：人员列表、Add staff、停用和恢复账号。停用学生时，他的未决申请立即拒绝并递补下一位。
-- **前置 induction**：`prerequisite_ids`，例如 Advanced 要先通过 General；缺前置时返回 `PREREQUISITE_REQUIRED`。
-- **房间和设备**：设备记录所在房间 `room_id`，页面按房间分组；房间维修不影响里面的设备。
-- 迁移 002：`prerequisite_ids`、`room_id`。
+Sprint 3 batch four: the first visualisation set, based on Loy's 2026-10-24 review from user and leadership perspectives. Frontend only; no database or API behaviour changes (version synchronised according to policy). All new code is marked `Sprint 3`; see Section 15 of [SPRINT3.md](SPRINT3.md).
 
-## 1.7.0（2026-10-12）迁移 001
+- **Notification bell**:
+  - The badge was previously as large as the bell and covered it because `.app-icon-button > span { font-size: 27px }` in `shell.css` overrode the badge's 11px. The badge now uses a more specific selector, is smaller, moves to the bell's top-right, and gains a white border.
+  - The bell rings once when unread count increases, and the badge pops when its number changes. It does not ring during initial page load, avoiding animation on every visit.
+  - On phones, the panel previously expanded left from the bell beyond the screen edge. On narrow screens it is now fixed below the top bar with 16px margins.
+  - Panel: group into “Today / Earlier” by Sydney date, add a type icon to each item (approval ✓, rejection or cancellation ✗, reminder clock, other i), limit the body to two lines, and show unread items with bold titles and a blue dot instead of an all-blue background. Previously each item used three or four lines, only two or three fit on screen, and message types were unclear.
+- **Resource-card covers**: previously used the first letter of the name on a gradient, making two rooms identical and looking like placeholders. Now use icons and colours by type: room, microscopy, imaging, electronic testing, soldering, fabrication, analysis, and a generic icon for other equipment. Equipment cards show category at bottom-left. The type is inferred from category/name keywords, so future Manager-created categories such as “3D printing” also match. Replace these when real photographs are available.
+- **Time-cell colours** (Book a resource dialog and Find a free time): previously “available” was the darkest blue across the screen, while “occupied” was subtle light-grey hatching. Available is now light blue, darkening with a blue outline on hover; occupied is solid dark grey; pending and own requests retain hatching; unavailable uses fine light-grey hatching; the full strip has a border. Add a red vertical “now” line during today's opening hours, also shown as Now in the legend.
+- **Base animations**: shared duration and easing variables in `index.css`; fade content when changing pages; slightly lift resource cards and home-page number cards on hover; fade/lift dialogs and confirmations; slightly shrink pressed buttons. Disable all when the system requests reduced motion. Page fade uses opacity only, not translation, because translation displaces fixed-position dialogs.
+- Not implemented: real photographs and Manager photo upload (waiting for photographs); Manager management of induction types on the website (undecided).
+- OpenAPI 1.15.0 (API unchanged).
 
-依据客户 2026-10-07 的要求重做审批流程。
+## 1.14.0 (2026-10-24)
 
-- **只有 induction 已通过且有效的人才能申请。**
-- **每个申请都先进入待审批**，在审批期限内占住时段（默认 24 小时，Manager 可按资源调整）。Admin／Manager 在期限内批准或拒绝；期限到了没人处理，系统按规则自动批准或拒绝。
-- **先到先得的等待名单**：时段被占时进入候补，时段空出来按提交顺序递补成新的待审批申请。
-- **资源状态**：Manager 可以把资源设为维修中或关闭，暂停新申请，已有预约保留。
-- **所有人的预约**：`GET admin/bookings/` 支持按状态、资源、学生、时间筛选；Manager 可以导出 CSV。
-- **移除**：120 分钟以内立即批准、`auto_approve_max_minutes`、`needs_review`、`DURATION_REVIEW`、`RESCHEDULE_NEEDS_REVIEW`；资料审核中先预约（`WAITING_QUALIFICATION`、30 分钟占位、`HOLD_EXPIRED`、`PENDING_REQUEST_LIMIT`）。`WAITING_QUALIFICATION` 只留在早期数据里。
-- 迁移 001：资源状态两列；`pending_hold_minutes` 的含义改为审批期限，默认从 30 改为 1440。
+Sprint 3 batch three, based on Loy's trial feedback on 2026-10-24. No database change. All new code is marked `Sprint 3`; see Sections 11–14 of [SPRINT3.md](SPRINT3.md).
+
+- **Email notifications** (`booking/email_channel.py`):
+  - Send from one Gmail system mailbox using SMTP and an app password, connected through the notification-delivery channel reserved in 1.12.0 without changing business code.
+  - Send to the booking holder's university email: request received, approved or rejected (including automatic decision), expired, promoted from waitlist, time changed, cancelled by staff, reminder, booked on their behalf, or recurring booking created for them. Subject includes resource and time; body includes the website link.
+  - Toggle `EMAIL_ENABLED` (off by default); recipient scope `EMAIL_MODE`: `none`, `allowlist` (default, listed addresses only), `redirect` (send everything to one address for demonstration), or `all`. Demo zIDs may belong to real students, so messages are not sent outside the allowlist by default.
+  - Delivery failures are logged without affecting bookings. New command `manage.py send_test_email --to` checks configuration.
+  - Why Gmail: since September 2024 Outlook.com no longer accepts password-based SMTP sign-in; Microsoft authorisation is required and tokens expire. See [email-setup.md](backend/docs/email-setup.md).
+- **New “request received” notification** (`BOOKING_SUBMITTED`): after submitting, the bell and email confirm receipt, explain whether it is pending review or waitlisted, and say when a result is expected. Staff recurring bookings also receive confirmation (`SERIES_CREATED`). Previously there was no written confirmation after submission.
+- **Booking Records page** (Admin and Manager, `/admin/records`):
+  - Records tab: search everyone's bookings by date, resource, status, name, or zID; show booking holder, creator, status, and attendance. Export CSV exports the same list.
+  - Usage statistics tab: move the old Usage Report page here and remove Usage Report from the menu (old address redirects automatically).
+  - API: add `q` (part of zID or name for booking holder or creator) to `GET admin/bookings/` and `export/`; allow Admin to export CSV and view usage reports; add Weekly series and Attendance columns to CSV.
+  - Room Management retains only Manager actions (open/close resource, reschedule, cancel). Export moves to Booking Records.
+  - Reason: the client needs to see “who booked what and when,” and Admin also needs access.
+- **Interface**:
+  - Display durations consistently in hours (`0.5 h`, `1 h`, `1.5 h`). Only the time step in resource settings remains in minutes.
+  - Combine a recurring series in My Bookings into one card showing pattern (weekday/time), start/end dates, remaining occurrences, and next occurrence. Today's I'm here button appears directly on the card. Show dates expands each date for individual cancellation; staff can Cancel the rest. Previously a ten-occurrence series produced ten cards.
+  - Replace the large induction banner at the top of Book a Resource with one line (`General ✓ · Advanced ✗ Upload`), using warning colour only when something is missing. Calendar subscription in My Bookings becomes a small button that reveals the link when selected.
+- OpenAPI 1.14.0.
+
+## 1.13.0 (2026-10-23)
+
+Sprint 3 batch two. No database change. All new code is marked `Sprint 3`; see [SPRINT3.md](SPRINT3.md).
+
+- **Manager manages rooms and equipment on the website** (new Resources page):
+  - Create, edit, archive, and restore through `GET/POST admin/resources/`, `PATCH admin/resources/{id}/`, `POST …/archive/`, and `POST …/restore/`.
+  - Reason: adding resources previously required hand-written SQL, so the client could not maintain them independently after handover.
+  - Editing does not change existing bookings; it lists future bookings that no longer satisfy the new rules for a Manager to handle. Changing opening hours therefore never silently cancels someone else's booking.
+  - Archive instead of delete, so booking and audit records can always resolve the resource.
+- **Reminders**: remind users to select I'm here 24 hours before a booking, remind when induction expires within 14 days, and notify when a waitlisted or pending request expires. This reduces forgotten attendance and discovering qualification expiry too late. Send each only once by checking existing notifications, without a new table. New configurable rules: `REMINDER_HOURS_BEFORE` and `INDUCTION_REMINDER_DAYS`.
+- **Usage report** (new Usage Report page, `GET admin/reports/usage/`): booking count, hours, percentage of opening hours, attendance rate, and absences per resource, allowing the client to evaluate equipment use.
+- **Staff change their own password** (Account page, `POST auth/change-password/`). Previously only a Manager could reset it.
+- **`manage.py create_manager`**: create the first Manager without hand-written SQL. It shares `_create_staff_account` with Add staff, using the same rules.
+- **Markers**: all Sprint 3 code is marked `Sprint 3` in files; ARCHITECTURE.md adds a section showing where every rule is implemented.
+- OpenAPI 1.13.0.
+
+## 1.12.0 (2026-10-23), migration 006
+
+Based on requirements finalised by the team on 2026-10-23 (calendar subscriptions, notifications, check-in, weekly limit, and recurring bookings). The design references LibreBooking/Booked Scheduler (check-in, automatic release, quotas, iCal), NEMO (no-show handling), and MRBS (recurring bookings).
+
+- **Calendar subscription link**: each person has a private address (`GET calendar/link/`, regenerated through `POST calendar/link/reset/`). Outlook, Google Calendar, or Apple Calendar periodically reads `GET calendar/{token}.ics`. No Microsoft authorisation is required, solving the “put it in each person's calendar” requirement; update frequency is controlled by the calendar application.
+- **In-app notifications**: top-bar bell (`GET notifications/`, mark as read). Notify when a booking is approved or rejected, promoted from waitlist, rescheduled by a Manager, cancelled by staff, created by staff on the user's behalf, when induction review completes, for absence, freezing, and unfreezing. A Manager receives urgent requests. Normal new requests do not notify administrators. Reserve a delivery-channel interface for Outlook/email (`booking/notification_channels.py`, `NOTIFICATION_CHANNELS`), not implemented in this release.
+- **Check-in and freezing**: the booking holder must select I'm here from 15 minutes before to 30 minutes after an approved booking starts (`POST bookings/{id}/check-in/`), otherwise record an absence (unless the resource is under maintenance or closed). The fourth absence freezes bookings for 30 days and cancels all later bookings and requests for that person. Freezing affects only booking; staff may continue reviewing. A frozen user may submit an unfreeze request, which Admin/Manager handles or bypasses through the new Booking freezes page.
+  - Discussed trade-off: the website button can be selected from anywhere, so it prevents forgotten cancellations but not deliberate cheating. A more reliable method (a QR code at the door) remains a question for the client.
+- **Weekly limit**: each person may have at most three pending, waitlisted, or approved bookings per Monday-to-Sunday week (`WEEKLY_LIMIT_REACHED`). Check only when creating a request or when a Manager reschedules, so waitlist promotion and automatic deadline processing are unaffected.
+- **Staff recurring bookings**: Repeat weekly on a resource card previews each date, skips invalid dates, and **directly approves** the rest (staff created it and do not need to approve their own work). It may exceed the “30 days in advance” window for up to 14 weeks and is not subject to the weekly limit.
+- New configurable rules: `MAX_BOOKINGS_PER_WEEK`, `CHECK_IN_OPENS_MINUTES`, `CHECK_IN_CLOSES_MINUTES`, `FREEZE_AFTER_NO_SHOWS`, `FREEZE_DAYS`, and `MAX_SERIES_WEEKS`.
+- Migration 006: new tables `notification`, `calendar_feed`, `unfreeze_request`, and `booking_series`; add absence count and freeze end time to users; add series and attendance markers to bookings. Approved bookings that have already started are marked `NOT_TRACKED` and do not count as absences.
+- OpenAPI 1.12.0. Also correct several nullable fields and the `ManagedUser` representation so strict validators pass (API behaviour unchanged).
+
+## 1.11.1 (2026-10-20)
+
+No API changes.
+
+- **Backend refactor**: split `booking/services.py` into the `booking/services/` directory with nine topic-based files (see [ARCHITECTURE.md](ARCHITECTURE.md)). Only code location changes; behaviour is unchanged and `from booking.services import BookingService` continues to work.
+- **Documentation cleanup**:
+  - Each document describes only current rules; move version numbers, dates, and “new/previous” wording into this file.
+  - Add `ARCHITECTURE.md` and `CHANGELOG.md`; replace the GitLab template in root `README.md` with project documentation.
+  - Change upgrade steps in `backend/database/README.md` to run all migration scripts in order (verified to make no change when run against an already-current schema).
+  - Correct outdated documentation: dashboard `counts` contains seven statuses, and staff can also make bookings.
+- **OpenAPI**: wording only (remove Sprint, date, and version notes); set version to 1.11.1.
+
+## 1.11.0 (2026-10-18), migration 005
+
+Based on the client's 2026-10-17 email: one-way synchronisation is acceptable for the first phase, but Outlook must be genuinely integrated and tested. The website is the sole source of truth; Outlook edits must not bypass rules or become approved bookings.
+
+- **Real Outlook integration (one-way)**:
+  - Write calendars through Microsoft Graph: create an event after approval, update it when a Manager reschedules, and delete it on cancellation.
+  - The system never reads Outlook. A user's edits or deletion in their calendar are ignored. Only when a Manager reschedules and the event has been deleted does the system recreate it at the new time (audit `OUTLOOK_EVENT_RECREATED`).
+  - Invitation controls `OUTLOOK_INVITE_MODE` (`none`/`allowlist`/`all`, default `allowlist`) and `OUTLOOK_ALLOWED_ATTENDEES` prevent invitations to real people.
+  - Two authorisation methods: `manage.py outlook_token` (paste a Graph Explorer token) and `manage.py outlook_login` (device-code sign-in with automatic renewal).
+  - Live-check command `manage.py outlook_live_check`: connect, create, read back, reschedule, and delete in five steps.
+  - New endpoint `POST admin/outlook/check/`; `GET admin/outlook/` adds `summary`, `items`, `last_check`, and `invite_mode`.
+  - Add frontend Calendar Sync development page (`/admin/calendar-sync`), to be removed before final delivery.
+- **Decided against after discussion**: checking whether Outlook events were changed (drift check) and automatically restoring them. Each person manages their own calendar, edits/deletions have no penalty, so checking has no value.
+- **Find a free time on the booking page**:
+  - New endpoint `GET resources/day-overview/`: one table lists available and occupied time for every resource matching the filters, using the same rule checks as individual resource slots.
+  - Add resource `category` (equipment category; demo categories are invented). `GET resources/` supports a `category=` filter.
+- **Demo staff passwords** changed to `123` for z9000001 and z9000002.
+- Migration 005: `bookable_resource.category` and demo passwords.
+- Standardise OpenAPI nullable fields to the 3.0 representation.
+
+## 1.10.0 (2026-10-17), migration 004
+
+Based on the client's 2026-10-17 email.
+
+- **Everyone books under one rule set**: Admin and Manager can also book, and induction cannot be bypassed.
+- **Book on behalf of another person**: staff use `on_behalf_of_zid`; the booking belongs to the person booked for (their induction is checked), while `created_by` records the creator. New endpoint `GET people/lookup/`; availability supports `for_zid`.
+- **Urgent requests**: `urgent` + `urgent_reason` skips only the minimum advance period. The time must be free. Only a Manager decides; there is no automatic approval.
+- **Rescheduling becomes Manager-only** and is not subject to the minimum advance period.
+- A reviewer cannot approve a request for themselves or one they created (`SELF_REVIEW_FORBIDDEN`).
+- Migration 004: `booking.created_by`, `urgent`, and `urgent_reason`.
+
+## Staff Sign-In (migration 003)
+
+No separate version number was recorded at the time; this falls between 1.8.0 and 1.10.0.
+
+- Two sign-in entry points: students use university sign-in (demo requires zID only); Admin/Manager use staff sign-in (zID + password). Each path rejects the other account type.
+- A Manager creates staff accounts through Add staff. The system issues an invitation code, and staff choose a password on first activation. If a password is forgotten, the Manager selects Reset access to issue a new invitation code.
+- Migration 003: new `staff_credential` table storing only password hashes and invitation codes.
+
+## 1.8.0 (Week 5, 2026-10-14), migration 002
+
+- **People management (Manager only)**: people list, Add staff, deactivate and reactivate accounts. Deactivating a student immediately rejects undecided requests and promotes the next waitlisted request.
+- **Induction prerequisites**: `prerequisite_ids`; for example, Advanced requires General first. Return `PREREQUISITE_REQUIRED` when a prerequisite is missing.
+- **Rooms and equipment**: equipment records its room through `room_id`; pages group by room. Room maintenance does not affect equipment inside it.
+- Migration 002: `prerequisite_ids` and `room_id`.
+
+## 1.7.0 (2026-10-12), migration 001
+
+Rebuild the approval flow based on the client's 2026-10-07 requirements.
+
+- **Only people with a verified and valid induction can submit a request.**
+- **Every request first becomes pending approval** and holds the time during its review period (24 hours by default, adjustable per resource by Manager). Admin/Manager approves or rejects before the deadline; if nobody responds, the system approves or rejects automatically according to the rules.
+- **First-in, first-out waitlist**: when the time is held, a request joins the waitlist. When released, requests are promoted in submission order into new pending-approval requests.
+- **Resource status**: a Manager can set a resource to maintenance or closed, pausing new requests while retaining existing bookings.
+- **Everyone's bookings**: `GET admin/bookings/` filters by status, resource, student, and time; Manager can export CSV.
+- **Remove**: immediate approval within 120 minutes, `auto_approve_max_minutes`, `needs_review`, `DURATION_REVIEW`, and `RESCHEDULE_NEEDS_REVIEW`; booking while evidence is under review (`WAITING_QUALIFICATION`, 30-minute holds, `HOLD_EXPIRED`, and `PENDING_REQUEST_LIMIT`). `WAITING_QUALIFICATION` remains only in early data.
+- Migration 001: two resource-status columns; reinterpret `pending_hold_minutes` as the review period and change the default from 30 to 1,440.
 
 ## 1.5.0
 
-- **预约窗口**：开始日期必须在“今天 + 7 天”到“今天 + 30 天”之间。数字放进 `RulesProvider`（`booking/rules.py`），改环境变量就能调。
+- **Booking window**: start date must be between “today + 7 days” and “today + 30 days.” Values are in `RulesProvider` (`booking/rules.py`) and adjustable through environment variables.
 
 ## 1.3.0
 
-- **审计记录查询** `GET admin/audit/`（Admin／Manager）。
-- **资格有效期由后端设定**：审核通过时间加 120 天，审核时不能再填有效期。
+- **Audit record query** `GET admin/audit/` (Admin/Manager).
+- **Qualification validity is set by the backend**: 120 days from approval; reviewers can no longer enter a validity date.
 
-## 更早（Sprint 1 起步）
+## Earlier (Sprint 1 Foundation)
 
-- 资源和时段查询、induction 上传和审核、预约申请和审核、取消、dashboard、`Idempotency-Key` 防重复提交、内存演示存储。
+- Resource and slot queries, induction upload and review, booking request and review, cancellation, dashboard, `Idempotency-Key` duplicate-submission protection, and in-memory demo storage.

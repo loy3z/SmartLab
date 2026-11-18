@@ -96,7 +96,7 @@ export function CalendarSyncPage() {
               <span className="ui-pill is-red">Failed {status.summary.failed}</span>
             </div>
             <div className="ui-page-actions">
-              <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy !== null || !status.configured} onClick={() => void check()}>
+              <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy !== null || !status.enabled || !status.configured} onClick={() => void check()}>
                 {busy === 'check' ? 'Checking…' : 'Check connection'}
               </button>
               <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy !== null || !status.enabled} onClick={() => void sync()}>
@@ -107,7 +107,7 @@ export function CalendarSyncPage() {
 
           {status.items.length === 0 ? (
             <EmptyState title="Nothing in Outlook yet">
-              {status.enabled ? 'Approved bookings appear here once they are written to Outlook.' : 'Turn calendar sync on to write approved bookings to Outlook.'}
+              {status.enabled ? 'Approved bookings appear here once they are written to Outlook.' : 'Calendar sync is off, so no bookings are written to Outlook.'}
             </EmptyState>
           ) : (
             <div className="ui-table-wrap">

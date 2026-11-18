@@ -1,78 +1,78 @@
-# Outlook 日历同步：配置与实测
+# Outlook Calendar Synchronisation: Setup and Live Testing
 
-同步是单向的（网站 → Outlook），而且真实接入了 Outlook、可以实测。网站是预约规则和资格的唯一依据，Outlook 里的改动不能绕过系统规则，也不能变成网站上已批准的预约。
+Synchronisation is one way, from the website to Outlook, and is a real, testable Outlook integration. The website is the sole authority for booking rules and qualifications. Changes made in Outlook cannot bypass system rules or become approved website bookings.
 
-## 1. 同步做什么
+## 1. What synchronisation does
 
-**单向写入（网站 → Outlook）**
-- 预约批准后，在 Outlook 日历里创建事件。
-- Manager 改期时，更新同一个事件。
-- 预约取消时，删除这个事件。
-- 待审批、候补、被拒、过期的申请都不写日历。
-- 人工批准、超时自动批准、候补递补后批准、紧急申请由 Manager 批准，这几种情况走的是同一套流程。
+**One-way writes (website → Outlook)**
+- Create an Outlook Calendar event after a booking is approved.
+- Update the same event when a Manager reschedules the booking.
+- Delete the event when the booking is cancelled.
+- Do not write pending, waitlisted, rejected or expired requests to the calendar.
+- Manual approval, automatic approval after the review deadline, waitlist promotion followed by approval, and Manager approval of an urgent request all use the same workflow.
 
-**以网站为准**
-- 系统运行时从不读取 Outlook 里的修改，所以在 Outlook 里做什么都影响不到预约，也不可能变成网站上的预约。
-- 每个人管自己的日历：把事件删掉或改掉，系统不会自动改回来。
-- 只有网站上的操作会再次写日历。例如 Manager 改期时，如果发现事件已经被删除，就按新时间重新建一个（审计记录为 `OUTLOOK_EVENT_RECREATED`）。
+**The website is authoritative**
+- The running system never reads changes from Outlook, so actions in Outlook cannot affect a booking or create one on the website.
+- Each user controls their own calendar. If they delete or move an event, the system does not immediately restore it.
+- Only another website action writes to the calendar again. For example, if a Manager reschedules a booking after its event was deleted, the system recreates it at the new time and records `OUTLOOK_EVENT_RECREATED` in the audit.
 
-**事件写在哪里、邀请谁**
-- 事件写在授权账号的日历里。个人演示用的就是你自己的 Outlook 账号，暂时代表"预约人的日历"。
-- 代别人预约时，受邀人是**预约的受益人**（`student_id`）。代订的员工名字写在事件正文里（"Booked by … (on behalf)"），员工本人不会收到邀请。
-- 事件正文不包含预约用途或 induction 资料，只带一个预约编号（Booking reference），方便在网站上查找。
-- 正式环境要写进每个人自己的日历，需要学校 Microsoft 365 授权（见第 8 节）。
+**Event location and attendees**
+- Events are written to the authorised account's calendar. In a personal demonstration, this is your own Outlook account, temporarily representing the beneficiary's calendar.
+- When staff book on behalf of another person, the attendee is the **booking beneficiary** (`student_id`). The event body names the staff creator as "Booked by … (on behalf)"; that staff member is not invited.
+- The body excludes the booking purpose and induction evidence. It includes only a booking reference for finding the record on the website.
+- Writing directly to each person's calendar in production requires university Microsoft 365 authorisation; see Section 8.
 
-### 另一种方式：日历订阅链接（不需要任何授权）
+### Alternative: calendar subscription link, with no authorisation
 
-每个用户在“我的预约”里都能复制一条自己的日历订阅链接，在 Outlook 里选“添加日历 → 从 Internet 订阅”粘贴即可。Outlook 会自己定期读取这条链接，里面是这个人所有已批准的预约。它不需要微软授权，也不需要学校 IT，所以能真正进到每个学生自己的日历里；缺点是更新频率由 Outlook 决定，可能要几个小时。它和本文的 Graph 写入互不影响，可以同时使用；如果两种都开着，同一个人可能在日历里看到两条。接口见 [frontend-api.md](frontend-api.md)“日历订阅链接”。
+Every user can copy a private calendar subscription link from My Bookings and paste it into Outlook under Add calendar → Subscribe from web. Outlook periodically reads the link, which contains all approved bookings for that person. This requires no Microsoft authorisation or university IT support and therefore reaches each student's own calendar. The limitation is that Outlook controls refresh frequency, which may take several hours. This subscription and the Graph integration described here are independent and can run together; if both are enabled, one person may see two copies of an event. See "Calendar subscription link" in [frontend-api.md](frontend-api.md).
 
-### 以后用 Outlook 发通知
+### Future notifications through Outlook
 
-站内通知先存在数据库里，再交给发送渠道。当前邮件通知使用 SMTP，并通过 PostgreSQL outbox 和 scheduler 重试；如果学校以后要求 Graph `sendMail`，可以新增渠道而不改预约规则。
+In-app notifications are stored in the database before being passed to a delivery channel. Email currently uses SMTP with PostgreSQL outbox retries driven by the scheduler. If the university later requires Graph `sendMail`, a new channel can be added without changing booking rules.
 
-## 2. 测试只用自己的邮箱（必须先看）
+## 2. Use only your own email for testing
 
-事件带受邀人时，Outlook 会**真的发出会议邀请**。演示账号的邮箱是 `z1000001@ad.unsw.edu.au` 这种真实格式，邀请可能会发给真实的人。所以默认设置是：
+An Outlook event with an attendee sends a **real meeting invitation**. Demo account addresses such as `z1000001@ad.unsw.edu.au` look real and may belong to actual people. The defaults therefore are:
 
-- `OUTLOOK_INVITE_MODE=allowlist`：只邀请 `OUTLOOK_ALLOWED_ATTENDEES`（多个地址用逗号分隔）里列出的地址。不在名单里的人照样会创建事件，只是不加受邀人；名单为空就谁都不邀请。这是一个环境变量开关，不需要另建数据表。
-- 想在收件箱里看到邀请：先注册一个演示学生，邮箱填你的另一个地址（不要填登录 Outlook 的那个，Outlook 不会给组织者本人发邀请），再把这个地址填进名单。
-- `none`：永远不邀请。`all`：邀请所有受益人，只在客户确认的正式环境里使用。
+- `OUTLOOK_INVITE_MODE=allowlist`: invite only addresses listed in the comma-separated `OUTLOOK_ALLOWED_ATTENDEES`. An event is still created for a beneficiary outside the list, but without an attendee. An empty list invites nobody. This is an environment switch and needs no table.
+- To receive an invitation, first register a demo student using another email address of your own. Do not use the address of the Outlook organiser, because Outlook does not invite an organiser to their own meeting. Then add that address to the allowlist.
+- `none` never invites anyone. `all` invites every beneficiary and is only for a client-approved production environment.
 
-系统可以通过配置的 SMTP 系统邮箱发送批准、拒绝等通知；默认关闭，配置和可靠重试见 `email-setup.md`。这与 Outlook 日历事件同步是两项独立集成。
+The system can independently use a configured SMTP system mailbox for approval, rejection and other notifications. It is disabled by default; see `email-setup.md` for configuration and durable retries. Email notification and Outlook Calendar synchronisation are separate integrations.
 
-## 3. 让后端能写你的日历
+## 3. Allow the backend to write to your calendar
 
-授权只需要 `Calendars.ReadWrite`，而且只针对**你自己的日历**。凭证只保存在后端的 `.local/` 目录里（已被 Git 忽略），不要贴到聊天、文档或源码里。
+Authorisation needs only `Calendars.ReadWrite` for **your own calendar**. Credentials are stored only under the backend `.local/` directory, which Git ignores. Never paste them into chat, documentation or source code.
 
-### 方式 A：Graph Explorer Token（本项目实际使用的方式）
+### Option A: Graph Explorer token, used by this project
 
-1. 打开**无痕窗口**，进入 [Graph Explorer](https://developer.microsoft.com/en-us/graph/graph-explorer)，用你的**个人**微软账号登录（右上角 Tenant 应显示 Personal）。UNSW 账号会被学校拦截。
-2. 点 **Modify permissions**，确认 `Calendars.ReadWrite` 已经 **Consent**。
-3. 在 **Access token** 标签复制 Token，然后运行 `manage.py outlook_token`，在不显示内容的提示处粘贴，按回车。
+1. Open an **incognito window**, go to [Graph Explorer](https://developer.microsoft.com/en-us/graph/graph-explorer) and sign in with a **personal** Microsoft account. The Tenant in the top-right should display Personal. UNSW accounts are blocked by university policy.
+2. Select **Modify permissions** and confirm that `Calendars.ReadWrite` is **Consented**.
+3. Copy the token from the **Access token** tab, run `manage.py outlook_token`, paste it into the hidden prompt and press Enter.
 
-Token 大约 1 小时过期。过期后同步会显示 `GRAPH_HTTP_401`（Calendar Sync 页面显示 "Microsoft sign-in expired"）。重新复制、粘贴一次，再点 Retry 或等它自动重试，不用重启服务器。
+The token expires in approximately one hour. After expiry, synchronisation shows `GRAPH_HTTP_401`, while Calendar Sync displays "Microsoft sign-in expired". Copy and paste a new token, then select Retry or wait for the automatic retry. A server restart is not required.
 
-### 方式 B：一次登录，自动续期（需要 Azure 应用注册）
+### Option B: sign in once and refresh automatically, requiring an Azure app registration
 
-只有在你能注册 Azure 应用时才用（UNSW 账号不行，个人账号可能被要求开 Azure 订阅）：
+Use this option only if you can register an Azure application. UNSW accounts cannot; a personal account may require an Azure subscription.
 
-1. 在 Microsoft Entra 的 App registrations 新建一个应用，账户类型选"任何组织目录和个人 Microsoft 帐户"。
-2. 在 Authentication 里把 **Allow public client flows** 设为 Yes。
-3. 在 API permissions 里添加 Microsoft Graph 的委托权限 `Calendars.ReadWrite` 和 `offline_access`。
-4. 把 Application (client) ID 设为 `OUTLOOK_PUBLIC_CLIENT_ID`，然后运行 `manage.py outlook_login`。按提示打开网址、输入短码，用自己的账号登录。
+1. Create an app under Microsoft Entra App registrations with account type "Accounts in any organizational directory and personal Microsoft accounts".
+2. Set **Allow public client flows** to Yes under Authentication.
+3. Add delegated Microsoft Graph permissions `Calendars.ReadWrite` and `offline_access` under API permissions.
+4. Set the Application (client) ID as `OUTLOOK_PUBLIC_CLIENT_ID`, then run `manage.py outlook_login`. Open the displayed URL, enter the short code and sign in with your account.
 
-之后后端会自动续期（refresh token 存在 `.local/outlook-refresh-token`）。如果出现 `OUTLOOK_LOGIN_EXPIRED`，重新运行 `outlook_login` 即可。两种方式都配置时，方式 B 优先。
+The backend then refreshes access automatically. The refresh token is stored in `.local/outlook-refresh-token`. If `OUTLOOK_LOGIN_EXPIRED` appears, rerun `outlook_login`. When both options are configured, Option B takes precedence.
 
-## 4. 配置并启动（PowerShell，在 `backend` 目录）
+## 4. Configure and start (PowerShell, from `backend`)
 
-第一次使用时先建环境：
+Create the environment on first use:
 
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-postgres.txt
 ```
 
-每次新开窗口都要重新设置变量，项目不会自动读取 `.env`：
+Set the variables again in every new terminal; the project does not load `.env` automatically:
 
 ```powershell
 $env:DEBUG = 'true'
@@ -85,83 +85,83 @@ $env:OUTLOOK_ALLOWED_ATTENDEES = ''
 .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000 --noreload
 ```
 
-如果用 PostgreSQL，`runserver` 前还要按 [database/README.md](../database/README.md) 第 3 节设置数据库变量（密码用 `Read-Host` 输入）。如果没用，就清掉这些变量，否则会报 `no password supplied`。
+For PostgreSQL, also set the database variables described in Section 3 of [database/README.md](../database/README.md) before `runserver`, entering the password with `Read-Host`. If PostgreSQL is not in use, clear those variables; otherwise the backend reports `no password supplied`.
 
-| 变量 | 默认 | 说明 |
+| Variable | Default | Description |
 | --- | --- | --- |
-| `OUTLOOK_ENABLED` | `false` | 总开关 |
-| `OUTLOOK_INVITE_MODE` | `allowlist` | `none`／`allowlist`／`all`，见第 2 节 |
-| `OUTLOOK_ALLOWED_ATTENDEES` | 空 | `allowlist` 模式下允许邀请的地址，用逗号分隔 |
-| `OUTLOOK_TOKEN_FILE` | `.local/outlook-token`（DEBUG 时） | 方式 A 保存的 Token |
-| `OUTLOOK_PUBLIC_CLIENT_ID` | 空 | 方式 B 的 Application (client) ID |
-| `OUTLOOK_AUTHORITY` | `common` | 方式 B 的登录端点；只用个人账号时也可以填 `consumers` |
-| `OUTLOOK_REFRESH_TOKEN_FILE` | `.local/outlook-refresh-token`（DEBUG 时） | 方式 B 的 refresh token 文件 |
+| `OUTLOOK_ENABLED` | `false` | Master switch |
+| `OUTLOOK_INVITE_MODE` | `allowlist` | `none`, `allowlist` or `all`; see Section 2 |
+| `OUTLOOK_ALLOWED_ATTENDEES` | Empty | Comma-separated addresses allowed as attendees in `allowlist` mode |
+| `OUTLOOK_TOKEN_FILE` | `.local/outlook-token` in DEBUG | Token saved by Option A |
+| `OUTLOOK_PUBLIC_CLIENT_ID` | Empty | Application (client) ID for Option B |
+| `OUTLOOK_AUTHORITY` | `common` | Option B sign-in endpoint; `consumers` also works for personal accounts only |
+| `OUTLOOK_REFRESH_TOKEN_FILE` | `.local/outlook-refresh-token` in DEBUG | Option B refresh-token file |
 
-## 5. 真实实测
+## 5. Live testing
 
-### 5.1 自动实测命令
+### 5.1 Automated live check
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py outlook_live_check
 ```
 
-这个命令照着系统的真实做法，在你的日历里操作一个**不带受邀人**的临时事件，每一步打印 PASS 或 FAIL：
-1. 连接并读取日历
-2. 创建事件
-3. 读回确认，内容和预约一致
-4. 像改期一样移动同一个事件
-5. 像取消一样删除事件，并确认已删除
+This command follows the real system workflow on a temporary event **without an attendee** in your calendar and prints PASS or FAIL for each step:
+1. Connect to and read the calendar.
+2. Create an event.
+3. Read it back and confirm its contents match the booking.
+4. Move the same event as a reschedule would.
+5. Delete it as a cancellation would, and confirm deletion.
 
-全部通过时显示 `All live Outlook checks passed.`。中途失败也会删掉临时事件，命令不会打印 Token。
+Success displays `All live Outlook checks passed.`. A failure partway through still removes the temporary event. The command never prints the token.
 
-### 5.2 端到端手工清单（演示、截图用）
+### 5.2 Manual end-to-end checklist for demonstrations and screenshots
 
-1. **检查连接**：前端用 Staff sign-in 登录 z9000001（演示密码 `123`），打开 Calendar Sync，点 Check connection，应该显示 Connected 和你的邮箱。
-2. **批准后写入**：用 z1000001 申请一个 7～28 天后的 Lab Room 1 时段，Admin 批准。Outlook 里出现 `SmartLab booking: Lab Room 1`，Calendar Sync 中这一行显示 Synced。
-3. **在 Outlook 里改或删**：在 Outlook 里拖动或删除这个事件。网站上的预约不受影响，系统也不会把事件改回去。
-4. **改期**：Manager（z9000002）给这个预约改期。Outlook 事件移到新时间；如果第 3 步已经删了，就按新时间重新建一个。
-5. **取消**：取消预约后，Outlook 里的事件被删除，这一行显示 Removed (cancelled)。
-6. **代预约**：Manager 代 z1000001 预约，由 Admin 批准。事件正文写着 "Booked by Demo manager (on behalf)"。只有 z1000001 的邮箱在名单里时，才会真的发邀请。
+1. **Check the connection:** sign in to the frontend as z9000001 through Staff sign-in with demo password `123`. Open Calendar Sync and select Check connection. It should display Connected and your email address.
+2. **Write after approval:** as z1000001, request Lab Room 1 for a time 7–28 days away, then approve it as an Admin. Outlook should show `SmartLab booking: Lab Room 1`, and the Calendar Sync row should display Synced.
+3. **Change or delete in Outlook:** drag or delete the event in Outlook. The website booking remains unchanged and the system does not restore the event immediately.
+4. **Reschedule:** as Manager z9000002, reschedule the booking. The Outlook event moves to the new time. If it was deleted in Step 3, the system recreates it at the new time.
+5. **Cancel:** cancel the booking. The event is deleted from Outlook and the row displays Removed (cancelled).
+6. **Book on behalf:** as the Manager, book for z1000001 and have an Admin approve it. The body says "Booked by Demo manager (on behalf)". An invitation is sent only if z1000001's email address is in the allowlist.
 
-## 6. 定时处理
+## 6. Scheduled processing
 
-Docker Compose 的 `scheduler` 服务会定期处理到期审批，并推送等待中的 Outlook 更新。其他 PostgreSQL 部署可持续运行 `manage.py run_scheduler`，或用 Windows 任务计划／cron 每几分钟运行一次 `manage.py process_due`（`--outlook-limit` 默认 10）。只处理 Outlook 时用 `manage.py process_outlook --limit 10`。内存模式下这些命令会拒绝运行，请改用页面上的 Sync now 或 `POST admin/outlook/process/`。
+The Docker Compose `scheduler` service periodically processes due reviews and pending Outlook updates. Other PostgreSQL deployments can run `manage.py run_scheduler` continuously, or use Windows Task Scheduler or cron to run `manage.py process_due` every few minutes; `--outlook-limit` defaults to 10. These commands refuse to run in memory mode. Use Sync now on the page or `POST admin/outlook/process/` instead.
 
-## 7. 状态与失败重试
+## 7. Status and retrying failures
 
-- 预约的 `status` 和日历的 `outlook_sync.status` 互相独立：日历同步失败时，预约仍然有效。
-- 失败后自动退避重试（从 30 秒开始，最长 1 小时，并遵守微软返回的 Retry-After）。
-- **Calendar Sync 页面**（`/admin/calendar-sync`，Admin／Manager）是开发阶段的可视化页面，正式交付前可以删掉（见下）。它显示连接状态、同步统计（已同步／等待／失败），失败的预约排在最前，可以点 Retry；还有 Check connection 和 Sync now 按钮。
+- Booking `status` and calendar `outlook_sync.status` are independent. A booking remains valid if calendar synchronisation fails.
+- Failures retry with exponential backoff starting at 30 seconds and capped at one hour, while respecting Microsoft's Retry-After response.
+- The **Calendar Sync page** (`/admin/calendar-sync`, Admin/Manager) is a development visualisation that may be removed before final delivery. It shows connection state, synchronisation totals for synced, pending and failed tasks, and failed bookings first, with Retry, Check connection and Sync now actions.
 
-| 方法 | 路径（前缀 `/api/v1/`） | 用途 |
+| Method | Path, under `/api/v1/` | Purpose |
 | --- | --- | --- |
-| GET | `admin/outlook/` | 配置、统计和每个预约的同步状态（不调用微软） |
-| POST | `admin/outlook/check/` | 读一次日历，测试登录和权限；body `{}` |
-| POST | `admin/outlook/process/` | 处理等待中的更新；body `{"limit":1}`，最多 5 |
-| POST | `admin/bookings/{id}/outlook-retry/` | 立即重试；body `{}` |
+| GET | `admin/outlook/` | Configuration, statistics and per-booking status without calling Microsoft |
+| POST | `admin/outlook/check/` | Read the calendar once to test sign-in and permission; body `{}` |
+| POST | `admin/outlook/process/` | Process pending updates; body `{"limit":1}`, maximum 5 |
+| POST | `admin/bookings/{id}/outlook-retry/` | Retry immediately; body `{}` |
 
-| 错误码 | 含义和处理 |
+| Error code | Meaning and action |
 | --- | --- |
-| `TOKEN_EXPIRED`／`GRAPH_HTTP_401` | Token 过期：重新粘贴 Token（方式 A）或运行 `outlook_login`（方式 B），然后点 Retry |
-| `OUTLOOK_LOGIN_EXPIRED` | 方式 B 的登录失效：重新运行 `outlook_login` |
-| `OUTLOOK_NOT_CONFIGURED` | 还没保存 Token，也没有完成登录 |
-| `GRAPH_HTTP_403`／`OUTLOOK_CALENDAR_READ_ONLY` | 没有授予日历读写权限，或者目标日历只读 |
-| `GRAPH_HTTP_404` | 目标日历不存在（改期时发现事件已被删除，不算错误，会直接重建） |
-| `GRAPH_HTTP_429` | 微软限流，会按 Retry-After 自动重试 |
-| `GRAPH_NETWORK_ERROR` | 网络不通或超时，恢复后自动重试 |
-| `STUDENT_EMAIL_NOT_CONFIGURED` | 预约人没有大学邮箱 |
+| `TOKEN_EXPIRED` / `GRAPH_HTTP_401` | Token expired: paste a new token for Option A or run `outlook_login` for Option B, then select Retry |
+| `OUTLOOK_LOGIN_EXPIRED` | Option B sign-in expired: rerun `outlook_login` |
+| `OUTLOOK_NOT_CONFIGURED` | No token has been saved and sign-in is incomplete |
+| `GRAPH_HTTP_403` / `OUTLOOK_CALENDAR_READ_ONLY` | Calendar read/write permission is missing, or the target calendar is read-only |
+| `GRAPH_HTTP_404` | Target event does not exist. During rescheduling this indicates a deleted event and causes recreation rather than an error |
+| `GRAPH_HTTP_429` | Microsoft rate limiting; retry automatically according to Retry-After |
+| `GRAPH_NETWORK_ERROR` | Network unavailable or timed out; retry automatically after recovery |
+| `STUDENT_EMAIL_NOT_CONFIGURED` | Booking beneficiary has no university email address |
 
-**删除 Calendar Sync 页面时**，前端去掉以下内容即可，后端接口可以保留：
-- `src/features/admin/CalendarSyncPage.tsx`、`src/features/admin/calendar-sync.ts`
-- `app/routes.ts`、`app/AppRouter.tsx`、`app/AppLayout.tsx` 里各一行
-- 对应的测试
+To **remove the Calendar Sync page**, delete only the following frontend items; the backend endpoints may remain:
+- `src/features/admin/CalendarSyncPage.tsx`, `src/features/admin/calendar-sync.ts`
+- One corresponding line from each of `app/routes.ts`, `app/AppRouter.tsx` and `app/AppLayout.tsx`
+- The corresponding tests
 
-## 8. 正式环境交接（Microsoft 365）
+## 8. Production handover (Microsoft 365)
 
-正式服务可以配置 `OUTLOOK_TENANT_ID`、`OUTLOOK_CLIENT_ID`、`OUTLOOK_CLIENT_SECRET`、`OUTLOOK_MAILBOX`，以应用身份写日历。这需要应用的 `Calendars.ReadWrite` 权限、管理员同意，并配置可以访问的邮箱范围；同时要清掉个人 Token 和登录文件。
+A production service can configure `OUTLOOK_TENANT_ID`, `OUTLOOK_CLIENT_ID`, `OUTLOOK_CLIENT_SECRET` and `OUTLOOK_MAILBOX` to write calendars with application identity. This requires application `Calendars.ReadWrite` permission, administrator consent and a mailbox access scope. Remove personal token and sign-in files at the same time.
 
-要直接写进每个人自己的日历，也需要学校 IT 授权，客户正在联系相关人员；学生的 SSO 登录不能替代这一步。正式环境可以把 `OUTLOOK_INVITE_MODE` 设为 `all`。
+Writing directly to every person's calendar also requires university IT authorisation, which the client is seeking. A student's SSO sign-in does not replace this authorisation. Production may set `OUTLOOK_INVITE_MODE=all`.
 
-数据库表 `outlook_sync_record` 保存事件 ID、iCal UID、目标路径、版本号、重试时间和租约。预约、同步记录、审计在同一个事务里保存；调用微软的网络请求放在事务之外，完成后重新读取版本再写回。
+Database table `outlook_sync_record` stores the event ID, iCal UID, target path, version, retry time and lease. The booking, sync record and audit are saved in one transaction. The Microsoft network request runs outside the transaction, after which the version is reread before saving the result.
 
-微软文档：[创建事件](https://learn.microsoft.com/en-us/graph/api/calendar-post-events?view=graph-rest-1.0)、[更新事件](https://learn.microsoft.com/en-us/graph/api/event-update?view=graph-rest-1.0)、[删除事件](https://learn.microsoft.com/en-us/graph/api/event-delete?view=graph-rest-1.0)、[设备代码登录](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-device-code)、[权限](https://learn.microsoft.com/en-us/graph/permissions-reference#calendarsreadwrite)。
+Microsoft documentation: [Create event](https://learn.microsoft.com/en-us/graph/api/calendar-post-events?view=graph-rest-1.0), [Update event](https://learn.microsoft.com/en-us/graph/api/event-update?view=graph-rest-1.0), [Delete event](https://learn.microsoft.com/en-us/graph/api/event-delete?view=graph-rest-1.0), [Device code sign-in](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-device-code), [Permissions](https://learn.microsoft.com/en-us/graph/permissions-reference#calendarsreadwrite).

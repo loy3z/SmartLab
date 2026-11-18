@@ -1,99 +1,154 @@
-# SmartLab：实验室与房间预约
+# SmartLab: Laboratory and Room Booking
 
-**在线演示（Sprint 3 部署版）：** http://3.24.73.197/#/login，用下面「演示账号」里的 zID 登录。
+**Online demo (Sprint 3 deployment):** http://3.24.73.197/#/login. Sign in with one of the zIDs under "Demo accounts" below.
 
 Start here: [Project guide — workflows, pages and local startup](PROJECT_GUIDE.md).
 
-UNSW COMP9900 小组项目（9900-F15E-BREAD）。学生、Admin、Manager 在网站上预约实验室房间和单台设备。系统会检查 induction 资格、开放时间、预约窗口和时间冲突，按审批流程处理申请，已批准的预约单向同步到 Outlook 日历。
+UNSW COMP9900 group project (9900-F15E-BREAD). Students, Admins and Managers use the website to book laboratory rooms and individual pieces of equipment. The system checks induction eligibility, opening hours, booking windows and time conflicts, processes requests through an approval workflow, and synchronises approved bookings one way to Outlook Calendar.
 
-- 后端：Django 5.2 + Django REST Framework，目录 [backend/](backend/)
-- 前端：React + TypeScript + Vite，目录 [frontend/](frontend/)
-- 数据库：默认用内存演示数据；也可以接本地 PostgreSQL，见 [backend/database/README.md](backend/database/README.md)
+- Backend: Django 5.2 + Django REST Framework, in [backend/](backend/)
+- Frontend: React + TypeScript + Vite, in [frontend/](frontend/)
+- Database: in-memory demonstration data by default; a local PostgreSQL database can also be used. See [backend/database/README.md](backend/database/README.md)
 
-## 演示账号
+## Demo accounts
 
-| zID | 角色 | 登录方式 |
+| zID | Role | Sign-in method |
 | --- | --- | --- |
-| `z1000001` | Student（已有 General induction） | 大学登录（演示版，只填 zID） |
-| `z1000002` | Student（还没有 induction） | 大学登录（演示版） |
-| `z9000001` | Admin | Staff sign-in，演示密码 `123` |
-| `z9000002` | Manager | Staff sign-in，演示密码 `123` |
+| `z1000001` | Student (General induction completed) | University sign-in (demo; enter the zID only) |
+| `z1000002` | Student (no induction yet) | University sign-in (demo) |
+| `z9000001` | Admin | Staff sign-in, demo password `123` |
+| `z9000002` | Manager | Staff sign-in, demo password `123` |
 
-全部是编造的演示账号，线上版和本地内存演示模式都能用。
+All of these are fictional demonstration accounts. They work in the online deployment, the Docker setup below and the local in-memory demo mode.
 
-## 本地开发（内存演示模式）
+## Run with Docker
 
-要改代码或跑测试时用。只想看效果的话，直接打开上面的在线演示。
+This is the way to run the complete system (website, API, scheduler and PostgreSQL). It needs Docker with Docker Compose and nothing else.
 
-后端（在 `backend` 目录）：
+From the repository root:
 
-Windows PowerShell：
+```bash
+cp .env.docker.example .env.docker
+docker compose --env-file .env.docker up -d --build
+```
+
+On Windows, use `copy .env.docker.example .env.docker` for the first line.
+
+Then open **http://localhost** and sign in with one of the demo accounts above.
+
+- The example file works unchanged for a local test: it turns on demo sign-in and loads the demo rooms, equipment, training requirements and accounts into a new database. Email and Outlook are off, so no external account is needed.
+- The first build takes a few minutes. `docker compose --env-file .env.docker ps` should then show four containers running (`db`, `api`, `scheduler`, `web`), with `api` marked healthy.
+- If port 80 is in use, set `WEB_PORT=8080` in `.env.docker` and open `http://localhost:8080`.
+- To stop and delete everything, including the database: `docker compose --env-file .env.docker down -v`.
+
+For a server deployment (passwords, host names, updates and backups), see [DEPLOY.md](DEPLOY.md).
+
+## Local development (in-memory demo mode)
+
+Use this mode when changing code or running tests. To view the application without developing it, open the online demo above.
+
+Backend (from the `backend` directory):
+
+Windows PowerShell:
 
 ```powershell
 py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt
 $env:DEBUG = "true"
 $env:ENABLE_DEMO_AUTH = "true"
 $env:DJANGO_SECRET_KEY = "local-demo-only-change-this-key"
 .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000 --noreload
 ```
 
-macOS / Linux：
+macOS / Linux:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -r requirements-lock.txt
 export DEBUG=true ENABLE_DEMO_AUTH=true DJANGO_SECRET_KEY=local-demo-only-change-this-key
 .venv/bin/python manage.py runserver 127.0.0.1:8000 --noreload
 ```
 
-前端（另开一个终端，在 `frontend` 目录）：
+Frontend (open another terminal in the `frontend` directory):
 
 ```powershell
 npm ci
 npm run dev
 ```
 
-打开 Vite 显示的网址（通常是 `http://localhost:5173`）。
+Open the URL displayed by Vite (normally `http://localhost:5173`).
 
-## 测试
+## Testing approach and coverage
+
+### What is tested, and how
+
+| Layer | Tests | Command | What it covers |
+| --- | --- | --- | --- |
+| Backend unit and API tests | 534 | `python manage.py test booking` (in `backend`) | Business rules, data validation, the permission matrix for the three roles, and error codes. Runs against the in-memory repository, so it needs no database |
+| Backend PostgreSQL integration tests | 57 | `python manage.py test booking.tests.test_postgres` | The same acceptance cases run again on a real PostgreSQL database, plus transactions, row locks and migrations. Skipped when no database is configured; see Section 6 of [backend/database/README.md](backend/database/README.md) |
+| Frontend unit tests | 99 | `npm test` (in `frontend`) | Logic modules: time and quota calculations, formatting, route guards, the API client |
+| Frontend browser tests | 142 | `npm run test:e2e` | Component behaviour, user interactions and rendering for the pages of all three roles, in Chromium with Playwright |
+| Static checks | — | `npm run lint`, `npm run build` | ESLint and the TypeScript compiler |
+
+The counts are from 16 November 2026. All of these run in GitLab CI on every push and merge request ([.gitlab-ci.yml](.gitlab-ci.yml)); results are on the Pipelines page.
+
+### Coverage
+
+- **Backend: 94.8% of lines** (6,111 lines in `backend/booking`, tests excluded), measured on 16 November 2026 by running the backend suite under Python's built-in `trace` module. The PostgreSQL adapter (`postgres.py`) is not part of that figure because the in-memory run does not load it; the PostgreSQL integration tests exercise it instead. The lowest modules are the management commands that talk to a live Outlook account (72–81%).
+- **Frontend:** no line-coverage figure is collected. The browser tests cover the pages of all three roles, and 30 of the 41 logic modules are imported directly by a unit test; the other 11 are small (the largest is 79 lines) and are reached through the browser tests.
+
+### How the tests are written
+
+- **Happy and sad cases.** Each rule is tested both ways: for example, a booking that is accepted, and the same booking refused for a missing induction, a closed room, a time conflict, a weekly limit or the wrong role. The error code and HTTP status are asserted.
+- **Race conditions.** `test_approval_flow.py` starts four threads that request the same free slot at once and checks that only one holds it. `test_additional_hours.py` has two Managers approve the same request at the same moment and checks that it is confirmed once.
+- **External services are mocked.** Microsoft Graph (Outlook) and SMTP (email) are replaced with mocks in `test_outlook.py`, `test_outlook_features.py` and `test_email_channel.py`, including failed deliveries and retries. No test contacts a real mail or calendar server.
+- **Two storage adapters, one contract.** The service layer talks to a `Repository` interface. `test_119.py` and `test_postgres.py` run the same cases against the in-memory and the PostgreSQL implementation, so the two cannot drift apart.
+- **Browser tests use synthetic API data.** Each Playwright test answers the API calls itself, and a call that no test data handles fails the test. This keeps the browser tests fast and independent of a database, so they do not fail for reasons outside the frontend. The cost is that they do not prove the frontend and backend agree; both sides are written against the shared API definition ([backend/docs/openapi.json](backend/docs/openapi.json)), and the deployed site is checked by hand as described below.
+
+### What is not automated
+
+- **Real Outlook and Gmail delivery.** These need live accounts. The manual steps and recorded results are in [backend/docs/outlook-setup.md](backend/docs/outlook-setup.md) and [backend/docs/email-setup.md](backend/docs/email-setup.md).
+- **Load.** The scripts and method are in [load-test/README.md](load-test/README.md).
+- **The deployed site.** After each deployment the health endpoint, the home page and the four containers are checked by hand; the steps are in [DEPLOY.md](DEPLOY.md).
+
+### Running the tests locally
+
+Set up the backend and frontend as in "Local development" below, then:
 
 ```powershell
-# backend
-.\.venv\Scripts\python.exe manage.py test
-# frontend
+# backend (from the backend directory)
+.\.venv\Scripts\python.exe manage.py test booking
+# frontend (from the frontend directory)
 npm test
 npm run lint
 npm run build
 npm run test:e2e
 ```
 
-PostgreSQL 集成测试的运行方法见 [backend/database/README.md](backend/database/README.md) 第 6 节。
+`npm run test:e2e` needs the Playwright browser once: `npx playwright install chromium`.
 
-push 代码或开 MR 时，GitLab CI 会自动跑 `manage.py test booking`、`npm test`、`npm run lint` 和 `npm run build`（配置在 [.gitlab-ci.yml](.gitlab-ci.yml)），结果在 MR 的 Pipelines 页查看。2026-11-12 起 CI 也跑 PostgreSQL 集成测试和 Playwright（`test:e2e`）。
+## Deployment
 
-## 部署
+The online version is deployed and updated manually with Docker Compose. See [DEPLOY.md](DEPLOY.md). CI only runs tests and does not deploy automatically because some migrations delete data and require human confirmation.
 
-线上版本用 Docker Compose 手动部署和更新，步骤见 [DEPLOY.md](DEPLOY.md)。CI 只跑测试，不会自动部署：有些迁移会删数据，需要人工确认。
+## Documentation
 
-## 文档
-
-| 文档 | 内容 |
+| Document | Contents |
 | --- | --- |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | 整体结构、一次请求怎么走、加功能改哪里 |
-| [CHANGELOG.md](CHANGELOG.md) | 历次改动和原因 |
-| [SPRINT3.md](SPRINT3.md) | Sprint 3 新增的功能和代码清单 |
-| [DEPLOY.md](DEPLOY.md) | 服务器部署和更新（手动） |
-| [backend/README.md](backend/README.md) | 功能与规则、配置、登录方式、交接说明 |
-| [frontend/README.md](frontend/README.md) | 前端路由、登录流程、检查命令 |
-| [backend/docs/frontend-api.md](backend/docs/frontend-api.md) | 前端调用接口的说明和错误码 |
-| [backend/docs/openapi.json](backend/docs/openapi.json) | 完整接口定义（运行后也可读 `GET /api/schema/`） |
-| [backend/docs/database-interface.md](backend/docs/database-interface.md) | 数据库适配器要遵守的约定 |
-| [backend/database/README.md](backend/database/README.md) | 本地 PostgreSQL 搭建和升级 |
-| [backend/docs/outlook-setup.md](backend/docs/outlook-setup.md) | Outlook 同步的配置和实测 |
-| [backend/docs/email-setup.md](backend/docs/email-setup.md) | 邮件通知（Gmail 系统邮箱）的配置和测试 |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Overall structure, request flow and where to change a feature |
+| [CHANGELOG.md](CHANGELOG.md) | Changes in each version and their reasons |
+| [SPRINT3.md](SPRINT3.md) | Inventory of features and code added in Sprint 3 |
+| [DEPLOY.md](DEPLOY.md) | Manual server deployment and updates |
+| [backend/README.md](backend/README.md) | Features and rules, configuration, sign-in methods and handover notes |
+| [frontend/README.md](frontend/README.md) | Frontend routes, sign-in flow and check commands |
+| [backend/docs/frontend-api.md](backend/docs/frontend-api.md) | Frontend API instructions and error codes |
+| [backend/docs/openapi.json](backend/docs/openapi.json) | Complete API definition (also available at `GET /api/schema/` while running) |
+| [backend/docs/database-interface.md](backend/docs/database-interface.md) | Contract that database adapters must follow |
+| [backend/database/README.md](backend/database/README.md) | Local PostgreSQL setup and upgrades |
+| [backend/docs/outlook-setup.md](backend/docs/outlook-setup.md) | Outlook synchronisation configuration and test results |
+| [backend/docs/email-setup.md](backend/docs/email-setup.md) | Email notification configuration and testing with a Gmail system mailbox |
 
-## 注意
+## Notes
 
-- 不要把 `.env`、数据库密码、微软 Token、Gmail 应用专用密码或 `backend/.local/` 提交进 Git。
-- 提交时按具体文件路径 `git add`，不要 `git add backend`（会带上 `.local`）。
+- Do not commit `.env`, database passwords, Microsoft tokens, Gmail app passwords or `backend/.local/` to Git.
+- Use `git add` with specific file paths. Do not run `git add backend`, because it may include `.local`.

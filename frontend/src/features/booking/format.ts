@@ -72,8 +72,7 @@ export const STATUS_TEXT: Record<BookingStatus, string> = {
   EXPIRED: 'Expired',
 }
 
-/** Student-facing explanation of where a request stands, from status + reason_code (server is the source of truth). */
-/** 2026-11-07: the status shown for a booking. Urgent, additional-hours and longer requests wait for a Manager. */
+/** Return the booking status label, identifying requests that require Manager approval. */
 export function statusText(b: Booking): string {
   return b.status === 'PENDING_APPROVAL' && (b.urgent || b.additional_hours || b.long_booking)
     ? 'Waiting for Manager approval' : STATUS_TEXT[b.status]
@@ -82,6 +81,7 @@ export function statusText(b: Booking): string {
 /** Short, readable booking reference (first 8 characters of the booking id). */
 export const bookingRef = (id: string) => id.slice(0, 8).toUpperCase()
 
+/** Explain the booking status using its reason code, deadlines and request type. */
 export function bookingDetail(b: Booking): string {
   switch (b.status) {
     case 'APPROVED':

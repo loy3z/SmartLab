@@ -1,37 +1,37 @@
 <!-- Sprint 3 (2026-10-25) -->
-# 部署（Docker Compose）
+# Deployment (Docker Compose)
 
-一台装了 Docker 的 Linux 服务器（例如 AWS EC2 Ubuntu）上用四个容器运行整个网站：
+The complete website runs in four containers on a Docker-enabled Linux server such as an AWS EC2 Ubuntu instance:
 
-| 容器 | 内容 |
+| Container | Contents |
 | --- | --- |
-| `db` | PostgreSQL 16，数据在 `pgdata` 卷里（induction 证明文件也存在数据库里） |
-| `api` | Django + gunicorn（`backend/Dockerfile`），启动脚本 `backend/entrypoint.sh` |
-| `scheduler` | 每分钟处理到期审批、提醒、缺席记录、邮件重试和 Outlook 同步，使用与 API 相同的后端代码和 PostgreSQL |
-| `web` | nginx（`frontend/Dockerfile`）：提供前端页面，并把 `/api/` 转给 `api`，同一个地址，不需要 CORS |
+| `db` | PostgreSQL 16; data is stored in the `pgdata` volume, including induction evidence files |
+| `api` | Django + gunicorn (`backend/Dockerfile`), started by `backend/entrypoint.sh` |
+| `scheduler` | Processes expired reviews, reminders, attendance records, email retries and Outlook synchronisation every minute, using the same backend code and PostgreSQL database as the API |
+| `web` | nginx (`frontend/Dockerfile`): serves the frontend and proxies `/api/` to `api` on the same origin, so CORS is not required |
 
-只开放 `web` 的 80 端口；数据库和 API 不对外。
+Only port 80 on `web` is exposed. The database and API are not public.
 
-## 一、配置：`.env.docker`
+## 1. Configure `.env.docker`
 
 ```bash
 cp .env.docker.example .env.docker
 ```
 
-必须改的：
+Required changes:
 
-| 变量 | 填什么 |
+| Variable | Value |
 | --- | --- |
-| `DB_PASSWORD` | 数据库密码，随便生成一个长的：`openssl rand -hex 24` |
-| `DJANGO_SECRET_KEY` | 同上：`openssl rand -hex 32` |
-| `ALLOWED_HOSTS` | 浏览器访问用的主机名或 IP，逗号分隔，例如 `localhost,13.211.0.10` |
-| `SITE_URL` | 浏览器访问的地址，例如 `http://13.211.0.10`（邮件里的链接用它） |
+| `DB_PASSWORD` | A long, randomly generated database password, for example: `openssl rand -hex 24` |
+| `DJANGO_SECRET_KEY` | Generate this in the same way: `openssl rand -hex 32` |
+| `ALLOWED_HOSTS` | Comma-separated host names or IP addresses used in the browser, for example `localhost,13.211.0.10` |
+| `SITE_URL` | Browser-facing address, for example `http://13.211.0.10`; email links use this value |
 
-演示部署保持 `DEBUG=true`、`ENABLE_DEMO_AUTH=true`（两个都为 true 才能用演示 zID 登录）、`LOAD_DEMO_DATA=true`。
+For a demonstration deployment, keep `DEBUG=true`, `ENABLE_DEMO_AUTH=true` (both must be true for demo zID sign-in) and `LOAD_DEMO_DATA=true`.
 
-**`.env.docker` 不要提交**（已在 `.gitignore` 里），里面有密码。
+**Do not commit `.env.docker`.** It is already listed in `.gitignore` and contains passwords.
 
-## 二、启动
+## 2. Start
 
 ```bash
 docker compose --env-file .env.docker up -d --build
@@ -40,77 +40,79 @@ docker compose --env-file .env.docker logs -f api
 docker compose --env-file .env.docker logs -f scheduler
 ```
 
-浏览器打开 `http://<服务器地址>`。四个容器都是 `running`、`api` 是 `healthy` 就好了。`scheduler` 日志应显示
-`Scheduler started`，之后每轮输出处理了多少到期申请、邮件和 Outlook 任务。它只能使用 PostgreSQL，不能使用进程内存仓储。
+Open `http://<server-address>` in a browser. All four containers should be `running` and `api` should be `healthy`. The `scheduler` log should display `Scheduler started`, followed in each cycle by the number of expired requests, emails and Outlook tasks processed. The scheduler requires PostgreSQL and cannot use the in-process memory repository.
 
-需要手动验证一次定时处理但不想启动永久循环时，可以运行：
+To verify one scheduled cycle manually without starting a permanent loop, run:
 
 ```bash
 docker compose --env-file .env.docker run --rm scheduler manage run_scheduler --once
 ```
 
-**第一次启动**（数据库是空的）时，`entrypoint.sh` 用 `backend/database/schema.sql` 建表；`LOAD_DEMO_DATA=true` 时再导入 `seed_resources.sql`、`seed_users.sql`（2 个房间、20 台设备、2 项培训要求、6 个演示账号）。这些在同一个事务里，要么全部成功，要么什么都不写。之后的启动不会再建表或导入演示数据，网页上改过的内容和密码都会保留。
+On the **first start**, when the database is empty, `entrypoint.sh` creates the tables from `backend/database/schema.sql`. If `LOAD_DEMO_DATA=true`, it then imports `seed_resources.sql` and `seed_users.sql` (two rooms, 20 pieces of equipment, two training requirements and six demo accounts). These steps run in one transaction: either all succeed or nothing is written. Later starts do not recreate tables or re-import demonstration data, so changes and passwords saved through the website are retained.
 
-演示账号：学生 `z1000001`、`z1000002`（University sign-in）；Admin `z9000001`、Manager `z9000002`（Staff sign-in，演示密码见 `backend/README.md`）。新学生可以在模拟 SSO 页点 **Create one** 自己建账号。
+Demo accounts: students `z1000001` and `z1000002` use University sign-in; Admin `z9000001` and Manager `z9000002` use Staff sign-in with the demo password documented in `backend/README.md`. A new student can select **Create one** on the simulated SSO page to create an account.
 
-## 三、更新代码和数据库
+## 3. Update the code and database
 
-**迁移不会自动执行。** `schema.sql` 已经是最新结构，所以新建的数据库不需要迁移；已经在运行的数据库，遇到新版本带来的迁移（`backend/database/migrations/` 里新增的文件）时，要在换上新代码**之前**执行一次。换成新代码后按这个顺序：
+**Migrations do not run automatically.** `schema.sql` already contains the latest structure, so a new database needs no migrations. For a running database, execute any migration added under `backend/database/migrations/` by a new version **before** switching to the new code. Use this order:
 
 ```bash
-# 1. 备份数据库
+# 1. Back up the database
 docker compose --env-file .env.docker exec -T db pg_dump -U smartlab smartlab > ~/backup-before-update.sql
-# 2. 只构建新镜像，旧容器继续服务
+# 2. Build the new images while the old containers continue serving requests
 docker compose --env-file .env.docker build
-# 3. 用新镜像临时跑一次新迁移（旧容器里没有新迁移文件，所以不能用 exec）；没有新迁移就跳过
+# 3. Run each new migration once in a temporary container built from the new image.
+#    The old container does not contain the new migration files, so do not use exec.
+#    Skip this step when there are no new migrations.
 docker compose --env-file .env.docker run --rm api migrate database/migrations/012_additional_hours_requests.sql
 docker compose --env-file .env.docker run --rm api migrate database/migrations/013_long_booking_requests.sql
 docker compose --env-file .env.docker run --rm api migrate database/migrations/014_remove_booking_freeze.sql
 docker compose --env-file .env.docker run --rm api migrate database/migrations/015_resource_internal_info.sql
 docker compose --env-file .env.docker run --rm api migrate database/migrations/016_extension_requests.sql
-# 4. 换上新容器
+# 4. Replace the containers
 docker compose --env-file .env.docker up -d
 ```
 
-`api` 的入口就是 `entrypoint.sh`，所以第 3 步的参数直接写 `migrate <文件>`。先迁移再换代码，新代码启动时数据库已经是新结构；迁移只加列和表时，旧代码在迁移后的库上也照常运行，不会中断服务。
+The `api` entry point is `entrypoint.sh`, so the Step 3 argument is simply `migrate <file>`. Migrating before replacing the code means the new database structure is ready when the new code starts. When a migration only adds columns and tables, the old code continues to run against the migrated database without service interruption.
 
-上例适用于数据库已经执行到 011 的情况；若缺少更早迁移，先按编号补齐缺少的脚本。必须先执行 012，再执行 013；两者都可重复执行，并保留已有预约的时间、状态和审批结果。012 为额外每周小时申请增加四个字段及约束，该申请等待 Manager 决定时不占时段。013 为长时段请求增加标志、理由及约束，该请求沿用普通占位／候补流程。两种特殊请求都由 Manager 明确审批，不自动批准。首次建库已经包含 012 和 013，无需另跑。
+The example assumes that migrations up to 011 have already run. If any earlier migration is missing, apply the missing scripts in numerical order. Migration 012 must run before 013. Both are repeatable and retain the times, statuses and approval results of existing bookings. Migration 012 adds four fields and constraints for additional weekly-hours requests; such a request does not hold the time while it awaits a Manager's decision. Migration 013 adds the flag, reason and constraints for long-booking requests, which use the normal hold/waitlist workflow. A Manager explicitly decides both types of special request; neither is approved automatically. A newly created database already includes 012 and 013 and does not need these scripts separately.
 
-**014（1.25.0）会删列和表**（`app_users.no_show_count`、`frozen_until`，表 `unfreeze_request`），和前面只加不删的迁移不同：
+**Migration 014 (1.25.0) deletes columns and a table** (`app_users.no_show_count`, `frozen_until` and the `unfreeze_request` table), unlike the earlier additive migrations:
 
-- 迁移后、换上新容器前的几秒里，旧容器读用户会报错；部署脚本两步紧挨着，影响很短。
-- 删掉的冻结数据只在部署前的备份里。
-- 如果执行 014 后、切换容器前部署失败，当前运行的旧版需要先补回 006 的表和列。部署脚本会尝试自动补回；若提示失败，在服务器的 `~/smartlab-next` 目录用下面的命令重跑 006，再检查旧版能否登录和读取预约。
-- 要回滚到 1.25.0 之前的代码，先用新镜像重跑 006（可重复执行）补回列和表，再 `--rollback`：
+- For a few seconds after the migration and before the new containers start, the old containers will fail when reading users. The deployment script runs these two steps consecutively, so the impact is brief.
+- Deleted freeze data remains only in the pre-deployment backup.
+- If deployment fails after running 014 but before switching containers, the currently running old version first needs the tables and columns from 006 restored. The deployment script attempts this automatically. If it reports a failure, rerun 006 from `~/smartlab-next` on the server with the command below, then confirm that the old version can sign in and read bookings.
+- To roll back to code older than 1.25.0, first rerun 006 with the new image (it is repeatable) to restore the columns and table, then use `--rollback`:
   `docker compose -p smartlab --env-file .env.docker run --rm --no-deps api migrate database/migrations/006_calendar_notifications_attendance_series.sql`
 
-为什么不在每次启动时重跑全部迁移：迁移 005 会把两个演示员工账号的密码改回演示密码，重跑会冲掉 Manager 改过的密码。
+Migrations still do not run on every startup; apply each new one once, as above. Running an earlier script again is safe: migration 005 no longer resets the demo staff passwords (it replaces only the earlier demo password from 003, so a password changed later is kept).
 
-## 四、备份、停止、清空
+## 4. Back up, stop and reset
 
 ```bash
-# 备份数据库到当前目录
+# Back up the database to the current directory
 docker compose --env-file .env.docker exec -T db pg_dump -U smartlab smartlab > smartlab-backup.sql
 
-# 停止（数据保留）
+# Stop while retaining data
 docker compose --env-file .env.docker stop
 
-# 删除容器和数据库数据，下次启动重新建一个全新的演示库（数据无法恢复）
+# Delete the containers and database data. The next start creates a new demo database.
+# Deleted data cannot be recovered without a backup.
 docker compose --env-file .env.docker down -v
 ```
 
-## 五、AWS EC2（第一次部署）
+## 5. AWS EC2 (first deployment)
 
-1. **建实例**：区域 `ap-southeast-2`（悉尼），Ubuntu Server 24.04 LTS，`t3.small`（2 GB 内存），磁盘 20 GB。新建或选一个密钥对，下载 `.pem`。
-2. **安全组**：入站只开 22（来源选 My IP）和 80（来源 `0.0.0.0/0`）。不用 HTTPS 时不需要 443。
-3. **固定公网 IP（可选）**：实例停止再启动后公网 IP 会变，`ALLOWED_HOSTS`、`SITE_URL` 也要跟着改。要固定就申请一个 Elastic IP 绑定到实例（实例运行时绑定的 Elastic IP 不收费）。
-4. **登录服务器**（Windows 自带 OpenSSH）：
+1. **Create an instance:** use region `ap-southeast-2` (Sydney), Ubuntu Server 24.04 LTS, `t3.small` (2 GB RAM) and a 20 GB disk. Create or select a key pair and download the `.pem` file.
+2. **Security group:** allow inbound port 22 from My IP and port 80 from `0.0.0.0/0`. Port 443 is unnecessary if HTTPS is not in use.
+3. **Static public IP (optional):** stopping and restarting an instance changes its public IP, requiring updates to `ALLOWED_HOSTS` and `SITE_URL`. To keep the address fixed, allocate and attach an Elastic IP. An Elastic IP attached to a running instance is free.
+4. **Sign in to the server** using the OpenSSH included with Windows:
 
    ```bash
-   ssh -i smartlab.pem ubuntu@<公网IP>
+   ssh -i smartlab.pem ubuntu@<public-IP>
    ```
 
-5. **装 Docker**，再加 2 GB swap（2 GB 内存构建前端时可能不够）：
+5. **Install Docker** and add 2 GB of swap; 2 GB RAM may be insufficient while building the frontend:
 
    ```bash
    curl -fsSL https://get.docker.com | sudo sh
@@ -120,21 +122,21 @@ docker compose --env-file .env.docker down -v
    exit
    ```
 
-   重新 `ssh` 登录后，`docker ps` 不报权限错误即可。
+   Sign in again with `ssh` and confirm that `docker ps` reports no permission error.
 
-6. **放代码**：不在服务器上存 GitLab Token，从本机打包上传已提交的版本：
+6. **Upload the code:** do not store a GitLab token on the server. Archive and upload the committed version from the local machine:
 
    ```bash
    git -C 'C:\Users\loy\Desktop\9900\team-repo' archive --format=tar.gz -o smartlab.tar.gz HEAD
-   scp -i smartlab.pem smartlab.tar.gz ubuntu@<公网IP>:~
+   scp -i smartlab.pem smartlab.tar.gz ubuntu@<public-IP>:~
    ```
 
-   在服务器上：
+   On the server:
 
    ```bash
    mkdir -p ~/smartlab && tar -xzf ~/smartlab.tar.gz -C ~/smartlab && cd ~/smartlab
    ```
 
-7. **配置并启动**：按第一节建 `.env.docker`（`ALLOWED_HOSTS=localhost,<公网IP>`，`SITE_URL=http://<公网IP>`），再按第二节启动。第一次构建要几分钟。
-8. **更新**：本机提交后重新打包上传，解压覆盖到 `~/smartlab`（`.env.docker` 不在压缩包里，不会被覆盖），再按第三节的四步更新（有新迁移时先迁移再换容器）。
-9. **省额度**：不用时在 EC2 控制台 Stop 实例（数据在磁盘上，保留）；彻底不用时 Terminate（数据全部删除）。
+7. **Configure and start:** create `.env.docker` as described in Section 1 (`ALLOWED_HOSTS=localhost,<public-IP>` and `SITE_URL=http://<public-IP>`), then start the system as described in Section 2. The first build takes several minutes.
+8. **Update:** after committing locally, archive and upload the code again and extract it over `~/smartlab`. `.env.docker` is not in the archive and is not overwritten. Then follow the four update steps in Section 3, applying any new migrations before replacing the containers.
+9. **Save credits:** stop the instance in the EC2 console when it is not in use; data remains on the disk. Terminating the instance deletes all data.

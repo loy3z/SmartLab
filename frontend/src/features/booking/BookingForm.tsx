@@ -26,6 +26,8 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
   const [error, setError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
   const [canRequest, setCanRequest] = useState(true)
+  // The last loaded day said this person cannot request the resource (canRequest is also false while a day loads).
+  const [barred, setBarred] = useState(false)
   // Admin/Manager: book for themselves or on behalf of someone (checked by zID first).
   const [bookFor, setBookFor] = useState<BookFor>('self')
   const [zidInput, setZidInput] = useState('')
@@ -164,29 +166,29 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
         </fieldset>
       )}
 
-      {!isManager && <label className="bk-urgent">
+      {/* 2026-11-16 (U7): no urgent entry while the person cannot request this resource at all (induction, closed). */}
+      {!isManager && !barred && <label className="bk-urgent">
         <input type="checkbox" checked={urgent} onChange={(e) => { setUrgent(e.target.checked); pick(null) }} />
         Urgent request (sooner than the normal booking window)
       </label>}
-      {urgent && (
-        <label className="bk-block">
-          <span>Purpose and urgency <span className="bk-required">Required</span></span>
-          <textarea value={urgentReason} maxLength={500} rows={2} required
-            placeholder="Briefly describe what you’ll use it for and why it cannot wait."
-            onChange={(e) => setUrgentReason(e.target.value)} />
-          <small className="bk-muted">{testBypass ? 'Test overrides are on. Free times are approved immediately.' : 'Only a Manager can approve an urgent request; it is never approved automatically. Induction and conflict rules still apply.'}</small>
-        </label>
-      )}
+      {urgent && <p className="bk-muted bk-urgent-note">{testBypass ? 'Test overrides are on. Free times are approved immediately.' : 'Only a Manager can approve an urgent request; it is never approved automatically. Induction and conflict rules still apply.'}</p>}
 
       {ready ? (
         <SlotPicker resource={resource} onSelect={fromPicker} refreshKey={refreshKey} onEligibility={setCanRequest}
+          onAvailability={(day) => setBarred(!day.can_request && !urgent)}
           forZid={forZid} urgent={urgent} initialDate={initialDate} initialStart={initialStart} initialMinutes={initialMinutes}
           /* Sprint 3 (1.16.0): route someone who wants an earlier day to the urgent request */
           onAskEarlier={() => { setUrgent(true); pick(null) }} />
       ) : (
         <div className="ui-hint">Enter the person's zID and check it to see their availability.</div>
       )}
-      {!urgent && <label className="bk-block">
+      {/* 2026-11-16 (Loy): the urgent explanation sits where the normal purpose does, below the time picker. */}
+      {urgent ? <label className="bk-block">
+        <span>Purpose and urgency <span className="bk-required">Required</span></span>
+        <textarea value={urgentReason} maxLength={500} rows={3} required
+          placeholder="Briefly describe what you’ll use it for and why it cannot wait."
+          onChange={(e) => setUrgentReason(e.target.value)} />
+      </label> : <label className="bk-block">
         <span>Purpose <span className="bk-required">Required</span></span>{/* Sprint 3 (1.16.0) */}
         <textarea
           value={purpose}

@@ -1,317 +1,322 @@
-# 前端接口说明
+# Frontend API Guide
 
-API 基础路径为 `/api/v1/`，所有路径末尾都有 `/`。正式结构见 [openapi.json](openapi.json)，启动后的 `GET /api/schema/` 返回相同定义。
+The API base path is `/api/v1/`, and every path ends with `/`. See [openapi.json](openapi.json) for the authoritative schema; after startup, `GET /api/schema/` returns the same definition.
 
-## 1.27.0：延长由 Manager 批准（迁移 016）
+## 1.28.0: The Author Deletes an Ended Announcement (no migration)
 
-- `POST bookings/{id}/extend/ {end}`：本人申请时不再立即生效，返回的预约带 `extension_end`（`end` 不变），Manager 收到 `EXTENSION_REQUESTED`；再次申请会替换。Manager 调用仍立即生效。申请时只检查开放时间、资源自身最长时长、时间步长和后面是否空闲，单次 3 小时和每周时数由 Manager 决定。
-- `POST bookings/{id}/extend/review/ {decision, reason, expected_end?}`：仅 Manager。网页提交当时显示的 `expected_end`；申请已被替换时返回 409 `EXTENSION_CHANGED`。批准时再查一次后面是否空闲，`end` 改为 `extension_end`；拒绝要写原因。其他 409：`NO_EXTENSION_REQUEST`、`EXTENSION_EXPIRED`、`BOOKING_CONFLICT`。本人收到 `EXTENSION_APPROVED`／`EXTENSION_REJECTED`（也发邮件）。
-- `GET admin/overview/` 增加 `extension_requests`（要求的结束时间还没过的预约，最多 10 个）。Booking 增加 `extension_end`。
-- 页面：My bookings 的 Extend 打开一条时间轴（开始到关门），拖动结束线或用方向键选新的结束时间，到下一个预约前为止；学生按 Ask a Manager，Manager 按 Extend now。时间轴读取 `resources/{id}/availability/`（学生加 `urgent=true`，这样当天被占用的时段能显示出来）。
+- `DELETE announcements/{id}/`: only the person who posted the announcement (`created_by`), for manual and resource-status announcements alike; anyone else, a Manager included, receives 403. The announcement must have ended (removed or expired), otherwise 409 `ANNOUNCEMENT_ACTIVE`. Returns 204; the row is deleted permanently and the audit log keeps `ANNOUNCEMENT_DELETED` with the title.
+- UI: on the Announcements page, an ended announcement shows **Delete** to its author, with a confirmation that it cannot be undone.
 
-## 1.26.0：三个角色看到的明显不同（迁移 015）
+## 1.27.0: Extensions Require Manager Approval (migration 016)
 
-- **首页**：`homePath` 把 Manager 送到 `/manager/home`（Lab overview），Admin 仍是 `/admin/today`。Lab overview 用现有接口：`admin/overview/`、`resources/`、`admin/reports/usage/`（本周）。Admin 的 Today 不显示 `urgent`、`additional-hours`、`long-bookings` 三张卡片（`today.ts` `cardsFor`）。顶部栏显示 `Student view`／`Admin view`／`Manager view`。
-- **Admin 只看近期历史**：`GET admin/bookings/` 和 `admin/bookings/export/` 对 Admin 只返回 7 天内结束及以后的预约（更早的 `since` 会被改成这个界限）。`GET admin/reports/usage/` 只有 Manager 能用，Admin 返回 403。Booking Records 页面对 Admin 不显示 Usage statistics 标签，默认从 7 天前开始。`/admin/records?q=z1234567` 打开时按这个 zID 查最近一年（Manager）。
-- **设备的内部资料**：`GET admin/resources/{id}/internal/`、`PATCH admin/resources/{id}/internal/` `{owner?, asset_number?, provided_by?, specifications?}`（最长 120／60／120／2000 字，空字符串清空），只有 Manager；其他人 403。资源 JSON（`resources/`、`admin/resources/` 等）里没有这些字段。
+- `POST bookings/{id}/extend/ {end}`: a booking-holder request no longer applies immediately. The returned booking contains `extension_end` while `end` remains unchanged, and the Manager receives `EXTENSION_REQUESTED`. Submitting again replaces the request. A Manager call still applies immediately. Submission checks only opening hours, the resource's own maximum duration, time step, and whether later time is free; the Manager decides the three-hour per-booking and weekly-hours limits.
+- `POST bookings/{id}/extend/review/ {decision, reason, expected_end?}`: Manager only. The website submits the `expected_end` currently displayed. If the request has been replaced, return 409 `EXTENSION_CHANGED`. Approval rechecks that later time is free and changes `end` to `extension_end`; rejection requires a reason. Other 409 errors: `NO_EXTENSION_REQUEST`, `EXTENSION_EXPIRED`, and `BOOKING_CONFLICT`. The booking holder receives `EXTENSION_APPROVED`/`EXTENSION_REJECTED`, including email.
+- `GET admin/overview/` adds `extension_requests` (bookings whose requested end time has not passed, maximum 10). Booking adds `extension_end`.
+- UI: Extend in My bookings opens a timeline from start to closing time. Drag the end line or use arrow keys to select a new end, up to the next booking. Students select Ask a Manager; Managers select Extend now. The timeline reads `resources/{id}/availability/` (students add `urgent=true` so occupied times on the current day are visible).
 
-## 1.25.0：删除冻结（迁移 014）
+## 1.26.0: Clear Differences Between the Three Roles (migration 015)
 
-- 客户 Week 8 会议不想用缺席处罚，Loy 2026-11-07 决定整个删除。缺席照常记录在预约的 `attendance` 上，使用情况报表不变。
-- 删除的接口：`account/unfreeze-requests/`、`admin/unfreeze-requests/`、`admin/unfreeze-requests/{id}/review/`、`admin/frozen-users/`、`admin/users/{id}/unfreeze/`。
-- 删除的字段：用户的 `no_show_count`、`frozen_until`、`booking_frozen`；availability 的 `frozen_until`；`admin/overview/` 的 `unfreeze_requests`；day overview 的 `not_bookable` 不再有 `FROZEN`。错误码 `ACCOUNT_FROZEN`、`NOT_FROZEN`、`UNFREEZE_ALREADY_REQUESTED` 不再出现。
-- 前端删除 Booking freezes 页面（`/admin/freezes`）和冻结提示。
+- **Home page**: `homePath` sends Manager to `/manager/home` (Lab overview), while Admin remains at `/admin/today`. Lab overview uses existing endpoints: `admin/overview/`, `resources/`, and `admin/reports/usage/` (current week). Admin Today does not show the `urgent`, `additional-hours`, or `long-bookings` cards (`cardsFor` in `today.ts`). The top bar shows `Student view`/`Admin view`/`Manager view`.
+- **Admin sees only recent history**: for Admin, `GET admin/bookings/` and `admin/bookings/export/` return only bookings that ended within the last seven days or later (an earlier `since` is raised to this boundary). Only Manager can use `GET admin/reports/usage/`; Admin receives 403. Booking Records hides Usage statistics for Admin and defaults to seven days ago. Opening `/admin/records?q=z1234567` searches the previous year for that zID (Manager).
+- **Internal equipment information**: `GET admin/resources/{id}/internal/` and `PATCH admin/resources/{id}/internal/` with `{owner?, asset_number?, provided_by?, specifications?}` (maximum 120/60/120/2000 characters; an empty string clears the field) are Manager-only; others receive 403. Resource JSON (`resources/`, `admin/resources/`, etc.) does not include these fields.
 
-## 1.24.0：客户 Week 8 会议（无迁移）
+## 1.25.0: Remove Freezing (migration 014)
 
-- **Manager 覆盖规则**：Manager 的 `POST bookings/`（给自己或 `on_behalf_of_zid` 代约，不含改期申请）直接 `APPROVED`，`reason_code=MANAGER_OVERRIDE`。不检查 induction、提前 7–28 天、单次 3 小时、每周 12 小时、8 个未来预约和冻结；仍检查资源可预约、开放时间、资源自身最长时长、时间步长，时段必须空闲（冲突 409 `BOOKING_CONFLICT`，不进候补）。Admin 不变。`POST bookings/{id}/reschedule/` 同样不再检查 induction、日期窗口、每周和未来预约数。
-- **Manager 的可用时段**：availability（非额外时数、非超长模式）和 day overview 返回 `manager_override: true`；日期从今天起、`latest_date=null`，`max_booking_minutes` 为资源自身最长时长，`can_request` 只看人是否在用、资源是否可约。availability 此时还返回 `normal_booking_window`，员工重复预约表单仍使用这个常规日期范围。
-- **延长进行中的预约**：`POST bookings/{id}/extend/`，请求 `{end}`。预约人本人或 Manager，预约须已批准、已开始、未结束；后面空闲就立即生效（不审批），`revision` 加 1，Outlook 更新原事件，Manager 收到 `BOOKING_EXTENDED` 通知。非 Manager 还要满足单次 3 小时、每周时数和 induction 到新结束时间。错误：未开始／已结束／额外时数／超长 409 `EXTENSION_NOT_AVAILABLE`；新结束不晚于原结束 400 `VALIDATION_ERROR`；后面被占 409 `BOOKING_CONFLICT`；其余同普通规则（`DURATION_LIMIT`、`OUTSIDE_OPENING_HOURS`、`WEEKLY_LIMIT_REACHED`）。
-- **冻结**：1.24.0 默认关闭，1.25.0 整个删除，见上一节。
+- The client did not want absence penalties at the Week 8 meeting, so Loy decided on 2026-11-07 to remove freezing completely. Absences continue to be recorded in booking `attendance`, and the usage report is unchanged.
+- Removed endpoints: `account/unfreeze-requests/`, `admin/unfreeze-requests/`, `admin/unfreeze-requests/{id}/review/`, `admin/frozen-users/`, and `admin/users/{id}/unfreeze/`.
+- Removed fields: user `no_show_count`, `frozen_until`, and `booking_frozen`; availability `frozen_until`; `unfreeze_requests` from `admin/overview/`; `FROZEN` from day overview `not_bookable`. Error codes `ACCOUNT_FROZEN`, `NOT_FROZEN`, and `UNFREEZE_ALREADY_REQUESTED` no longer occur.
+- Frontend removes the Booking freezes page (`/admin/freezes`) and freezing notice.
 
-## 1.22.0：超长预约申请（迁移 013）
+## 1.24.0: Client Week 8 Meeting (no migration)
 
-- **独立提交**：`POST bookings/long-bookings/`，请求为 `{resource_id,start,end,purpose,long_booking_reason,on_behalf_of_zid?}`。用途和超长理由必填，理由最多 1000 字。支持 `Idempotency-Key`：相同请求重试为 `200`，首次创建为 `201`；理由、受益人、时段或申请类型改变须换 key。客户端不能传审批状态、`urgent`、`additional_hours`、`series_id` 等字段。
-- **豁免范围**：仅放宽普通单次时长上限（默认 3 小时），时长必须大于该上限，并且不超过资源自身最长时长。每周 12 小时、最多 8 个未来预约、正常提前 7–28 天、开放时间、时间步长和资格规则仍适用，包括员工代约。额外时数、紧急和循环预约不能合并到此流程；数字均沿用可配置规则。
-- **占位与审批**：空闲时返回 `PENDING_APPROVAL`，`hold_until=review_due_at`，按资源现有审批期限占位；冲突时返回 `WAITLISTED`，沿用普通 FIFO 候补。递补后产生新的审批期限。只有 Manager 可通过原 `POST admin/bookings/{id}/review/` 批准或拒绝，不能自审或审自己创建的申请；批准时再次核对资格、周额度、未来预约数、资源限制和冲突。到期未批准变为 `EXPIRED`，`reason_code=LONG_BOOKING_REVIEW_EXPIRED`，释放时段并递补，绝不自动批准。
-- **日期和时长选择**：`GET resources/{id}/availability/?date=YYYY-MM-DD&long_booking=true`，不能与 `urgent=true` 或 `additional_hours=true` 同用。返回普通日期窗口、`normal_max_booking_minutes`、严格大于普通上限的首个有效 `min_booking_minutes`、资源技术上限对齐后的 `max_booking_minutes` 和 `selection_step_minutes`。小网格查询仍可传 `duration_minutes=30`；提交的完整时段须满足超长要求。资源没有可选超长时段时 `can_request=false`，入口不提供超长申请。
-- **界面与待办**：Booking 增加 `long_booking` 和 `long_booking_reason`；资源页有独立申请入口，My bookings 展示人工审批期限／候补／过期原因。审批页有 Longer bookings 标签，Admin 只读。`GET admin/overview/` 增加 `long_booking_requests` 和 `can_decide_long_bookings`；普通 `pending_bookings` 不含超长申请。Manager 收到 `LONG_BOOKING_REQUEST` 通知。
-- **错误与改期**：未超过普通上限为 `400 LONG_BOOKING_NOT_NEEDED`；超过资源技术上限为 `400 DURATION_LIMIT`。获批豁免固定到原资源和时段，change/reschedule 返回 `409 LONG_BOOKING_NEW_REQUEST_REQUIRED`，需取消并重新申请。普通预约、额外时数和循环预约入口仍不能创建超长预约。
+- **Manager rule override**: a Manager's `POST bookings/` (for themselves or with `on_behalf_of_zid`, excluding a time-change request) becomes directly `APPROVED` with `reason_code=MANAGER_OVERRIDE`. It does not check induction, the 7–28-day window, three-hour duration, 12-hour weekly quota, eight-future-booking limit, or freezing. It still checks that the resource is bookable, within opening hours and its own maximum duration, aligned to the time step, and free (conflict returns 409 `BOOKING_CONFLICT` without joining the waitlist). Admin is unchanged. `POST bookings/{id}/reschedule/` also stops checking induction, date window, weekly quota, and future-booking count.
+- **Manager availability**: availability (outside additional-hours and long-booking modes) and day overview return `manager_override: true`. Dates start today, `latest_date=null`, `max_booking_minutes` is the resource's own maximum, and `can_request` depends only on whether the person and resource are active. Availability also returns `normal_booking_window`, which the staff recurring-booking form continues to use.
+- **Extend an in-progress booking**: `POST bookings/{id}/extend/` with `{end}`. The booking holder or Manager can use it on an approved booking that has started but not ended. If later time is free, apply immediately without review, increment `revision`, update the original Outlook event, and notify the Manager with `BOOKING_EXTENDED`. A non-Manager must also satisfy the three-hour per-booking limit, weekly-hours quota, and induction through the new end. Errors: not started/ended/additional-hours/long booking → 409 `EXTENSION_NOT_AVAILABLE`; new end not later than old end → 400 `VALIDATION_ERROR`; later time occupied → 409 `BOOKING_CONFLICT`; otherwise normal errors (`DURATION_LIMIT`, `OUTSIDE_OPENING_HOURS`, `WEEKLY_LIMIT_REACHED`).
+- **Freezing**: disabled by default in 1.24.0 and removed entirely in 1.25.0; see the previous section.
 
-## 1.21.0：额外时数申请（迁移 012）
+## 1.22.0: Long-Booking Requests (migration 013)
 
-- **独立提交**：`POST bookings/additional-hours/`，请求为 `{resource_id,start,end,purpose,additional_hours_reason,active_data_collection?,data_collection_reason?,on_behalf_of_zid?}`。用途和申请理由必填；理由最多 1000 字。声明正在采集数据时须填写说明（最多 1000 字），未声明时说明应为空。员工可以代约，身份和权限由后端检查。支持 `Idempotency-Key`；更换理由、声明、申请类型或受益人后不能复用旧 key。
-- **不占位**：成功为 `201`，幂等重放为 `200`，返回完整 Booking。标记 `additional_hours=true`，状态 `PENDING_APPROVAL`，`hold_until` 和 `review_due_at` 都为 null。即使当前时段被占用也可提交，待审批期间不阻挡普通预约；批准前必须重新确认空闲。不会自动批准，也不进入普通候补递补，开始时尚未处理则过期。
-- **独立额度**：可以在普通额度尚未用完时申请；额外申请及已批准额外预约不占普通每周 12 小时额度，但仍计入 8 个有效未来预约。单次 3 小时、开放时间、资格、最多提前 28 天的规则不变。额外流程允许短通知申请，所以最少提前 7 天不适用。
-- **所选那一周的额度（2026-11-10）**：单个资源的 `availability` 响应带 `week_hours`（`week_start`、`used_hours`、`limit_hours`），是 `date` 所在那一周（周一到周日，悉尼时间）已用的每周额度；预约窗口据此显示“Week of 16 Nov: 2 h left of your 12 h.”。日视图 `resources/day-overview/` 不带这个字段。
-- **可用时段**：`GET resources/{id}/availability/?date=YYYY-MM-DD&additional_hours=true`。日期范围从资源当地今天开始，`min_advance_days=0`，最大提前天数照常；时长上限仍为普通上限。返回 `additional_hours_approval_window_hours`（默认 48，可配置），页面据此显示批准窗口。不能同时传 `urgent=true`。
-- **审批信息**：Booking 新增 `additional_hours_reason`、`active_data_collection`、`data_collection_reason` 和 `additional_hours_review`；普通预约的 review 字段为 null。额外预约的 review 包括 `approval_opens_at,approval_window_hours,priority_group,priority_reasons,queue_position,can_approve,blocker_code,blocker_message`。`can_approve` 只代表实时业务条件；页面还须检查 Manager 角色、不能自审及采集声明确认。
-- **公平顺序**：在同一资源、时段重叠且当前可批准的申请中，`NO_USE_THIS_WEEK` 与 `ACTIVE_DATA_COLLECTION` 属于同一 `PRIORITY` 组，其后为 `STANDARD` 组。前者指目标预约的当地周一至周日内，跨资源没有已开始且 `CHECKED_IN` 的使用记录；页面应写“No recorded lab use this week”。采集声明暂按优先处理，Manager 必须核验；无效声明应拒绝。各组内部按 `created_at,id` 排序。已预约时段和普通有效占位不因额外申请而被挤占。
-- **Manager 决定**：沿用 `POST admin/bookings/{id}/review/`。只有 Manager 能批准或拒绝，且不能审批本人或本人创建的申请。批准须处于 `start - approval_window_hours` 至开始前；有采集声明时必须提交 `confirm_active_data_collection=true`。拒绝须提供 `reason`，可在批准窗口开放前进行。批准在事务内重新检查资格、容量和队列，审计保存当时的依据、窗口、确认结果及授权时段。
-- **错误与范围**：`ADDITIONAL_HOURS_TOO_EARLY`、`ADDITIONAL_HOURS_NO_CAPACITY`、`ADDITIONAL_HOURS_QUEUE_PRIORITY` 均为 409；未确认采集声明为 400 `DATA_COLLECTION_CONFIRMATION_REQUIRED`。批准仅授权原资源及原起止时间，普通 change/reschedule 接口返回 409 `ADDITIONAL_HOURS_NEW_REQUEST_REQUIRED`，页面提示取消后重新申请。
-- **前端入口和待办**：资源卡片新增 Request additional hours；My bookings 区分“等待 Manager、未占位”和普通待审。员工审批页有 Additional hours 标签，展示优先依据、可批准时间和阻塞原因，Admin 只读。`GET admin/overview/` 增加 `additional_hours_requests`、`additional_hours_ready`、`can_decide_additional_hours`；普通 pending 计数不含额外申请。Manager 收到 `ADDITIONAL_HOURS_REQUEST` 通知，结果和过期沿用原有预约通知。
+- **Separate submission**: `POST bookings/long-bookings/` with `{resource_id,start,end,purpose,long_booking_reason,on_behalf_of_zid?}`. Purpose and long-booking reason are required; reason maximum is 1,000 characters. Supports `Idempotency-Key`: retrying the same request returns `200`, first creation returns `201`. Changing the reason, beneficiary, time, or request type requires a new key. Clients cannot send review status, `urgent`, `additional_hours`, `series_id`, or similar fields.
+- **Exemption scope**: relax only the normal per-booking duration limit (three hours by default). Duration must exceed that limit without exceeding the resource's own maximum. The 12-hour weekly quota, eight-future-booking limit, normal 7–28-day window, opening hours, time step, and qualification rules still apply, including to staff proxy bookings. Additional-hours, urgent, and recurring bookings cannot be combined with this flow. All numbers use configurable rules.
+- **Hold and review**: if free, return `PENDING_APPROVAL` with `hold_until=review_due_at`, holding the time for the resource's existing review period. On conflict, return `WAITLISTED` under the normal FIFO waitlist. Promotion creates a new review deadline. Only a Manager may approve or reject through existing `POST admin/bookings/{id}/review/`, without self-review or reviewing a request they created. Approval rechecks qualification, weekly quota, future-booking count, resource limits, and conflicts. If not approved by the deadline, become `EXPIRED` with `reason_code=LONG_BOOKING_REVIEW_EXPIRED`, release the time, and promote the waitlist. Never auto-approve.
+- **Date and duration selection**: `GET resources/{id}/availability/?date=YYYY-MM-DD&long_booking=true`; cannot combine with `urgent=true` or `additional_hours=true`. Returns the normal date window, `normal_max_booking_minutes`, first valid `min_booking_minutes` strictly above the normal limit, `max_booking_minutes` aligned to the resource's technical limit, and `selection_step_minutes`. Small-grid queries may still pass `duration_minutes=30`; the submitted full interval must satisfy long-booking requirements. If the resource has no valid long interval, `can_request=false` and the UI does not offer a long-booking entry point.
+- **UI and tasks**: Booking adds `long_booking` and `long_booking_reason`. The resource page has a separate entry point; My bookings shows manual-review deadline, waitlist, or expiry reason. The review page has a Longer bookings tab; Admin is read-only. `GET admin/overview/` adds `long_booking_requests` and `can_decide_long_bookings`; normal `pending_bookings` excludes long requests. Manager receives `LONG_BOOKING_REQUEST`.
+- **Errors and rescheduling**: not exceeding the normal limit returns `400 LONG_BOOKING_NOT_NEEDED`; exceeding the resource's technical limit returns `400 DURATION_LIMIT`. An approved exemption is fixed to the original resource and interval. change/reschedule returns `409 LONG_BOOKING_NEW_REQUEST_REQUIRED`; cancel and submit a new request. Normal booking, additional-hours, and recurring entry points still cannot create a long booking.
 
-## 前端需要完成的功能
+## 1.21.0: Additional-Hours Requests (migration 012)
 
-| 页面／交互 | 前端职责 | 后端负责 |
+- **Separate submission**: `POST bookings/additional-hours/` with `{resource_id,start,end,purpose,additional_hours_reason,active_data_collection?,data_collection_reason?,on_behalf_of_zid?}`. Purpose and request reason are required; reason maximum is 1,000 characters. If active data collection is declared, an explanation is required (maximum 1,000 characters); if not declared, the explanation should be empty. Staff may book on behalf of someone else, with identity and permissions checked by the backend. Supports `Idempotency-Key`; changing reason, declaration, request type, or beneficiary requires a new key.
+- **No hold**: success returns `201`, idempotent replay returns `200`, both with the complete Booking. Mark `additional_hours=true`, status `PENDING_APPROVAL`, and both `hold_until` and `review_due_at` null. A request can be submitted even if the time is currently occupied and does not block normal bookings while pending; approval must recheck availability. It is never auto-approved or promoted through the normal waitlist, and expires if unresolved at start time.
+- **Separate quota**: requests may be submitted before the normal quota is exhausted. Additional requests and approved additional bookings do not consume the normal 12-hour weekly quota, but still count toward eight active future bookings. The three-hour per-booking limit, opening hours, qualification, and maximum 28-day advance window remain. Because this flow permits short-notice requests, the seven-day minimum does not apply.
+- **Quota for the selected week (2026-11-10)**: an individual resource's `availability` response includes `week_hours` (`week_start`, `used_hours`, `limit_hours`) for the week containing `date` (Monday–Sunday, Sydney time). The booking dialog uses it to show “Week of 16 Nov: 2 h left of your 12 h.” Day overview `resources/day-overview/` does not include this field.
+- **Availability**: `GET resources/{id}/availability/?date=YYYY-MM-DD&additional_hours=true`. The date range starts today in the resource's location, `min_advance_days=0`, and the normal maximum advance applies. Duration is still capped at the normal limit. Returns `additional_hours_approval_window_hours` (default 48, configurable) for the UI to show the approval window. Cannot combine with `urgent=true`.
+- **Review information**: Booking adds `additional_hours_reason`, `active_data_collection`, `data_collection_reason`, and `additional_hours_review`; normal bookings have a null review field. Additional-booking review contains `approval_opens_at,approval_window_hours,priority_group,priority_reasons,queue_position,can_approve,blocker_code,blocker_message`. `can_approve` represents only real-time business conditions; the UI must also check Manager role, no self-review, and data-collection confirmation.
+- **Fair ordering**: among currently approvable requests for the same resource with overlapping times, `NO_USE_THIS_WEEK` and `ACTIVE_DATA_COLLECTION` belong to the same `PRIORITY` group, followed by `STANDARD`. The former means no started, `CHECKED_IN` use across resources during the target booking's local Monday-to-Sunday week; the UI should say “No recorded lab use this week.” Active-data declarations receive provisional priority and must be verified by the Manager; invalid declarations should be rejected. Within each group, order by `created_at,id`. Existing bookings and normal active holds are never displaced by additional requests.
+- **Manager decision**: reuse `POST admin/bookings/{id}/review/`. Only Manager can approve or reject and cannot review their own request or one they created. Approval must occur between `start - approval_window_hours` and start time. When data collection is declared, submit `confirm_active_data_collection=true`. Rejection requires `reason` and may happen before the approval window opens. Approval rechecks qualification, capacity, and queue inside the transaction. Audit records the basis, window, confirmation result, and authorised interval.
+- **Errors and scope**: `ADDITIONAL_HOURS_TOO_EARLY`, `ADDITIONAL_HOURS_NO_CAPACITY`, and `ADDITIONAL_HOURS_QUEUE_PRIORITY` are 409. Missing data-collection confirmation is 400 `DATA_COLLECTION_CONFIRMATION_REQUIRED`. Approval authorises only the original resource and start/end. Normal change/reschedule endpoints return 409 `ADDITIONAL_HOURS_NEW_REQUEST_REQUIRED`; the UI tells the user to cancel and submit again.
+- **Frontend entry point and tasks**: add Request additional hours to resource cards. My bookings distinguishes “waiting for Manager, no time held” from normal pending requests. The staff review page has an Additional hours tab showing priority basis, approval time, and blocking reason; Admin is read-only. `GET admin/overview/` adds `additional_hours_requests`, `additional_hours_ready`, and `can_decide_additional_hours`; normal pending counts exclude additional requests. Manager receives `ADDITIONAL_HOURS_REQUEST`; results and expiry use existing booking notifications.
+
+## Frontend Responsibilities
+
+| Page / interaction | Frontend responsibility | Backend responsibility |
 | --- | --- | --- |
-| 登录与角色入口 | 学生：大学登录（模拟 SSO）；Admin／Manager：staff 登录页（zID + 密码、首次用邀请码激活）；保存 token，按角色显示菜单 | 校验身份和角色；两个入口互相拒绝对方的账号；接口权限 |
-| 资源与时段查询 | 房间／设备筛选、日期和时长选择、时段展示 | 查询资源、生成时段、检查冲突 |
-| 学生 dashboard | 显示资格、预约状态和数量，刷新结果 | 返回当前学生的数据与汇总 |
-| Induction 提交 | 选择资格要求，填写说明，上传文件，展示审核结果 | 检查附件、保存提交、保护下载权限 |
-| 预约申请 | 选择资源和时间，填写用途，提交后显示服务端状态 | 验证资格门槛、时间规则、自动／人工审批 |
-| 我的预约 | 显示详情、改期／取消确认、操作后刷新 | 判断归属及状态，重新校验并执行改期／取消 |
-| 管理员资格审核 | 审核列表、查看资料、通过／拒绝和原因；显示后端返回的有效期 | 修改资格、自动设定有效期；拒绝时自动拒绝该学生依赖此资格的未决预约（待审批和候补） |
-| 管理员预约审核 | 审核队列、详情、通过／拒绝和原因、显示冲突错误 | 批准前再次检查资格与冲突 |
-| 通知、日历订阅、到场确认 | 顶部铃铛；“我的预约”里的订阅链接、I'm here 按钮 | 生成通知和订阅内容、记录缺席 |
-| 重复预约（员工） | 资源卡片上的 Repeat weekly | 逐日检查并直接批准重复预约 |
-| 审计记录 | Admin／Manager 按资源、学生、操作、时间筛选并分页查看；预约详情可显示该预约的历史 | 记录并查询申请、审批、改期、取消和资格审核轨迹 |
-| 人员与角色管理（仅 Manager） | 人员列表、按角色筛选；Add staff | 只允许 Manager；角色创建后固定，不能互转；不能改自己；至少保留一个 Manager；写审计 |
-| Manager 审批期限 | 按资源显示和修改审批期限分钟数 | 角色校验、规则保存和审计；Admin 不能读取或修改 |
-| 资源管理（仅 Manager） | Resources 页面：新增、编辑、下架、恢复房间和设备；显示不再符合新规则的预约 | 校验资源规则、保存、审计；列出受影响的预约（不自动取消） |
-| 预约记录与使用情况（Admin 只看 7 天内；使用情况只有 Manager） | Booking Records 页面：Records 标签按日期、资源、状态、姓名／zID 筛选并导出 CSV；Usage statistics 标签显示每个资源的数字 | 筛选、导出 CSV、统计预约、时长、到场率 |
-| 邮件通知 | 无（后端在请求结束后发出） | 按 `EMAIL_MODE` 给预约人发邮件，见 [email-setup.md](email-setup.md) |
-| 修改密码（员工） | Account 页面的表单 | 校验当前密码、保存新密码哈希 |
+| Sign-in and role entry points | Student: university sign-in (mock SSO); Admin/Manager: staff sign-in page (zID + password, first activation with invitation code); store token and show menus by role | Validate identity and role; each sign-in path rejects the other account type; endpoint permissions |
+| Resource and slot queries | Room/equipment filters, date and duration selection, slot display | Query resources, generate slots, check conflicts |
+| Student dashboard | Show qualifications, booking statuses and counts; refresh results | Return current-student data and summary |
+| Induction submission | Choose requirement, enter notes, upload file, show review result | Validate attachment, save submission, protect download permissions |
+| Booking request | Choose resource and time, enter purpose, show server status after submission | Validate qualification gate, time rules, automatic/manual review |
+| My bookings | Show details and reschedule/cancel confirmation; refresh after actions | Check ownership and status, revalidate and perform reschedule/cancel |
+| Admin qualification review | Review list, view evidence, approve/reject with reason; show validity returned by backend | Change qualification and set validity automatically; on rejection, automatically reject the student's undecided bookings that depend on it (pending and waitlisted) |
+| Admin booking review | Review queue and details, approve/reject with reason, show conflict errors | Recheck qualification and conflicts before approval |
+| Notifications, calendar subscription, check-in | Top-bar bell; subscription link and I'm here button in My bookings | Generate notifications and subscription content; record absence |
+| Recurring booking (staff) | Repeat weekly on resource card | Validate each date and directly approve recurring bookings |
+| Audit records | Admin/Manager filters by resource, student, action, and time with pagination; booking details may show that booking's history | Record and query request, approval, reschedule, cancellation, and qualification-review history |
+| People and role management (Manager only) | People list, role filters, Add staff | Manager-only; roles fixed after creation and cannot convert; no self-modification; keep at least one Manager; audit |
+| Manager review period | Show and edit review period in minutes per resource | Role validation, rule persistence, and audit; Admin cannot read or edit |
+| Resource management (Manager only) | Resources page: create, edit, archive, and restore rooms/equipment; show bookings that no longer satisfy new rules | Validate resource rules, save and audit; list affected bookings without cancelling automatically |
+| Booking records and usage (Admin sees only last seven days; usage is Manager-only) | Booking Records: Records tab filters by date, resource, status, name/zID and exports CSV; Usage statistics tab shows per-resource values | Filter, export CSV, calculate booking count, duration, and attendance rate |
+| Email notification | None (backend sends after the request) | Email booking holder according to `EMAIL_MODE`; see [email-setup.md](email-setup.md) |
+| Change password (staff) | Form on Account | Validate current password and save new password hash |
 
-隐藏按钮只能改善体验；身份、资格和冲突均由后端执行。前端不能直接设置预约状态、资格状态或用户角色。
+Hiding buttons improves only the experience. Identity, qualification, and conflicts are enforced by the backend. The frontend cannot directly set booking status, qualification status, or user role.
 
-演示学生注册需要 `zid`、`display_name`、`university_email`，缺少或格式错误的邮箱返回 400。登录／注册响应中的用户对象以及 `auth/me/` 均返回邮箱。演示模式不验证邮箱所有权；正式 SSO 的邮箱及角色必须由后端从可信身份来源映射。
+Demo student registration requires `zid`, `display_name`, and `university_email`; a missing or malformed email returns 400. User objects in sign-in/registration responses and `auth/me/` include the email. Demo mode does not verify email ownership. Under production SSO, the backend must map email and role from a trusted identity source.
 
-## 两个登录入口（staff 登录）
+## Two Sign-In Entry Points (staff sign-in)
 
-- **学生**：`POST auth/demo-login/`（模拟大学登录，只要 zID）。staff 的 zID 返回 403 `USE_STAFF_SIGN_IN`。
-- **Admin／Manager**：`POST auth/staff-sign-in/`，请求 `{"zid":"z9000002","password":"…"}`，返回与学生登录相同的 `{access_token, user, …}`。错误：401 `INVALID_CREDENTIALS`（zID 或密码不对）、403 `ACCOUNT_NOT_ACTIVATED`（还没激活）、403 `ACCOUNT_DEACTIVATED`、403 `STUDENT_USES_SSO`（学生用了 staff 入口）。
-- **首次激活**：`POST auth/staff-activate/`，请求 `{"zid":"…","invite_code":"K7Q4-9MZD","password":"至少 8 位"}`。邀请码不区分大小写，可以不带横线；成功后直接登录并作废邀请码。错误：400 `INVALID_INVITE_CODE`、400 `VALIDATION_ERROR`（密码太短）、403 `ACCOUNT_DEACTIVATED`。
-- **邀请码从哪来**：Manager 用 Add staff 新建账号后，`admin/users/` 里该员工的 `activation_status` 为 `AWAITING_ACTIVATION`，`invite_code` 就是邀请码；激活后变成 `ACTIVATED`，`invite_code` 为 `null`。学生这两个字段都是 `null`。
-- **重置**：`POST admin/users/{id}/reset-access/`（仅 Manager，不能对自己，不能对学生：409 `STUDENT_USES_SSO`），旧密码失效并生成新邀请码，返回更新后的用户。
-- `auth/config/` 的 `staff_sign_in_enabled` 表示 staff 入口是否可用。两个入口目前都只在演示模式（`DEBUG` + `ENABLE_DEMO_AUTH`）可用；接入学校 SSO 后再替换。
-- 演示账号：z9000001（Admin）、z9000002（Manager），密码 `123`。
+- **Student**: `POST auth/demo-login/` (mock university sign-in, zID only). A staff zID returns 403 `USE_STAFF_SIGN_IN`.
+- **Admin/Manager**: `POST auth/staff-sign-in/` with `{"zid":"z9000002","password":"…"}`, returning the same `{access_token, user, …}` as student sign-in. Errors: 401 `INVALID_CREDENTIALS` (wrong zID or password), 403 `ACCOUNT_NOT_ACTIVATED`, 403 `ACCOUNT_DEACTIVATED`, and 403 `STUDENT_USES_SSO` (student used staff entry point).
+- **First activation**: `POST auth/staff-activate/` with `{"zid":"…","invite_code":"K7Q4-9MZD","password":"at least 8 characters"}`. Invitation codes are case-insensitive and may omit the hyphen. Success signs in directly and invalidates the code. Errors: 400 `INVALID_INVITE_CODE`, 400 `VALIDATION_ERROR` (password too short), and 403 `ACCOUNT_DEACTIVATED`.
+- **Invitation-code source**: after a Manager creates an account through Add staff, the staff member in `admin/users/` has `activation_status=AWAITING_ACTIVATION`, and `invite_code` is the invitation code. After activation, status becomes `ACTIVATED` and `invite_code` becomes `null`. Both fields are `null` for students.
+- **Reset**: `POST admin/users/{id}/reset-access/` (Manager only; not for self and not for students, which returns 409 `STUDENT_USES_SSO`) invalidates the old password, creates a new invitation code, and returns the updated user.
+- `staff_sign_in_enabled` from `auth/config/` indicates whether the staff entry point is available. Both entry points currently work only in demo mode (`DEBUG` + `ENABLE_DEMO_AUTH`) and will be replaced after university SSO integration.
+- Demo accounts: z9000001 (Admin) and z9000002 (Manager), password `123`.
 
-## 角色
+## Roles
 
-- **Student**：预约自己的资源，上传自己的 induction。
-- **Admin**（员工）：审核 induction 和预约申请，查看审计；**也可以预约**（给自己，或代别人预约），不能访问任何 Manager 页面或接口（403）。
-- **Manager**（员工）：拥有 Admin 的全部权限，另外管理人员、资源状态、审批期限和所有预约；**只有 Manager 能改期**，也只有 Manager 能决定紧急申请。
-- 所有人用同一套规则：资格（induction，含前置）、开放时间、预约窗口和冲突规则对员工同样适用，induction 不能绕过。日常申请无论角色都可以在审批期限结束时自动批准。
-- Student、Admin、Manager 是三种分开的账号，角色在创建时确定：学生不会被“升级”为 Admin，Admin 和 Manager 也不能互相切换。员工账号由 Manager 用 Add staff 创建，以后可由学校身份系统提供。
+- **Student**: book resources for themselves and upload their own induction evidence.
+- **Admin** (staff): review induction and booking requests and view audits; **can also make bookings** for themselves or on behalf of others; cannot access Manager pages or endpoints (403).
+- **Manager** (staff): all Admin permissions plus people, resource status, review-period, and all-booking management. **Only Manager can directly reschedule**, and only Manager can decide urgent requests.
+- Everyone uses the same rule set: qualification (induction including prerequisites), opening hours, booking window, and conflict rules also apply to staff; induction cannot be bypassed. A normal request from any role may be auto-approved when its review period expires.
+- Student, Admin, and Manager are separate account types fixed at creation. A student is not “promoted” to Admin, and Admin/Manager cannot switch between each other. A Manager creates staff accounts through Add staff; the university identity system may provide them later.
 
-### 代他人预约与紧急申请
+### Booking on Behalf of Others and Urgent Requests
 
-- **代他人预约**：Admin／Manager 在 `POST bookings/` 里加 `on_behalf_of_zid`。预约属于这个人（`student_id`，检查**他的** induction），`created_by` 记录创建者，审计 `BOOKING_CREATED` 的 `details.booked_for` 是被预约人。学生传这个字段返回 403 `FORBIDDEN`；找不到 zID 404 `PERSON_NOT_FOUND`；账号停用 409 `ACCOUNT_INACTIVE`。
-- 提交前可用 `GET people/lookup/?zid=z1234567`（仅员工）确认是谁；`GET resources/{id}/availability/?for_zid=...` 按被预约人返回 `can_request`、`qualification_status`、`requested_by_me`，并带 `booking_for`。
-- 预约响应带 `created_by`、`booked_for`、`created_by_user`（`id`、`zid`、`display_name`、`role`）、`on_behalf`。`GET bookings/` 对员工返回“给我的”加“我替别人建的”；被预约人自己也能看到并取消。
-- 不能审批“给自己的”或“自己创建的”申请（403 `SELF_REVIEW_FORBIDDEN`）。
-- **紧急申请**：`urgent: true` 加 `urgent_reason`（必填，≤500 字）。只用于开始时间早于最短提前期（默认 7 天）的申请，落在正常窗口内返回 400 `URGENT_NOT_NEEDED`；最晚日期照常检查。时段必须空闲（有冲突 409 `BOOKING_CONFLICT`，不进候补）。状态 `PENDING_APPROVAL`、`reason_code=URGENT_AWAITING_MANAGER`、`review_due_at=null`、`hold_until=start`：**只能由 Manager 决定**（Admin 403 `URGENT_NEEDS_MANAGER`），不会自动批准，开始前没人决定就过期。availability 加 `urgent=true` 时，提前期内的时段显示为可选。
-- **改期仅 Manager**：`POST bookings/{id}/reschedule/` 其他角色 403 `FORBIDDEN`。Manager 可改任何人已批准的未来预约，不受日期窗口、induction、每周和未来预约数限制（1.24.0；开放时间、资源最长时长、冲突照常检查），`reason_code=RESCHEDULED_BY_MANAGER`。
-- 待客户确认：“override an existing booking”具体指什么；紧急申请是否只允许某些角色提交（目前所有人都可以提交，只有 Manager 能批）。
-- 人员列表（`admin/users/`）中的用户带 `is_staff`（Admin 或 Manager 为 `true`）；前端按 `auth/me/` 的 `role` 判断。
+- **Book on behalf of another person**: Admin/Manager adds `on_behalf_of_zid` to `POST bookings/`. The booking belongs to that person (`student_id`, checking **their** induction), while `created_by` records the creator and audit `BOOKING_CREATED` has the beneficiary in `details.booked_for`. A student sending this field receives 403 `FORBIDDEN`; unknown zID returns 404 `PERSON_NOT_FOUND`; inactive account returns 409 `ACCOUNT_INACTIVE`.
+- Before submission, staff can confirm identity with `GET people/lookup/?zid=z1234567`. `GET resources/{id}/availability/?for_zid=...` returns `can_request`, `qualification_status`, and `requested_by_me` for the beneficiary, plus `booking_for`.
+- Booking responses include `created_by`, `booked_for`, `created_by_user` (`id`, `zid`, `display_name`, `role`), and `on_behalf`. For staff, `GET bookings/` returns “for me” plus “created by me for others.” The beneficiary can also view and cancel it.
+- A reviewer cannot approve a request “for themselves” or one they created (403 `SELF_REVIEW_FORBIDDEN`).
+- **Urgent request**: `urgent: true` plus required `urgent_reason` (≤500 characters). Use only when start time is earlier than the minimum advance period (seven days by default); a date within the normal window returns 400 `URGENT_NOT_NEEDED`. The latest date still applies. The time must be free (conflict returns 409 `BOOKING_CONFLICT` without joining waitlist). Status is `PENDING_APPROVAL`, `reason_code=URGENT_AWAITING_MANAGER`, `review_due_at=null`, and `hold_until=start`: **only Manager can decide** (Admin receives 403 `URGENT_NEEDS_MANAGER`), it is never auto-approved, and expires if undecided before start. With `urgent=true`, availability shows times inside the minimum advance period as selectable.
+- **Manager-only rescheduling**: other roles receive 403 `FORBIDDEN` from `POST bookings/{id}/reschedule/`. A Manager can reschedule any approved future booking without the date window, induction, weekly quota, or future-booking count (1.24.0; opening hours, resource maximum, and conflicts still apply), with `reason_code=RESCHEDULED_BY_MANAGER`.
+- Awaiting client clarification: what “override an existing booking” specifically means, and whether only certain roles may submit urgent requests (currently everyone can submit; only Manager can approve).
+- Users in the people list (`admin/users/`) include `is_staff` (`true` for Admin or Manager). The frontend uses `role` from `auth/me/`.
 
-## 建议调用顺序
+## Recommended Call Sequence
 
-1. 读取 `GET auth/config/` 判断认证模式；学生调用 `auth/demo-login/` 或 `auth/demo-register/`，Admin／Manager 调用 `auth/staff-sign-in/`（首次用 `auth/staff-activate/`），然后使用响应 token 调用 `GET auth/me/`。
-2. 调用 `GET resources/` 和 `GET qualification-requirements/`，展示资源及其要求。
-3. 学生通过 `GET qualifications/` 或 `GET dashboard/` 查看自己的资格。未提交对应资料时，显示上传入口。
-4. 使用 `multipart/form-data` 调用 `POST qualifications/`，字段为 `requirement_id`、`title`、`notes`、`file`。不要手写 multipart 的 Content-Type boundary，由浏览器处理。
-5. 调用 `GET resources/{id}/availability/?date=YYYY-MM-DD&duration_minutes=60` 展示时段，并读取 `can_request`／`qualification_status`。日期是资源当地的日历日期。
-6. 调用 `POST bookings/`，发送 `resource_id`、`start`、`end`、`purpose`。时间必须携带时区，例如 `2026-10-07T09:00:00+11:00`；不要发送无时区字符串。
-7. 按响应 `status` 显示结果，再刷新 dashboard 和可用性。HTTP 201 表示请求创建成功，重复幂等请求返回 200；只有 `APPROVED` 表示预约已经获批。
-8. Admin 使用 `admin/qualifications/` 审核 induction；审核响应包含 `submission` 和 `updated_bookings`，刷新相关列表。随后用 `admin/bookings/` 审核预约。
+1. Read `GET auth/config/` to determine authentication mode. Students call `auth/demo-login/` or `auth/demo-register/`; Admin/Manager calls `auth/staff-sign-in/` (or `auth/staff-activate/` first), then uses the response token for `GET auth/me/`.
+2. Call `GET resources/` and `GET qualification-requirements/` to display resources and their requirements.
+3. A student views their qualifications through `GET qualifications/` or `GET dashboard/`. If no evidence was submitted for a requirement, show the upload entry point.
+4. Call `POST qualifications/` with `multipart/form-data` fields `requirement_id`, `title`, `notes`, and `file`. Do not manually set the multipart Content-Type boundary; let the browser handle it.
+5. Call `GET resources/{id}/availability/?date=YYYY-MM-DD&duration_minutes=60` to show slots, reading `can_request`/`qualification_status`. The date is the resource's local calendar date.
+6. Call `POST bookings/` with `resource_id`, `start`, `end`, and `purpose`. Times must include a time zone, such as `2026-10-07T09:00:00+11:00`; never send a timezone-free string.
+7. Show the result from response `status`, then refresh dashboard and availability. HTTP 201 means the request was created successfully; an idempotent replay returns 200. Only `APPROVED` means the booking is approved.
+8. Admin reviews induction through `admin/qualifications/`; the review response includes `submission` and `updated_bookings`, so refresh related lists. Then use `admin/bookings/` to review bookings.
 
-### 审计记录
+### Audit Records
 
-`GET admin/audit/` 仅 Admin／Manager 可用，学生返回 403。返回 `{ count, limit, offset, results }`，`count` 是筛选后的总数（分页前），`results` 按时间从新到旧。每条记录含 `action`、`entity_type`、`entity_id`、`at`、`details`，以及 `actor`（`zid`、`display_name`、`role`；系统自动处理时 `actor_id` 为 `SYSTEM`、`actor` 为 `null`）。
+`GET admin/audit/` is available only to Admin/Manager; students receive 403. It returns `{ count, limit, offset, results }`, where `count` is the total after filtering and before pagination, and `results` is newest-first. Each record includes `action`, `entity_type`, `entity_id`, `at`, `details`, and `actor` (`zid`, `display_name`, `role`; for automatic system processing, `actor_id` is `SYSTEM` and `actor` is `null`).
 
-- 某个预约的完整历史：`?entity_id={booking_id}`。
-- 某个资源：`?resource_id=...`，包括该资源所有预约的记录和占位规则修改。
-- 某个学生：`?student_id=...`，包括该学生的操作及其预约、资料和账号相关记录。
-- 其他筛选：`action`（如 `BOOKING_CANCELLED`）、`entity_type`（`booking|qualification|resource|principal`）、`actor_id`、`since`／`until`（必须带时区，`until` 不包含）。
-- 分页：`limit` 1–500，默认 100；`offset` 默认 0。未知参数返回 400。
+- Complete history of one booking: `?entity_id={booking_id}`.
+- One resource: `?resource_id=...`, including records for all its bookings and hold-policy changes.
+- One student: `?student_id=...`, including their actions and booking, evidence, and account records.
+- Other filters: `action` (for example `BOOKING_CANCELLED`), `entity_type` (`booking|qualification|resource|principal`), `actor_id`, and `since`/`until` (timezone required; `until` exclusive).
+- Pagination: `limit` 1–500, default 100; `offset` default 0. Unknown parameters return 400.
 
-`details` 的字段随动作不同，例如创建预约有 `status`、`reason_code`、`hold_until`，改期有 `old_start`／`new_start` 等。前端可直接显示键值，不要依赖固定字段。
+Fields in `details` vary by action; for example, booking creation has `status`, `reason_code`, and `hold_until`, while rescheduling has `old_start`/`new_start`. The frontend may display key-value pairs directly and must not depend on fixed fields.
 
-### 人员与角色管理（仅 Manager）
+### People and Role Management (Manager only)
 
-只有 **Manager** 能查看人员名单、新建员工、修改员工角色或停用账号；Admin 和学生访问这些接口返回 403。
+Only a **Manager** can view the people list, create staff, change staff accounts, or deactivate accounts. Admin and students receive 403 from these endpoints.
 
-- `GET admin/users/`：返回 `{ count, results }`，每项含 `id`、`zid`、`display_name`、`role`、`is_staff`、`active`、`university_email`，以及 `inductions`（每项 induction 的 `name`、`status`：`NOT_SUBMITTED`／`PENDING`／`VERIFIED`／`REJECTED`／`EXPIRED`、`valid_until`）和 `induction_status`（全部有效为 `VERIFIED`，否则 `INCOMPLETE`）。员工也可以预约，同样要有有效的 induction。可用 `role`、`active=true|false`、`q`（匹配 zID／姓名／邮箱）筛选。
-- **Add staff**：`POST admin/users/staff/`，请求 `{"zid":"z5123456","display_name":"…","university_email":"…","role":"ADMIN"}`（`role` 为 `ADMIN` 或 `MANAGER`），成功 201 返回该用户，写 `ADMIN_CREATED`／`MANAGER_CREATED` 审计。zID 已存在返回 409 `USER_EXISTS`（现有学生不能变成员工）。兼容接口 `POST admin/users/managers/` 等同于 `role=MANAGER`。
-- `PATCH admin/users/{id}/`：用来停用或恢复账号（`active`）。角色在创建时确定，不能修改：请求里的 `role` 与当前角色不同时返回 409 `ROLE_CHANGE_NOT_ALLOWED`（与当前相同则忽略）。要换人就用 Add staff 新建账号，再停用旧账号。修改在该用户的**下一次请求**生效；被停用的用户再请求会得到 401，前端应跳回登录页。
-- **停用学生**会立即拒绝该学生所有未决申请（待审批和候补，`reason_code=ACCOUNT_DEACTIVATED`）并递补下一位；已批准的预约保留，由 Manager 决定是否取消。
-- 不能修改自己（`SELF_MODIFICATION_FORBIDDEN`，403），系统至少保留一个启用的 Manager（`LAST_MANAGER`，409）。每次修改都会写一条 `USER_UPDATED` 审计记录。
-- 列表里只有已经存在于系统中的用户（演示时由数据库预先写入，或登录／注册过一次）。
+- `GET admin/users/`: returns `{ count, results }`. Each item contains `id`, `zid`, `display_name`, `role`, `is_staff`, `active`, `university_email`, `inductions` (each induction's `name`, `status`: `NOT_SUBMITTED`/`PENDING`/`VERIFIED`/`REJECTED`/`EXPIRED`, and `valid_until`), and `induction_status` (`VERIFIED` when all are valid, otherwise `INCOMPLETE`). Staff can also book and likewise need valid induction. Filter by `role`, `active=true|false`, and `q` (matching zID/name/email).
+- **Add staff**: `POST admin/users/staff/` with `{"zid":"z5123456","display_name":"…","university_email":"…","role":"ADMIN"}` (`role` is `ADMIN` or `MANAGER`). Success returns 201 with the user and writes `ADMIN_CREATED`/`MANAGER_CREATED` audit. Existing zID returns 409 `USER_EXISTS` (an existing student cannot become staff). Compatibility endpoint `POST admin/users/managers/` is equivalent to `role=MANAGER`.
+- `PATCH admin/users/{id}/`: deactivate or reactivate an account (`active`). Role is fixed at creation and cannot change. A different `role` returns 409 `ROLE_CHANGE_NOT_ALLOWED`; the current role is ignored. To replace a person, create a new account through Add staff and deactivate the old one. The change takes effect on the user's **next request**; a deactivated user's next request receives 401, and the frontend should return to sign-in.
+- **Deactivating a student** immediately rejects all their undecided requests (pending and waitlisted, `reason_code=ACCOUNT_DEACTIVATED`) and promotes the next request. Approved bookings remain for a Manager to decide whether to cancel.
+- Self-modification is forbidden (`SELF_MODIFICATION_FORBIDDEN`, 403), and the system must retain at least one active Manager (`LAST_MANAGER`, 409). Every change writes a `USER_UPDATED` audit record.
+- The list contains only users already known to the system (preloaded in the demo database or signed in/registered at least once).
 
-`dashboard` 返回 `{ bookings, qualifications, counts }`。两个列表是数组，`counts` 的键为七种大写预约状态，例如 `counts.APPROVED`；它不是资格数量或预约总数。其他列表接口使用 `{ count, results }`。
+`dashboard` returns `{ bookings, qualifications, counts }`. Both lists are arrays. Keys in `counts` are the seven uppercase booking statuses, such as `counts.APPROVED`; it is not a qualification count or total booking count. Other list endpoints use `{ count, results }`.
 
-`qualification_status=NOT_CONFIGURED` 表示资源尚未设置 induction 要求，不能申请；需要维护资源数据后再开放。`qualification_status=PREREQUISITE_REQUIRED` 表示该资源的 induction 需要先通过另一项（如 Advanced 需要 General），此时 `missing_prerequisite_id` 给出缺少的那一项，前端可以直接链接到 `/induction?requirement=<id>`。
+`qualification_status=NOT_CONFIGURED` means the resource has no induction requirement configured and cannot be requested; maintain the resource data before opening it. `qualification_status=PREREQUISITE_REQUIRED` means its induction requires another one first (for example, Advanced requires General). `missing_prerequisite_id` identifies the missing requirement, and the frontend can link directly to `/induction?requirement=<id>`.
 
-### 前置 induction
+### Induction Prerequisites
 
-- `GET qualification-requirements/` 每项带 `prerequisite_ids`（数组）。演示数据中 Advanced laboratory training 的 `prerequisite_ids` 是 General laboratory induction。
-- 前置未通过时，提交该项资料返回 409 `PREREQUISITE_REQUIRED`（`details.prerequisite_id`），Admin 通过该项资料也返回同一错误；学生页面应显示“先完成 General”，并禁用上传。
-- 预约需要该项 induction 的资源时，**前置和本项都必须有效并覆盖整个预约**；缺前置时 `POST bookings/` 返回 403 `QUALIFICATION_REQUIRED`，`details.qualification_status=PREREQUISITE_REQUIRED`、`details.prerequisite_id`、`details.prerequisite_status`。
-- Manager 可用 `PATCH admin/qualification-requirements/{id}/` 设置 `{"prerequisite_ids":["<uuid>"]}`（最多 20 项，不能包含自己，不能形成循环：409 `PREREQUISITE_CYCLE`），写 `REQUIREMENT_PREREQUISITES_UPDATED` 审计。
-- 1.16.0：每项还带四段说明 `how_to_complete`、`accepted_evidence`、`reviewer`、`contact`（空字符串表示还没写），Induction & Training 页面在每项下面显示“How to get this induction”。Manager 在 **Lab setup** 页面（`/manager/setup`）用 `POST admin/qualification-requirements/`（`name` 必填，其余可选）新建，用同一个 `PATCH` 改 `name`、`description` 和四段说明（可以和 `prerequisite_ids` 一起发）。名称不能重复（忽略大小写，409 `REQUIREMENT_NAME_TAKEN`），说明每段最多 2000 字；改文字不影响已经通过的人。
+- Every item from `GET qualification-requirements/` contains `prerequisite_ids` (array). In demo data, Advanced laboratory training has General laboratory induction as its prerequisite.
+- If a prerequisite is not verified, submitting evidence for the dependent requirement returns 409 `PREREQUISITE_REQUIRED` (`details.prerequisite_id`), and Admin approval returns the same error. The student page should say “Complete General first” and disable upload.
+- When booking a resource that requires the dependent induction, **both the prerequisite and the target induction must be valid through the full booking**. Missing prerequisite makes `POST bookings/` return 403 `QUALIFICATION_REQUIRED` with `details.qualification_status=PREREQUISITE_REQUIRED`, `details.prerequisite_id`, and `details.prerequisite_status`.
+- Manager can set `{"prerequisite_ids":["<uuid>"]}` through `PATCH admin/qualification-requirements/{id}/` (maximum 20, cannot include itself, cannot form a cycle: 409 `PREREQUISITE_CYCLE`), writing `REQUIREMENT_PREREQUISITES_UPDATED` audit.
+- 1.16.0: each item also includes guidance `how_to_complete`, `accepted_evidence`, `reviewer`, and `contact` (empty string means unwritten). Induction & Training shows “How to get this induction” under each item. On **Lab setup** (`/manager/setup`), a Manager creates one through `POST admin/qualification-requirements/` (`name` required, other fields optional) and uses the same `PATCH` to edit `name`, `description`, and all four guidance fields (may be sent with `prerequisite_ids`). Names must be unique ignoring case (409 `REQUIREMENT_NAME_TAKEN`), and each guidance field is at most 2,000 characters. Copy changes do not affect verified users.
 
-### 房间和设备
+### Rooms and Equipment
 
-资源的 `room_id`：设备所在房间的 ID，房间本身为 `null`。前端按房间分组设备（“该房间的 N 台设备”）。房间的维修／关闭**只影响房间本身**，房间里的设备仍按各自的 `status` 预约。房间和设备**分开预约**：订房间不包含里面的设备，订设备也不占用房间（1.16.0 起页面上写明）。
+A resource's `room_id` is the ID of the room containing equipment; it is `null` for a room itself. The frontend groups equipment by room (“N pieces of equipment in this room”). Maintenance/closure of a room **affects only the room itself**; equipment inside remains bookable according to its own `status`. Rooms and equipment are **booked separately**: booking a room does not include its equipment, and booking equipment does not reserve the room (stated in the UI from 1.16.0).
 
-1.16.0：资源另有 `capacity`（只有房间，容纳人数，`null` 表示没填）和 `details`（`[{label, value}]`，Manager 自己定的“标签：内容”，例如型号、楼层，最多 12 行）。资源卡片显示容量和前 3 行，预约表单显示全部；房间列表可以按“至少 N 人”筛选（没填容量的房间不会被筛掉）。
+1.16.0: resources also have `capacity` (rooms only; number of people; `null` means unset) and `details` (`[{label, value}]`, Manager-defined “label: content” such as model and floor, maximum 12 rows). Resource cards show capacity and the first three rows; the booking form shows all. Room lists can filter by “at least N people” (rooms without capacity are not filtered out).
 
-可用性查询是当时的快照，提交前后仍可能有人占用时段。显示 `available=false` 的时段不能提示“可立即预约”；学生仍可对已被占用的时段提交申请，但会进入等待名单，界面应明确说明。每个资源的 `required_qualification_id` 可以不同，前端必须读取资源要求，不能用一个全局“已完成 induction”开关判断所有资源的资格。
+An availability query is a point-in-time snapshot; another user may occupy the time before or after submission. A slot with `available=false` must not say “book immediately.” A student may still request an occupied time, but will join the waitlist, which the UI must explain clearly. Each resource may have a different `required_qualification_id`; the frontend must read the resource requirement and cannot use one global “induction complete” flag for every resource.
 
-`slots[]` 的 `reason_code` 为 `START_TIME_PASSED`、`RESOURCE_UNAVAILABLE`（维修／关闭）、`TOO_SOON`（不足 7 天）、`TOO_FAR_AHEAD`（超过默认 28 天／4 周）、`BOOKED`、`TEMPORARILY_HELD` 或 `null`。响应顶层另有 `earliest_date`、`latest_date`、`min_advance_days`、`max_advance_days`，供日期选择器限制范围。临时占位时返回 `hold_until`（UTC 截止时间）和 `held_by_me`（是否为当前学生自己的占位）；`requested_by_me` 表示当前学生已经对同一资源提交了与该时段重叠的有效申请，前端应禁用再次提交。接口不返回其他学生身份。可显示占位倒计时，到期刷新查询，最终以服务端响应为准；`can_request` 只有在当前用户是学生、账号启用、对应 induction（及其前置）已通过且有效、资源开放时才为 `true`，不代表所选时段会获批；为 `false` 时应禁用提交按钮并提示先完成 induction。`review_window_minutes` 是该资源的审批期限（默认 1440 分钟）。
+`reason_code` in `slots[]` is `START_TIME_PASSED`, `RESOURCE_UNAVAILABLE` (maintenance/closed), `TOO_SOON` (less than seven days), `TOO_FAR_AHEAD` (beyond the default 28 days/four weeks), `BOOKED`, `TEMPORARILY_HELD`, or `null`. Top-level response also includes `earliest_date`, `latest_date`, `min_advance_days`, and `max_advance_days` for date-picker limits. A temporary hold returns `hold_until` (UTC deadline) and `held_by_me` (whether this student's own hold). `requested_by_me` means the current student already has an active overlapping request for the same resource; disable another submission. Other student identities are never returned. The UI may show a hold countdown and refresh at expiry; the server response is authoritative. `can_request` is `true` only when the current user is a student, the account is active, the required induction and prerequisites are verified and valid, and the resource is open; it does not guarantee approval for the selected time. When false, disable submission and prompt the user to complete induction. `review_window_minutes` is the resource's review period (default 1,440 minutes).
 
-### 普通预约审批流程
+### Normal Booking Approval Flow
 
-以下自动决定和直接改期规则用于普通预约。超长预约必须由 Manager 人工决定，到审批期限未处理则过期；额外时数不占位、开始时未处理则过期。两种特殊授权均不能直接改期，详见文首独立流程。
+The automatic-decision and direct-rescheduling rules below apply to normal bookings. A long booking requires a manual Manager decision and expires if unresolved by its review deadline. Additional hours do not hold time and expire if unresolved at start. Neither special authorisation can be directly rescheduled; see the separate flows at the start of this document.
 
-- **只有 induction 已通过且有效的人才能申请**（员工同样适用）。资料还在审核（`PENDING`）、被拒或已过期时，`POST bookings/` 返回 403 `QUALIFICATION_REQUIRED`，`details.qualification_status` 说明原因；有效期必须覆盖整个预约，否则为 `EXPIRES_BEFORE_END`。induction 只能由 Admin／Manager 人工审核，审核通过不会自动批准任何预约。
-- **每个申请都先进入 `PENDING_APPROVAL`**（`reason_code=AWAITING_REVIEW`）：不算确认、不写 Outlook，但在审批期限内为申请人占住时段。`review_due_at`（与 `hold_until` 相同）是审批截止时间：进入待审批时加上资源的 `pending_hold_minutes`（默认 24 小时），不晚于预约开始。
-- **Admin／Manager 在截止前批准或拒绝**（`POST admin/bookings/{id}/review/`，不能审批给自己的或自己创建的申请；紧急申请只有 Manager 能决定）。
-- **截止时仍无人处理**：系统自动处理，`reviewed_by="SYSTEM"`。账号启用、资格（含前置）仍覆盖整个预约、资源开放、时段无已批准冲突 → `APPROVED`（`AUTO_APPROVED_AFTER_REVIEW_WINDOW`）；否则 `REJECTED`（`AUTO_REJECTED_ACCOUNT_INACTIVE`／`AUTO_REJECTED_QUALIFICATION`／`AUTO_REJECTED_RESOURCE_UNAVAILABLE`／`AUTO_REJECTED_BOOKING_RULES`／`AUTO_REJECTED_CONFLICT`，`decision_reason` 写明原因）。由服务端在下一次访问、`admin/process-due/` 或定时命令 `manage.py process_due` 时处理，前端只需刷新。
-- **同一套规则**：创建、人工批准、自动处理、候补递补、改期都使用后端同一个规则检查，结果一致。
-- 改期（仅 Manager）：已批准的未来预约可以改日期、时间和时长（受最晚日期和资格限制，不受最短提前期限制），直接生效。选时段时传 `exclude_booking_id=<正在改的预约>`、`for_zid=<预约人>`、`urgent=true`，原来的时间会显示为可选。
-- Manager 通过 `PATCH admin/resources/{id}/booking-policy/` 按资源设置审批期限 `{"pending_hold_minutes":1440}`（1–20160 分钟）。
+- **Only people with verified and valid induction may request** (also applies to staff). If evidence is under review (`PENDING`), rejected, or expired, `POST bookings/` returns 403 `QUALIFICATION_REQUIRED`, with the reason in `details.qualification_status`. Validity must cover the complete booking, otherwise `EXPIRES_BEFORE_END`. Only Admin/Manager manually reviews induction; approval never automatically approves a booking.
+- **Every request first becomes `PENDING_APPROVAL`** (`reason_code=AWAITING_REVIEW`): it is not confirmed and does not write Outlook, but holds the time for the requester during the review period. `review_due_at` (same as `hold_until`) is the deadline: when entering pending, add the resource's `pending_hold_minutes` (24 hours by default), capped at booking start.
+- **Admin/Manager approves or rejects before the deadline** (`POST admin/bookings/{id}/review/`; cannot review for themselves or a request they created; only Manager can decide urgent requests).
+- **Still unresolved at deadline**: the system processes it automatically with `reviewed_by="SYSTEM"`. If account is active, qualification including prerequisites still covers the whole booking, resource is open, and no approved booking conflicts → `APPROVED` (`AUTO_APPROVED_AFTER_REVIEW_WINDOW`); otherwise `REJECTED` (`AUTO_REJECTED_ACCOUNT_INACTIVE`/`AUTO_REJECTED_QUALIFICATION`/`AUTO_REJECTED_RESOURCE_UNAVAILABLE`/`AUTO_REJECTED_BOOKING_RULES`/`AUTO_REJECTED_CONFLICT`) with the reason in `decision_reason`. The server processes this on the next access, through `admin/process-due/`, or scheduled command `manage.py process_due`; the frontend only refreshes.
+- **One shared rule set**: creation, manual approval, automatic processing, waitlist promotion, and rescheduling use the same backend rule checks for consistent results.
+- Rescheduling (Manager only): change date, time, and duration of an approved future booking (subject to latest date and qualification, but not minimum advance period), applying immediately. For slot selection pass `exclude_booking_id=<booking being changed>`, `for_zid=<booking holder>`, and `urgent=true`; the original time appears selectable.
+- Manager sets a per-resource review period through `PATCH admin/resources/{id}/booking-policy/` with `{"pending_hold_minutes":1440}` (1–20,160 minutes).
 
-**房间／设备状态**：`PATCH admin/resources/{id}/status/`（仅 Manager），请求 `{"status":"MAINTENANCE","reason":"Fume hood repair"}`；状态为 `AVAILABLE`／`MAINTENANCE`／`CLOSED`，后两者必须填原因。
-- 资源列表和详情带 `status`、`status_reason`，维修／关闭的资源仍然显示，前端应标出“维修中／已关闭”和原因。
-- 维修／关闭时：新申请返回 409 `RESOURCE_UNAVAILABLE`（`details.resource_status`、`status_reason`），时段查询所有时段为 `RESOURCE_UNAVAILABLE`、`can_request=false`；不批准、不递补。**已有预约保留**，响应的 `affected_bookings` 列出仍需处理的未来预约，Manager 可逐个用 `POST bookings/{id}/cancel/` 取消（`reason_code=CANCELLED_BY_STAFF`）。改回 `AVAILABLE` 后候补自动递补。
+**Room/equipment status**: `PATCH admin/resources/{id}/status/` (Manager only) with `{"status":"MAINTENANCE","reason":"Fume hood repair"}`. Status is `AVAILABLE`/`MAINTENANCE`/`CLOSED`; the latter two require a reason.
+- Resource lists/details include `status` and `status_reason`. Maintenance/closed resources remain visible; the frontend should mark “under maintenance / closed” and the reason.
+- During maintenance/closure: new requests return 409 `RESOURCE_UNAVAILABLE` (`details.resource_status`, `status_reason`); every slot query result is `RESOURCE_UNAVAILABLE` with `can_request=false`; no approval or promotion. **Existing bookings remain**. Response `affected_bookings` lists future bookings still requiring action; Manager can cancel each through `POST bookings/{id}/cancel/` (`reason_code=CANCELLED_BY_STAFF`). Returning to `AVAILABLE` automatically promotes the waitlist.
 
-**所有人的预订**：`GET admin/bookings/` 支持筛选 `status`（单个、逗号分隔多个或 `ALL`）、`resource_id`、`student_id`、`since`、`until`（带时区的时间，返回与该时段重叠的预约），按开始时间排序；每项带 `student`（`id`、`zid`、`display_name`、`university_email`）、`resource_name`、`resource_kind`。不带参数时返回人工审批队列。`GET admin/bookings/export/`（仅 Manager）用相同筛选导出 CSV（默认 `ALL`，UTF-8 带 BOM，可直接用 Excel 打开）；“打印”可由前端对列表页调用浏览器打印。
+**Everyone's bookings**: `GET admin/bookings/` supports filters `status` (single, comma-separated multiple, or `ALL`), `resource_id`, `student_id`, `since`, and `until` (timezone-aware; returns bookings overlapping that interval), sorted by start time. Each item includes `student` (`id`, `zid`, `display_name`, `university_email`), `resource_name`, and `resource_kind`. Without parameters it returns the manual review queue. `GET admin/bookings/export/` (Manager only) exports CSV with the same filters (default `ALL`, UTF-8 with BOM for direct Excel opening). “Print” can invoke browser print on the frontend list page.
 
-**Add staff**（人员管理页右上角按钮）：见上文“人员与角色管理”。删除人员请用停用（`PATCH active=false`），以保留预约和审计历史。
+**Add staff** (top-right button on People management): see “People and Role Management” above. To remove a person, deactivate with `PATCH active=false` to preserve booking and audit history.
 
-## 状态与界面文字
+## Status and UI Copy
 
-| 资格状态 | 显示含义 | 可以提交该资源预约？ |
+| Qualification status | Display meaning | Can request this resource? |
 | --- | --- | --- |
-| 无提交记录 | 请先提交 induction 资料 | 否 |
-| `PENDING` | 资料等待管理员审核 | 否，审核通过后才能申请 |
-| 有效 `VERIFIED` | 已具备该资源资格 | 是 |
-| `REJECTED` 或已过期 | 资料被拒绝／资格已过期，请重新提交 | 否 |
+| No submission | Submit induction evidence first | No |
+| `PENDING` | Evidence awaiting staff review | No; request only after approval |
+| Valid `VERIFIED` | Qualified for this resource | Yes |
+| `REJECTED` or expired | Evidence rejected / qualification expired; submit again | No |
 
-最新提交决定当前资格。`status` 是资料审核状态，额外的 `effective_status` 表示当前有效性，界面应结合该字段显示过期情况。有效期需要覆盖预约结束时间；在当前时刻有效，不一定覆盖用户选择的预约。已有 PENDING 提交或仍有效的 VERIFIED 提交时，不能重复上传相同要求的资料；拒绝或过期后可重新提交。
+The latest submission determines current qualification. `status` is the evidence-review status; additional `effective_status` represents current validity and should be used to show expiry. Validity must cover booking end; being valid now does not guarantee coverage of the selected booking. A user cannot upload duplicate evidence for the same requirement while a PENDING submission or still-valid VERIFIED submission exists. They may resubmit after rejection or expiry.
 
-**有效期**：审核通过时后端自动设定 `valid_until = 审核时间 + QUALIFICATION_VALIDITY_DAYS`，默认 120 天（约一个学期）。审核请求不接受 `valid_until`（带上返回 400），审核页只显示响应里的 `valid_until`；学生端可显示“资格有效至 …”，并提示超过该时间的预约无法提交。资格过期前不能提前续期，过期后重新上传。
+**Validity**: on approval the backend automatically sets `valid_until = review time + QUALIFICATION_VALIDITY_DAYS`, default 120 days (about one term). Review requests do not accept `valid_until` (sending it returns 400); the review page only displays the response value. Student UI may show “Qualification valid until …” and explain that later bookings cannot be submitted. Early renewal is unavailable; upload again after expiry.
 
-| 预约状态 | 建议显示 | 是否占时段 |
+| Booking status | Suggested display | Blocks time? |
 | --- | --- | --- |
-| `PENDING_APPROVAL` | 等待管理员审批，显示审批截止时间 `review_due_at`，并说明超时后系统按规则自动处理 | 审批期内占位（`hold_active=true`） |
-| `WAITLISTED` | 候补中，显示“候补第 `waitlist_position` 位” | 否 |
-| `APPROVED` | 预约已批准 | 是 |
-| `REJECTED` | 预约被拒绝 | 否 |
-| `CANCELLED` | 预约已取消 | 否 |
-| `EXPIRED` | 申请已过期 | 否 |
+| `PENDING_APPROVAL` | Awaiting staff review; show `review_due_at` and explain that the system applies the rules automatically after timeout | Holds during review (`hold_active=true`) |
+| `WAITLISTED` | Waitlisted; show “Position `waitlist_position`” | No |
+| `APPROVED` | Booking approved | Yes |
+| `REJECTED` | Booking rejected | No |
+| `CANCELLED` | Booking cancelled | No |
+| `EXPIRED` | Request expired | No |
 
-所有预约响应都带 `hold_until`（可空截止时间）、`hold_active`（当前占位是否有效）和 `blocks_slot`（当前是否阻挡重叠预约）。`APPROVED` 的 `blocks_slot=true`，即使 `hold_active=false`。不要只用非空 `hold_until` 判断占用：该值保留为历史，取消、拒绝或批准后临时占位不再有效。`WAITING_QUALIFICATION` 只出现在早期数据中，现在的流程不会产生。
+Every booking response includes `hold_until` (nullable deadline), `hold_active` (whether the hold is currently active), and `blocks_slot` (whether it currently blocks overlap). `APPROVED` has `blocks_slot=true` even when `hold_active=false`. Do not infer blocking from non-null `hold_until` alone: the value is retained for history, while the temporary hold ends after cancellation, rejection, or approval. `WAITING_QUALIFICATION` appears only in early data and is not produced by the current flow.
 
-### 先到先得与等待名单
+### First-In, First-Out and Waitlist
 
-同一资源、时间重叠的申请严格按提交顺序处理：
+Overlapping requests for the same resource are processed strictly in submission order:
 
-- **时段空着**（没有已批准预约，也没有别人的待审批申请）：新申请成为该时段的待审批申请并占位。
-- **时段被占**：新申请进入 `WAITLISTED`（`reason_code` 为 `TIME_CONFLICT` 或 `TEMPORARY_HOLD_CONFLICT`），不占时段，响应带 `waitlist_position`（重叠候补中的第几位）。管理员不能直接批准候补（`REQUEST_WAITLISTED`），但可以拒绝。
-- **递补**：时段一空出来（取消、被拒、过期、改期、资源重新开放），后端按提交顺序取下一位放得下的候补：仍符合规则 → 转为新的 `PENDING_APPROVAL`（`reason_code=PROMOTED_FROM_WAITLIST`，重新计算审批截止时间），由 Admin 审批或超时自动处理；不符合 → `REJECTED`，`reason_code` 为对应的错误码（如 `QUALIFICATION_REQUIRED`、`ACCOUNT_INACTIVE`）。时间部分重叠时，先检查提交更早的候补，放得下就先给它。
-- 前一位获批后，候补保持 `WAITLISTED` 作为后备；若获批的人之后取消，或被 Admin／Manager 取消，下一位递补。候补到预约开始时间仍未轮到则 `EXPIRED`。
-- 递补不会主动通知，学生需要刷新“我的预约”或 dashboard 才能看到状态变化，前端可轮询。
+- **Time is free** (no approved booking and no other pending request): the new request becomes pending approval and holds the time.
+- **Time is occupied**: the new request becomes `WAITLISTED` (`reason_code` is `TIME_CONFLICT` or `TEMPORARY_HOLD_CONFLICT`), does not hold time, and includes `waitlist_position` among overlapping waitlisted requests. Staff cannot directly approve a waitlisted request (`REQUEST_WAITLISTED`) but may reject it.
+- **Promotion**: when time becomes free (cancellation, rejection, expiry, reschedule, or resource reopening), the backend takes the earliest submitted waitlisted request that fits. If it still satisfies rules → new `PENDING_APPROVAL` with `reason_code=PROMOTED_FROM_WAITLIST` and a recalculated review deadline, for Admin review or automatic timeout processing. Otherwise → `REJECTED` with the relevant error code such as `QUALIFICATION_REQUIRED` or `ACCOUNT_INACTIVE`. For partial overlaps, earlier submissions are checked first and receive the time if they fit.
+- After the earlier request is approved, later requests remain `WAITLISTED` as backups. If the approved booking is later cancelled by the holder or Admin/Manager, the next request is promoted. A waitlisted request still unpromoted at booking start becomes `EXPIRED`.
+- Promotion does not proactively notify. Students must refresh My bookings or dashboard to see changes; the frontend may poll.
 
-**限制**：
-- **预约窗口**：预约开始日期（资源当地日期）必须在“今天 + 7 天”到“今天 + 28 天”之间（默认值，来自后端可配置规则 `RulesProvider`，见 backend/README“可配置规则”），即至少提前一周、最多提前四周。上限适用于所有角色、代他人预约以及员工重复预约的每个实际日期。例：周六 10/10 最早能约下周六 10/17，最晚 11/7。太近返回 400 `BOOKING_TOO_SOON`，太远返回 400 `BOOKING_TOO_FAR_AHEAD`；两者的 `details` 都有 `earliest_date`、`latest_date`、`min_advance_days`、`max_advance_days`。预约人申请改期同样受这个窗口限制；Manager 直接改期可跳过最短提前期，但仍受最晚日期限制；已提交的申请不受影响，日期临近后照常审核和递补。
-  - 日期选择器：用时段查询响应里的 `earliest_date`／`latest_date` 设置 `<input type="date" min max>`，不要在前端写死天数。
-  - 因为至少提前一周，默认 24 小时审批期限总会早于预约开始；只有 Manager 把审批期限设得比提前天数还长时，期限才会被截到预约开始时间。
+**Limits**:
+- **Booking window**: booking start date in the resource's local date must be between “today + 7 days” and “today + 28 days” (defaults from configurable backend `RulesProvider`; see “Configurable Rules” in backend/README), meaning at least one week and at most four weeks ahead. The maximum applies to all roles, proxy bookings, and every actual date in a staff recurring series. Example: on Saturday 10/10, earliest is Saturday 10/17 and latest is 11/7. Too near returns 400 `BOOKING_TOO_SOON`; too far returns 400 `BOOKING_TOO_FAR_AHEAD`. Both `details` contain `earliest_date`, `latest_date`, `min_advance_days`, and `max_advance_days`. Booking-holder time-change requests follow the same window. A direct Manager reschedule skips the minimum but still obeys the latest date. Existing requests are unaffected and continue through review and promotion as the date approaches.
+  - Date picker: set `<input type="date" min max>` from `earliest_date`/`latest_date` in the availability response; do not hard-code day counts in the frontend.
+  - Because the minimum is one week, the default 24-hour review deadline always precedes booking start. It is capped at booking start only when a Manager configures a review period longer than the advance period.
 
-`TEMPORARILY_HELD` 时段可显示为“有人申请，审核中”，并显示 `hold_until`；学生仍可提交，提交后会进入候补。刷新和幂等重试不会延长占位。
+A `TEMPORARILY_HELD` slot may display “Another request is under review” and `hold_until`. A student may still submit and will join the waitlist. Refresh and idempotent replay do not extend the hold.
 
-示例（默认 24 小时）：周一 10:00 A（资格有效）申请下周一 10–12 点，进入待审批，占位到周二 10:00 → 周一 11:00 B 申请同一时段，进候补第 1 位 → Admin 若在周二 10:00 前拒绝 A，B 立即转为待审批，重新计时 24 小时；若无人处理，周二 10:00 A 自动获批，B 留在候补作为后备 → 之后 A 取消或被 Manager 取消，B 递补为待审批。
+Example (default 24 hours): Monday 10:00, qualified A requests next Monday 10:00–12:00, becomes pending and holds until Tuesday 10:00 → Monday 11:00, B requests the same time and becomes waitlist position 1 → if Admin rejects A before Tuesday 10:00, B immediately becomes pending with a new 24-hour period; if nobody acts, A auto-approves Tuesday 10:00 and B remains waitlisted as backup → if A later cancels or is cancelled by Manager, B is promoted to pending.
 
-**资料被拒时**（例如资格过期后重新上传的资料被拒）：后端会自动拒绝该学生对“要求这项资格的资源”的所有未决预约（`PENDING_APPROVAL` 和 `WAITLISTED`），并把空出的时段交给候补，状态变为 `REJECTED`，`reason_code` 为 `QUALIFICATION_REJECTED`，`decision_reason` 为资料的拒绝原因，时段立即释放。审核响应的 `updated_bookings` 会包含这些预约。学生端应显示：资料被拒及原因（资格的 `rejection_reason`）→ 相关预约已被拒 → 引导学生重新上传资料，通过或重新提交后再预约。
+**When evidence is rejected** (for example, resubmitted after qualification expiry): the backend automatically rejects all undecided bookings (`PENDING_APPROVAL` and `WAITLISTED`) by that student for resources requiring this qualification and promotes waitlisted requests into freed time. Status becomes `REJECTED`, `reason_code=QUALIFICATION_REJECTED`, `decision_reason` is the evidence rejection reason, and time is released immediately. Review response `updated_bookings` includes these bookings. Student UI should show: evidence rejected and reason (`rejection_reason`) → related bookings rejected → guide the student to upload again and rebook after approval or resubmission.
 
-审批截止时间不会晚于预约开始；仍未获批的申请到开始时间后为 `EXPIRED`。
+The review deadline never falls after booking start. A request still unapproved after start becomes `EXPIRED`.
 
-## 接口速查
+## API Quick Reference
 
-下面路径均以 `/api/v1/` 开头。除健康、认证配置、登录、注册和 staff 激活外，需要 Bearer token。列表统一返回 `{ "count": 0, "results": [] }`。
+All paths below start with `/api/v1/`. A Bearer token is required except for health, authentication configuration, sign-in, registration, and staff activation. List endpoints consistently return `{ "count": 0, "results": [] }`.
 
-| 方法 | 路径 | 作用 |
+| Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `health/` | 服务状态 |
-| GET | `auth/config/` | 当前认证配置 |
-| POST | `auth/demo-register/` | 本地创建学生账号：`zid`、`display_name`、`university_email` |
-| POST | `auth/demo-login/` | 学生的模拟大学登录：`zid`（staff 会被拒绝） |
-| POST | `auth/staff-sign-in/` | Admin／Manager 登录：`zid`、`password` |
-| POST | `auth/staff-activate/` | staff 首次激活：`zid`、`invite_code`、`password` |
-| GET | `auth/me/` | 当前用户 |
-| GET | `resources/?kind=ROOM&q=lab&category=` | 筛选资源；`kind` 也可为 `EQUIPMENT`；`category` 为设备类别 |
-| GET | `resources/day-overview/?date=YYYY-MM-DD&duration_minutes=60` | 预约页"Find a free time"：所有符合筛选的资源当天的空闲情况（见下文） |
-| GET | `resources/{id}/` | 资源详情 |
-| GET | `resources/{id}/availability/?date=YYYY-MM-DD&duration_minutes=60` | 可用性及申请资格；员工可加 `for_zid`，紧急申请加 `urgent=true` |
-| GET | `people/lookup/?zid=` | 仅员工：代预约前确认对方账号 |
-| GET | `qualification-requirements/` | Induction 要求列表 |
-| GET / POST | `qualifications/` | 我的提交／上传资料 |
-| GET | `qualifications/{id}/` | 资料提交详情 |
-| GET | `qualifications/{id}/file/` | 带权限的附件下载 |
-| GET / POST | `bookings/` | 我的预约列表（员工还包括替别人建的）／创建预约（可带 `on_behalf_of_zid`、`urgent`、`urgent_reason`） |
-| POST | `bookings/{id}/change/` | 1.16.0：预约人申请把自己已批准的预约改到新时间（见下文“申请改期”） |
-| POST | `bookings/{id}/extend/` | 本人申请延长进行中的已批准预约（`end`，1.27.0 起等 Manager 批准）；Manager 调用立即生效 |
-| POST | `bookings/{id}/extend/review/` | 1.27.0，仅 Manager：批准或拒绝延长申请 `decision`、`reason` |
-| GET / PATCH | `site/contact/` | 1.16.0：实验室联系方式；所有人可读，Manager 修改 |
-| POST | `admin/qualification-requirements/` | 1.16.0：Manager 新建 induction |
-| GET | `admin/overview/` | 1.16.0：员工首页 Today 的数字和清单 |
-| GET | `bookings/{id}/` | 预约详情 |
-| POST | `bookings/{id}/cancel/` | 取消预约 |
-| POST | `bookings/{id}/reschedule/` | 仅 Manager：改期已批准且尚未开始的预约：`start`、`end` |
-| GET | `dashboard/` | 我的预约、资料与数量；`week_hours` 是本周（悉尼时间周一到周日）已约小时数 `used_hours` 和每周上限 `limit_hours`，额外时数不算（1.23.0） |
-| GET | `admin/qualifications/?status=PENDING` | 管理员资格队列（`PENDING`／`VERIFIED`／`REJECTED`）；每条带 `student`（`id`、`zid`、`display_name`、`university_email`），审核页直接显示姓名和 zID |
-| POST | `admin/qualifications/{id}/review/` | `decision: VERIFIED\|REJECTED`，可带 `reason`；不接受 `valid_until`，有效期由后端设定 |
-| GET | `admin/bookings/?status=PENDING_APPROVAL` | 待审批队列（默认）；`status=WAITLISTED` 查看候补；`status=ALL&resource_id=&student_id=&q=&since=&until=` 查看所有人的预约（带学生和资源名）；`q` 是 zID 或姓名的一部分（预约人或创建人，不分大小写） |
-| GET | `admin/bookings/export/?status=ALL` | Admin／Manager：按相同筛选（含 `q`）导出 CSV，最后两列是 Weekly series 和 Attendance |
-| POST | `admin/bookings/{id}/review/` | `decision: APPROVED\|REJECTED`，可带 `reason`；候补只能拒绝，不能批准 |
-| GET | `admin/users/?role=&active=&q=` | 仅 Manager：人员列表 |
-| POST | `admin/users/staff/` | 仅 Manager：Add staff，`zid`、`display_name`、`university_email`、`role`（`ADMIN`／`MANAGER`）；响应带 `invite_code` |
-| POST | `admin/users/{id}/reset-access/` | 仅 Manager：重置员工登录，生成新邀请码 |
-| POST | `admin/users/managers/` | 仅 Manager：兼容接口，等同于 Add staff 选 Manager |
-| PATCH | `admin/users/{id}/` | 仅 Manager：`{"active":false}` 停用／`{"active":true}` 恢复；角色不能修改 |
-| PATCH | `admin/qualification-requirements/{id}/` | 仅 Manager：`{"prerequisite_ids":[...]}` 设置前置 induction |
-| GET | `admin/audit/?resource_id=&student_id=&action=&since=&until=&limit=100&offset=0` | Admin／Manager 查看审计记录（申请、审批、改期、取消等），最新在前 |
-| POST | `admin/process-due/` | 立即处理已到审批截止时间（自动批准或拒绝）／开始时间的请求 |
-| GET / PATCH | `admin/resources/{id}/booking-policy/` | 仅 Manager：读取和修改审批期限 `pending_hold_minutes` |
-| PATCH | `admin/resources/{id}/status/` | 仅 Manager：`AVAILABLE`／`MAINTENANCE`／`CLOSED` + `reason` |
-| GET | `admin/outlook/` | Admin／Manager：Outlook 配置、统计和每个预约的同步／检查状态（不调用微软） |
-| POST | `admin/outlook/check/` | 测试微软登录和日历权限，`{}` |
-| POST | `admin/outlook/process/` | 处理等待中的日历更新，`{"limit":1}`（最多 5） |
-| POST | `admin/bookings/{id}/outlook-retry/` | 立即重试失败的日历更新，`{}` |
-| POST | `bookings/{id}/check-in/` | 本人确认到场（I'm here），`{}` |
-| POST | `bookings/series/preview/` | 员工：预览重复预约的每个日期 |
-| POST | `bookings/series/` | 员工：创建重复预约（直接批准），`skip_dates` 列出要跳过的日期 |
-| GET | `bookings/series/{id}/` | 重复预约及其每次预约（员工或受益人） |
-| POST | `bookings/series/{id}/cancel/` | 员工：取消整组剩下的日期 |
-| GET | `calendar/link/` | 我的日历订阅地址（首次调用时生成） |
-| POST | `calendar/link/reset/` | 重新生成订阅地址，旧地址立即失效 |
-| GET | `calendar/{token}.ics` | 订阅内容（iCalendar），不需要登录 |
-| GET | `notifications/?unread=&limit=50` | 我的通知，最新在前，带 `unread_count` |
-| POST | `notifications/{id}/read/` | 标为已读 |
-| POST | `notifications/read-all/` | 全部标为已读 |
-| GET | `notifications/preferences/` | 我的五类站内／邮件开关及网站邮件能力；见 1.19.0 |
-| PUT | `notifications/preferences/` | 保存开关：`{"preferences": {"bookings": true, "reminders": false}}`，未知类别返回 400 |
-| GET / POST | `admin/resources/` | 仅 Manager：所有资源（含已下架）／新增房间或设备 |
-| PATCH | `admin/resources/{id}/` | 仅 Manager：修改资源（只发要改的字段），返回 `resource` 和 `bookings_outside_rules` |
-| POST | `admin/resources/{id}/archive/`、`…/restore/` | 仅 Manager：下架／恢复，`{}` |
-| GET | `admin/reports/usage/?first_date=&last_date=` | 仅 Manager（1.26.0）：使用情况报表 |
-| GET / PATCH | `admin/resources/{id}/internal/` | 仅 Manager（1.26.0）：设备的负责人、UNSW 资产编号、来源、规格 |
-| POST | `auth/change-password/` | Admin／Manager：修改自己的密码 `current_password`、`new_password` |
+| GET | `health/` | Service status |
+| GET | `auth/config/` | Current authentication configuration |
+| POST | `auth/demo-register/` | Create a local student account: `zid`, `display_name`, `university_email` |
+| POST | `auth/demo-login/` | Simulated university sign-in for students: `zid` (staff are rejected) |
+| POST | `auth/staff-sign-in/` | Admin/Manager sign-in: `zid`, `password` |
+| POST | `auth/staff-activate/` | First-time staff activation: `zid`, `invite_code`, `password` |
+| GET | `auth/me/` | Current user |
+| GET | `resources/?kind=ROOM&q=lab&category=` | Filter resources; `kind` may also be `EQUIPMENT`; `category` is the equipment category |
+| GET | `resources/day-overview/?date=YYYY-MM-DD&duration_minutes=60` | Booking page "Find a free time": availability for all matching resources on that day (see below) |
+| GET | `resources/{id}/` | Resource details |
+| GET | `resources/{id}/availability/?date=YYYY-MM-DD&duration_minutes=60` | Availability and request eligibility; staff may add `for_zid`, and urgent requests add `urgent=true` |
+| GET | `people/lookup/?zid=` | Staff only: confirm the other person's account before booking on their behalf |
+| GET | `qualification-requirements/` | List of induction requirements |
+| GET / POST | `qualifications/` | My submissions/upload evidence |
+| GET | `qualifications/{id}/` | Evidence-submission details |
+| GET | `qualifications/{id}/file/` | Permission-protected attachment download |
+| GET / POST | `bookings/` | My booking list (staff also see bookings they created for others)/create a booking (may include `on_behalf_of_zid`, `urgent`, `urgent_reason`) |
+| POST | `bookings/{id}/change/` | 1.16.0: the booking holder requests a new time for their approved booking (see "Request a Time Change" below) |
+| POST | `bookings/{id}/extend/` | The holder requests an extension to an approved booking in progress (`end`; requires Manager approval from 1.27.0); a Manager call takes effect immediately |
+| POST | `bookings/{id}/extend/review/` | 1.27.0, Manager only: approve or reject an extension request using `decision`, `reason` |
+| GET / PATCH | `site/contact/` | 1.16.0: laboratory contact details; everyone can read, Manager can edit |
+| POST | `admin/qualification-requirements/` | 1.16.0: Manager creates an induction |
+| GET | `admin/overview/` | 1.16.0: counts and lists for the staff Today page |
+| GET | `bookings/{id}/` | Booking details |
+| POST | `bookings/{id}/cancel/` | Cancel a booking |
+| POST | `bookings/{id}/reschedule/` | Manager only: reschedule an approved booking that has not started: `start`, `end` |
+| GET | `dashboard/` | My bookings, evidence, and counts; `week_hours` contains the current week's booked `used_hours` and weekly `limit_hours` (Monday to Sunday in Sydney time), excluding additional hours (1.23.0) |
+| GET | `admin/qualifications/?status=PENDING` | Administrator qualification queue (`PENDING`/`VERIFIED`/`REJECTED`); each item includes `student` (`id`, `zid`, `display_name`, `university_email`), so the review page can show the name and zID directly |
+| POST | `admin/qualifications/{id}/review/` | `decision: VERIFIED\|REJECTED`, optionally with `reason`; does not accept `valid_until`, which is set by the backend |
+| GET | `admin/bookings/?status=PENDING_APPROVAL` | Pending-review queue by default; use `status=WAITLISTED` for the waitlist; use `status=ALL&resource_id=&student_id=&q=&since=&until=` for everyone's bookings (with student and resource names); `q` is a case-insensitive part of the holder's or creator's zID or name |
+| GET | `admin/bookings/export/?status=ALL` | Admin/Manager: export CSV using the same filters (including `q`); the final two columns are Weekly series and Attendance |
+| POST | `admin/bookings/{id}/review/` | `decision: APPROVED\|REJECTED`, optionally with `reason`; waitlisted requests can be rejected but not approved |
+| GET | `admin/users/?role=&active=&q=` | Manager only: people list |
+| POST | `admin/users/staff/` | Manager only: Add staff with `zid`, `display_name`, `university_email`, and `role` (`ADMIN`/`MANAGER`); response includes `invite_code` |
+| POST | `admin/users/{id}/reset-access/` | Manager only: reset staff sign-in and generate a new invite code |
+| POST | `admin/users/managers/` | Manager only: compatibility endpoint equivalent to selecting Manager in Add staff |
+| PATCH | `admin/users/{id}/` | Manager only: `{"active":false}` deactivates/`{"active":true}` restores; role cannot be changed |
+| PATCH | `admin/qualification-requirements/{id}/` | Manager only: set prerequisite inductions with `{"prerequisite_ids":[...]}` |
+| GET | `admin/audit/?resource_id=&student_id=&action=&since=&until=&limit=100&offset=0` | Admin/Manager view audit records (requests, reviews, rescheduling, cancellation, and so on), newest first |
+| POST | `admin/process-due/` | Immediately process requests whose review deadline or start time has arrived (automatic approval or rejection) |
+| GET / PATCH | `admin/resources/{id}/booking-policy/` | Manager only: read and modify the review period `pending_hold_minutes` |
+| PATCH | `admin/resources/{id}/status/` | Manager only: `AVAILABLE`/`MAINTENANCE`/`CLOSED` + `reason` |
+| GET | `admin/outlook/` | Admin/Manager: Outlook configuration, statistics, and per-booking sync/check status (does not call Microsoft) |
+| POST | `admin/outlook/check/` | Test Microsoft sign-in and calendar permission, `{}` |
+| POST | `admin/outlook/process/` | Process waiting calendar updates, `{"limit":1}` (maximum 5) |
+| POST | `admin/bookings/{id}/outlook-retry/` | Immediately retry a failed calendar update, `{}` |
+| POST | `bookings/{id}/check-in/` | Booking holder confirms attendance (I'm here), `{}` |
+| POST | `bookings/series/preview/` | Staff: preview every date in a recurring booking |
+| POST | `bookings/series/` | Staff: create recurring bookings (approved directly); `skip_dates` lists dates to skip |
+| GET | `bookings/series/{id}/` | Recurring series and its individual bookings (staff or beneficiary) |
+| POST | `bookings/series/{id}/cancel/` | Staff: cancel all remaining dates in a series |
+| GET | `calendar/link/` | My calendar subscription address (generated on first call) |
+| POST | `calendar/link/reset/` | Generate a new subscription address and immediately invalidate the old one |
+| GET | `calendar/{token}.ics` | Subscription content (iCalendar), no sign-in required |
+| GET | `notifications/?unread=&limit=50` | My notifications, newest first, with `unread_count` |
+| POST | `notifications/{id}/read/` | Mark as read |
+| POST | `notifications/read-all/` | Mark all as read |
+| GET | `notifications/preferences/` | My five in-app/email switches and the site's email capability; see 1.19.0 |
+| PUT | `notifications/preferences/` | Save switches: `{"preferences": {"bookings": true, "reminders": false}}`; unknown categories return 400 |
+| GET / POST | `admin/resources/` | Manager only: all resources (including archived ones)/create a room or equipment item |
+| PATCH | `admin/resources/{id}/` | Manager only: edit a resource (send only changed fields); returns `resource` and `bookings_outside_rules` |
+| POST | `admin/resources/{id}/archive/`, `…/restore/` | Manager only: archive/restore, `{}` |
+| GET | `admin/reports/usage/?first_date=&last_date=` | Manager only (1.26.0): usage report |
+| GET / PATCH | `admin/resources/{id}/internal/` | Manager only (1.26.0): equipment custodian, UNSW asset number, source, and specifications |
+| POST | `auth/change-password/` | Admin/Manager: change their own password using `current_password`, `new_password` |
 
-`POST bookings/` 可带 `Idempotency-Key`，同一用户重试同一请求时复用同一 key；提交不同预约时生成新 key。key 最多 128 个字符，仅可使用字母、数字、点、下划线、冒号、连字符。禁止只依赖禁用按钮防止重复请求。字段 `start`、`end` 表示区间 `[start,end)`。取消仅允许尚未开始的有效请求；重复取消已取消记录返回原记录。改期只允许 Manager 操作未来 `APPROVED` 预约；后端重新检查时间规则、资格有效期与冲突。成功后 `revision` 增加，并更新原 Outlook 事件。
+`POST bookings/` may include `Idempotency-Key`. Reuse the same key when the same user retries the same request; generate a new key for a different booking. A key may be at most 128 characters and may contain only letters, numbers, periods, underscores, colons, and hyphens. Do not rely only on disabling the button to prevent duplicate requests. The `start` and `end` fields represent the interval `[start,end)`. Cancellation is allowed only for active requests that have not started; repeating cancellation of an already cancelled record returns the original record. Only a Manager may reschedule a future `APPROVED` booking; the backend rechecks time rules, qualification validity, and conflicts. On success, `revision` increases and the original Outlook event is updated.
 
-时段查询默认时长为 30 分钟。普通预约按 30 分钟一个公平使用 slot 计算，最多选择 6 个 slots（3 小时）；资源本身可以设置更短的技术上限。资源和 availability 响应返回 `booking_slot_minutes`、`max_booking_slots`、`selection_step_minutes` 与 `effective_max_booking_minutes`，前端必须使用这些服务端值限制选择。同一预约不能跨当地日期。
+Slot queries default to 30 minutes. Ordinary bookings use 30-minute fair-use slots and may select at most six slots (three hours); the resource itself may define a shorter technical limit. Resource and availability responses return `booking_slot_minutes`, `max_booking_slots`, `selection_step_minutes`, and `effective_max_booking_minutes`; the frontend must use these server values to limit selection. A booking cannot cross a local calendar-day boundary.
 
-Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{"pending_hold_minutes":1440}`（字段名沿用数据库列名，含义是审批期限，单位分钟）；GET／PATCH 均返回 `{"resource_id":"<uuid>","pending_hold_minutes":1440}`。范围为整数 1–20160，默认 1440（24 小时）。期限到了仍无人处理时，普通预约按规则自动批准或拒绝，超长预约则过期释放时段。修改只影响之后进入待审批的申请；已有截止时间不变。资源详情包含 `pending_hold_minutes`，时段查询响应包含同值的 `review_window_minutes`。请求必须带 `pending_hold_minutes`，带 `auto_approve_max_minutes` 返回 400。
+The Manager rules page sends `PATCH admin/resources/{id}/booking-policy/` with `{"pending_hold_minutes":1440}` (the field name follows the database column and represents the review period in minutes). Both GET and PATCH return `{"resource_id":"<uuid>","pending_hold_minutes":1440}`. The value must be an integer from 1 to 20,160 and defaults to 1,440 (24 hours). If nobody acts before the deadline, an ordinary booking is automatically approved or rejected according to the rules, while a long booking expires and releases the time. A change affects only requests that enter pending review afterward; existing deadlines do not change. Resource details include `pending_hold_minutes`, and slot-query responses include the same value as `review_window_minutes`. The request must contain `pending_hold_minutes`; sending `auto_approve_max_minutes` returns 400.
 
-附件支持 PDF、PNG、JPEG，最大 5 MiB。后端检查大小、扩展名、MIME 和文件格式特征。资料中的 `file_url` 是受保护的 API 路径，下载仍需带 Authorization；前端可请求为 Blob 后显示／下载，不能假设 `<img src>` 或普通链接会自动附带 Bearer token。附件没有公开地址。
+Attachments support PDF, PNG, and JPEG and may be at most 5 MiB. The backend checks size, extension, MIME type, and file-format signatures. The `file_url` in evidence is a protected API path, and downloads still require Authorization. The frontend may request it as a Blob for display/download; it must not assume that `<img src>` or an ordinary link automatically includes the Bearer token. Attachments have no public address.
 
-## 错误和时间
+## Errors and Time
 
-错误统一为：
+Errors consistently use this format:
 
 ```json
 {
@@ -323,179 +328,179 @@ Manager 规则页发送 `PATCH admin/resources/{id}/booking-policy/`，请求 `{
 }
 ```
 
-前端依据 `error.code` 和 HTTP 状态处理，不依赖英文 message 的固定内容。`details` 可包含字段错误或冲突信息，用户提示不得泄露其他学生的资料。
+The frontend handles errors according to `error.code` and HTTP status rather than relying on fixed English message text. `details` may contain field errors or conflict information. User-facing messages must not disclose another student's information.
 
-| HTTP 状态 | 前端处理 |
+| HTTP status | Frontend handling |
 | --- | --- |
-| 400 | 展示字段、时间或文件校验错误 |
-| 401 | 登录失效，重新登录 |
-| 403 | 无权限或未满足提交资料门槛 |
-| 404 | 记录不存在／当前身份无法访问 |
-| 409 | 冲突、重复请求或当前状态无法执行；刷新数据 |
+| 400 | Show field, time, or file-validation errors |
+| 401 | Session expired; sign in again |
+| 403 | Insufficient permission or evidence-submission requirements are not met |
+| 404 | Record does not exist or is inaccessible to the current identity |
+| 409 | Conflict, duplicate request, or action invalid in the current state; refresh data |
 
-常见业务错误：
+Common business errors:
 
-| `error.code` | HTTP | 前端动作 |
+| `error.code` | HTTP | Frontend action |
 | --- | --- | --- |
-| `QUALIFICATION_REQUIRED` | 403 | 只有 induction 已审核通过且在有效期内才能提交；`details.qualification_status` 为 `PENDING` 时提示“资料审核中，通过后才能预约”，其他状态引导去上传 |
-| `QUALIFICATION_NOT_VERIFIED` | 409 | 管理员先处理资格，不能直接批准预约；`details.qualification_status` 说明原因（含 `PREREQUISITE_REQUIRED`） |
-| `ACCOUNT_INACTIVE` | 409 | 申请人账号已停用，不能批准，也不能代他预约 |
-| `PERSON_NOT_FOUND` | 404 | 代预约的 zID 不存在 |
-| `URGENT_REASON_REQUIRED` | 400 | 紧急申请要写原因 |
-| `URGENT_NOT_NEEDED` | 400 | 时间在正常预约窗口内，发普通申请 |
-| `URGENT_NEEDS_MANAGER` | 403 | 紧急申请只有 Manager 能决定 |
-| `BOOKING_CONFLICT` | 409 | 人工批准或紧急申请失败：时段已有获批预约（紧急申请时也包括待审批占位） |
-| `BOOKING_HOLD_CONFLICT` | 409 | 人工批准失败，提示时段仍临时占用；`details.hold_until` 为当前占位截止时间 |
-| `REQUEST_WAITLISTED` | 409 | 候补不能直接批准，会按顺序自动递补；管理员可以拒绝 |
-| `SELF_REVIEW_FORBIDDEN` | 403 | 不能审核自己的 induction 资料、给自己的或自己创建的预约申请，交给其他 Admin 或 Manager |
-| `RESOURCE_POLICY_NOT_CONFIGURED` | 409 | 资源没有配置所需 induction，暂不能预约；提示联系 Manager |
-| `RESOURCE_UNAVAILABLE` | 409 | 资源维修或关闭；显示 `details.status_reason`，暂停新预约 |
-| `USER_EXISTS` | 409 | Add staff 时 zID 已存在 |
-| `USE_STAFF_SIGN_IN` | 403 | staff 用了学生登录，引导去 staff 登录页 |
-| `STUDENT_USES_SSO` | 403／409 | 学生用了 staff 登录（或对学生重置 staff 登录），引导去大学登录 |
-| `INVALID_CREDENTIALS` | 401 | staff 登录 zID 或密码不对 |
-| `ACCOUNT_NOT_ACTIVATED` | 403 | staff 还没用邀请码激活 |
-| `INVALID_INVITE_CODE` | 400 | zID 或邀请码不对，找 Manager 要新码 |
-| `ACCOUNT_DEACTIVATED` | 403 | 账号已停用 |
-| `ROLE_CHANGE_NOT_ALLOWED` | 409 | 角色创建后固定，Student／Admin／Manager 不能互转 |
-| `PREREQUISITE_REQUIRED` | 409 | 先通过前置 induction（如 General）再提交／通过这一项；`details.prerequisite_id` |
-| `PREREQUISITE_CYCLE` | 409 | 前置设置会形成循环 |
-| `FORBIDDEN` | 403 | 学生代别人预约、非 Manager 改期，或 Admin 调用 Manager 接口 |
-| `BOOKING_TOO_SOON` | 400 | 需至少提前 7 天；`details.earliest_date` 为最早可约日期 |
-| `BOOKING_TOO_FAR_AHEAD` | 400 | 默认最多提前 28 天（4 周）；`details.latest_date` 为最晚可约日期 |
-| `QUALIFICATION_ALREADY_PENDING`／`QUALIFICATION_ALREADY_VERIFIED` | 409 | 保留当前资料，刷新资格状态 |
-| `IDEMPOTENCY_CONFLICT` | 409 | 同一 key 不能用于另一份请求；新操作生成新 key |
-| `DUPLICATE_BOOKING` | 409 | 当前学生已对同一资源提交重叠时段的有效申请；显示已有申请而不是再次加入候补 |
-| `REQUEST_NOT_REVIEWABLE`／`ALREADY_REVIEWED` | 409 | 队列状态已改变，刷新列表 |
-| `REQUEST_NOT_CANCELLABLE` | 409 | 预约已开始或请求已结束，刷新预约 |
-| `REQUEST_NOT_RESCHEDULABLE` | 409 | 只有未来且已批准的预约可以改期，刷新预约 |
-| `INVALID_TIME`／`INVALID_TIME_INCREMENT`／`INVALID_SLOT_COUNT`／`OUTSIDE_OPENING_HOURS`／`DURATION_LIMIT` | 400 | 根据资源与普通预约 slot 规则修正时间 |
-| `VALIDATION_ERROR` | 400 | 在对应字段展示 `details` 错误，包括附件格式／大小问题 |
-| `TOKEN_EXPIRED`／`INVALID_TOKEN` | 401 | 重新登录 |
-| `WEEKLY_LIMIT_REACHED` | 409 | 本周有效申请加上本次申请会超过 24 个半小时 slots；读取 `limit_slots`、`used_slots`、`requested_slots`、`remaining_slots`、`slot_minutes`、`week_start` |
-| `FUTURE_BOOKING_LIMIT_REACHED` | 409 | 这个人已有 8 个有效未来预约；读取 `limit`、`used`、`requested`、`remaining`，引导用户取消一个不再需要的预约 |
-| `RESOURCE_NAME_TAKEN` | 409 | 资源管理：另一个未下架的资源已经用了这个名称 |
-| `KIND_IS_FIXED` | 409 | 资源管理：房间和设备之间不能互改，新建一个再下架旧的 |
-| `RESOURCE_HAS_BOOKINGS`／`ROOM_HAS_EQUIPMENT` | 409 | 下架被拒：还有未来预约（`details.booking_count`）／房间里还有设备（`details.equipment`） |
-| `CHECK_IN_NOT_OPEN`／`CHECK_IN_CLOSED` | 409 | 还没到确认时间（`details.check_in_opens_at`）／已经过了 |
-| `SERIES_TOO_LONG`／`SERIES_EMPTY` | 400 | 重复预约超过 14 周／没有符合的日期 |
-| `SERIES_CONFLICT` | 409 | 有问题的日期没有放进 `skip_dates`；重新预览 |
+| `QUALIFICATION_REQUIRED` | 403 | Submission is allowed only when the induction has been verified and remains valid; when `details.qualification_status` is `PENDING`, show "Evidence is under review; you can book after approval"; otherwise direct the user to upload evidence |
+| `QUALIFICATION_NOT_VERIFIED` | 409 | An administrator must process the qualification first; the booking cannot be approved directly. `details.qualification_status` explains why (including `PREREQUISITE_REQUIRED`) |
+| `ACCOUNT_INACTIVE` | 409 | The applicant's account is inactive, so the request cannot be approved and staff cannot book for them |
+| `PERSON_NOT_FOUND` | 404 | The zID supplied for a proxy booking does not exist |
+| `URGENT_REASON_REQUIRED` | 400 | An urgent request requires a reason |
+| `URGENT_NOT_NEEDED` | 400 | The time is inside the ordinary booking window; submit an ordinary request |
+| `URGENT_NEEDS_MANAGER` | 403 | Only a Manager may decide an urgent request |
+| `BOOKING_CONFLICT` | 409 | Manual approval or urgent request failed because the time already has an approved booking (for urgent requests, this also includes a pending-review hold) |
+| `BOOKING_HOLD_CONFLICT` | 409 | Manual approval failed because the time is still temporarily held; `details.hold_until` is the current hold deadline |
+| `REQUEST_WAITLISTED` | 409 | A waitlisted request cannot be approved directly and will be promoted automatically in order; an administrator may reject it |
+| `SELF_REVIEW_FORBIDDEN` | 403 | A person cannot review their own induction evidence or a booking request for themselves or created by them; assign it to another Admin or Manager |
+| `RESOURCE_POLICY_NOT_CONFIGURED` | 409 | The resource has no required induction configured and cannot currently be booked; tell the user to contact a Manager |
+| `RESOURCE_UNAVAILABLE` | 409 | Resource is under maintenance or closed; show `details.status_reason` and pause new bookings |
+| `USER_EXISTS` | 409 | The zID already exists when using Add staff |
+| `USE_STAFF_SIGN_IN` | 403 | Staff used student sign-in; direct them to the staff sign-in page |
+| `STUDENT_USES_SSO` | 403/409 | A student used staff sign-in (or staff access reset was attempted for a student); direct them to university sign-in |
+| `INVALID_CREDENTIALS` | 401 | Staff sign-in zID or password is incorrect |
+| `ACCOUNT_NOT_ACTIVATED` | 403 | Staff have not activated the account with an invite code |
+| `INVALID_INVITE_CODE` | 400 | zID or invite code is incorrect; ask a Manager for a new code |
+| `ACCOUNT_DEACTIVATED` | 403 | Account is inactive |
+| `ROLE_CHANGE_NOT_ALLOWED` | 409 | A role is fixed after account creation; Student/Admin/Manager cannot be converted into one another |
+| `PREREQUISITE_REQUIRED` | 409 | Complete the prerequisite induction (such as General) before submitting or approving this one; see `details.prerequisite_id` |
+| `PREREQUISITE_CYCLE` | 409 | The prerequisite configuration would create a cycle |
+| `FORBIDDEN` | 403 | A student tried to book for someone else, a non-Manager tried to reschedule, or an Admin called a Manager endpoint |
+| `BOOKING_TOO_SOON` | 400 | Booking must be made at least seven days ahead; `details.earliest_date` is the earliest bookable date |
+| `BOOKING_TOO_FAR_AHEAD` | 400 | By default, booking is limited to 28 days (four weeks) ahead; `details.latest_date` is the latest bookable date |
+| `QUALIFICATION_ALREADY_PENDING`/`QUALIFICATION_ALREADY_VERIFIED` | 409 | Keep the current evidence and refresh qualification status |
+| `IDEMPOTENCY_CONFLICT` | 409 | The same key cannot be used for a different request; generate a new key for a new action |
+| `DUPLICATE_BOOKING` | 409 | The current student already has an active overlapping request for the same resource; show the existing request instead of adding another waitlist entry |
+| `REQUEST_NOT_REVIEWABLE`/`ALREADY_REVIEWED` | 409 | Queue state has changed; refresh the list |
+| `REQUEST_NOT_CANCELLABLE` | 409 | The booking has started or the request has ended; refresh the booking |
+| `REQUEST_NOT_RESCHEDULABLE` | 409 | Only a future approved booking may be rescheduled; refresh the booking |
+| `INVALID_TIME`/`INVALID_TIME_INCREMENT`/`INVALID_SLOT_COUNT`/`OUTSIDE_OPENING_HOURS`/`DURATION_LIMIT` | 400 | Correct the time according to the resource and ordinary-booking slot rules |
+| `VALIDATION_ERROR` | 400 | Display `details` errors beside the corresponding fields, including attachment format/size problems |
+| `TOKEN_EXPIRED`/`INVALID_TOKEN` | 401 | Sign in again |
+| `WEEKLY_LIMIT_REACHED` | 409 | Active requests in the week plus this request would exceed 24 half-hour slots; read `limit_slots`, `used_slots`, `requested_slots`, `remaining_slots`, `slot_minutes`, and `week_start` |
+| `FUTURE_BOOKING_LIMIT_REACHED` | 409 | The person already has eight active future bookings; read `limit`, `used`, `requested`, and `remaining`, then guide the user to cancel one they no longer need |
+| `RESOURCE_NAME_TAKEN` | 409 | Resource management: another unarchived resource already uses this name |
+| `KIND_IS_FIXED` | 409 | Resource management: a room cannot be changed into equipment or vice versa; create a new resource and archive the old one |
+| `RESOURCE_HAS_BOOKINGS`/`ROOM_HAS_EQUIPMENT` | 409 | Archiving rejected because future bookings remain (`details.booking_count`) or the room still contains equipment (`details.equipment`) |
+| `CHECK_IN_NOT_OPEN`/`CHECK_IN_CLOSED` | 409 | Check-in has not opened (`details.check_in_opens_at`) or has already closed |
+| `SERIES_TOO_LONG`/`SERIES_EMPTY` | 400 | Recurring-booking pattern exceeds 14 weeks/no dates match |
+| `SERIES_CONFLICT` | 409 | Problem dates were not included in `skip_dates`; preview again |
 
-学生提交冲突请求会得到 201 和 `WAITLISTED`；`BOOKING_CONFLICT` 是管理员试图批准仍冲突的请求时的错误。不要把“收到 201”或“等待管理员”显示成已获批准。
+A conflicting request submitted by a student returns 201 with `WAITLISTED`. `BOOKING_CONFLICT` is the error returned when an administrator tries to approve a request that still conflicts. Do not present "received 201" or "waiting for an administrator" as approval.
 
-API 输出时间为 ISO 8601 UTC `Z`。前端用 `Australia/Sydney` 显示，支持夏令时；不能硬编码全年 `+10:00`。availability 的 `date` 是资源时区日期，`slots` 的时间仍是 UTC。前端应标明本地时区。
+API output times use ISO 8601 UTC `Z`. The frontend displays them in `Australia/Sydney` with daylight-saving support; do not hard-code `+10:00` year-round. The availability `date` is a calendar date in the resource's timezone, while times in `slots` remain UTC. The frontend should label the local timezone.
 
-预约相关读取／操作会由服务器推进到期状态（审批期限到期后的自动决定、过期、候补递补），浏览器不需要自己计时。需要轮询或用户刷新才能更新屏幕；人工审批后的实时通知尚未实现。
+Booking-related reads and actions cause the server to advance due states (automatic decisions after review deadlines, expiry, and waitlist promotion), so the browser does not need its own timer. The screen updates only through polling or user refresh; real-time notification after manual review has not yet been implemented.
 
-## 与后续接入的边界
+## Boundary with Future Integrations
 
-前端只调用 API，不读取数据库，不直接连接 Outlook。数据库由后端的 `Repository` 适配器负责（内存或 PostgreSQL），以后接入学校 SSO 时由后端验证身份并映射用户。接入这些时，接口结构和状态保持不变。
+The frontend calls only the API. It does not read the database or connect directly to Outlook. The backend's `Repository` adapter handles the database (memory or PostgreSQL). When university SSO is integrated later, the backend will verify identity and map users. The interface structure and states remain unchanged when these integrations are added.
 
-演示身份选择仅在本地开发模式开启，不代表正式 SSO。正式前端不得保留任意 zID 登录或选择管理员身份的演示入口。内存模式的数据在后端重启后丢失，也不能跨多个后端进程共享；需要保留数据时用 PostgreSQL 模式。
+Demo identity selection is enabled only in local development mode and does not represent production SSO. A production frontend must not retain a demo entry point that signs in with an arbitrary zID or selects an administrator identity. In-memory data is lost when the backend restarts and cannot be shared across multiple backend processes; use PostgreSQL mode when data must persist.
 
-## 日历订阅链接
+## Calendar Subscription Link
 
-- `GET calendar/link/` 返回 `{ path, created_at }`。`path` 是相对地址（例如 `/api/v1/calendar/<随机码>.ics`），前端拼上 `window.location.origin` 得到完整地址，让用户复制。
-- 用户在 Outlook 里选“添加日历 → 从 Internet 订阅”，粘贴地址即可，不需要登录微软。Google 日历和苹果日历也能用。
-- 订阅内容是本人作为预约人的**已批准**预约（包括员工替他建的），从 60 天前结束的开始。每条预约 UID 固定（`<预约 ID>@smartlab`），改期是更新，取消后消失。
-- 地址里的随机码是唯一的钥匙：`POST calendar/link/reset/` 生成新地址，旧地址立即返回 404。页面上要提醒用户别把链接发给别人。
-- 更新频率由日历软件决定，可能要几个小时。
+- `GET calendar/link/` returns `{ path, created_at }`. `path` is relative (for example, `/api/v1/calendar/<random-code>.ics`). The frontend appends it to `window.location.origin` to create a full address for the user to copy.
+- In Outlook, the user selects "Add calendar → Subscribe from Internet" and pastes the address; no Microsoft sign-in is required. Google Calendar and Apple Calendar also support it.
+- The subscription contains **approved** bookings for which the user is the beneficiary (including bookings created for them by staff), starting with bookings that ended 60 days ago. Each booking has a stable UID (`<booking ID>@smartlab`); a reschedule is an update, and a cancelled booking disappears.
+- The random code in the address is the only key. `POST calendar/link/reset/` generates a new address and makes the old one return 404 immediately. The page should warn the user not to share the link.
+- Update frequency is controlled by the calendar application and may take several hours.
 
-## 站内通知
+## In-App Notifications
 
-- `GET notifications/` 返回 `{ count, unread_count, results }`，最新在前；`unread=true` 只看未读，`limit` 1–200（默认 50）。`unread_count` 是全部站内可见的未读数，不含只发邮件的记录（Sprint 3，1.19.0）。
-- 每条有 `kind`、`title`、`body`、`created_at`、`link`（站内页面，例如 `/bookings`、`/induction`、`/admin/bookings`）、`booking_id`、`read_at`。
-- 会发通知的事：
-  - 给预约人：`BOOKING_SUBMITTED`（自己提交的申请已收到，说明现在等审批还是在候补）、`BOOKING_APPROVED`、`BOOKING_REJECTED`（含系统自动决定、候补递补时不合格、资料被拒连带拒绝）、`BOOKING_PROMOTED`（候补转为待审批）、`BOOKING_RESCHEDULED`、`BOOKING_CANCELLED`（被员工取消）、`BOOKING_CREATED_FOR_YOU`、`SERIES_CREATED`（员工自己的重复预约）、`SERIES_CREATED_FOR_YOU`、`QUALIFICATION_VERIFIED`／`QUALIFICATION_REJECTED`、`NO_SHOW_RECORDED`，以及提醒：`BOOKING_REMINDER`（已批准的预约开始前 24 小时，提醒点 I'm here）、`INDUCTION_EXPIRING`（已通过的 induction 14 天内到期，链接到 `/induction?requirement=…`）、`BOOKING_EXPIRED`（候补或待审批的申请到开始时间还没轮到或没人决定）。每条提醒只发一次。
-  - 给 Manager：`URGENT_REQUEST`。
-  - 1.16.0 新增：`CHANGE_REQUESTED`／`CHANGE_APPROVED`／`CHANGE_REJECTED`（申请改期），`RESOURCE_OUT_OF_SERVICE`（你有预约或申请的资源进入维修或关闭，带 Manager 写的原因；每个预约一条）和 `RESOURCE_REOPENED`（重新开放）。这些也在默认的邮件类型里。
-- 普通新申请不通知管理员（看审批队列）；自己取消不通知。
-- 前端：顶部铃铛显示未读数，打开页面、切回页面和每 60 秒读一次。点一条就 `POST notifications/{id}/read/` 并跳到 `link`；“全部标为已读”用 `POST notifications/read-all/`。只跳站内路径。
-- 邮件：后端打开邮件渠道后（`EMAIL_ENABLED=true`），上面列出的预约结果、提醒和确认类通知也会发到预约人的大学邮箱，见 [email-setup.md](email-setup.md)。是否发邮件还取决于本人该类别的 `email` 偏好；邮件类型和站点配置仍然生效。独立渠道接口见下面 1.19.0。
+- `GET notifications/` returns `{ count, unread_count, results }`, newest first. `unread=true` returns only unread items, and `limit` is 1–200 (default 50). `unread_count` counts all unread in-app-visible records and excludes email-only records (Sprint 3, 1.19.0).
+- Each record contains `kind`, `title`, `body`, `created_at`, `link` (an in-app page such as `/bookings`, `/induction`, or `/admin/bookings`), `booking_id`, and `read_at`.
+- Events that generate notifications:
+  - For the booking holder: `BOOKING_SUBMITTED` (their request was received and is now pending or waitlisted), `BOOKING_APPROVED`, `BOOKING_REJECTED` (including automatic system decisions, ineligibility during waitlist promotion, and related rejection after evidence is rejected), `BOOKING_PROMOTED` (waitlist to pending review), `BOOKING_RESCHEDULED`, `BOOKING_CANCELLED` (cancelled by staff), `BOOKING_CREATED_FOR_YOU`, `SERIES_CREATED` (staff's own recurring series), `SERIES_CREATED_FOR_YOU`, `QUALIFICATION_VERIFIED`/`QUALIFICATION_REJECTED`, `NO_SHOW_RECORDED`, and reminders: `BOOKING_REMINDER` (24 hours before an approved booking starts, reminding the user to select I'm here), `INDUCTION_EXPIRING` (a verified induction expires within 14 days, linking to `/induction?requirement=…`), and `BOOKING_EXPIRED` (a waitlisted or pending request reaches its start without promotion or a decision). Each reminder is sent once.
+  - For a Manager: `URGENT_REQUEST`.
+  - Added in 1.16.0: `CHANGE_REQUESTED`/`CHANGE_APPROVED`/`CHANGE_REJECTED` (time-change request), `RESOURCE_OUT_OF_SERVICE` (a resource with one of the user's bookings or requests enters maintenance or closes, including the Manager's reason; one per booking), and `RESOURCE_REOPENED`. These are also among the default email types.
+- Ordinary new requests do not notify administrators, who use the review queue. A user's own cancellation does not notify them.
+- Frontend: the top-bar bell displays the unread count and loads on page open, on returning to the page, and every 60 seconds. Selecting an item calls `POST notifications/{id}/read/` and navigates to `link`; "Mark all as read" uses `POST notifications/read-all/`. Navigate only to in-app paths.
+- Email: after the backend email channel is enabled (`EMAIL_ENABLED=true`), the booking outcomes, reminders, and confirmation notifications listed above are also sent to the booking holder's university email. See [email-setup.md](email-setup.md). Email delivery also depends on the user's `email` preference for that category; email type and site configuration still apply. See 1.19.0 below for the independent-channel interface.
 
-## 到场确认
+## Attendance Confirmation
 
-- 预约响应新带：`attendance`（`CHECKED_IN`／`NO_SHOW`／`EXCUSED`／`NOT_TRACKED`／`null`）、`checked_in_at`、`check_in_open`、`check_in_opens_at`、`check_in_closes_at`。
-- `check_in_open=true` 且当前用户就是预约人（`student_id`）时，“我的预约”显示 **I'm here** 按钮，调用 `POST bookings/{id}/check-in/`（`{}`）。窗口默认是开始前 15 分钟到开始后 30 分钟（不超过结束时间）。别人点返回 404，太早 409 `CHECK_IN_NOT_OPEN`，太晚 409 `CHECK_IN_CLOSED`。
-- 窗口结束仍未确认，服务器记为 `NO_SHOW`；那段时间资源维修或关闭的记为 `EXCUSED`，不算缺席。
-- 缺席只记录并通知本人（`NO_SHOW_RECORDED`，提醒以后来不了要取消），没有处罚。1.25.0 删除了冻结：`auth/me/` 不再有 `no_show_count`、`frozen_until`、`booking_frozen`，时段查询不再有 `frozen_until`，解冻相关接口都已删除。旧数据里 `reason_code=ACCOUNT_FROZEN` 的已取消预约照常显示。
+- Booking responses now include `attendance` (`CHECKED_IN`/`NO_SHOW`/`EXCUSED`/`NOT_TRACKED`/`null`), `checked_in_at`, `check_in_open`, `check_in_opens_at`, and `check_in_closes_at`.
+- When `check_in_open=true` and the current user is the booking holder (`student_id`), My Bookings displays an **I'm here** button that calls `POST bookings/{id}/check-in/` (`{}`). By default, the window runs from 15 minutes before the start until 30 minutes after the start, without extending beyond the end. Another user receives 404; too early returns 409 `CHECK_IN_NOT_OPEN`, and too late returns 409 `CHECK_IN_CLOSED`.
+- If the user has not confirmed by the end of the window, the server records `NO_SHOW`. If the resource was under maintenance or closed during that time, it records `EXCUSED`, which is not a no-show.
+- A no-show is only recorded and reported to the holder (`NO_SHOW_RECORDED`, reminding them to cancel next time); there is no penalty. Version 1.25.0 removed freezing: `auth/me/` no longer has `no_show_count`, `frozen_until`, or `booking_frozen`; slot queries no longer have `frozen_until`; and all unfreeze endpoints have been removed. Cancelled bookings with `reason_code=ACCOUNT_FROZEN` in old data continue to display normally.
 
-## 每周上限
+## Weekly Limit
 
-- 同一受益人在同一周（资源当地时间周一到周日）里最多占用 24 个半小时 slots（12 小时）。待审批、候补、已批准和员工创建的循环预约都按实际时长计入；超过时 `POST bookings/` 返回 409 `WEEKLY_LIMIT_REACHED`，details 包含 `limit_slots`、`used_slots`、`requested_slots`、`remaining_slots`、`slot_minutes`、`week_start`。Manager 改期到超额周也一样。
-- 取消、被拒、过期后 slots 自动释放；员工代建算在受益人头上。服务端在同一个数据库事务内重新计算额度，不能通过并发提交绕过。
+- One beneficiary may occupy at most 24 half-hour slots (12 hours) in one week, Monday through Sunday in the resource's local time. Pending, waitlisted, approved, and staff-created recurring bookings all count by their actual duration. If the limit would be exceeded, `POST bookings/` returns 409 `WEEKLY_LIMIT_REACHED`; details include `limit_slots`, `used_slots`, `requested_slots`, `remaining_slots`, `slot_minutes`, and `week_start`. The same rule applies when a Manager reschedules into an over-limit week.
+- Slots are released automatically after cancellation, rejection, or expiry. A proxy booking counts against the beneficiary. The server recalculates the allowance within the same database transaction, so concurrent submissions cannot bypass it.
 
-## 有效未来预约数上限
+## Active Future Booking Limit
 
-- 同一受益人最多同时持有 8 个尚未开始的有效预约。`PENDING_APPROVAL`、`WAITLISTED`、`APPROVED` 和循环预约的每个日期都计入；第 9 个申请返回 409 `FUTURE_BOOKING_LIMIT_REACHED`。
-- 取消、拒绝、过期或到达开始时间后名额自动释放；员工代建和紧急申请都算在受益人头上。一个已批准预约及其待处理改期申请合计只算一个，Manager 原地改期也不会额外占名额。
-- 服务端在锁定受益人记录的数据库事务中重新计数；默认 8 来自 `MAX_ACTIVE_FUTURE_BOOKINGS`，可随客户政策调整。
+- One beneficiary may hold at most eight active bookings that have not started. `PENDING_APPROVAL`, `WAITLISTED`, `APPROVED`, and every date in a recurring series all count. A ninth request returns 409 `FUTURE_BOOKING_LIMIT_REACHED`.
+- A place is released automatically after cancellation, rejection, expiry, or reaching the start time. Proxy and urgent bookings count against the beneficiary. An approved booking and its pending change request count as one in total, and an in-place Manager reschedule does not consume another place.
+- The server recounts within a database transaction while locking the beneficiary record. The default eight comes from `MAX_ACTIVE_FUTURE_BOOKINGS` and can be adjusted with client policy.
 
-## 重复预约（只有员工）
+## Recurring Bookings (Staff Only)
 
-- 资源卡片上的 **Repeat weekly** 按钮（只有 Admin／Manager 看得到）打开表单：预约给谁（自己／输入 zID 替别人）、每周几（1=周一 … 7=周日）、开始时间、时长、起止日期（模式跨度最长 14 周；每个实际预约日期仍受当前预约窗口限制）、用途。
-- 先 `POST bookings/series/preview/`（`resource_id`、`weekdays`、`start_time` 如 `"09:00"`、`duration_minutes`、`first_date`、`last_date`、可选 `on_behalf_of_zid`），返回每个日期的 `available` 和 `reason_code`。
-- 再 `POST bookings/series/`（同样的字段加 `purpose`、`skip_dates`）。预览里不可用的日期必须放进 `skip_dates`，否则 409 `SERIES_CONFLICT`（重新预览）。冲突的日期不进候补。
-- 创建后每个日期直接是 `APPROVED`（`reason_code=SERIES_CREATED_BY_STAFF`，带 `series_id`），不走审批。给自己或代他人预约都须逐日满足当前预约窗口（默认提前 7–28 天）；超出最晚日期的预览项显示 `BOOKING_TOO_FAR_AHEAD`，创建时必须放进 `skip_dates`。14 周只是模式跨度上限，不延长可约日期；其余规则照常检查；每个保留日期计入对应周的 24-slot 上限和 8 个有效未来预约上限，超额日期在预览中分别显示 `WEEKLY_LIMIT_REACHED` 或 `FUTURE_BOOKING_LIMIT_REACHED`；到场确认照常要求。
-- 取消单次用 `POST bookings/{id}/cancel/`；取消整组剩下的用 `POST bookings/series/{id}/cancel/`（员工）。`GET bookings/series/{id}/` 返回这组的所有日期。
+- The **Repeat weekly** button on a resource card (visible only to Admin/Manager) opens a form for the beneficiary (self or another person by zID), weekdays (1=Monday … 7=Sunday), start time, duration, first and last dates (pattern span is at most 14 weeks; each actual booking date remains subject to the current booking window), and purpose.
+- First call `POST bookings/series/preview/` with `resource_id`, `weekdays`, `start_time` such as `"09:00"`, `duration_minutes`, `first_date`, `last_date`, and optional `on_behalf_of_zid`. It returns `available` and `reason_code` for each date.
+- Then call `POST bookings/series/` with the same fields plus `purpose` and `skip_dates`. Every unavailable date from the preview must be included in `skip_dates`, otherwise the endpoint returns 409 `SERIES_CONFLICT` and the user must preview again. Conflicting dates do not join the waitlist.
+- After creation, each date is immediately `APPROVED` (`reason_code=SERIES_CREATED_BY_STAFF`, with `series_id`) and does not enter review. Whether staff book for themselves or someone else, each date must satisfy the current booking window (seven to 28 days ahead by default). Preview entries later than the latest date show `BOOKING_TOO_FAR_AHEAD` and must be included in `skip_dates` at creation. The 14-week limit applies only to the pattern span and does not extend bookable dates. Other rules are checked normally. Each retained date counts against the corresponding week's 24-slot limit and the eight-active-future-booking limit; over-limit preview dates show `WEEKLY_LIMIT_REACHED` or `FUTURE_BOOKING_LIMIT_REACHED` respectively. Attendance confirmation is still required.
+- Cancel one occurrence with `POST bookings/{id}/cancel/`; staff cancel all remaining dates with `POST bookings/series/{id}/cancel/`. `GET bookings/series/{id}/` returns every date in the series.
 
-## 资源管理（只有 Manager）
+## Resource Management (Manager Only)
 
-页面 **Resources**（`/manager/resources`）。规则都在后端 `booking/services/resources.py`，前端 `features/manager/resource-form.ts` 只是提前给出同样的提示。
+The **Resources** page is at `/manager/resources`. All rules live in backend `booking/services/resources.py`; frontend `features/manager/resource-form.ts` only provides the same messages earlier.
 
-- `GET admin/resources/`：所有资源，包括已下架的（`active=false`）。普通的 `GET resources/` 只返回未下架的。
-- `POST admin/resources/`：`kind`（`ROOM`／`EQUIPMENT`）、`name`、`location`、`required_qualification_id` 必填；可选 `description`、`room_id`、`category`（只有设备能填）、`slot_minutes`（15／30／60，默认 30）、`max_booking_minutes`（默认 480）、`opening_time`／`closing_time`（`"HH:MM"`，默认 08:00／20:00）、`pending_hold_minutes`（默认 1440）。成功 201 返回资源。
-- `PATCH admin/resources/{id}/`：只发要改的字段。返回 `{resource, bookings_outside_rules}`。后者是不再符合新规则的未来预约（每项是带 `student`、`resource_name` 和 `problem` 的预约，`problem` 如 `OUTSIDE_OPENING_HOURS`），它们**不会被自动取消**，页面应提示 Manager 去处理。发 `kind` 返回 409 `KIND_IS_FIXED`。
-- `POST admin/resources/{id}/archive/`：下架，`{}`。还有未来预约（409 `RESOURCE_HAS_BOOKINGS`）或房间里还有未下架的设备（409 `ROOM_HAS_EQUIPMENT`）时被拒。`POST …/restore/` 恢复（名称仍须没被占用）。
-- 校验错误是 400 `VALIDATION_ERROR`，`details` 里是出错的字段名，例如 `{"max_booking_minutes": ["…"]}`。
+- `GET admin/resources/`: all resources, including archived resources (`active=false`). Ordinary `GET resources/` returns only unarchived resources.
+- `POST admin/resources/`: `kind` (`ROOM`/`EQUIPMENT`), `name`, `location`, and `required_qualification_id` are required. Optional fields are `description`, `room_id`, `category` (equipment only), `slot_minutes` (15/30/60; default 30), `max_booking_minutes` (default 480), `opening_time`/`closing_time` (`"HH:MM"`; defaults 08:00/20:00), and `pending_hold_minutes` (default 1440). Success returns the resource with 201.
+- `PATCH admin/resources/{id}/`: send only fields to change. Returns `{resource, bookings_outside_rules}`. The latter lists future bookings that no longer fit the new rules (each booking includes `student`, `resource_name`, and a `problem` such as `OUTSIDE_OPENING_HOURS`). They are **not cancelled automatically**; the page should prompt the Manager to handle them. Sending `kind` returns 409 `KIND_IS_FIXED`.
+- `POST admin/resources/{id}/archive/`: archive with `{}`. It is rejected when future bookings remain (409 `RESOURCE_HAS_BOOKINGS`) or the room still contains unarchived equipment (409 `ROOM_HAS_EQUIPMENT`). `POST …/restore/` restores the resource, provided its name is still available.
+- Validation errors use 400 `VALIDATION_ERROR`; `details` contains the invalid field names, for example `{"max_booking_minutes": ["…"]}`.
 
-## 预约记录与使用情况（Manager；Admin 只看 7 天内的记录）
+## Booking Records and Usage (Manager; Admin Sees Only the Last Seven Days of Records)
 
-页面 **Booking Records**（`/admin/records`），两个标签：
+The **Booking Records** page (`/admin/records`) has two tabs:
 
-- **Records**：`GET admin/bookings/?status=ALL&since=&until=&resource_id=&q=`。日期是悉尼当地日期，前端换成带时区的时间（`since` 是起始日 0 点，`until` 是结束日后一天 0 点）。表格列：时间、资源、预约人（姓名和 zID）、创建人（`on_behalf` 为 false 时显示 Self）、状态、到场。**Export CSV** 用同样的参数调 `admin/bookings/export/`，所以 CSV 和表格一致。
-- **Usage statistics**（`?tab=usage`；旧地址 `/manager/usage` 会跳过来）：见下文。
+- **Records**: `GET admin/bookings/?status=ALL&since=&until=&resource_id=&q=`. Dates are Sydney local dates, which the frontend converts to timezone-aware times (`since` is midnight at the start of the first date; `until` is midnight after the last date). Table columns are time, resource, beneficiary (name and zID), creator (Self when `on_behalf` is false), status, and attendance. **Export CSV** calls `admin/bookings/export/` with the same parameters, so the CSV matches the table.
+- **Usage statistics** (`?tab=usage`; the old `/manager/usage` address redirects here): see below.
 
-### 使用情况报表
+### Usage Report
 
-`GET admin/reports/usage/?first_date=2030-01-01&last_date=2030-01-28`（当地日期，都包含，最多 366 天）返回 `{first_date, last_date, days, results, totals}`。`results` 每行一个资源：`approved`、`booked_hours`、`open_hours`、`utilisation`（0–1）、`checked_in`、`no_show`、`excused`、`not_tracked`、`attendance_rate`（还没有可算的时为 `null`）、`cancelled`、`rejected`，以及 `name`、`kind`、`category`、`room_name`、`active`。到场数字只算已经结束的已批准预约。
+`GET admin/reports/usage/?first_date=2030-01-01&last_date=2030-01-28` (inclusive local dates, maximum 366 days) returns `{first_date, last_date, days, results, totals}`. Each row in `results` represents a resource and contains `approved`, `booked_hours`, `open_hours`, `utilisation` (0–1), `checked_in`, `no_show`, `excused`, `not_tracked`, `attendance_rate` (`null` when it cannot yet be calculated), `cancelled`, `rejected`, and `name`, `kind`, `category`, `room_name`, `active`. Attendance figures count only approved bookings that have ended.
 
-## 修改密码（Admin／Manager）
+## Change Password (Admin/Manager)
 
-Account 页面上的表单：`POST auth/change-password/` `{"current_password": "…", "new_password": "…"}`，成功返回 `{"changed": true}`。当前密码不对 400 `INVALID_CREDENTIALS`；新密码少于 8 位或和当前相同 400 `VALIDATION_ERROR`；学生 403 `STUDENT_USES_SSO`。
+The Account-page form calls `POST auth/change-password/` with `{"current_password": "…", "new_password": "…"}` and returns `{"changed": true}` on success. An incorrect current password returns 400 `INVALID_CREDENTIALS`; a new password shorter than eight characters or identical to the current password returns 400 `VALIDATION_ERROR`; a student receives 403 `STUDENT_USES_SSO`.
 
-## 预约页筛选与一天空闲表
+## Booking-Page Filters and Day Availability Table
 
-Book a Resource 页面有两个标签：**Browse resources**（资源卡片）和 **Find a free time**。后者先选条件，再在一张表里看所有资源当天的空闲情况，点空闲时间直接打开预约表单（资源和时间已选好）。
+The Book a Resource page has two tabs: **Browse resources** (resource cards) and **Find a free time**. The latter lets the user choose conditions, view all matching resources' availability for the day in one table, and select a free time to open the booking form with the resource and time already selected.
 
-- 资源的 `category`（设备类别，例如 `Microscopy`、`Electronics testing`、`Fabrication`；房间为 `null`）。演示类别是编的，以后换成客户的设备清单。`GET resources/` 也可以带 `category=` 筛选。
-- `GET resources/day-overview/` 的参数：
-  - `date`：必填，悉尼当地日期。
-  - `duration_minutes`：默认 60。1.16.0 起，某个资源不能按这个时长预约（超过它的最长时长，或不是它时间步长的倍数）时，这个资源不显示并计入 `too_long`，不再让整个请求 400。
-  - `kind`：`ROOM`／`EQUIPMENT`。
-  - `room_id`：房间本身加上放在这个房间里的设备。
-  - `category`：设备类别。
-  - `q`：按名称、地点或类别搜索。
-  - `bookable_only=true`：只返回当前用户现在就能申请的资源。
-  - `free_at=HH:MM`：只返回从这个时间起、整个时长都空闲的资源。
-- 返回内容：
-  - `date`、`duration_minutes`、`timezone`
-  - 预约窗口：`earliest_date`、`latest_date`、`min_advance_days`、`max_advance_days`
-  - `rooms`（`id`、`name`）和 `categories`，用来生成筛选下拉框
-  - `count`、`results`。每行是 `resource`（完整资源对象）、`room_name`、`can_request`、`qualification_status`、`resource_status`、`status_reason`、`slots`
-  - `slots` 和 `resources/{id}/availability/` 的格式完全相同，规则也是同一套：开放时间、预约窗口、induction、冲突、维修状态。
-  - 1.16.0：`too_long`（因时长不显示的资源数）和 `not_bookable`（`bookable_only=true` 时被隐藏的资源，按原因计数，例如 `{"NOT_SUBMITTED": 18, "MAINTENANCE": 1}`；原因是 `MAINTENANCE`／`CLOSED` 或 induction 状态）。前端用它说明“为什么什么都没有”，有 induction 原因时给出 Induction & Training 的链接。前端的时长选项到 8 小时。
-- 前端点击空闲格子后打开 BookingForm，并传入 `initialDate`、`initialStart`、`initialMinutes`，SlotPicker 会自动选中这段时间。只有当这段时间全部空闲时才会自动选中。
+- A resource has `category` (equipment category, such as `Microscopy`, `Electronics testing`, or `Fabrication`; rooms use `null`). Demo categories are placeholders and should later be replaced with the client's equipment list. `GET resources/` also accepts a `category=` filter.
+- Parameters for `GET resources/day-overview/`:
+  - `date`: required Sydney local date.
+  - `duration_minutes`: default 60. From 1.16.0, when a resource cannot be booked for this duration (it exceeds the resource maximum or is not a multiple of its time increment), that resource is omitted and counted in `too_long` instead of causing the entire request to return 400.
+  - `kind`: `ROOM`/`EQUIPMENT`.
+  - `room_id`: the room itself plus equipment located in that room.
+  - `category`: equipment category.
+  - `q`: search by name, location, or category.
+  - `bookable_only=true`: return only resources the current user can request now.
+  - `free_at=HH:MM`: return only resources that are free for the full duration starting at this time.
+- Response contents:
+  - `date`, `duration_minutes`, `timezone`
+  - Booking window: `earliest_date`, `latest_date`, `min_advance_days`, `max_advance_days`
+  - `rooms` (`id`, `name`) and `categories` for filter dropdowns
+  - `count`, `results`. Each row contains `resource` (complete resource object), `room_name`, `can_request`, `qualification_status`, `resource_status`, `status_reason`, and `slots`
+  - `slots` has exactly the same format and rules as `resources/{id}/availability/`: opening hours, booking window, induction, conflicts, and maintenance status.
+  - 1.16.0: `too_long` (number of resources omitted because of duration) and `not_bookable` (resources hidden when `bookable_only=true`, counted by reason, for example `{"NOT_SUBMITTED": 18, "MAINTENANCE": 1}`; reasons are `MAINTENANCE`/`CLOSED` or induction status). The frontend uses this to explain why there are no results and provides an Induction & Training link when an induction reason is present. Frontend duration options extend to eight hours.
+- When the frontend selects a free cell, it opens BookingForm with `initialDate`, `initialStart`, and `initialMinutes`; SlotPicker automatically selects that interval. Automatic selection occurs only if the entire interval is free.
 
-## Outlook 同步
+## Outlook Synchronisation
 
-网站是预约的唯一依据，Outlook 里的改动不能变成网站上的预约。
+The website is the sole source of truth for bookings. Changes made in Outlook cannot become website bookings.
 
-- 系统只做"网站 → Outlook"的单向写入，运行时从不读取 Outlook 里的修改，所以 Outlook 里的改动不可能影响预约。
-- 前端只显示同步结果，不连接 Outlook，也不保存任何微软凭证。
-- 配置和实测步骤见 [outlook-setup.md](outlook-setup.md)。
+- The system performs one-way "website → Outlook" writes only. It never reads Outlook changes at runtime, so changes in Outlook cannot affect a booking.
+- The frontend displays sync results only; it does not connect to Outlook or store Microsoft credentials.
+- See [outlook-setup.md](outlook-setup.md) for configuration and live-test steps.
 
-所有预约响应（列表、详情、dashboard、创建、取消、审核、改期、`admin/process-due/` 的结果）都带 `outlook_sync`，它和预约的 `status` 互相独立：
+Every booking response (list, detail, dashboard, create, cancel, review, reschedule, and results from `admin/process-due/`) includes `outlook_sync`, which is independent of the booking `status`:
 
 ```json
 {
@@ -509,63 +514,63 @@ Book a Resource 页面有两个标签：**Browse resources**（资源卡片）�
 }
 ```
 
-| outlook_sync.status | 前端显示 |
+| outlook_sync.status | Frontend display |
 | --- | --- |
-| `DISABLED` | 日历同步未启用；预约状态仍有效 |
-| `NOT_REQUIRED` | 当前申请无需写入日历（待审批、候补、被拒等） |
-| `PENDING`／`IN_PROGRESS` | 日历等待同步／同步中 |
-| `SYNCED` + `CREATE`／`UPDATE` | 已写入 Outlook（改期更新的是同一个事件；如果用户删过事件，就按新时间重建） |
-| `SYNCED` + `DELETE` | 取消已同步到 Outlook |
-| `FAILED` | 预约结果已保存，日历同步失败；提示联系管理员 |
+| `DISABLED` | Calendar sync is not enabled; the booking status remains valid |
+| `NOT_REQUIRED` | The current request does not require a calendar write (pending, waitlisted, rejected, and so on) |
+| `PENDING`/`IN_PROGRESS` | Calendar sync is waiting/in progress |
+| `SYNCED` + `CREATE`/`UPDATE` | Written to Outlook (rescheduling updates the same event; if the user deleted the event, it is recreated at the new time) |
+| `SYNCED` + `DELETE` | Cancellation has been synchronised to Outlook |
+| `FAILED` | Booking result is saved but calendar sync failed; prompt the user to contact an administrator |
 
-只按预约的 `status` 判断是否批准或取消，不要把日历同步失败提示成"预约失败"。读取接口不会调用微软；需要刷新时，轮询预约详情或 dashboard 即可。
+Use only the booking `status` to determine whether it is approved or cancelled. Do not present calendar-sync failure as "booking failed". Read endpoints do not call Microsoft; poll the booking detail or dashboard when a refresh is needed.
 
-**员工页面 Calendar Sync**（`/admin/calendar-sync`，Admin 和 Manager）是开发阶段的可视化页面，数据来自 `GET admin/outlook/`，返回内容如下：
-- `summary`：`total`、`synced`、`pending`、`failed`。
-- `items`：每个已同步的预约一行，失败的排在最前。字段有：
-  - `booking_id`、`booking_status`、`start`、`end`、`urgent`
-  - `resource`、`booked_for`、`booked_by`（代预约的员工）、`invited`
-  - `sync`：`status`、`action`、`attempts`、`last_error`、`next_attempt_at`、`last_success_at`、`web_link`
-- `last_check`：最近一次 `POST admin/outlook/check/` 的结果。
-- `invite_mode`、`enabled`、`configured`、`mode`、`direction`、`sync_records`。
+The staff **Calendar Sync** page (`/admin/calendar-sync`, Admin and Manager) is a development-stage visualisation. Its data comes from `GET admin/outlook/` and contains:
+- `summary`: `total`, `synced`, `pending`, `failed`.
+- `items`: one row per synchronised booking, with failures first. Fields are:
+  - `booking_id`, `booking_status`, `start`, `end`, `urgent`
+  - `resource`, `booked_for`, `booked_by` (staff member who made the proxy booking), `invited`
+  - `sync`: `status`, `action`, `attempts`, `last_error`, `next_attempt_at`, `last_success_at`, `web_link`
+- `last_check`: result of the latest `POST admin/outlook/check/`.
+- `invite_mode`, `enabled`, `configured`, `mode`, `direction`, `sync_records`.
 
-其他规则：
-- 同步未启用时，`outlook-retry` 返回 409 `OUTLOOK_DISABLED`。
-- 学生调用这些接口一律返回 403。
-- 正式交付前如果删掉这个页面，后端接口可以保留。
+Other rules:
+- When sync is disabled, `outlook-retry` returns 409 `OUTLOOK_DISABLED`.
+- Students always receive 403 from these endpoints.
+- If this page is removed before final delivery, the backend endpoints may remain.
 
-## 1.16.0：申请改期、维修通知、联系方式和员工首页
+## 1.16.0: Time-Change Requests, Maintenance Notifications, Contact Details, and Staff Home Page
 
-### 申请改期（预约人）
+### Request a Time Change (Booking Holder)
 
-- 已批准、还没开始的预约，预约人本人可以在 My Bookings 点 **Change time**，选新时间后 `POST bookings/{id}/change/` `{"start": "…", "end": "…"}`（可带 `Idempotency-Key`）。同一资源，用途沿用原预约。Manager 仍然用 Reschedule 直接改。
-- 后端新建一个申请，`replaces_id` 指向原预约。新时间空闲：`PENDING_APPROVAL`，正常审批；新时间已被别人预约或占着：`WAITLISTED`。前端在选到被占用的时间时先提示“只能进候补”，按钮和确认框也会写明。
-- **原预约在新申请批准前一直有效。** 新申请被批准（Admin 手动、审批期到了系统自动、或候补转正后批准）的那一刻，原预约自动取消（`reason_code=REPLACED_BY_CHANGE`），它的时间交给候补队列。新申请被拒、撤回或过期，原预约不变。反过来，原预约被取消（本人或员工）时，还在等的改期申请一并取消，`reason_code` 和原预约相同（2026-11-12）。
-- 规则和普通申请相同（预约窗口、开放时间、时长、induction、每周上限）；原预约本身不算冲突、不算重复、也不在每周上限里多算一次。不支持紧急改期。
-- 一个预约同时只能有一个待处理的改期（409 `CHANGE_ALREADY_REQUESTED`，`details.booking_id` 是那个申请）；不是自己的预约 404／403；不是已批准的未来预约 409 `REQUEST_NOT_CHANGEABLE`；时间和现在一样 400。
-- 预约 JSON 新字段：`replaces_id`、`replaces_booking`（改期申请指向的原预约：`id`、`start`、`end`、`status`）、`open_change`（原预约上还在等的改期申请，同样四个字段）。My Bookings 用它们在两张卡片上互相说明；Booking Review 在时间下面显示“Change from …”。
+- For an approved booking that has not started, the booking holder may select **Change time** in My Bookings, choose a new time, and call `POST bookings/{id}/change/` with `{"start": "…", "end": "…"}` (optionally with `Idempotency-Key`). The resource stays the same, and the purpose is copied from the original booking. A Manager still uses Reschedule for a direct change.
+- The backend creates a new request whose `replaces_id` points to the original booking. If the new time is free, it becomes `PENDING_APPROVAL` and follows normal review. If another booking or hold occupies the new time, it becomes `WAITLISTED`. When the frontend selects an occupied time, it first explains that the request can only join the waitlist; the button and confirmation dialog state this as well.
+- **The original booking remains valid until the new request is approved.** At the moment the new request is approved (manually by Admin, automatically at the review deadline, or after promotion from the waitlist), the original booking is automatically cancelled (`reason_code=REPLACED_BY_CHANGE`) and its time is offered to the waitlist. If the new request is rejected, withdrawn, or expires, the original is unchanged. Conversely, if the original booking is cancelled by the holder or staff, its pending time-change request is also cancelled with the same `reason_code` as the original (2026-11-12).
+- The same rules as an ordinary request apply: booking window, opening hours, duration, induction, and weekly limit. The original booking itself is not treated as a conflict or duplicate and is not counted twice against the weekly limit. Urgent time changes are not supported.
+- A booking may have only one pending time change at a time (409 `CHANGE_ALREADY_REQUESTED`; `details.booking_id` identifies that request). A booking owned by someone else returns 404/403; a booking that is not an approved future booking returns 409 `REQUEST_NOT_CHANGEABLE`; an unchanged time returns 400.
+- New booking JSON fields are `replaces_id`, `replaces_booking` (the original booking referenced by a time-change request: `id`, `start`, `end`, `status`), and `open_change` (the pending time-change request on an original booking, with the same four fields). My Bookings uses these to connect the two cards; Booking Review displays "Change from …" below the time.
 
-### 维修和关闭的通知
+### Maintenance and Closure Notifications
 
-- Manager 把资源改成 `MAINTENANCE` 或 `CLOSED` 时，所有在这个资源上有未来预约或申请的人都会收到 `RESOURCE_OUT_OF_SERVICE`（按本人的站内／邮件偏好），内容带 Manager 写的原因；已批准的预约**仍然保留**，由 Manager 决定改期或取消（改期、取消会另发通知）。改回 `AVAILABLE` 时发 `RESOURCE_REOPENED`。只改原因不改状态不重复通知。房间的状态不影响里面的设备，所以设备的预约人不会收到。
-- Room Management 的确认框列出受影响的预约，并说明会自动通知；下面的列表把不能照常进行的预约标出来。
+- When a Manager changes a resource to `MAINTENANCE` or `CLOSED`, everyone with a future booking or request for that resource receives `RESOURCE_OUT_OF_SERVICE` according to their in-app/email preferences. It includes the Manager's reason. Approved bookings **remain in place**; the Manager decides whether to reschedule or cancel them, which generates separate notifications. Returning the resource to `AVAILABLE` sends `RESOURCE_REOPENED`. Changing only the reason without changing status does not send another notification. A room's status does not affect equipment inside it, so equipment booking holders are not notified.
+- The Room Management confirmation dialog lists affected bookings and explains that notifications are automatic. The list below marks bookings that can no longer proceed normally.
 
-### 实验室联系方式
+### Laboratory Contact Details
 
-- `GET site/contact/` 返回 `{id, email, phone, hours, note, updated_at, updated_by}`，没设置时都是空字符串。`PATCH site/contact/`（只有 Manager）只改发送的字段，空字符串表示清空，`email` 要像邮箱地址，写 `SITE_CONTACT_UPDATED` 审计。
-- 显示在 Help 页面、已批准预约卡片（“Contact the lab”，邮件主题和正文已带资源、时间和预约编号）和每项 induction 的说明下面。只显示填了的字段。
+- `GET site/contact/` returns `{id, email, phone, hours, note, updated_at, updated_by}`; unset values are empty strings. `PATCH site/contact/` (Manager only) changes only submitted fields, an empty string clears a field, `email` must resemble an email address, and the operation writes a `SITE_CONTACT_UPDATED` audit record.
+- The details appear on the Help page, approved-booking cards ("Contact the lab"; the email subject and body already contain the resource, time, and booking number), and below each induction description. Only populated fields are displayed.
 
-### 员工首页 Today
+### Staff Today Home Page
 
-- Admin 和 Manager 登录后进入 `/admin/today`（以前分别是 Qualification Review 和 Room Management）。
-- `GET admin/overview/` 返回：`pending_inductions`、`pending_bookings`（不含紧急）、`urgent_requests`、`waitlisted`、`changes_waiting`、`due_soon`（6 小时内到审批期限的待审申请，最多 10 个）、`out_of_service`（`[{resource, affected_bookings}]`）、`today`（今天开始的已批准预约，最多 10 个）、`today_count`、`missed_today`、`can_decide_urgent`。每张卡片链接到处理它的页面。
+- After sign-in, Admin and Manager go to `/admin/today` (previously Qualification Review and Room Management respectively).
+- `GET admin/overview/` returns `pending_inductions`, `pending_bookings` (excluding urgent), `urgent_requests`, `waitlisted`, `changes_waiting`, `due_soon` (pending requests whose review deadline is within six hours, maximum 10), `out_of_service` (`[{resource, affected_bookings}]`), `today` (approved bookings that start today, maximum 10), `today_count`, `missed_today`, and `can_decide_urgent`. Each card links to the page that handles it.
 
-### 其他界面改动
+### Other Interface Changes
 
-- Booking Review 列表加了 Purpose 列和 Details 按钮（整行点开也可以）。
-- 预约表单：Purpose 标为必填，按钮灰着时直接说还差什么；在最早可约的那天会提示“更早要走紧急申请”，可以一键切换；时间条下面可以直接选开始时间和时长；手机上提交按钮和所选时间固定在弹窗底部。
-- 资源设置表单的“最长预约”和“审批期”用小时填写（接口仍是分钟）。
-- 日历订阅分别给出 Outlook、Google 和 Apple 的步骤，并说明更新会有延迟、以网站状态为准。
+- Booking Review now has a Purpose column and a Details button; the entire row can also be selected.
+- Booking form: Purpose is marked as required; when the button is disabled, it says exactly what is missing. On the earliest bookable date, it explains that an earlier time requires an urgent request and offers a one-click switch. Start time and duration may be selected directly below the time bar. On mobile, the submit button and selected time remain fixed at the bottom of the dialog.
+- The resource settings form accepts "maximum booking" and "review period" in hours, while the API still uses minutes.
+- Calendar-subscription instructions are provided separately for Outlook, Google, and Apple and explain that updates may be delayed and website status is authoritative.
 
 ## 1.17.0: functional controls
 
@@ -588,52 +593,53 @@ All test UI copy is English. This is a local testing facility; keep it disabled 
 
 On login and authenticated test requests, account 1 receives every induction as VERIFIED with `valid_until=null`, including requirements added after sign-in. This applies in Student, Admin and Manager views even with booking-rule bypass off. Grants are idempotent, explicitly marked as test access, have no uploaded file and return `file_id=""`, `file_url=""`. The induction UI omits the upload form for this account. Ordinary users still need valid evidence and manual review. No database migration or external notification is involved; the existing local-memory-only gate remains required.
 
-## 1.19.0：独立通知渠道与公告（Sprint 3）
+## 1.19.0: Independent Notification Channels and Announcements (Sprint 3)
 
-### 通知设置
+### Notification Settings
 
-三种角色均可访问 `#/settings/notifications`；Account 页只放 **Notification settings** 链接。五类为 `bookings`、`reminders`、`induction`、`account`、`resources`。
+All three roles can access `#/settings/notifications`; the Account page contains only a **Notification settings** link. The five categories are `bookings`, `reminders`, `induction`, `account`, and `resources`.
 
-`GET notifications/preferences/` 及 `PUT` 的响应为：
+Responses from `GET notifications/preferences/` and `PUT` have this form:
 
 ```json
 {"results":[{"category":"bookings","in_app":true,"email":true}],"email_available":false}
 ```
 
-示例只列一项，实际固定返回全部五类。没有偏好的类别两列都为 true。`email_available` 来自站点 `EMAIL_ENABLED`，不表示 Gmail／Outlook 已连通或邮件必然送达。为 false 时前端禁用邮件列并整列显示为不勾选，显示 **Email is not switched on for this site.**；接口仍返回并保留已保存的选择。
+The example shows one item, but the actual response always contains all five categories. A category with no saved preference has both columns set to true. `email_available` comes from the site's `EMAIL_ENABLED`; it does not mean Gmail/Outlook is connected or that delivery is guaranteed. When false, the frontend disables the email column, displays the entire column as unchecked, and shows **Email is not switched on for this site.** The API still returns and preserves saved selections.
 
 ```json
 {"preferences":{"bookings":{"in_app":false,"email":true},"resources":{"email":false}}}
 ```
 
-PUT 只改传入的列；未知类别、未知列、空的列对象返回 400，整次不保存。偏好按当前登录人保存。四种组合分别为站内及邮件、仅站内、仅邮件、都不发。每条通知记录保存生成时的 `in_app` / `email`：仅邮件的记录不在 `notifications/`、未读数或 read-all 中出现，以后开启站内也不补进铃铛。Manager 的 `URGENT_REQUEST` 不属于可关闭的个人类别。
+PUT changes only the submitted columns. Unknown categories, unknown columns, or an empty column object return 400, and nothing in that request is saved. Preferences are stored for the currently signed-in person. The four combinations are in-app and email, in-app only, email only, or neither. Each notification record stores its `in_app`/`email` values at creation time: an email-only record does not appear in `notifications/`, the unread count, or read-all, and enabling in-app notifications later does not add it to the bell. A Manager's `URGENT_REQUEST` does not belong to a user-disableable category.
 
-### 公告接口
+### Announcement API
 
-| 方法 | 路径 | 权限与返回 |
+| Method | Path | Permission and response |
 | --- | --- | --- |
-| GET | `announcements/` | 登录人；`{count,results}`，只含未下架、未过期的公告，创建时间降序 |
-| GET | `announcements/?include_ended=true` | Admin / Manager；包含已结束记录，学生 403 |
-| POST | `announcements/` | Admin / Manager；`{title,body,expires_at?}`，201 |
-| PATCH | `announcements/{id}/` | 仅手动公告作者；部分修改 `title`、`body`、`expires_at`，200 |
-| POST | `announcements/{id}/remove/` | 作者或 Manager；空对象，软下架，200；重复下架不重复审计 |
+| GET | `announcements/` | Signed-in user; `{count,results}` containing only unarchived, unexpired announcements, newest first |
+| GET | `announcements/?include_ended=true` | Admin/Manager; includes ended records; students receive 403 |
+| POST | `announcements/` | Admin/Manager; `{title,body,expires_at?}`, 201 |
+| PATCH | `announcements/{id}/` | Author of a manual announcement only; partially update `title`, `body`, `expires_at`, 200 |
+| POST | `announcements/{id}/remove/` | Author or Manager; empty object, soft archive, 200; repeated removal does not duplicate the audit record |
+| DELETE | `announcements/{id}/` | 1.28.0, author only, ended announcements only; permanent, 204; 409 `ANNOUNCEMENT_ACTIVE` while still shown |
 
-学生调用任何公告写接口先返回 403，包括无效请求体；不会先返回表单错误。`title` 为去空白后 1–120 字符，`body` 为 1–1000 字符；`expires_at` 为带时区的 ISO 日期时间或 null（一直保留）。请求不能指定 `kind`、`resource_id`、作者、状态等字段，指定即 400。Manager 可以下架别人的手动公告，不能修改；Admin 不能改或下架别人的。状态公告通过这些写接口返回 403。
+A student calling any announcement write endpoint receives 403 before request-body validation, even with an invalid body; form errors are not returned first. After trimming whitespace, `title` must contain 1–120 characters and `body` 1–1000 characters. `expires_at` is a timezone-aware ISO datetime or null (never expires). Requests cannot specify fields such as `kind`, `resource_id`, author, or status; doing so returns 400. A Manager may remove another person's manual announcement but may not edit it. An Admin may not edit or remove another person's announcement. Status announcements return 403 through these write endpoints.
 
-每条公告含 `id,title,body,kind,resource_id,created_by,created_at,expires_at,removed_at,removed_by,updated_at,author_role,expected_back`，另带 `author:{id,display_name,role}` 和 `active`。`author_role` 为发布时角色，署名显示姓名及角色。不存在返回 404；已下架的手动公告不能再改（409）。创建、修改、下架均写审计，但不会产生通知。
+Each announcement contains `id,title,body,kind,resource_id,created_by,created_at,expires_at,removed_at,removed_by,updated_at,author_role,expected_back`, plus `author:{id,display_name,role}` and `active`. `author_role` is the role at publication time, and attribution displays the person's name and role. A missing announcement returns 404; an archived manual announcement cannot be edited (409). Creation, editing, and removal are audited but do not generate notifications.
 
-### 资源状态公告
+### Resource-Status Announcements
 
-`PATCH admin/resources/{id}/status/` 仍仅 Manager 可用，Admin 403；请求在原 `status,reason` 上增加可选 `expected_back`（带时区 ISO 或 null）。不提交时视作没有估计。响应结构仍为 `{resource,affected_bookings}`；对应公告通过公告列表读取。
+`PATCH admin/resources/{id}/status/` remains Manager-only; Admin receives 403. In addition to the existing `status,reason`, the request accepts optional `expected_back` (timezone-aware ISO datetime or null). Omitting it means there is no estimate. The response remains `{resource,affected_bookings}`, and the corresponding announcement is read through the announcement list.
 
-`set_resource_status` 对房间及设备在原事务内创建／更新 `RESOURCE_STATUS` 公告，原因作为正文，状态变更 Manager 作为署名；每个资源同时只保留一条未下架的状态公告。改原因不产生第二条；`AVAILABLE` 自动下架。`expected_back` 单独存储、仅用于展示，不自动过期或重开资源，已过估计时间仍显示公告，直至 Manager 改回可用。原 `RESOURCE_OUT_OF_SERVICE` / `RESOURCE_REOPENED` 通知逻辑保留。
+Within the original transaction, `set_resource_status` creates or updates a `RESOURCE_STATUS` announcement for a room or equipment item, using the reason as the body and the Manager who changed the status as the attribution. Each resource has at most one unarchived status announcement at a time. Changing the reason does not create another record; `AVAILABLE` archives it automatically. `expected_back` is stored separately and is for display only. It does not automatically expire the announcement or reopen the resource; an announcement remains visible after the estimated time until a Manager returns the resource to available. Existing `RESOURCE_OUT_OF_SERVICE`/`RESOURCE_REOPENED` notification logic remains.
 
-首页 Dashboard / Today 只加载生效公告，空列表不渲染公告区；员工管理页标注 **From room status**，不提供状态公告修改或下架按钮。页面日期输入按 Australia/Sydney 转为 ISO，夏令时不存在的时间显示错误并保留输入；弹窗错误显示在弹窗内。
+The Dashboard/Today home pages load only active announcements and do not render an announcement section for an empty list. The staff management page labels these announcements **From room status** and does not offer edit or remove controls. Page date input is converted to ISO using Australia/Sydney; a nonexistent daylight-saving time displays an error and preserves the input. Dialog errors appear inside the dialog.
 
-## 1.20.0：个人历史移除（Sprint 3）
+## 1.20.0: Personal History Removal (Sprint 3)
 
-- `POST bookings/{id}/remove-from-history/`：空请求或 `{}`，成功为 `204` 无响应体。重复调用仍为 `204`。
-- 仅预约受益人（`student_id`）或创建人（`created_by`）可移除自己的条目。员工也不能移除无关预约的个人历史，返回 `404`。身份由服务端取得，不接受 user_id 等额外字段（`400`）。
-- `CANCELLED`、`REJECTED`、`EXPIRED` 或 `end <= now` 可移除；未来／进行中的有效预约返回 `409 BOOKING_NOT_HISTORY`，先取消／撤回。每个重复预约日期独立处理。
-- `GET bookings/` 与 `GET dashboard/`（包括 counts）排除当前用户移除的条目。代约的双方互不影响。详情接口、员工 records/CSV/usage、原预约及缺席、通知、日历均不变；不发取消或移除邮件。
-- 前端按钮 `Remove from my history`；确认框说明保留员工记录。失败保留可见条目，成功才移除。My bookings 的 Resource 与状态分类取交集，URL `view` / `resource` 记住条件；不新增后端筛选参数。
+- `POST bookings/{id}/remove-from-history/`: empty request or `{}`; success is `204` with no response body. Repeating the call still returns `204`.
+- Only the booking beneficiary (`student_id`) or creator (`created_by`) may remove their own entry. Staff also cannot remove an unrelated booking from their personal history; the endpoint returns `404`. Identity comes from the server, and additional fields such as user_id are rejected (`400`).
+- A booking may be removed when it is `CANCELLED`, `REJECTED`, or `EXPIRED`, or when `end <= now`. A future or in-progress active booking returns `409 BOOKING_NOT_HISTORY`; cancel or withdraw it first. Each date in a recurring series is handled independently.
+- `GET bookings/` and `GET dashboard/` (including counts) exclude entries removed by the current user. The two sides of a proxy booking do not affect one another. Detail endpoints, staff records/CSV/usage, source bookings and no-shows, notifications, and calendars are unchanged. No cancellation or removal email is sent.
+- The frontend button is `Remove from my history`; its confirmation explains that staff records are retained. A failed action leaves the item visible, and it is removed only after success. My Bookings intersects the Resource and status categories, and URL `view`/`resource` values remember the conditions. No backend filter parameter is added.

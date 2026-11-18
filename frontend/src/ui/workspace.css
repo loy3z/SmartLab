@@ -199,11 +199,6 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .bk-find-result .bk-chip { margin-top: 8px; }
 .bk-find-explainer { padding: 44px 24px; text-align: center; color: var(--muted); }
 .bk-find-explainer p { font-size: 12px; max-width: 48ch; margin-inline: auto; }
-.bk-access-summary { margin: 14px 0 17px; font-size: 12px; color: var(--muted); }
-.bk-access-summary > summary { cursor: pointer; width: fit-content; }
-.bk-access-summary > summary > span { margin-left: 10px; color: var(--green); font-size: 12px; }
-.bk-access-summary > summary > span.is-warn { color: var(--amber); font-weight: 700; } /* Sprint 3 (review R2) */
-.bk-access-summary .bk-induction-strip { margin-block: 12px; }
 .bk-browse-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin-top: 18px; }
 .app-shell .bk-browse-toolbar .bk-search { flex: 1 1 300px; margin: 0; }
 /* Sprint 3 (fluency V2/V4): keep filters reachable and mark retained results while updating. */

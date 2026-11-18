@@ -1,10 +1,10 @@
-"""Sprint 3: Check-in ("I'm here") and missed bookings.
+"""Check-in ("I'm here") and missed bookings.
 
 An approved booking can be checked in by the person it is for from shortly before its start until shortly after
 it (BookingRules.check_in_opens_minutes / check_in_closes_minutes, never after the end). If nobody checks in by
 then, the booking is marked as missed (attendance NO_SHOW), unless the resource was under maintenance or closed
 (EXCUSED). Missed bookings feed the usage report; there is no penalty. The booking freeze and unfreeze requests
-were removed on 2026-11-07 (client, Week 8: make cancelling easy instead of penalising).
+were removed (the client prefers making cancelling easy to penalising).
 """
 from dataclasses import replace
 from datetime import timedelta
@@ -52,7 +52,7 @@ class AttendanceMixin:
 
     def _process_attendance(self):
         """Mark approved bookings whose check-in time has passed without a check-in. Changes no other booking."""
-        # 2026-10-29 (load test S1): check-in closes after the start (check_in_closes_minutes >= 1), so only approved,
+        # Check-in closes after the start (check_in_closes_minutes >= 1), so only approved,
         # unmarked bookings that have started can be due. Past bookings are already marked and are not read again.
         for candidate in self.repo.list_bookings(statuses=[BookingStatus.APPROVED], unmarked=True, start_to=self.now()):
             if candidate.status != BookingStatus.APPROVED or candidate.attendance is not None:

@@ -1,4 +1,4 @@
-"""Sprint 3 (2026-11-07, client Week 8): the three roles see different data.
+"""The three roles see different data.
 
 - Admins see bookings that ended at most ADMIN_HISTORY_DAYS ago; the full history is for Managers.
 - Internal information about a resource (owner, asset number, where it came from, specifications) is for Managers only

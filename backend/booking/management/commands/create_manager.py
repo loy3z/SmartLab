@@ -1,4 +1,4 @@
-"""Sprint 3: create a Manager account from the server, for example the very first one.
+"""Create a Manager account from the server, for example the very first one.
 
     python manage.py create_manager --zid z9000003 --name "Lab Manager" --email z9000003@ad.unsw.edu.au
 

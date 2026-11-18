@@ -25,12 +25,12 @@ from ..serializers import (AvailabilityQuerySerializer, DayOverviewQuerySerializ
                           SeriesPlanSerializer, SeriesCreateSerializer, ResourceFieldsSerializer,
                           ResourceCreateSerializer, UsageReportQuerySerializer, ChangePasswordSerializer,
                           RequirementFieldsSerializer, RequirementUpdateSerializer, SiteContactSerializer,
-                          ResourceInternalInfoSerializer)  # Sprint 3 (1.16.0)
+                          ResourceInternalInfoSerializer)
 from ..ics import render_calendar
 from ..test_console import (TestPrincipal, get_test_account, require_test_console,
                            test_console_enabled, test_identity, TEST_ACCOUNT_ID)
 from ..serializers import TestLoginSerializer, TestSessionSerializer, AdditionalHoursCreateSerializer, LongBookingCreateSerializer
-from ..services.base import UNDECIDED_STATUSES  # 2026-10-29 (load test S2)
+from ..services.base import UNDECIDED_STATUSES
 
 _UNSET = object()
 
@@ -59,7 +59,7 @@ def person_brief(service, principal_id, person=_UNSET):
 
 def booking_json(value, lookups=None):
     """A booking plus what the pages show with it. lookups: a BookingListLookups for long staff lists, otherwise
-    everything is looked up one query at a time (2026-10-29, load test S2: the output is the same either way)."""
+    everything is looked up one query at a time (the output is the same either way)."""
     service = get_service()
     lookups = lookups or _SingleLookups(service)
     result = json_value(asdict(value))
@@ -72,8 +72,8 @@ def booking_json(value, lookups=None):
     result["created_by_user"] = person_brief(service, value.created_by, lookups.person(value.created_by)) if value.created_by else None
     result["on_behalf"] = bool(value.created_by and value.created_by != value.student_id)
     result["additional_hours_review"] = json_value(lookups.additional_hours_review(value)) if value.additional_hours else None
-    result.update(json_value(service.check_in_state(value)))  # Sprint 3: check-in button state
-    # Sprint 3 (1.16.0): change requests. On a change request: the booking it would replace. On an approved
+    result.update(json_value(service.check_in_state(value)))  # check-in button state
+    # Change requests. On a change request: the booking it would replace. On an approved
     # booking: its open change request (pending or waitlisted), if any.
     old = lookups.booking(value.replaces_id) if value.replaces_id else None
     result["replaces_booking"] = ({"id": old.id, "start": json_value(old.start), "end": json_value(old.end),
@@ -108,7 +108,7 @@ class _SingleLookups:
         return self.service.calendar_sync.describe(booking)
 
 class BookingListLookups(_SingleLookups):
-    """2026-10-29 (load test S2): everything booking_json needs for a long staff list, read once.
+    """Everything booking_json needs for a long staff list, read once.
 
     Before, each booking cost about two more queries (people, the replaced booking, open change requests, the
     waitlist), so Booking Records ran 9000+ queries for 5000 bookings. Undecided requests are few, so they are read
@@ -149,7 +149,7 @@ class BookingListLookups(_SingleLookups):
 def submission_json(record):
     result = json_value(record)
     result["effective_status"] = "EXPIRED" if record.status == QualificationStatus.VERIFIED and record.valid_until and record.valid_until <= get_service().now() else record.status.value
-    # Sprint 3 (1.17.1): automatic test-account grants have no evidence attachment.
+    # Automatic test-account grants have no evidence attachment.
     result["file_url"] = f"/api/v1/qualifications/{record.id}/file/" if record.file_id else ""
     return result
 
@@ -177,7 +177,7 @@ def sync_after_write(service, *bookings):
 def waitlist_position(service, booking, candidates=None):
     """1-based place among waitlisted requests that overlap this one on the same resource.
 
-    candidates (2026-10-29, load test S2): that resource's waitlisted requests, already read for a whole list.
+    candidates: that resource's waitlisted requests, already read for a whole list.
     """
     if booking.status != BookingStatus.WAITLISTED:
         return None

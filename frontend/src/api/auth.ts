@@ -1,4 +1,4 @@
-// Sprint 3 (2026-10-27): moved from the booking feature folder; function bodies unchanged.
+// Moved from the booking feature folder; function bodies unchanged.
 import { request } from '../lib/api-client'
 import { post } from './client'
 import type { AuthConfig, AuthResponse, User } from './types/auth'
@@ -28,7 +28,7 @@ export const staffActivate = (data: { zid: string; invite_code: string; password
 
 export const getMe = () => request<User>('auth/me/')
 
-// Sprint 3: staff change their own password ------------------------------------------------------------------
+// Staff change their own password ------------------------------------------------------------------
 export const changePassword = (currentPassword: string, newPassword: string) =>
   post<{ changed: boolean }>('auth/change-password/', { current_password: currentPassword, new_password: newPassword })
 

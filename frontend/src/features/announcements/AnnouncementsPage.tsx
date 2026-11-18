@@ -1,4 +1,4 @@
-// Sprint 3 (1.19.0): staff manual announcements with server-enforced ownership.
+// Staff manual announcements with server-enforced ownership.
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import { useAuth } from '../auth/auth-context'
 import { createAnnouncement, deleteAnnouncement, listAnnouncements, removeAnnouncement, updateAnnouncement } from '../../api/index.ts'
@@ -17,7 +17,7 @@ export function AnnouncementsPage() {
   const [expires, setExpires] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
   const [removing, setRemoving] = useState<Announcement | null>(null)
-  // 2026-11-16 (Loy): an ended announcement can be deleted for good, by the person who posted it only.
+  // An ended announcement can be deleted for good, by the person who posted it only.
   const forever = Boolean(removing && !removing.active)
   const [error, setError] = useState('')
   const [removeError, setRemoveError] = useState('')
@@ -72,7 +72,7 @@ export function AnnouncementsPage() {
       {loading && <p role="status">Loading announcements…</p>}
       {!loading && !items.length && <p>No announcements have been published.</p>}
       {items.map(item => <article key={item.id}>
-        {/* Sprint 3 (2026-10-28 feedback L3): status on the left, Edit/Remove in the top-right corner. */}
+        {/* Status on the left, Edit/Remove in the top-right corner. */}
         <div className="announcement-card-head">
           <div>
             <span className="ui-pill">{item.removed_at ? 'Removed' : item.active ? 'Active' : 'Expired'}</span>

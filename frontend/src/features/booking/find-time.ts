@@ -1,4 +1,4 @@
-// Sprint 3 (1.16.0): wording for "Find a free time" when rows are hidden (lengths and empty results).
+// Wording for "Find a free time" when rows are hidden (lengths and empty results).
 
 /**
  * Booking lengths offered by Find a free time: half hours up to 3 h, then whole hours, up to the longest

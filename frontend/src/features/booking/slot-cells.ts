@@ -29,7 +29,7 @@ export function cellTitle(slot: Slot, kind: CellKind, minDays: number, maxDays: 
   }
 }
 
-// Sprint 3 (1.15.0): red "now" line on today's grid.
+// Red "now" line on today's grid.
 /**
  * Where the current time sits across a day's cells, from 0 (start of the first cell) to 1 (end of the last).
  * Returns null when now is outside the shown hours (other days, before opening, after closing), so no line is drawn.

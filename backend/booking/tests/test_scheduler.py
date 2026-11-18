@@ -96,7 +96,7 @@ class SchedulerCommandTests(SimpleTestCase):
 
 class EmailWorkerConnectionTests(SimpleTestCase):
     def test_worker_clears_old_database_connections_before_each_batch(self):
-        # 2026-11-01: this thread has no requests, so nothing else clears a connection the server has closed.
+        # This thread has no requests, so nothing else clears a connection the server has closed.
         from booking.email_channel import EmailOutbox
 
         calls = mock.Mock()

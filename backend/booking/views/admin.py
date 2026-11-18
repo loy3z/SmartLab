@@ -1,4 +1,4 @@
-"""HTTP views: admin (split from booking/views.py on 2026-10-25)."""
+"""HTTP views: admin (split from booking/views.py)."""
 
 from ._common import *  # noqa: F401,F403 - shared imports, helpers and PublicView.
 
@@ -44,7 +44,7 @@ def staff_booking_rows(service, user, params):
 def staff_booking_json(booking, people, resources, lookups=None):
     """Booking plus who booked it and what, for Admin/Manager lists and printouts.
 
-    lookups (2026-10-29, load test S2): a BookingListLookups shared by the whole list, so each row adds no queries.
+    lookups: a BookingListLookups shared by the whole list, so each row adds no queries.
     """
     result = booking_json(booking, lookups)
     person, resource = people.get(booking.student_id), resources.get(booking.resource_id)
@@ -64,7 +64,7 @@ class AdminBookingListView(APIView):
         return Response(collection(records, lambda item: staff_booking_json(item, people, resources, lookups)))
 
 class AdminBookingExportView(APIView):
-    """Admin/Manager (Sprint 3: Admins too, for Booking Records): the same filters as the list (default status=ALL),
+    """Admin/Manager (Admins for Booking Records): the same filters as the list (default status=ALL),
     as a CSV file for printing or Excel."""
     def get(self, request):
         service = get_service()
@@ -77,7 +77,7 @@ class AdminBookingExportView(APIView):
         writer = csv.writer(buffer)
         writer.writerow(["Booking ID", "Status", "Reason", "Resource", "Type", "Date", "Start", "End", "Minutes",
                          "Student zID", "Student name", "Student email", "Purpose", "Submitted", "Decided by", "Decision reason",
-                         "Created by", "Urgent", "Urgent reason", "Weekly series", "Attendance"])  # last two: Sprint 3
+                         "Created by", "Urgent", "Urgent reason", "Weekly series", "Attendance"])
         for item in records:
             person, resource = people.get(item.student_id), resources.get(item.resource_id)
             local = ZoneInfo(resource.timezone) if resource else zone
@@ -107,7 +107,7 @@ class AdminResourceStatusView(APIView):
         service = get_service()
         service.require_manager(request.user)
         data = validated(ResourceStatusSerializer, request.data)
-        # Sprint 3 (1.19.0): optional recovery estimate belongs to the status announcement.
+        # Optional recovery estimate belongs to the status announcement.
         resource, affected = service.set_resource_status(request.user, str(resource_id), data["status"], data["reason"], expected_back=data["expected_back"])
         sync_after_write(service)
         people = {item.id: item for item in service.repo.list_principals()}
@@ -216,7 +216,7 @@ class AdminResourceDetailView(APIView):
         return Response(changed_resource_json(service, resource, outside))
 
 class AdminResourceInternalInfoView(APIView):
-    """2026-11-07 (client, Week 8), Manager only: GET or PATCH the internal details of a resource."""
+    """Manager only: GET or PATCH the internal details of a resource."""
     def get(self, request, resource_id):
         return Response(json_value(get_service().resource_internal_info(request.user, str(resource_id))))
 
@@ -237,7 +237,7 @@ class AdminResourceRestoreView(APIView):
         return Response(json_value(get_service().restore_resource(request.user, str(resource_id))))
 
 
-# Sprint 3: usage report (Manager) -----------------------------------------------------------------------------
+# Usage report (Manager) -----------------------------------------------------------------------------
 
 class AdminUsageReportView(APIView):
     def get(self, request):
@@ -245,4 +245,4 @@ class AdminUsageReportView(APIView):
         return Response(json_value(get_service().usage_report(request.user, data["first_date"], data["last_date"])))
 
 
-# Sprint 3: staff change their own password --------------------------------------------------------------------
+# Staff change their own password --------------------------------------------------------------------

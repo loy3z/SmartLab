@@ -1,4 +1,4 @@
-// 1.24.0 (client, Week 8): extending a booking in progress. 2026-11-07: dragged on a timeline; a Manager decides.
+// Extending a booking in progress. Dragged on a timeline; a Manager decides.
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { canExtend, extendOptions, latestEnd, timelineCells, waitingExtension } from '../src/features/booking/extend.ts'

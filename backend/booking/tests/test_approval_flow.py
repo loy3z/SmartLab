@@ -50,7 +50,7 @@ class ApprovalFlowServiceTests(BookingFixtureMixin, SimpleTestCase):
         return current.status, current.reason_code
 
     def test_requests_that_are_not_due_yet_are_not_locked(self):
-        # 2026-10-27 (performance P5): every API request runs time processing, so a request that is not due yet
+        # Every API request runs time processing, so a request that is not due yet
         # must not cost a transaction and row locks; with 200 waiting requests that added about 0.5 s per request.
         first = self.book(self.a)
         queued = self.book(self.b)
@@ -158,8 +158,8 @@ class ApprovalFlowServiceTests(BookingFixtureMixin, SimpleTestCase):
         self.assertEqual(self.state(waiting)[0], BookingStatus.PENDING_APPROVAL)
 
     def test_admins_book_under_the_same_rules(self):
-        """Client, 17 Oct: Admins and Managers may book for themselves; induction is never bypassed.
-        2026-11-06 (client, Week 8): Managers now override the rules (next test); Admins still follow them."""
+        """Admins may book for themselves under the same rules; induction is never bypassed for them.
+        Managers override the rules (next test)."""
         with self.assertRaises(DomainError) as denied:
             self.book(self.admin, start=self.start + timedelta(hours=4), end=self.start + timedelta(hours=5))
         self.assertEqual(denied.exception.code, "QUALIFICATION_REQUIRED")
@@ -181,7 +181,7 @@ class ApprovalFlowServiceTests(BookingFixtureMixin, SimpleTestCase):
         self.assertEqual(queued.status, BookingStatus.WAITLISTED)
 
     def test_a_manager_booking_overrides_the_rules_but_needs_free_time(self):
-        """2026-11-06 (client, Week 8): no induction, approved at once; nobody is displaced."""
+        """No induction, approved at once; nobody is displaced."""
         own = self.book(self.manager, start=self.start + timedelta(hours=2), end=self.start + timedelta(hours=3))
         self.assertEqual((own.status, own.reason_code, own.reviewed_by), (BookingStatus.APPROVED, "MANAGER_OVERRIDE", self.manager.id))
         unqualified = self.make_student("z5555555")
@@ -331,7 +331,7 @@ class ApprovalFlowAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         moved = self.admin.get("/api/v1/admin/bookings/").data["results"]
         self.assertEqual([(item["id"], item["reason_code"]) for item in moved], [(queued.data["id"], "PROMOTED_FROM_WAITLIST")])
         self.assert_error(self.create_booking(self.admin, self.payload(hour=14)), 403)  # no induction
-        # 2026-11-06 (client, Week 8): a Manager overrides the induction rule and is approved at once.
+        # A Manager overrides the induction rule and is approved at once.
         managed = self.create_booking(self.manager, self.payload(hour=14))
         self.assertEqual((managed.status_code, managed.data["status"]), (201, "APPROVED"))
 

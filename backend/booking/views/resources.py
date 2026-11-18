@@ -1,4 +1,4 @@
-"""HTTP views: resources (split from booking/views.py on 2026-10-25)."""
+"""HTTP views: resources (split from booking/views.py)."""
 
 from ._common import *  # noqa: F401,F403 - shared imports, helpers and PublicView.
 
@@ -96,7 +96,7 @@ class QualificationFileView(APIView):
 class RequirementDetailView(APIView):
     """Manager only: set which inductions must be verified first (e.g. Advanced needs General).
 
-    Sprint 3 (1.16.0): also changes the name, description and guidance texts; send any of them."""
+    It also changes the name, description and guidance texts; send any of them."""
     def patch(self, request, requirement_id):
         service = get_service()
         service.require_manager(request.user)
@@ -114,7 +114,7 @@ class RequirementDetailView(APIView):
         return Response(json_value(updated))
 
 class RequirementCreateView(APIView):
-    """Sprint 3 (1.16.0), Manager only: add an induction type."""
+    """Manager only: add an induction type."""
     def post(self, request):
         data = validated(RequirementFieldsSerializer, request.data)
         return Response(json_value(get_service().create_requirement(request.user, data)), status=201)

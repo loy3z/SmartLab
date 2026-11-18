@@ -1,4 +1,4 @@
-"""Booking page filters: equipment categories and the one-day grid of every matching resource (18 Oct)."""
+"""Booking page filters: equipment categories and the one-day grid of every matching resource."""
 from datetime import timedelta
 
 from django.test import SimpleTestCase, override_settings
@@ -68,7 +68,7 @@ class DayOverviewTests(BookingAPIFixtureMixin, SimpleTestCase):
 
     def test_invalid_queries_are_refused(self):
         self.assertEqual(self.verified.get("/api/v1/resources/day-overview/").status_code, 400)
-        # Sprint 3 (1.16.0): a length no resource allows is no longer an error; those resources are counted in too_long.
+        # A length no resource allows is no longer an error; those resources are counted in too_long.
         odd = self.verified.get("/api/v1/resources/day-overview/", {"date": DAY, "duration_minutes": 45})
         self.assertEqual((odd.status_code, odd.data["count"]), (200, 0))
         self.assertGreater(odd.data["too_long"], 0)

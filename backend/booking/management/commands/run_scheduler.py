@@ -85,7 +85,7 @@ class Command(BaseCommand):
         try:
             while True:
                 started_at = monotonic()
-                # 2026-11-01: Django only clears a dead or expired connection around web requests. Without this, one
+                # Django only clears a dead or expired connection around web requests. Without this, one
                 # database restart makes every later cycle fail until the container restarts.
                 close_old_connections()
                 try:

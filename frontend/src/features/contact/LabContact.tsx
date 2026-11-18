@@ -1,4 +1,4 @@
-// Sprint 3 (1.16.0): the lab's contact details shown on Help, My Bookings and Induction & Training.
+// The lab's contact details shown on Help, My Bookings and Induction & Training.
 import { useSiteContact } from './site-contact-store'
 import { hasContact, mailtoLink } from './contact'
 

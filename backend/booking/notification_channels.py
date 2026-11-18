@@ -1,4 +1,4 @@
-"""Sprint 3: Where notifications are delivered besides the website.
+"""Where notifications are delivered besides the website.
 
 Every notification is stored first (the website shows it under the bell). Extra channels then send the same
 notification somewhere else after the request's database transaction has finished. None is configured today.
@@ -58,7 +58,7 @@ def deliver_new_notifications(service):
     for notification_id in ids:
         notification = service.repo.get_notification(notification_id)
         recipient = service.repo.get_principal(notification.recipient_id) if notification else None
-        if notification is None or not notification.email or recipient is None or recipient.id == TEST_ACCOUNT_ID:  # Sprint 3 (1.19.0)
+        if notification is None or not notification.email or recipient is None or recipient.id == TEST_ACCOUNT_ID:
             continue
         for channel in channels:
             try:

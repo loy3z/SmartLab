@@ -1,4 +1,4 @@
-// Sprint 3: Manager page to add, edit, archive and restore rooms and equipment.
+// Manager page to add, edit, archive and restore rooms and equipment.
 // The rules live in the backend (booking/services/resources.py); resource-form.ts gives quicker messages.
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { DialogTitle, EmptyState, PageHeader, RefreshStamp, Tabs } from '../../ui/components'
@@ -6,8 +6,8 @@ import { useFeedback } from '../../ui/feedback-context'
 import { archiveResource, createResource, getResourceInternalInfo, listAllResources, listRequirements, restoreResource, updateResource,
   updateResourceInternalInfo } from '../../api/index.ts'
 import { errorMessage, fmtDuration, fmtHours, fmtRange } from '../booking/format'
-import type { BookingOutsideRules, Requirement, Resource, ResourceDetail, ResourceInput, ResourceInternalInput, ResourceKind } from '../../api/types/index.ts' // Sprint 3 (1.16.0): ResourceDetail
-import { changedFields, checkResource, describeHours, emptyResource, hoursFromMinutes, MAX_DETAILS, minutesFromHours, PROBLEM_TEXT, resourceToInput, SLOT_CHOICES } from './resource-form' // Sprint 3 (1.16.0): hours helpers, MAX_DETAILS
+import type { BookingOutsideRules, Requirement, Resource, ResourceDetail, ResourceInput, ResourceInternalInput, ResourceKind } from '../../api/types/index.ts' // ResourceDetail
+import { changedFields, checkResource, describeHours, emptyResource, hoursFromMinutes, MAX_DETAILS, minutesFromHours, PROBLEM_TEXT, resourceToInput, SLOT_CHOICES } from './resource-form' // Hours helpers, MAX_DETAILS
 
 type View = 'ROOM' | 'EQUIPMENT' | 'ARCHIVED'
 
@@ -150,7 +150,7 @@ export function ManagerResourcesPage() {
                   <td className="ui-hide-sm">{item.kind === 'EQUIPMENT' ? (byId.get(item.room_id ?? '')?.name ?? item.location) : item.location}</td>
                   <td className="ui-hide-sm">{requirementName(item.required_qualification_id)}</td>
                   <td>
-                    {fmtHours(item.opening_time, item.closing_time)}{/* Sprint 3 (internal-tool UI, AI-6) */}
+                    {fmtHours(item.opening_time, item.closing_time)}
                     <span className="ui-sub-text">{item.slot_minutes}-min steps · up to {fmtDuration(item.max_booking_minutes)}</span>
                   </td>
                   <td>
@@ -229,7 +229,7 @@ function ResourceDialog({ editing, rooms, requirements, onClose, onSaved }: {
     [editing, requirements],
   )
   const [form, setForm] = useState<ResourceInput>(initial)
-  // 2026-11-07 (client, Week 8): Managers-only details, saved separately; only changed fields are sent.
+  // Managers-only details, saved separately; only changed fields are sent.
   const [internalSaved, setInternalSaved] = useState<ResourceInternalInput>(EMPTY_INTERNAL)
   const [internal, setInternal] = useState<ResourceInternalInput>(EMPTY_INTERNAL)
   const [internalStatus, setInternalStatus] = useState(editing.mode === 'edit' ? 'loading' : 'ready')
@@ -270,7 +270,7 @@ function ResourceDialog({ editing, rooms, requirements, onClose, onSaved }: {
       let outsideRules: BookingOutsideRules[] = []
       if (editing.mode === 'add' && !createdResource) {
         saved = await createResource(kind, form)
-        // Sprint 3: if the separate internal save fails, retry on this resource rather than adding a duplicate.
+        // If the separate internal save fails, retry on this resource rather than adding a duplicate.
         createdResource = saved
         setCreated(saved)
       } else {
@@ -303,7 +303,7 @@ function ResourceDialog({ editing, rooms, requirements, onClose, onSaved }: {
         {editing.mode === 'edit' && (
           <p className="ui-dialog-message">The type ({kind === 'ROOM' ? 'room' : 'equipment'}) cannot change. Existing bookings are kept.</p>
         )}
-        {/* 2026-11-09 (Loy feedback): two columns, the resource on the left and its booking rules on the right. */}
+        {/* Two columns, the resource on the left and its booking rules on the right. */}
         <div className="mr-columns">
           <div className="mr-column">
             <label className="ui-field"><span>Name</span>
@@ -334,7 +334,7 @@ function ResourceDialog({ editing, rooms, requirements, onClose, onSaved }: {
             <label className="ui-field"><span>Description (optional)</span>
               <textarea maxLength={1000} rows={2} value={form.description} onChange={(e) => set('description', e.target.value)} />
             </label>
-            {/* Sprint 3 (1.16.0): what people need to choose the right resource. */}
+            {/* What people need to choose the right resource. */}
             {kind === 'ROOM' && (
               <label className="ui-field"><span>Capacity (people, optional)</span>
                 <input type="number" min={1} max={1000} step={1} value={form.capacity ?? ''}
@@ -356,7 +356,7 @@ function ResourceDialog({ editing, rooms, requirements, onClose, onSaved }: {
                   {SLOT_CHOICES.map((minutes) => <option key={minutes} value={minutes}>{minutes} minutes</option>)}
                 </select>
               </label>
-              {/* Sprint 3 (1.16.0): hours instead of minutes (480 → 8, 1440 → 24); sent to the API as minutes. */}
+              {/* Hours instead of minutes (480 → 8, 1440 → 24); sent to the API as minutes. */}
               <label className="ui-field"><span>Longest booking (hours)</span>
                 <input type="number" min={hoursFromMinutes(form.slot_minutes)} step={hoursFromMinutes(form.slot_minutes)}
                   value={hoursFromMinutes(form.max_booking_minutes)}
@@ -405,7 +405,7 @@ function ResourceDialog({ editing, rooms, requirements, onClose, onSaved }: {
 }
 
 /**
- * Sprint 3 (1.16.0): "label: value" lines on a resource (e.g. Model: Rigol DS1054Z, Floor: Level 3). The lab decides
+ * "label: value" lines on a resource (e.g. Model: Rigol DS1054Z, Floor: Level 3). The lab decides
  * what to show; empty rows are ignored when saving.
  */
 function DetailsEditor({ details, onChange, placeholder }: {

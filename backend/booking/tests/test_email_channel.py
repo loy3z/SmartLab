@@ -1,4 +1,4 @@
-"""Sprint 3: email notifications (booking.email_channel) and manage.py send_test_email.
+"""Email notifications (booking.email_channel) and manage.py send_test_email.
 
 Django's test runner swaps in the in-memory email backend, so nothing leaves the machine: sent emails appear in
 django.core.mail.outbox.
@@ -83,7 +83,7 @@ class EmailChannelTests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(response.status_code, 201, response.data)
         self.assertIn("no network", "\n".join(logged.output))
 
-    # 2026-10-27 (performance P1–P3): Gmail takes about 1.9 s to connect, so emails go out on a background thread.
+    # Gmail takes about 1.9 s to connect, so emails go out on a background thread.
 
     def test_the_response_does_not_wait_for_the_mail_server(self):
         release, sent = threading.Event(), threading.Event()

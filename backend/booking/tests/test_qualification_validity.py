@@ -1,4 +1,4 @@
-"""Sprint 1 fixed induction validity: one term, counted in days from approval."""
+"""Fixed induction validity: one term, counted in days from approval."""
 
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo

@@ -14,10 +14,10 @@ from typing import Iterator, Sequence
 
 
 from .domain import (
-    SiteContact,  # Sprint 3 (1.16.0)
-    ResourceInternalInfo,  # 2026-11-07
-    Announcement,  # Sprint 3 (1.19.0)
-    NotificationPreference,  # Sprint 3 (2026-10-25)
+    SiteContact,
+    ResourceInternalInfo,
+    Announcement,
+    NotificationPreference,
     AuditRecord,
     Booking,
     BookingSeries,
@@ -40,12 +40,12 @@ def booking_matches(booking: Booking, *, statuses: Sequence[BookingStatus] | Non
                     end_from: datetime | None = None, due_by: datetime | None = None,
                     created_by: str | None = None, unmarked: bool = False,
                     extension_end_after: datetime | None = None) -> bool:
-    """The list_bookings keyword filters (2026-10-29, load test R1); PostgresRepository applies the same ones in SQL.
+    """The list_bookings keyword filters; PostgresRepository applies the same ones in SQL.
 
     Every bound is inclusive, so a filter only narrows what is read: callers still apply their own exact checks.
     due_by keeps bookings whose start or review deadline is at or before it (time processing);
     unmarked keeps bookings with no attendance recorded.
-    extension_end_after (Sprint 3) keeps requests whose proposed end has not yet passed (exclusive).
+    extension_end_after keeps requests whose proposed end has not yet passed (exclusive).
     """
     return ((statuses is None or booking.status in statuses)
             and (start_from is None or booking.start >= start_from)
@@ -62,7 +62,7 @@ def booking_matches(booking: Booking, *, statuses: Sequence[BookingStatus] | Non
 def submission_matches(submission: QualificationSubmission, *, student_ids: Sequence[str] | None = None,
                        statuses: Sequence[QualificationStatus] | None = None,
                        valid_from: datetime | None = None, valid_to: datetime | None = None) -> bool:
-    """The list_submissions keyword filters (2026-10-29, load test S8); PostgresRepository applies them in SQL.
+    """The list_submissions keyword filters; PostgresRepository applies them in SQL.
     valid_from / valid_to bound valid_until (inclusive) and skip submissions without one."""
     return ((student_ids is None or submission.student_id in student_ids)
             and (statuses is None or submission.status in statuses)
@@ -85,18 +85,18 @@ class MemoryRepository:
         self._requirements: dict[str, QualificationRequirement] = {}
         self._submissions: dict[str, QualificationSubmission] = {}
         self._bookings: dict[str, Booking] = {}
-        self._hidden_bookings: dict[tuple[str, str], datetime] = {}  # Sprint 3 (1.20.0)
+        self._hidden_bookings: dict[tuple[str, str], datetime] = {}
         self._audit: list[AuditRecord] = []
         self._outlook_sync: dict[str, OutlookSyncRecord] = {}
         self._credentials: dict[str, StaffCredential] = {}
         self._notifications: dict[str, Notification] = {}
         self._email_deliveries: dict[str, EmailDelivery] = {}
         self._notification_preferences: dict[str, NotificationPreference] = {}
-        self._announcements: dict[str, Announcement] = {}  # Sprint 3 (1.19.0)
+        self._announcements: dict[str, Announcement] = {}
         self._calendar_feeds: dict[str, CalendarFeed] = {}
         self._series: dict[str, BookingSeries] = {}
-        self._site_contact: SiteContact | None = None  # Sprint 3 (1.16.0)
-        self._resource_internal: dict[str, ResourceInternalInfo] = {}  # 2026-11-07
+        self._site_contact: SiteContact | None = None
+        self._resource_internal: dict[str, ResourceInternalInfo] = {}
 
     @contextmanager
     def atomic(
@@ -111,7 +111,7 @@ class MemoryRepository:
                 self._requirements.copy(),
                 self._submissions.copy(),
                 self._bookings.copy(),
-                self._hidden_bookings.copy(),  # Sprint 3 (1.20.0): include visibility in rollback.
+                self._hidden_bookings.copy(),  # Include visibility in rollback.
                 deepcopy(self._audit),
                 self._outlook_sync.copy(),
                 self._credentials.copy(),
@@ -119,9 +119,9 @@ class MemoryRepository:
                 self._email_deliveries.copy(),
                 self._calendar_feeds.copy(),
                 self._series.copy(),
-                self._site_contact,  # Sprint 3 (1.16.0)
-                self._resource_internal.copy(),  # 2026-11-07
-                self._notification_preferences.copy(), self._announcements.copy(),  # Sprint 3 (1.19.0)
+                self._site_contact,
+                self._resource_internal.copy(),
+                self._notification_preferences.copy(), self._announcements.copy(),
             )
             try:
                 yield
@@ -142,7 +142,7 @@ class MemoryRepository:
                     self._series,
                     self._site_contact,
                     self._resource_internal,
-                    self._notification_preferences, self._announcements,  # Sprint 3 (1.19.0)
+                    self._notification_preferences, self._announcements,
                 ) = snapshot
                 raise
 
@@ -228,7 +228,7 @@ class MemoryRepository:
         with self._lock:
             self._bookings[booking.id] = booking
 
-    # Sprint 3 (1.20.0): never remove the shared booking or change its status.
+    # Never remove the shared booking or change its status.
     def hidden_booking_ids(self, principal_id: str) -> set[str]:
         with self._lock:
             return {booking_id for person_id, booking_id in self._hidden_bookings if person_id == principal_id}
@@ -291,7 +291,7 @@ class MemoryRepository:
         with self._lock:
             self._credentials[credential.principal_id] = credential
 
-    # Sprint 3 records -------------------------------------------------------------------------------------
+    # Notifications, email, preferences, announcements, calendar feeds, series and resource details --------
 
     def save_notification(self, notification: Notification) -> None:
         with self._lock:
@@ -351,7 +351,7 @@ class MemoryRepository:
                 claimed.append(item)
             return claimed
 
-    # Sprint 3 (2026-10-25): notification category choices.
+    # Notification category choices.
     def save_notification_preference(self, preference: NotificationPreference) -> None:
         with self._lock:
             self._notification_preferences[preference.id] = preference
@@ -381,7 +381,6 @@ class MemoryRepository:
         with self._lock:
             return self._series.get(series_id)
 
-    # Sprint 3 (1.16.0)
     def get_site_contact(self) -> SiteContact | None:
         with self._lock:
             return self._site_contact
@@ -398,7 +397,7 @@ class MemoryRepository:
         with self._lock:
             self._resource_internal[info.resource_id] = info
 
-    # Sprint 3 (1.19.0): records participate in the same rollback snapshot as resource status.
+    # Records participate in the same rollback snapshot as resource status.
     def save_announcement(self, announcement: Announcement) -> None:
         with self._lock:
             self._announcements[announcement.id] = announcement

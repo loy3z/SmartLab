@@ -1,4 +1,4 @@
-"""Sprint 3 (1.19.0): authenticated announcement reads and staff-only manual writes."""
+"""Authenticated announcement reads and staff-only manual writes."""
 from rest_framework import serializers
 
 from ._common import APIView, Response, collection, get_service, json_value, validated

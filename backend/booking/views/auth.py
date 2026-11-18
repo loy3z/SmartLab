@@ -1,4 +1,4 @@
-"""HTTP views: auth (split from booking/views.py on 2026-10-25)."""
+"""HTTP views: auth (split from booking/views.py)."""
 
 from ._common import *  # noqa: F401,F403 - shared imports, helpers and PublicView.
 
@@ -56,7 +56,7 @@ class DemoLoginView(PublicView):
         principal = next((item for item in get_service().repo.list_principals() if item.zid == data["zid"]), None)
         if principal is None:
             raise DomainError("INVALID_DEMO_USER", "Create this demo student account first or use a seeded demo zID.", 401)
-        if not principal.active:  # 2026-11-10 (U4): say so, instead of asking them to create an account that exists
+        if not principal.active:  # Say so, instead of asking them to create an account that exists
             raise DomainError("ACCOUNT_DEACTIVATED", "This account has been deactivated. Contact the lab.", 403)
         if principal.is_staff:
             # University (student) sign-in is for students only; staff use the staff sign-in page.

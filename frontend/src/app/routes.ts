@@ -6,18 +6,17 @@ const permissions: Record<string, readonly Role[]> = {
   '/resources': ['STUDENT', 'ADMIN', 'MANAGER'],
   '/bookings': ['STUDENT', 'ADMIN', 'MANAGER'],
   '/induction': ['STUDENT', 'ADMIN', 'MANAGER'],
-  '/admin/today': ['ADMIN', 'MANAGER'], // Sprint 3 (1.16.0): staff home page
+  '/admin/today': ['ADMIN', 'MANAGER'], // Staff home page
   '/admin/qualifications': ['ADMIN', 'MANAGER'],
   '/admin/bookings': ['ADMIN', 'MANAGER'],
   '/admin/calendar-sync': ['ADMIN', 'MANAGER'],
-  '/manager/home': ['MANAGER'], // 2026-11-07 (client, Week 8): Manager home page
+  '/manager/home': ['MANAGER'], // Manager home page
   '/manager/bookings': ['MANAGER'],
   '/manager/users': ['MANAGER'],
-  '/manager/resources': ['MANAGER'], // Sprint 3: resource setup
-  '/manager/setup': ['MANAGER'], // Sprint 3 (1.16.0): inductions and the lab's contact details
-  '/admin/records': ['ADMIN', 'MANAGER'], // Sprint 3: Booking Records (records and usage statistics)
-  '/manager/usage': ['MANAGER'], // Sprint 3: old Usage Report address, redirects to Booking Records (Managers only, 2026-11-07)
-  // Sprint 3 (1.19.0)
+  '/manager/resources': ['MANAGER'], // Resource setup
+  '/manager/setup': ['MANAGER'], // Inductions and the lab's contact details
+  '/admin/records': ['ADMIN', 'MANAGER'], // Booking Records (records and usage statistics)
+  '/manager/usage': ['MANAGER'], // Old Usage Report address, redirects to Booking Records (Managers only)
   '/settings/notifications': ['STUDENT', 'ADMIN', 'MANAGER'],
   '/admin/announcements': ['ADMIN', 'MANAGER'],
   '/account': ['STUDENT', 'ADMIN', 'MANAGER'],
@@ -30,7 +29,7 @@ export function normalizePath(pathname: string): string {
 }
 
 export function homePath(role: Role): string {
-  // Sprint 3 (1.16.0): staff start on "Today". 2026-11-07 (client, Week 8): a Manager starts on the Lab overview.
+  // Staff start on "Today". A Manager starts on the Lab overview.
   return role === 'STUDENT' ? '/dashboard' : role === 'MANAGER' ? '/manager/home' : '/admin/today'
 }
 

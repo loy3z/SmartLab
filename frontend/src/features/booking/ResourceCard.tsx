@@ -1,10 +1,14 @@
+// One resource (room or device) on the Book a resource page: where it is, its facts, whether this person's induction
+// allows booking it, and the buttons that open the booking dialogs.
 import { Link } from 'react-router'
 import { fmtHours } from './format'
 import { AlertIcon, CheckIcon, ClockIcon, PinIcon } from './icons'
 import type { Resource } from '../../api/types/index.ts'
 
+/** This person's induction state for the one resource (from the latest evidence for the induction it requires). */
 export type InductionState = 'VERIFIED' | 'PENDING' | 'NOT_SUBMITTED' | 'REJECTED' | 'EXPIRED' | 'NOT_CONFIGURED' | 'PREREQUISITE_REQUIRED'
 
+/** The status chip for each induction state (ok = green, otherwise amber). */
 const CHIP: Record<InductionState, { text: string; ok: boolean }> = {
   VERIFIED: { text: 'Induction verified', ok: true },
   PENDING: { text: 'Induction pending review', ok: false },
@@ -15,6 +19,7 @@ const CHIP: Record<InductionState, { text: string; ok: boolean }> = {
   PREREQUISITE_REQUIRED: { text: 'Earlier induction needed first', ok: false },
 }
 
+/** The short instruction under the chip; verified needs none. */
 const NOTE: Partial<Record<InductionState, string>> = {
   PENDING: 'You can request a booking once your induction is verified.',
   NOT_SUBMITTED: 'Submit induction to request a booking.',
@@ -49,6 +54,7 @@ interface Props {
   openLabel?: string
 }
 
+/** Overrides (test mode, Manager) change the chip and unblock the card; the server still enforces the real rules. */
 export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEquipment, roomName, prerequisiteName, inductionHref, onRepeat, onAdditionalHours, onLongBooking, testOverride, managerOverride, openLabel }: Props) {
   // Make override priority explicit while preserving the existing badge behaviour.
   let chip = CHIP[state]
@@ -63,10 +69,12 @@ export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEq
   const note = state === 'PREREQUISITE_REQUIRED'
     ? `Complete ${prerequisiteName ?? 'the earlier induction'} first, then the induction for this resource.`
     : NOTE[state]
+  // Under maintenance or closed: new requests are paused, but the room/device stays visible with the reason.
   const unavailable = resource.status !== 'AVAILABLE'
   const blocked = !testOverride && !managerOverride && state === 'NOT_CONFIGURED'
   const chipBody = <>{chip.ok ? <CheckIcon size={16} /> : <AlertIcon size={16} />} {chip.text}</>
   const chipClass = `bk-chip ${chip.ok ? 'is-ok' : 'is-warn'}`
+  // The longest normal booking; a Manager may book up to the hard maximum.
   const longest = managerOverride ? resource.max_booking_minutes : resource.effective_max_booking_minutes ?? resource.max_booking_minutes
   return (
     <article className={`bk-rcard${unavailable ? ' is-unavailable' : ''}`}>

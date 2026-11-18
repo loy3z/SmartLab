@@ -10,6 +10,10 @@ Code comments no longer start with tags such as “Sprint 3 (1.16.0):”, “202
 - `frontend/src/`: comments in TypeScript, TSX and CSS. Two CSS comments that only recorded where an old rule had been (`app/shell.css`, `index.css`) are deleted.
 - `frontend/tests/`: comments only; test names are unchanged.
 
+## After 1.28.0: Docker Deployment Reads the Mail Server and All Rule Settings (2026-11-17, no code change)
+
+- `docker-compose.yml` did not hand ten settings to the API and scheduler containers, so changing them in `.env.docker` had no effect and the defaults in `config/settings.py` always applied: the mail server (`EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`), which made a mailbox other than Gmail impossible under Docker, and seven rules from the table in `backend/README.md` (`QUALIFICATION_VALIDITY_DAYS`, `DEFAULT_PENDING_HOLD_MINUTES`, `CHECK_IN_OPENS_MINUTES`, `CHECK_IN_CLOSES_MINUTES`, `MAX_SERIES_WEEKS`, `REMINDER_HOURS_BEFORE`, `INDUCTION_REMINDER_DAYS`). The compose file now passes them with the same defaults, and `.env.docker.example` lists them. An existing `.env.docker` without these lines behaves as before.
+
 ## After 1.28.0: Two Rules Written Down: Extensions and Equipment Return (2026-11-18, documentation only)
 
 - Extending a booking in progress has never counted towards the 12-hour weekly limit, but no document said so. The product owner confirmed that this is the rule: an extension always needs a Manager's approval, and the Manager decides whether the extra time is reasonable. `backend/README.md` now states it next to the weekly limit. No code changed.

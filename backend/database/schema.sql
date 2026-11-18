@@ -151,6 +151,8 @@ CREATE TABLE public.booking (
     long_booking boolean DEFAULT false NOT NULL,
     long_booking_reason text,
     extension_end timestamp with time zone,
+    end_before_extension timestamp with time zone,
+    CONSTRAINT booking_end_before_extension_check CHECK (((end_before_extension IS NULL) OR ((end_before_extension > start) AND (end_before_extension < "end")))),
     CONSTRAINT booking_extension_end_check CHECK (((extension_end IS NULL) OR (extension_end > "end"))),
     CONSTRAINT booking_long_booking_reason_check CHECK ((NOT long_booking OR NULLIF(btrim(long_booking_reason), '') IS NOT NULL)),
     CONSTRAINT booking_long_booking_kind_check CHECK ((NOT long_booking OR (NOT urgent AND NOT additional_hours AND series_id IS NULL))),

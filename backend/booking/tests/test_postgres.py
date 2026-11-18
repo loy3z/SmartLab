@@ -210,6 +210,22 @@ class PostgresAdapterTests(TransactionTestCase):
             cursor.execute(migration.read_text())
         self.assertEqual(self.repo.hidden_booking_ids(self.a.id), {booking.id})
 
+    def test_017_backfills_the_end_before_the_first_extension(self):
+        start = datetime(2030, 1, 9, 23, tzinfo=timezone.utc)  # 10:00-13:00 Sydney after two extensions
+        booking = replace(self.raw_booking(start, BookingStatus.APPROVED), end=start + timedelta(hours=3))
+        self.repo.save_booking(booking)
+        migration = Path(settings.BASE_DIR) / 'database/migrations/017_end_before_extension.sql'
+        with connection.cursor() as cursor:
+            # Two extensions recorded at the same moment, the later one stored first: ordering by time cannot tell.
+            for old_end in (start + timedelta(hours=2), start + timedelta(hours=1)):
+                cursor.execute("""INSERT INTO public.audit_record(actor_id, action, entity_type, entity_id, at, details)
+                                  VALUES (%s, 'BOOKING_EXTENDED', 'booking', %s, %s, %s::jsonb)""",
+                               [self.manager.id, booking.id, start + timedelta(minutes=10),
+                                '{"old_end": "%s"}' % old_end.isoformat()])
+            cursor.execute(migration.read_text())
+            cursor.execute(migration.read_text())
+        self.assertEqual(self.repo.get_booking(booking.id).end_before_extension, start + timedelta(hours=1))
+
     def test_011_email_migration_can_run_twice(self):
         migration = Path(settings.BASE_DIR) / 'database/migrations/011_durable_email_delivery.sql'
         with connection.cursor() as cursor:

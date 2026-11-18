@@ -291,6 +291,9 @@ class Booking:
     # The later end the person asked for while the booking is in progress; it waits for
     # a Manager (extend_booking / review_extension in services/changes.py). None when nothing is waiting.
     extension_end: datetime | None = None
+    # The end before the first approved extension; None when never extended. Extensions do not count towards
+    # the weekly allowance (a Manager approved each one), so the allowance uses this end.
+    end_before_extension: datetime | None = None
 
     def __post_init__(self) -> None:
         if self.long_booking:
@@ -319,6 +322,7 @@ class Booking:
             updated_at=self.updated_at,
             hold_until=self.hold_until,
             extension_end=self.extension_end,
+            end_before_extension=self.end_before_extension,
         )
 
     def hold_is_active(self, at: datetime) -> bool:

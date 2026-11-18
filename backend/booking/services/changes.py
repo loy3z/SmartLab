@@ -129,7 +129,8 @@ class ChangesMixin:
             raise DomainError("BOOKING_CONFLICT", "Someone has already booked or is holding the time after this booking.", 409)
 
     def _apply_extension(self, actor, booking, end):
-        extended = replace(booking, end=end, extension_end=None, updated_at=self.now(), revision=booking.revision + 1)
+        extended = replace(booking, end=end, extension_end=None, end_before_extension=booking.end_before_extension or booking.end,
+                           updated_at=self.now(), revision=booking.revision + 1)
         self._save_booking(extended)
         self._audit(actor.id, "BOOKING_EXTENDED", "booking", booking.id, old_end=booking.end.isoformat(), new_end=end.isoformat())
         if actor.id != booking.student_id:

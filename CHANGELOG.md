@@ -2,6 +2,13 @@
 
 This file records what changed in each update and why. Other documents describe only the current rules. Version numbers refer to the API version in `backend/docs/openapi.json`, and migrations refer to scripts in `backend/database/migrations/`. The newest entries appear first.
 
+## After 1.29.0: An Approved Extension No Longer Uses the Weekly Allowance (2026-11-18, migration 017, API unchanged)
+
+- **Bug:** extending a booking in progress overwrote its end, and the weekly allowance counted the whole booking, so an approved extension used up the 12 hours. `backend/README.md` says extensions do not count (a Manager approves each one). Example: 7 h booked, a 1 h booking extended by 3 h; the week showed 10 h and a later 3 h request was refused as 13 h. Found by the edge-case review after client meeting 5.
+- **Fix:** a booking keeps `end_before_extension`, its end before the first approved extension (`domain.py`, set in `services/changes.py` `_apply_extension`). The weekly count uses it (`services/checks.py` `_week_slots_used`, which also gives the hours shown on the Dashboard and in the booking window). The real end still decides the calendar, conflicts and usage.
+- **Migration 017** adds the column with a check that it lies between start and end, and fills it for bookings already extended from the earliest `old_end` in their `BOOKING_EXTENDED` audit records. Safe to run again.
+- Tests: `test_change_requests.py` `test_an_approved_extension_does_not_count_towards_the_weekly_allowance`, `test_an_extension_does_not_block_a_later_normal_request`, `test_a_second_extension_keeps_the_end_from_before_the_first`; `test_postgres.py` `test_017_backfills_the_end_before_the_first_extension`.
+
 ## After 1.28.0: The Change-Time Dialog Counts the Week Without the Booking Being Moved (2026-11-17, API unchanged)
 
 - A student whose week was full (12 h) opened “Change time” on one booking and read “0 h left of your 12 h”, although moving it within the same week is allowed: submitting a change already leaves the old booking out of the weekly count. `availability` now does the same for `week_hours` when `exclude_booking_id` is given (`services/availability.py`, `checks.py` `week_hours`), so the dialog shows the hours the move can use (3 h in this example). The booking dialog and the Dashboard are unchanged. Test: `test_change_requests.py` `test_the_change_window_shows_the_hours_the_moved_booking_gives_back` (failed before the change).

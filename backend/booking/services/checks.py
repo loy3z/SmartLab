@@ -233,7 +233,8 @@ class ChecksMixin:
                                and original.status == BookingStatus.APPROVED and original.start > now
                                and original.resource_id == item.resource_id)
             key = original.id if replaces_future else item.id
-            reserved[key] = max(reserved.get(key, 0), self._duration_slots(item.start, item.end))
+            # Approved extensions are not part of the allowance: count up to the end before them.
+            reserved[key] = max(reserved.get(key, 0), self._duration_slots(item.start, item.end_before_extension or item.end))
         return sum(reserved.values())
 
     def _change_approval_quota_violation(self, booking):

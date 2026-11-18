@@ -139,6 +139,16 @@ async function signOut(page: Page) {
   await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible()
 }
 
+test('the login page shows a secondary staff sign-in button that opens staff sign-in', async ({ page }) => {
+  await page.goto('/#/login')
+  const staffSignIn = page.getByRole('link', { name: 'Staff sign-in', exact: true })
+  await expect(staffSignIn).toBeVisible()
+  await expect(staffSignIn).toHaveClass(/\bui-btn\b/)
+  await expect(staffSignIn).toHaveClass(/\bui-btn-ghost\b/)
+  await staffSignIn.click()
+  await expect(page.getByRole('heading', { name: 'Staff sign-in', exact: true })).toBeVisible()
+})
+
 for (const { entry, destination, heading, menu } of [
   { entry: '/bookings/?view=upcoming', destination: '/bookings?view=upcoming', heading: 'My bookings', menu: 'My bookings' },
   { entry: '/resources/?kind=ROOM', destination: '/resources?kind=ROOM', heading: 'Book a resource', menu: 'Book a resource' },

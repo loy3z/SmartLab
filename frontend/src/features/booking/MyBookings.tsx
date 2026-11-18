@@ -1,3 +1,6 @@
+// My Bookings: every request the person made, with its status, an explanation, and the actions the rules allow
+// (withdraw/cancel, change time or reschedule, check in, extend). The server re-checks every action; the buttons
+// here only hide what cannot work. Weekly series are grouped into one card (see my-bookings.ts).
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { EmptyState, Tabs } from '../../ui/components'
@@ -13,19 +16,21 @@ import { ExtendBox } from './ExtendBox' // 1.24.0
 import { canExtend, waitingExtension } from './extend'
 import { useAutoRefresh } from '../../lib/use-auto-refresh' // 2026-11-07
 import { bookingDetail, bookingRef, fmtDateTime, errorMessage, fmtDuration, fmtRange, fmtTime, minutesBetween, statusText } from './format'
-import { ACTIVE, canRemoveBookingHistory, groupBookings } from './my-bookings'
+import { ACTIVE, canRemoveBookingHistory, groupBookings, isDueSoon } from './my-bookings'
 import { RescheduleBox } from './RescheduleBox'
 import { SeriesCard } from './SeriesCard'
 import { additionalHoursPriority } from './additional-hours'
 import type { Booking, Resource } from '../../api/types/index.ts'
 
 
+/** The status tabs. "All" is the default; the tab and the resource filter live in the URL so a reload keeps them. */
 const BOOKING_VIEWS = [
   { key: 'all', label: 'All bookings' }, { key: 'upcoming', label: 'Upcoming' },
   { key: 'pending', label: 'Pending' }, { key: 'past', label: 'Past' }, { key: 'cancelled', label: 'Cancelled' },
 ] as const
 type BookingView = typeof BOOKING_VIEWS[number]['key']
 
+/** Which tab a booking belongs to. Past = ended or closed without being cancelled (cancelled has its own tab). */
 function inView(booking: Booking, view: BookingView, now: number) {
   if (view === 'all') return true
   if (view === 'cancelled') return booking.status === 'CANCELLED'
@@ -36,6 +41,7 @@ function inView(booking: Booking, view: BookingView, now: number) {
 
 
 
+/** `refreshKey` changes when a booking is made elsewhere on the site, so this list reloads. */
 export function MyBookings({ refreshKey }: { refreshKey: number }) {
   const feedback = useFeedback()
   const { user } = useAuth()
@@ -48,6 +54,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
   const [resources, setResources] = useState<Record<string, Resource>>({})
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  // Clock used for "future", "in progress" and "due soon"; set on each load, 0 means nothing has loaded yet.
   const [now, setNow] = useState(0)
   const [rescheduling, setRescheduling] = useState<string | null>(null)
   const [changing, setChanging] = useState<string | null>(null) // Sprint 3 (1.16.0): booking whose change box is open
@@ -78,6 +85,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
   const put = (saved: Booking) => setBookings((list) =>
     list.some((item) => item.id === saved.id) ? list.map((item) => (item.id === saved.id ? saved : item)) : [saved, ...list])
 
+  /** Cancel an approved booking or withdraw a request that is still waiting; asks first because it cannot be undone. */
   async function cancel(b: Booking) {
     const name = resources[b.resource_id]?.name ?? 'this resource'
     const ok = await feedback.confirm({
@@ -151,6 +159,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
     await load()
   }
 
+  /** A Manager moved a booking directly. Students ask for a change instead (ChangeTimeBox). */
   async function rescheduled(b: Booking) {
     setRescheduling(null)
     const calendar = b.outlook_sync && b.outlook_sync.status !== 'DISABLED' && b.outlook_sync.status !== 'NOT_REQUIRED'
@@ -165,7 +174,7 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
     void load()
   }
 
-  const loaded = now !== 0
+  const loaded = now !== 0 // false until the first load finishes, so the empty state does not flash
   const future = (b: Booking) => new Date(b.start).getTime() > now
   const cancellable = (b: Booking) => future(b) && ACTIVE.includes(b.status)
   // Sprint 3 (1.20.0): include historical/archived resources even if the catalogue omits them.
@@ -261,12 +270,14 @@ export function MyBookings({ refreshKey }: { refreshKey: number }) {
               {b.status === 'APPROVED' && future(b) && <p className="bk-muted">Additional hours apply only to this time. To choose another time, cancel and submit a new request.</p>}
             </>}
             <p><b>{fmtRange(b.start, b.end)}</b> <span className="bk-muted">· {fmtDuration(minutesBetween(b.start, b.end))}</span></p>
+            {/* Story 21: a borrowed device is returned when its booked time ends; flag it in the last 24 hours. */}
             {res?.kind === 'EQUIPMENT' && b.status === 'APPROVED' && Date.parse(b.end) > now && (
-              <p className={Date.parse(b.end) - now < 24 * 3600 * 1000 ? 'bk-due-soon' : 'bk-muted'}>
-                Return by <b>{fmtDateTime(b.end)}</b>{Date.parse(b.end) - now < 24 * 3600 * 1000 ? ' — due within 24 hours' : ''}
+              <p className={isDueSoon(b.end, now) ? 'bk-due-soon' : 'bk-muted'}>
+                Return by <b>{fmtDateTime(b.end)}</b>{isDueSoon(b.end, now) ? ' — due within 24 hours' : ''}
               </p>
             )}
             <p className="bk-muted">{bookingDetail(b)}</p>
+            {/* Story 18: a short reference to quote; the full id is in the tooltip and in the "Contact the lab" email. */}
             <p className="bk-muted" title={b.id}>Reference: <b>{bookingRef(b.id)}</b></p>
             {b.purpose && !(b.urgent && b.purpose === b.urgent_reason) && <p className="bk-muted">Purpose: {b.purpose}</p>}
             {/* Sprint 3 (1.16.0): change requests */}

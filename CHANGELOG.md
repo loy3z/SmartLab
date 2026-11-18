@@ -2,6 +2,10 @@
 
 This file records what changed in each update and why. Other documents describe only the current rules. Version numbers refer to the API version in `backend/docs/openapi.json`, and migrations refer to scripts in `backend/database/migrations/`. The newest entries appear first.
 
+## After 1.30.0: Staff Sign-In Is a Clear Button (2026-11-18, frontend only)
+
+- Client meeting 5: on the sign-in page the Admin and Manager entry was a faint line of text that staff did not notice. It is now a full-width secondary button under the student sign-in (`LoginPage.tsx`, `auth.css`); the student button stays the main one. Test: `routing.spec.ts` “the login page shows a secondary staff sign-in button that opens staff sign-in”.
+
 ## After 1.30.0: Edge-Case Tests for the Handover (2026-11-18, tests only)
 
 - The client asked (meeting 5) how the system reacts in difficult cases, not only the normal path. Two new test files check them; no feature code changed.

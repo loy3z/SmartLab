@@ -69,16 +69,62 @@ export function BookingReviewPage() {
   const resourceName = useCallback((b: Booking) => b.resource_name ?? resources.find((r) => r.id === b.resource_id)?.name ?? 'Resource', [resources])
   const now = loadedAt ?? 0
 
+  // Replace nested ternaries with separate selection, filtering and sorting steps
+  // to make the rules easier to maintain without changing existing behaviour.
   const rows = useMemo(() => {
+    let source: Booking[]
+
+    switch (tab) {
+      case 'WAITLISTED':
+        source = waitlisted
+        break
+      case 'ADDITIONAL_HOURS':
+        source = pending.filter((booking) => booking.additional_hours)
+        break
+      case 'LONG_BOOKINGS':
+        source = pending.filter((booking) => booking.long_booking)
+        break
+      default:
+        source = pending.filter(
+          (booking) => !booking.additional_hours && !booking.long_booking,
+        )
+    }
+
     const term = search.trim().toLowerCase()
-    const list = (tab === 'WAITLISTED' ? waitlisted : pending.filter(b => tab === 'ADDITIONAL_HOURS' ? b.additional_hours
-      : tab === 'LONG_BOOKINGS' ? b.long_booking : !b.additional_hours && !b.long_booking)).filter((b) =>
-      (!resourceFilter || b.resource_id === resourceFilter) &&
-      (!term || [b.student?.zid, b.student?.display_name, b.student?.university_email].some((v) => v?.toLowerCase().includes(term))))
-    // Urgent requests (Manager decision, no automatic decision) come first.
-    return [...list].sort((a, b) => tab === 'ADDITIONAL_HOURS' ? compareAdditionalHours(a, b) : tab !== 'WAITLISTED'
-      ? Number(Boolean(b.urgent)) - Number(Boolean(a.urgent)) || Date.parse(a.review_due_at ?? a.start) - Date.parse(b.review_due_at ?? b.start)
-      : a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
+    const filtered = source.filter((booking) => {
+      const matchesResource =
+        !resourceFilter || booking.resource_id === resourceFilter
+
+      const matchesSearch =
+        !term ||
+        [
+          booking.student?.zid,
+          booking.student?.display_name,
+          booking.student?.university_email,
+        ].some((value) => value?.toLowerCase().includes(term))
+
+      return matchesResource && matchesSearch
+    })
+
+    return [...filtered].sort((a, b) => {
+      if (tab === 'ADDITIONAL_HOURS') {
+        return compareAdditionalHours(a, b)
+      }
+
+      if (tab === 'WAITLISTED') {
+        return (
+          a.created_at.localeCompare(b.created_at) ||
+          a.id.localeCompare(b.id)
+        )
+      }
+
+      // Urgent requests come first, followed by the earliest review deadline.
+      return (
+        Number(Boolean(b.urgent)) - Number(Boolean(a.urgent)) ||
+        Date.parse(a.review_due_at ?? a.start) -
+          Date.parse(b.review_due_at ?? b.start)
+      )
+    })
   }, [tab, pending, waitlisted, resourceFilter, search])
 
   const open = [...pending, ...waitlisted].find((b) => b.id === openId) ?? null

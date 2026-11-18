@@ -65,9 +65,24 @@ export function ExtendBox({ booking, resource, isManager, onDone, onClose }: {
     }
   }
 
+  // Separate timeline cell states to make their priority clear
+  // without changing the existing colour rules.
   const kind = (cell: string) => {
     const t = Date.parse(cell)
-    return t < Date.parse(booking.end) ? 'mine' : t < Date.parse(end) ? 'added' : t >= limit ? 'taken' : 'free'
+
+    if (t < Date.parse(booking.end)) {
+      return 'mine'
+    }
+
+    if (t < Date.parse(end)) {
+      return 'added'
+    }
+
+    if (t >= limit) {
+      return 'taken'
+    }
+
+    return 'free'
   }
 
   return (

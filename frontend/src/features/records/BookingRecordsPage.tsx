@@ -6,7 +6,7 @@ import { EmptyState, PageHeader, Tabs } from '../../ui/components'
 import { useFeedback } from '../../ui/feedback-context'
 import { useAuth } from '../auth/auth-context'
 import { downloadBookingRecords, listBookingRecords, listResources } from '../../api/index.ts'
-import { errorMessage, fmtDuration, fmtRange, minutesBetween, STATUS_TEXT, todaySydney } from '../booking/format'
+import { errorMessage, fmtDuration, fmtRange, minutesBetween, statusText, todaySydney } from '../booking/format'
 import type { Booking, Resource } from '../../api/types/index.ts'
 import { ADMIN_HISTORY_DAYS, attendanceText, creatorText, defaultRecordFilters, RECORD_STATUSES, recordQuery, type RecordFilters } from './records'
 import { UsageTab } from './UsageTab'
@@ -121,7 +121,7 @@ function RecordsTab({ isManager, lookup }: { isManager: boolean; lookup: string 
                     </td>
                     <td className="ui-hide-sm">{creatorText(b)}</td>
                     <td>
-                      {STATUS_TEXT[b.status]}
+                      {statusText(b)}
                       {b.urgent && <span className="ui-badge-urgent">URGENT</span>}
                       {b.decision_reason && <span className="ui-sub-text">{b.decision_reason}</span>}
                     </td>

@@ -50,9 +50,16 @@ interface Props {
 }
 
 export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEquipment, roomName, prerequisiteName, inductionHref, onRepeat, onAdditionalHours, onLongBooking, testOverride, managerOverride, openLabel }: Props) {
-  const chip = testOverride ? { text: 'Test override enabled', ok: true }
-    : managerOverride ? { text: 'Manager booking: no induction needed', ok: true }
-    : state === 'PREREQUISITE_REQUIRED' && prerequisiteName ? { text: `${prerequisiteName} needed first`, ok: false } : CHIP[state]
+  // Make override priority explicit while preserving the existing badge behaviour.
+  let chip = CHIP[state]
+
+  if (testOverride) {
+    chip = { text: 'Test override enabled', ok: true }
+  } else if (managerOverride) {
+    chip = { text: 'Manager booking: no induction needed', ok: true }
+  } else if (state === 'PREREQUISITE_REQUIRED' && prerequisiteName) {
+    chip = { text: `${prerequisiteName} needed first`, ok: false }
+  }
   const note = state === 'PREREQUISITE_REQUIRED'
     ? `Complete ${prerequisiteName ?? 'the earlier induction'} first, then the induction for this resource.`
     : NOTE[state]

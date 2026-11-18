@@ -89,9 +89,16 @@ export function Drawer({ title, subtitle, onClose, children, footer }: {
   footer?: ReactNode
 }) {
   const closeRef = useRef<HTMLButtonElement>(null)
+  // Focus the close button on mount without interrupting later interactions.
   useEffect(() => {
     closeRef.current?.focus()
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+  }, [])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])

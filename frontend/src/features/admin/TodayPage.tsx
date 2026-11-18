@@ -101,7 +101,10 @@ export function TodayPage() {
                 <ul className="today-list">
                   {data.out_of_service.map(({ resource, affected_bookings }) => (
                     <li key={resource.id}>
-                      <Link to="/manager/bookings">
+                      {/* Keep the resource link within the current role's permitted pages. */}
+                      <Link
+                        to={data.role === 'MANAGER' ? '/manager/bookings' : '/admin/records'}
+                      >
                         <strong>{resource.name}</strong> · {resource.status === 'MAINTENANCE' ? 'Under maintenance' : 'Closed'}
                         {resource.status_reason && <span className="today-meta">{resource.status_reason}</span>}
                         <span className={affected_bookings ? 'today-due' : 'today-meta'}>{affected_bookings} future booking{affected_bookings === 1 ? '' : 's'}</span>

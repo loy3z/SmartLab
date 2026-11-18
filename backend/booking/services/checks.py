@@ -122,9 +122,6 @@ class ChecksMixin:
 
     def _qualification_violation(self, student_id, resource, end):
         eligibility, qualified = self.qualification_state(student_id, resource, end)
-        if eligibility == "NOT_CONFIGURED":
-            return DomainError("RESOURCE_POLICY_NOT_CONFIGURED",
-                               "Configure an induction requirement for this resource before accepting requests.", 409)
         if not qualified:
             details = {"qualification_status": eligibility, "requirement_id": resource.required_qualification_id}
             missing = self.missing_prerequisite(student_id, resource.required_qualification_id, end)

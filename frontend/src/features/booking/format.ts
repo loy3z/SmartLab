@@ -139,7 +139,7 @@ export function bookingDetail(b: Booking): string {
 }
 
 export const QUAL_TEXT: Record<QualificationStatus, string> = {
-  NOT_CONFIGURED: 'This resource has no induction requirement set up yet and cannot be booked.',
+  NOT_REQUIRED: 'No induction is needed for this resource.',
   NOT_SUBMITTED: 'Please submit your induction documents first.',
   PENDING: 'Your induction documents are awaiting review. You can request a booking once they are verified.',
   VERIFIED: 'Induction verified.',
@@ -171,7 +171,6 @@ const ERROR_TEXT: Record<string, string> = {
   URGENT_NOT_NEEDED: 'This time is inside the normal booking window. Turn off "Urgent" and send a normal request.',
   PERSON_NOT_FOUND: 'No account found for that zID.',
   RESOURCE_UNAVAILABLE: 'This resource is under maintenance or closed, so it cannot be booked right now.',
-  RESOURCE_POLICY_NOT_CONFIGURED: 'This resource has no induction requirement set up yet. Contact a manager.',
   QUALIFICATION_NOT_VERIFIED: 'The student\'s induction is not verified, so this request cannot be approved.',
   REQUEST_NOT_REVIEWABLE: 'This request has already been decided or moved. The list has been refreshed.',
   ALREADY_REVIEWED: 'This has already been reviewed by someone else. The list has been refreshed.',

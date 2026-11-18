@@ -25,7 +25,7 @@ function latestStatus(requirementId: string, quals: Qualification[]) {
 
 /** Mirrors the backend: prerequisites (e.g. General before Advanced) first, then the resource's own induction. */
 function stateFor(r: Resource, quals: Qualification[], reqs: Requirement[]): InductionState {
-  if (!r.required_qualification_id) return 'NOT_CONFIGURED'
+  if (!r.required_qualification_id) return 'NOT_REQUIRED'
   const requirement = reqs.find((item) => item.id === r.required_qualification_id)
   if (requirement?.prerequisite_ids.some((id) => latestStatus(id, quals) !== 'VERIFIED')) return 'PREREQUISITE_REQUIRED'
   return latestStatus(r.required_qualification_id, quals)

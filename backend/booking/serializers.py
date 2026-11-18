@@ -309,7 +309,7 @@ class ResourceFieldsSerializer(StrictSerializer):
     name = serializers.CharField(required=False, max_length=120)
     location = serializers.CharField(required=False, max_length=120)
     description = serializers.CharField(required=False, allow_blank=True, max_length=1000)
-    required_qualification_id = serializers.UUIDField(required=False)
+    required_qualification_id = serializers.UUIDField(required=False, allow_null=True)  # null: no induction
     room_id = serializers.UUIDField(required=False, allow_null=True)
     category = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=60)
     slot_minutes = serializers.IntegerField(required=False)

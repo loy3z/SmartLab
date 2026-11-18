@@ -2,12 +2,20 @@
 
 This file records what changed in each update and why. Other documents describe only the current rules. Version numbers refer to the API version in `backend/docs/openapi.json`, and migrations refer to scripts in `backend/database/migrations/`. The newest entries appear first.
 
-## After 1.29.0: An Approved Extension No Longer Uses the Weekly Allowance (2026-11-18, migration 017, API unchanged)
+## After 1.30.0: An Approved Extension No Longer Uses the Weekly Allowance (2026-11-18, migration 017, API unchanged)
 
 - **Bug:** extending a booking in progress overwrote its end, and the weekly allowance counted the whole booking, so an approved extension used up the 12 hours. `backend/README.md` says extensions do not count (a Manager approves each one). Example: 7 h booked, a 1 h booking extended by 3 h; the week showed 10 h and a later 3 h request was refused as 13 h. Found by the edge-case review after client meeting 5.
 - **Fix:** a booking keeps `end_before_extension`, its end before the first approved extension (`domain.py`, set in `services/changes.py` `_apply_extension`). The weekly count uses it (`services/checks.py` `_week_slots_used`, which also gives the hours shown on the Dashboard and in the booking window). The real end still decides the calendar, conflicts and usage.
 - **Migration 017** adds the column with a check that it lies between start and end, and fills it for bookings already extended from the earliest `old_end` in their `BOOKING_EXTENDED` audit records. Safe to run again.
 - Tests: `test_change_requests.py` `test_an_approved_extension_does_not_count_towards_the_weekly_allowance`, `test_an_extension_does_not_block_a_later_normal_request`, `test_a_second_extension_keeps_the_end_from_before_the_first`; `test_postgres.py` `test_017_backfills_the_end_before_the_first_extension`.
+
+## 1.30.0: A Resource May Need No Induction (2026-11-18, no migration)
+
+- **Why:** in client meeting 5 the client said equipment is separate from rooms and that simple devices (for example smart watches) need no induction. Every resource had to name an induction, and the demo equipment used its room's, so a student could borrow nothing without passing a room induction first.
+- **Rule:** the Manager chooses an induction or "No induction required" for each room or device. A resource with none can be booked by anyone (`qualification_status` `NOT_REQUIRED`); equipment is only ever checked against its own induction. Adding a resource must still send the field, so "no induction" is a choice and never a field left out. `NOT_CONFIGURED` and the error `RESOURCE_POLICY_NOT_CONFIGURED` are gone (`services/qualifications.py`, `checks.py`, `resources.py`).
+- **Website:** the induction list in Resource setup starts with "No induction required"; the booking card shows "No induction needed"; the borrowing conditions for such equipment say no induction is needed.
+- **Demo data:** Digital Multimeter 001 and 002 need no induction (`runtime.py`, `database/seed_resources.sql`). Existing databases are not changed.
+- API 1.30.0: `openapi.json`, `docs/frontend-api.md`. Tests: `test_resource_setup.py` (no induction, explicit choice, switching back), `test_api.py`, `test_day_overview.py`, `test_audit_and_seed.py`, `test_test_console.py`, `frontend/tests/resource-form.test.mjs`.
 
 ## After 1.28.0: The Change-Time Dialog Counts the Week Without the Booking Being Moved (2026-11-17, API unchanged)
 

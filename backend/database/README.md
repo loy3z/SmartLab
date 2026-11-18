@@ -75,7 +75,7 @@ Each file prompts once for the PostgreSQL password. Set `$pgBin` and `$dbName` a
 | `014_remove_booking_freeze.sql` | 1.25.0: remove freeze table `unfreeze_request`, `app_users.no_show_count`, `frozen_until` and constraints. **Deletes freeze data**, while `booking.attendance` remains. Before rolling back to pre-1.25 code, rerun 006 to restore empty columns/tables |
 | `015_resource_internal_info.sql` | 1.26.0: new one-row-per-resource `resource_internal_info` for owner, UNSW asset number, source and specifications, Manager-only; cascades on resource deletion. Adds only a table |
 | `016_extension_requests.sql` | 1.27.0: add `booking.extension_end`, a requested later end awaiting Manager approval, with a later-than-`end` constraint; existing rows are NULL |
-| `017_end_before_extension.sql` | After 1.29.0 (API unchanged): add `booking.end_before_extension`, the end before the first approved extension, so extensions stay out of the weekly allowance; fills it for already-extended bookings from the earliest `old_end` in their `BOOKING_EXTENDED` audit records; existing other rows are NULL |
+| `017_end_before_extension.sql` | After 1.30.0 (API unchanged): add `booking.end_before_extension`, the end before the first approved extension, so extensions stay out of the weekly allowance; fills it for already-extended bookings from the earliest `old_end` in their `BOOKING_EXTENDED` audit records; existing other rows are NULL |
 
 The schema-only dump of an upgraded database must exactly match one created from `schema.sql` and seeds. For every schema change, create one new database and one from old scripts, run every migration twice on the latter, and compare `pg_dump --schema-only`.
 

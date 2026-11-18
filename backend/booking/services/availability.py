@@ -86,7 +86,7 @@ class AvailabilityMixin:
         cursor = datetime.combine(day, resource.opening_time, zone).astimezone(UTC)
         closing = datetime.combine(day, resource.closing_time, zone).astimezone(UTC)
         sources = shared.eligibility if shared else None
-        eligibility, _ = self.qualification_state(person.id, resource, sources=sources)
+        eligibility, qualified = self.qualification_state(person.id, resource, sources=sources)
         mine = shared.own_requests if shared else self.repo.list_bookings(student_id=person.id, resource_id=resource.id)
         own_requests = [item for item in mine
                         if item.resource_id == resource.id and item.status in ACTIVE_REQUEST_STATUSES and item.id != exclude]
@@ -131,7 +131,7 @@ class AvailabilityMixin:
                 "review_window_minutes": resource.pending_hold_minutes,
                 # Outside the Manager override, the person's induction and prerequisites must be current.
                 "can_request": (person.active and resource.bookable) if override else (
-                    person.active and eligibility == "VERIFIED" and resource.bookable
+                    person.active and qualified and resource.bookable
                     and (not long_booking or maximum > normal_maximum)),
                 "manager_override": override,
                 "qualification_status": eligibility,
@@ -183,7 +183,7 @@ class AvailabilityMixin:
             result = self._availability(actor, resource, day, duration_minutes, shared=shared)
             if bookable_only and not result["can_request"]:
                 status, induction = result["resource_status"], result["qualification_status"]
-                reason = status if status != "AVAILABLE" else induction if induction != "VERIFIED" else "NOT_AVAILABLE"
+                reason = status if status != "AVAILABLE" else induction if induction not in ("VERIFIED", "NOT_REQUIRED") else "NOT_AVAILABLE"
                 not_bookable[reason] = not_bookable.get(reason, 0) + 1
                 continue
             if free_at is not None:

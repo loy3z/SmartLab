@@ -47,6 +47,28 @@ class ResourceSetupTests(BookingFixtureMixin, SimpleTestCase):
         booking, _ = self.service.create_booking(self.student, item.id, self.start, self.end, "Measure samples")
         self.assertEqual(booking.status, BookingStatus.PENDING_APPROVAL)
 
+    def test_equipment_with_no_induction_is_open_to_a_student_without_any(self):
+        watch = self.add(name="Smart watch 01", required_qualification_id=None)
+        self.assertIsNone(watch.required_qualification_id)
+        self.assertEqual(self.service.qualification_state(self.student.id, watch), ("NOT_REQUIRED", True))
+        # The student has passed no induction at all, not even the room's.
+        booking, _ = self.service.create_booking(self.student, watch.id, self.start, self.end, "Step count study")
+        self.assertEqual(booking.status, BookingStatus.PENDING_APPROVAL)
+
+    def test_no_induction_must_be_chosen_not_left_out(self):
+        values = {"name": "Smart watch 02", "location": "Lab Room 1", "room_id": self.room.id}
+        error = self.refused("VALIDATION_ERROR", self.service.create_resource, self.manager, "EQUIPMENT", values)
+        self.assertIn("required_qualification_id", error.details)
+
+    def test_an_existing_resource_can_drop_and_regain_its_induction(self):
+        item = self.add()
+        opened, _ = self.service.update_resource(self.manager, item.id, {"required_qualification_id": None})
+        self.assertIsNone(opened.required_qualification_id)
+        self.service.create_booking(self.student, item.id, self.start, self.end, "Open now")
+        closed, _ = self.service.update_resource(self.manager, item.id, {"required_qualification_id": self.requirement.id})
+        self.refused("QUALIFICATION_REQUIRED", self.service.create_booking, self.student, item.id,
+                     self.start + timedelta(hours=2), self.end + timedelta(hours=2), "Needs induction again")
+
     def test_only_a_manager_can_set_up_resources(self):
         values = {"name": "X", "location": "Y", "required_qualification_id": self.requirement.id}
         self.refused("FORBIDDEN", self.service.create_resource, self.admin, "ROOM", values)

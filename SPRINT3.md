@@ -99,7 +99,7 @@ Version 1.25.0 (2026-11-07) removed freezing and unfreeze requests (client Week 
 ## 6. Manager Room and Equipment Management on the Website
 
 - **Rules**: described at the top of `booking/services/resources.py`:
-  - Name, location, and required induction are mandatory; names must be unique.
+  - Name and location are mandatory, and the induction is a choice: an induction or "No induction required" (1.30.0, client meeting 5: equipment is independent of rooms); names must be unique.
   - A room cannot have a parent room or category.
   - Times must align with 15-, 30-, or 60-minute steps; the maximum duration must fit within opening hours.
   - The resource type cannot be changed after creation.

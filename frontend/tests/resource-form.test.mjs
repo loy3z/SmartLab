@@ -12,7 +12,11 @@ test('a filled-in form has no problems', () => {
 
 test('required fields and room rules', () => {
   const problems = checkResource('ROOM', form({ name: ' ', location: '', required_qualification_id: '', category: 'Optics' }))
-  assert.deepEqual(Object.keys(problems).sort(), ['location', 'name', 'required_qualification_id', 'room_id'])
+  assert.deepEqual(Object.keys(problems).sort(), ['location', 'name', 'room_id'])
+})
+
+test('no induction is a valid choice', () => {
+  assert.deepEqual(checkResource('EQUIPMENT', form({ required_qualification_id: null })), {})
 })
 
 test('time rules match the backend', () => {

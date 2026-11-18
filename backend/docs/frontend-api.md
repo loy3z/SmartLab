@@ -2,6 +2,12 @@
 
 The API base path is `/api/v1/`, and every path ends with `/`. See [openapi.json](openapi.json) for the authoritative schema; after startup, `GET /api/schema/` returns the same definition.
 
+## 1.30.0: A Resource May Need No Induction (no migration)
+
+- `required_qualification_id` may be `null` on `POST admin/resources/` and `PATCH admin/resources/{id}/`: nobody needs an induction to book it (for example a smart watch). Adding a resource must still send the field, as an induction id or `null`, so "no induction" is always a choice.
+- Equipment is checked against its own induction only, never its room's. A student who has passed no induction can book equipment that needs none.
+- `qualification_status` gains `NOT_REQUIRED` (bookable by everyone) and loses `NOT_CONFIGURED`; the error `RESOURCE_POLICY_NOT_CONFIGURED` is no longer returned.
+
 ## 1.29.0: Two Unused Endpoints Removed (no migration)
 
 - `POST admin/users/managers/` is removed. Use `POST admin/users/staff/` with `"role":"MANAGER"`, which the website already does.
@@ -152,7 +158,7 @@ Only a **Manager** can view the people list, create staff, change staff accounts
 
 `dashboard` returns `{ bookings, qualifications, counts }`. Both lists are arrays. Keys in `counts` are the seven uppercase booking statuses, such as `counts.APPROVED`; it is not a qualification count or total booking count. Other list endpoints use `{ count, results }`.
 
-`qualification_status=NOT_CONFIGURED` means the resource has no induction requirement configured and cannot be requested; maintain the resource data before opening it. `qualification_status=PREREQUISITE_REQUIRED` means its induction requires another one first (for example, Advanced requires General). `missing_prerequisite_id` identifies the missing requirement, and the frontend can link directly to `/induction?requirement=<id>`.
+`qualification_status=NOT_REQUIRED` means the resource needs no induction, so anyone may request it. `qualification_status=PREREQUISITE_REQUIRED` means its induction requires another one first (for example, Advanced requires General). `missing_prerequisite_id` identifies the missing requirement, and the frontend can link directly to `/induction?requirement=<id>`.
 
 ### Induction Prerequisites
 
@@ -170,7 +176,7 @@ A resource's `room_id` is the ID of the room containing equipment; it is `null` 
 
 An availability query is a point-in-time snapshot; another user may occupy the time before or after submission. A slot with `available=false` must not say “book immediately.” A student may still request an occupied time, but will join the waitlist, which the UI must explain clearly. Each resource may have a different `required_qualification_id`; the frontend must read the resource requirement and cannot use one global “induction complete” flag for every resource.
 
-`reason_code` in `slots[]` is `START_TIME_PASSED`, `RESOURCE_UNAVAILABLE` (maintenance/closed), `TOO_SOON` (less than seven days), `TOO_FAR_AHEAD` (beyond the default 28 days/four weeks), `BOOKED`, `TEMPORARILY_HELD`, or `null`. Top-level response also includes `earliest_date`, `latest_date`, `min_advance_days`, and `max_advance_days` for date-picker limits. A temporary hold returns `hold_until` (UTC deadline) and `held_by_me` (whether this student's own hold). `requested_by_me` means the current student already has an active overlapping request for the same resource; disable another submission. Other student identities are never returned. The UI may show a hold countdown and refresh at expiry; the server response is authoritative. `can_request` is `true` only when the current user is a student, the account is active, the required induction and prerequisites are verified and valid, and the resource is open; it does not guarantee approval for the selected time. When false, disable submission and prompt the user to complete induction. `review_window_minutes` is the resource's review period (default 1,440 minutes).
+`reason_code` in `slots[]` is `START_TIME_PASSED`, `RESOURCE_UNAVAILABLE` (maintenance/closed), `TOO_SOON` (less than seven days), `TOO_FAR_AHEAD` (beyond the default 28 days/four weeks), `BOOKED`, `TEMPORARILY_HELD`, or `null`. Top-level response also includes `earliest_date`, `latest_date`, `min_advance_days`, and `max_advance_days` for date-picker limits. A temporary hold returns `hold_until` (UTC deadline) and `held_by_me` (whether this student's own hold). `requested_by_me` means the current student already has an active overlapping request for the same resource; disable another submission. Other student identities are never returned. The UI may show a hold countdown and refresh at expiry; the server response is authoritative. `can_request` is `true` only when the current user is a student, the account is active, the resource needs no induction (`qualification_status=NOT_REQUIRED`) or its induction and prerequisites are verified and valid, and the resource is open; it does not guarantee approval for the selected time. When false, disable submission; prompt the user to complete induction only when `qualification_status` is not `VERIFIED` or `NOT_REQUIRED`. `review_window_minutes` is the resource's review period (default 1,440 minutes).
 
 ### Normal Booking Approval Flow
 
@@ -356,7 +362,6 @@ Common business errors:
 | `BOOKING_HOLD_CONFLICT` | 409 | Manual approval failed because the time is still temporarily held; `details.hold_until` is the current hold deadline |
 | `REQUEST_WAITLISTED` | 409 | A waitlisted request cannot be approved directly and will be promoted automatically in order; an administrator may reject it |
 | `SELF_REVIEW_FORBIDDEN` | 403 | A person cannot review their own induction evidence or a booking request for themselves or created by them; assign it to another Admin or Manager |
-| `RESOURCE_POLICY_NOT_CONFIGURED` | 409 | The resource has no required induction configured and cannot currently be booked; tell the user to contact a Manager |
 | `RESOURCE_UNAVAILABLE` | 409 | Resource is under maintenance or closed; show `details.status_reason` and pause new bookings |
 | `USER_EXISTS` | 409 | The zID already exists when using Add staff |
 | `USE_STAFF_SIGN_IN` | 403 | Staff used student sign-in; direct them to the staff sign-in page |

@@ -50,7 +50,7 @@ export function ManagerResourcesPage() {
   const reload = useCallback(() => { setLoading(true); setRefresh((n) => n + 1) }, [])
 
   const byId = useMemo(() => new Map(resources.map((item) => [item.id, item])), [resources])
-  const requirementName = (id: string | null) => requirements.find((item) => item.id === id)?.name ?? '—'
+  const requirementName = (id: string | null) => requirements.find((item) => item.id === id)?.name ?? (id ? '—' : 'No induction')
   const listedRooms = resources.filter((item) => item.kind === 'ROOM' && item.active)
   const rows = resources.filter((item) => (view === 'ARCHIVED' ? !item.active : item.active && item.kind === view))
   const counts = {
@@ -225,7 +225,7 @@ function ResourceDialog({ editing, rooms, requirements, onClose, onSaved }: {
   const ref = useRef<HTMLDialogElement>(null)
   const kind: ResourceKind = editing.mode === 'add' ? editing.kind : editing.resource.kind
   const initial = useMemo(
-    () => (editing.mode === 'add' ? emptyResource(requirements[0]?.id ?? '') : resourceToInput(editing.resource)),
+    () => (editing.mode === 'add' ? emptyResource(requirements[0]?.id ?? null) : resourceToInput(editing.resource)),
     [editing, requirements],
   )
   const [form, setForm] = useState<ResourceInput>(initial)
@@ -326,8 +326,9 @@ function ResourceDialog({ editing, rooms, requirements, onClose, onSaved }: {
               </>
             )}
             <label className="ui-field"><span>Induction needed to book</span>
-              <select required value={form.required_qualification_id} onChange={(e) => set('required_qualification_id', e.target.value)}>
-                <option value="" disabled>Choose an induction</option>
+              <select value={form.required_qualification_id ?? ''} onChange={(e) => set('required_qualification_id', e.target.value || null)}>
+                {/* Simple equipment (e.g. a smart watch) may need none; equipment never inherits its room's induction. */}
+                <option value="">No induction required</option>
                 {requirements.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>
             </label>

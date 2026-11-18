@@ -223,6 +223,7 @@ Use this table to find the implementation of a rule. Function headers explain wh
 | Exclude original from change conflict, duplicate and weekly allowance (1.16.0) | `services/bookings.py` `create_booking` (`replaces`); `services/checks.py` `_overlaps` (`also_exclude`) |
 | Status-change recipients (1.16.0) | `services/resources.py` `_notify_status_change`, called by `set_resource_status` |
 | Room capacity and label/value limits (1.16.0) | `services/resources.py` `_check_resource_fields`, `MAX_DETAILS` |
+| A resource may need no induction; equipment never inherits its room's (1.30.0) | `services/qualifications.py` `qualification_state` (`NOT_REQUIRED`); `services/resources.py` `create_resource`, `_check_resource_fields`; frontend `ManagerResourcesPage.tsx` induction select |
 | Induction create/edit and guidance (1.16.0) | `services/qualifications.py` `create_requirement`, `update_requirement`, `_check_requirement_fields` |
 | Contact edit permissions and fields (1.16.0) | `services/site_contact.py` `update_site_contact`, `CONTACT_FIELDS` |
 | Today calculations (1.16.0) | `services/overview.py` `staff_overview` |

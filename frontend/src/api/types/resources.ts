@@ -121,7 +121,8 @@ export interface Slot {
 }
 
 export type QualificationStatus =
-  | 'NOT_CONFIGURED'
+  /** The resource needs no induction: anyone may book it. */
+  | 'NOT_REQUIRED'
   | 'NOT_SUBMITTED'
   | 'PENDING'
   | 'VERIFIED'
@@ -234,7 +235,8 @@ export interface ResourceInput {
   name: string
   location: string
   description: string
-  required_qualification_id: string
+  /** null: no induction needed. */
+  required_qualification_id: string | null
   room_id: string | null
   category: string | null
   slot_minutes: number

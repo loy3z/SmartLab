@@ -120,13 +120,16 @@ class BookingAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["error"]["code"], "NOT_FOUND")
 
-    def test_missing_resource_policy_cannot_bypass_the_induction_gate(self):
+    def test_a_resource_without_an_induction_is_open_to_a_student_with_none(self):
         resource = self.service.repo.get_resource(self.room["id"])
         self.service.repo.save_resource(replace(resource, required_qualification_id=None))
-        response = self.create_booking(client=self.student)
-        self.assert_error(response, 409)
-        self.assertEqual(response.data["error"]["code"], "RESOURCE_POLICY_NOT_CONFIGURED")
-        self.assertEqual(self.service.repo.list_bookings(), [])
+        day = (NOW.astimezone(SYDNEY) + timedelta(days=3)).date().isoformat()
+        availability = self.student.get(f"/api/v1/resources/{self.room['id']}/availability/", {"date": day})
+        self.assertEqual(availability.data["qualification_status"], "NOT_REQUIRED")
+        self.assertTrue(availability.data["can_request"])
+        response = self.create_booking(client=self.student)  # z1000002 has passed no induction
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["status"], "PENDING_APPROVAL")
 
     def test_demo_registration_does_not_accept_privileged_role(self):
         response = self.client.post(

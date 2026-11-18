@@ -210,6 +210,6 @@
   .mr-detail-row input:nth-child(2) { grid-column: 1; }
 }
 
-.bk-loan-box { background: var(--amber-bg, #fff1cf); border-radius: 10px; padding: 10px 14px; margin: 10px 0; font-size: 13px; }
+.bk-loan-box { background: var(--amber-bg, #fff1cf); border-radius: 8px; padding: 10px 14px; margin: 10px 0; font-size: 14px; }
 .bk-loan-box ul { margin: 6px 0 0; padding-left: 18px; }
-.bk-due-soon { color: #9a5b00; font-weight: 600; font-size: 13px; }
+.bk-due-soon { color: #9a5b00; font-weight: 600; font-size: 14px; }

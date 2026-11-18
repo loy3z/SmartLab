@@ -1,4 +1,4 @@
-// Sprint 3 (fluency V5): home pages wait for the first announcement result, including failure.
+// Home pages wait for the first announcement result, including failure.
 import { useEffect, useState } from 'react'
 import { listAnnouncements } from '../../api/index.ts'
 import { errorMessage } from '../booking/format'

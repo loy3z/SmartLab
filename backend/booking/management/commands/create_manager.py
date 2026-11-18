@@ -1,4 +1,4 @@
-"""Sprint 3: create a Manager account from the server, for example the very first one.
+"""Create a Manager account from the server, for example the very first one.
 
     python manage.py create_manager --zid z9000003 --name "Lab Manager" --email z9000003@ad.unsw.edu.au
 
@@ -9,7 +9,7 @@ account", and enters the zID, this code and their own password. Afterwards they 
 from django.core.management.base import BaseCommand, CommandError
 
 from booking.errors import DomainError
-from booking.repository import MemoryRepository
+from booking.memory import MemoryRepository
 from booking.runtime import get_service
 
 

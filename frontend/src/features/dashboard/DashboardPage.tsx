@@ -1,7 +1,7 @@
-import { AnnouncementBoard } from '../announcements/AnnouncementBoard' // Sprint 3 (1.19.0)
-import { useAnnouncements } from '../announcements/use-announcements' // Sprint 3 (fluency V5)
+import { AnnouncementBoard } from '../announcements/AnnouncementBoard'
+import { useAnnouncements } from '../announcements/use-announcements'
 import { useEffect, useState } from 'react'
-import { useAutoRefresh } from '../../lib/use-auto-refresh' // 2026-11-07
+import { useAutoRefresh } from '../../lib/use-auto-refresh'
 import { Link } from 'react-router'
 import { getDashboard, listRequirements, listResources } from '../../api/index.ts'
 import { errorMessage, fmtDateTime, fmtRange, fmtTime, statusText, TZ } from '../booking/format'
@@ -88,14 +88,14 @@ function DashboardSession({ user }: { user: User }) {
     setState({ status: 'loading' })
     setRefreshKey((value) => value + 1)
   }
-  useAutoRefresh(() => setRefreshKey((value) => value + 1)) // 2026-11-07: quietly, without the loading state
-  // Sprint 3 (fluency V5): publish the first home and announcement result together; errors also settle.
+  useAutoRefresh(() => setRefreshKey((value) => value + 1)) // Quietly, without the loading state
+  // Publish the first home and announcement result together; errors also settle.
   const loading = state.status === 'loading' || !announcements.settled
   // Only the first paint waits; "Refresh overview" reloads the overview and the announcements stay in place.
   const showAnnouncements = announcements.settled && (refreshKey > 0 || state.status !== 'loading')
   return (
     <div className="dash-page">
-      {/* Sprint 3 (internal-tool UI, AI-2 / D5): the page is named like its menu item; no greeting, dateline or slogan. */}
+      {/* The page is named like its menu item; no greeting, dateline or slogan. */}
       <header className="dash-header">
         <div>
           <h1>Dashboard</h1>
@@ -103,7 +103,7 @@ function DashboardSession({ user }: { user: User }) {
         <Link className="dash-primary" to="/resources"><CalendarIcon /> Book a resource</Link>
       </header>
 
-      {/* Sprint 3 (1.19.0): the same active announcements as the staff home page. */}
+      {/* The same active announcements as the staff home page. */}
       {showAnnouncements && <AnnouncementBoard announcements={announcements} />}
       <div className="dash-toolbar">
         <span>{state.status === 'ready' && !loading ? `Updated ${fmtTime(new Date(state.loadedAt).toISOString())} · Sydney time` : 'Your booking overview'}</span>
@@ -163,7 +163,7 @@ function DashboardContent({ state }: { state: Extract<DashboardState, { status: 
     <>
       {warnings.length > 0 && <p className="dash-warning" role="status"><AlertIcon /> {warnings.join(' ')} Use Refresh overview to try again.</p>}
 
-      {/* Sprint 3 (workspace UI): each count opens My Bookings on the matching tab (?view=). */}
+      {/* Each count opens My Bookings on the matching tab (?view=). */}
       <section className="dash-stats" aria-label="Booking and induction summary">
         <Link className="dash-stat" to="/bookings?view=upcoming">
           <span className="dash-stat-icon"><CalendarIcon size={24} /></span>
@@ -183,7 +183,7 @@ function DashboardContent({ state }: { state: Extract<DashboardState, { status: 
           <strong>{verifiedCount}</strong>
           <span className="dash-stat-detail">Current, valid training records</span>
         </Link>
-        {/* 2026-11-03 (Loy): hours left of the weekly allowance; more time is requested as additional hours. */}
+        {/* Hours left of the weekly allowance; more time is requested as additional hours. */}
         <Link className="dash-stat" to="/bookings?view=upcoming">
           <span className="dash-stat-icon"><ClockIcon size={24} /></span>
           <span className="dash-stat-label">Hours left this week</span>
@@ -193,7 +193,7 @@ function DashboardContent({ state }: { state: Extract<DashboardState, { status: 
       </section>
       <p className="dash-more-hours">Need more than {data.week_hours.limit_hours} h this week? <Link className="dash-link" to="/resources?for=additional-hours">Request additional hours <span aria-hidden="true">→</span></Link></p>
 
-      {/* Sprint 3 (1.20.0): keep the compact next session and booking list together, beside training. */}
+      {/* Keep the compact next session and booking list together, beside training. */}
       <div className="dash-columns">
         <div className="dash-booking-column">
           <section className="dash-session" aria-labelledby="dash-bookings-title">
@@ -204,7 +204,7 @@ function DashboardContent({ state }: { state: Extract<DashboardState, { status: 
               {nextResource?.location && <p className="dash-session-location">{nextResource.location}</p>}
               <footer className="dash-session-footer"><span>Times in Sydney</span><Link className="dash-session-link" to="/bookings">Manage booking <span aria-hidden="true">↗</span></Link></footer>
             </> : <>
-              <h2 id="dash-bookings-title">No upcoming bookings</h2>{/* Sprint 3 (internal-tool UI, AI-2) */}
+              <h2 id="dash-bookings-title">No upcoming bookings</h2>
               <footer className="dash-session-footer"><span>Rooms &amp; equipment</span><Link className="dash-session-link" to="/resources">Browse resources <span aria-hidden="true">↗</span></Link></footer>
             </>}
           </section>

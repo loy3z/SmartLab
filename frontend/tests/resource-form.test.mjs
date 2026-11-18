@@ -1,4 +1,4 @@
-// Sprint 3: form rules of the Manager's resource setup page.
+// Form rules of the Manager's resource setup page.
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { changedFields, checkResource, emptyResource, resourceToInput, toMinutes } from '../src/features/manager/resource-form.ts'

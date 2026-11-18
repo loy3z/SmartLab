@@ -1,4 +1,4 @@
-// Sprint 3 (2026-10-27): moved from the booking feature folder; definitions unchanged.
+// Moved from the booking feature folder; definitions unchanged.
 
 export interface CalendarLink {
   /** Relative path of the subscription feed; prefix with the site address. */
@@ -6,7 +6,7 @@ export interface CalendarLink {
   created_at: string
 }
 
-/** Sprint 3 (1.16.0): the lab's contact details (GET/PATCH site/contact/); empty fields are not shown. */
+/** The lab's contact details (GET/PATCH site/contact/); empty fields are not shown. */
 export interface SiteContact {
   email: string
   phone: string

@@ -1,10 +1,10 @@
-// Sprint 3 (2026-10-27): moved from the booking feature folder; function bodies unchanged.
+// Moved from the booking feature folder; function bodies unchanged.
 import { request } from '../lib/api-client'
 import { post } from './client'
 import type { Announcement } from './types/announcements'
 import type { ListResponse } from './types/common'
 
-// Sprint 3 (1.19.0): public announcements do not generate personal notifications.
+// Public announcements do not generate personal notifications.
 export const listAnnouncements = (includeEnded = false) => request<ListResponse<Announcement>>(`announcements/${includeEnded ? '?include_ended=true' : ''}`)
 
 export const createAnnouncement = (values: { title: string; body: string; expires_at: string | null }) => post<Announcement>('announcements/', values)
@@ -13,5 +13,5 @@ export const updateAnnouncement = (id: string, values: { title: string; body: st
 
 export const removeAnnouncement = (id: string) => post<Announcement>(`announcements/${id}/remove/`, {})
 
-// 2026-11-16: the author clears an ended announcement from the history for good.
+// The author clears an ended announcement from the history for good.
 export const deleteAnnouncement = (id: string) => request<void>(`announcements/${id}/`, { method: 'DELETE' })

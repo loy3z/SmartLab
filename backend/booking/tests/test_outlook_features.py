@@ -1,6 +1,6 @@
-"""Outlook sync with the 17 Oct features. One-way only: the website is the only authority.
+"""Outlook sync. One-way only: the website is the only authority.
 
-Client email, 17 Oct: one-way sync is fine for phase one, but Outlook changes must not bypass the system rules
+The client agreed that one-way sync is fine for phase one, but Outlook changes must not bypass the system rules
 and a change made in Outlook must never become an approved booking on the website. The system never reads the
 calendar back while running, so neither can happen; a person may delete the event from their own calendar.
 """
@@ -48,7 +48,7 @@ class NewFeatureSyncTests(SyncFixture):
         payload = {**self.payload(), "on_behalf_of_zid": "z1000001"}
         created = self.manager.post("/api/v1/bookings/", payload, format="json")
         self.assertEqual(created.status_code, 201, created.data)
-        # 2026-11-06 (client, Week 8): a Manager's booking is approved at once, so it reaches Outlook straight away.
+        # A Manager's booking is approved at once, so it reaches Outlook straight away.
         self.assertEqual(created.data["outlook_sync"]["status"], "SYNCED")
         booking_id, attendee, _, _ = self.provider.creates[0]
         self.assertEqual(booking_id, created.data["id"])

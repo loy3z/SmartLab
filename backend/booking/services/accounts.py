@@ -34,13 +34,13 @@ class AccountsMixin:
     def update_user(self, actor, user_id, role=None, active=None):
         """(De)activate an account. Roles are fixed when the account is created.
 
-        Students, Admins and Managers are separate kinds of account (client, week 5): a student is never
+        Students, Admins and Managers are separate kinds of account (the client's rule): a student is never
         given a staff role (passing inductions proves lab eligibility, not employment), and Admin and Manager
         are different levels of staff that do not switch. Staff accounts come from Add staff (create_staff)
         or, later, from the university identity provider; to replace someone, add the new account and
         deactivate the old one. ``role`` is accepted only when it equals the current role.
         Deactivating a student rejects their undecided requests and cancels their approved bookings that have
-        not started (2026-11-10, U3); the time is released and they are told.
+        not started; the time is released and they are told.
         """
         self.require_manager(actor)
         if role is None and active is None:
@@ -77,7 +77,7 @@ class AccountsMixin:
         return updated
 
     def _cancel_future_approved(self, student_id, actor_id):
-        """2026-11-10 (U3): a deactivated person's approved bookings that have not started stop holding the time.
+        """A deactivated person's approved bookings that have not started stop holding the time.
 
         Cancelled as by staff, so the person gets the usual "Booking cancelled by staff" notification.
         """
@@ -121,7 +121,7 @@ class AccountsMixin:
         return self._create_staff_account(actor.id, zid, display_name, university_email, role)
 
     def bootstrap_manager(self, zid, display_name, university_email):
-        """Sprint 3: create a Manager from the server command line (manage.py create_manager), e.g. the first one.
+        """Create a Manager from the server command line (manage.py create_manager), e.g. the first one.
 
         Same rules as Add staff; the audit records SYSTEM as the actor. Returns (manager, invite code).
         """
@@ -218,7 +218,7 @@ class AccountsMixin:
         return user
 
     def change_password(self, actor, current_password, new_password):
-        """Sprint 3: a signed-in Admin or Manager changes their own password (the current one is required).
+        """A signed-in Admin or Manager changes their own password (the current one is required).
 
         Students have no password here: they use university sign-in.
         """

@@ -28,7 +28,7 @@ class BookingsMixin:
         be free (no waitlist), and only a Manager can approve it (never automatic). Undecided, it expires
         at its start time.
 
-        replaces (Sprint 3, 1.16.0): the approved booking a change request moves (see changes.py). Its own old time
+        replaces: the approved booking a change request moves (see changes.py). Its own old time
         does not count as a clash, a duplicate or an extra booking in the week.
         """
         self.require_booking_user(actor)
@@ -36,7 +36,7 @@ class BookingsMixin:
         resource_id = str(resource_id)
         if not purpose.strip() or len(purpose) > 1000:
             raise DomainError("VALIDATION_ERROR", "A booking purpose of up to 1000 characters is required.")
-        if urgent and replaces is not None:  # Sprint 3 (1.16.0)
+        if urgent and replaces is not None:
             raise DomainError("VALIDATION_ERROR", "A change request uses the normal booking window; it cannot be urgent.")
         urgent_reason = (urgent_reason or "").strip()
         if urgent and (not urgent_reason or len(urgent_reason) > 500):
@@ -64,7 +64,7 @@ class BookingsMixin:
             if bypass:
                 return create_test_booking(self, actor, resource, booking_id, start, end, purpose,
                                            urgent, urgent_reason, replaces)
-            if actor.role == Role.MANAGER and replaces is None:  # 2026-11-06 (client, Week 8): Manager override
+            if actor.role == Role.MANAGER and replaces is None:  # Manager override
                 return self._create_manager_booking(actor, beneficiary, resource, booking_id, start, end, purpose,
                                                     urgent, urgent_reason)
             self._validate_period(resource, start, end)
@@ -77,7 +77,7 @@ class BookingsMixin:
                                       400, self._window_details(resource))
             else:
                 self._validate_horizon(resource, start)
-            replaced_id = replaces.id if replaces else None  # Sprint 3 (1.16.0): change request
+            replaced_id = replaces.id if replaces else None  # Change request
             self._reject_duplicate_request(beneficiary.id, resource_id, start, end, replaced_id)
             error = (self.rule_violation(beneficiary.id, resource, start, end, check_window=not urgent)
                      or self._weekly_limit_violation(beneficiary.id, resource, start, end, replaced_id)
@@ -123,7 +123,7 @@ class BookingsMixin:
             return booking, True
 
     def _create_manager_booking(self, actor, person, resource, booking_id, start, end, purpose, urgent, urgent_reason):
-        """2026-11-06 (client, Week 8): a Manager's booking, for themselves or someone else, is approved at once.
+        """A Manager's booking, for themselves or someone else, is approved at once.
 
         The Manager overrides the person's rules: induction, booking window, the per-booking, weekly and
         future-booking limits. The resource's own facts still apply: it is open for booking, the time
@@ -152,7 +152,7 @@ class BookingsMixin:
         return booking, True
 
     def _created_notices(self, actor, beneficiary, booking):
-        """Sprint 3: confirm a new request to the person it is for (also emailed when email is on)."""
+        """Confirm a new request to the person it is for (also emailed when email is on)."""
         if booking.status == BookingStatus.WAITLISTED:
             state = "is on the waitlist: it moves up when the time frees"
         elif booking.long_booking:
@@ -165,7 +165,7 @@ class BookingsMixin:
             state = "is waiting for a Manager (urgent request)"
         else:
             state = f"is waiting for review; if nobody decides by {self.describe_moment(booking.review_due_at, booking)}, the system decides by the rules"
-        if booking.replaces_id:  # Sprint 3 (1.16.0): change request
+        if booking.replaces_id:  # Change request
             old = self.repo.get_booking(booking.replaces_id)
             self._notify(beneficiary.id, "CHANGE_REQUESTED", "Change request received",
                          f"We received your request to move your booking to {self._booking_label(booking)}. It {state}. "
@@ -232,7 +232,7 @@ class BookingsMixin:
                 self._promote_waitlist(revised.resource_id)
             return revised
 
-    # Sprint 3 (1.20.0): a person clears history without altering the shared booking or its consequences.
+    # A person clears history without altering the shared booking or its consequences.
     def remove_booking_history(self, actor, booking_id):
         """Hide only my own/created terminal or ended booking; repeat calls have no further effects."""
         source = self.repo.get_booking(str(booking_id))
@@ -260,7 +260,7 @@ class BookingsMixin:
             revised = replace(source, status=BookingStatus.CANCELLED, reason_code=reason, updated_at=self.now())
             self._save_booking(revised)
             self._audit(actor.id, "BOOKING_CANCELLED", "booking", revised.id)
-            # 2026-11-12: a change request still waiting for this booking is withdrawn with it; otherwise it could be
+            # A change request still waiting for this booking is withdrawn with it; otherwise it could be
             # approved later and leave the person with a booking they thought they had cancelled.
             change = self.open_change_for(source) if source.status == BookingStatus.APPROVED else None
             if change:
@@ -272,7 +272,7 @@ class BookingsMixin:
     def reschedule_booking(self, actor, booking_id, start, end):
         """Manager only: move someone's approved future booking to another free time.
 
-        2026-11-06 (client, Week 8): the Manager overrides the person's rules (induction, booking window, weekly and
+        The Manager overrides the person's rules (induction, booking window, weekly and
         future-booking limits), as for a Manager booking. The resource's opening hours, longest booking, time steps
         and conflicts still apply.
         """

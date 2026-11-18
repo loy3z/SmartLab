@@ -1,4 +1,4 @@
-// Sprint 3: search for a specific time, then review one resource. No queries run while editing filters.
+// Search for a specific time, then review one resource. No queries run while editing filters.
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { useAuth } from '../auth/auth-context'
@@ -38,13 +38,13 @@ export function FindTime({ onPick, resources = [] }: {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const rooms = resources.filter(resource => resource.kind === 'ROOM')
-  // Sprint 3 (workspace UI): without a resource list from the page, the filters use the last search's rooms and types.
+  // Without a resource list from the page, the filters use the last search's rooms and types.
   const roomChoices = rooms.length ? rooms : data?.rooms ?? []
   const categories = useMemo(() => [...new Set([...resources.map(resource => resource.category).filter((value): value is string => Boolean(value)), ...(data?.categories ?? [])])].sort(), [resources, data?.categories])
   const draft: DayOverviewQuery = { date, duration_minutes: duration, kind: kind || undefined, room_id: roomId || undefined,
     category: kind === 'ROOM' ? undefined : category || undefined, bookable_only: bookableOnly, free_at: startTime }
   const filtersChanged = Boolean(query && JSON.stringify(query) !== JSON.stringify(draft))
-  // Sprint 3: the Manager's search follows the resource limit, like the day overview and single booking.
+  // The Manager's search follows the resource limit, like the day overview and single booking.
   const caps = resources.map(resource => isManager ? resource.max_booking_minutes
     : resource.effective_max_booking_minutes ?? resource.max_booking_minutes)
   const lengths = findDurations(caps.length ? Math.max(...caps) : undefined)
@@ -69,7 +69,7 @@ export function FindTime({ onPick, resources = [] }: {
   const hidden = hiddenSummary(data?.not_bookable)
 
   return <section aria-label="Find a free time">
-    {/* Sprint 3 (internal-tool UI, AI-2): the tab already says "Find a free time"; no slogan or step marker above the fields. */}
+    {/* The tab already says "Find a free time"; no slogan or step marker above the fields. */}
     <form className="bk-find-query" onSubmit={search}>
       <div className="bk-find-primary-fields">
         <label>Date<input type="date" aria-label="Date" required min={todaySydney()} max={data?.latest_date ?? undefined} value={date} onChange={event => setDate(event.target.value)} /></label>

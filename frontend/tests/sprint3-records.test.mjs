@@ -1,4 +1,4 @@
-// Sprint 3: durations in hours, weekly series cards on My Bookings, Booking Records filters.
+// Durations in hours, weekly series cards on My Bookings, Booking Records filters.
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { fmtDuration, fmtRelative } from '../src/features/booking/format.ts'

@@ -1,4 +1,4 @@
-"""Sprint 3 (1.16.0): the lab's contact details, set by a Manager on the website (no code or config change needed).
+"""The lab's contact details, set by a Manager on the website (no code or config change needed).
 
 Shown wherever people may need a person: the Help page, My Bookings and the Induction & Training page. Every field
 is optional; the website only shows the ones that are filled in.

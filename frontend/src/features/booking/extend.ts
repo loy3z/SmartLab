@@ -1,5 +1,5 @@
-// 1.24.0 (client, Week 8): extending a booking in progress (POST bookings/{id}/extend/).
-// 2026-11-07: the person drags the end on a timeline and a Manager decides; a Manager's own extension applies at once.
+// Extending a booking in progress (POST bookings/{id}/extend/).
+// The person drags the end on a timeline and a Manager decides; a Manager's own extension applies at once.
 import { TZ } from './format.ts'
 import type { Booking, Resource, Slot } from '../../api/types/index.ts'
 

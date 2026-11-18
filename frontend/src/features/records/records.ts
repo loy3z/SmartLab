@@ -1,4 +1,4 @@
-// Sprint 3: Booking Records page (Admin and Manager): filters -> API query, and the text shown in each column.
+// Booking Records page (Admin and Manager): filters -> API query, and the text shown in each column.
 import { ATTENDANCE_TEXT } from '../booking/attendance.ts'
 import type { Booking } from '../../api/types/index.ts'
 
@@ -31,7 +31,7 @@ export function addDays(ymd: string, days: number): string {
   return value.toISOString().slice(0, 10)
 }
 
-/** Admins see bookings that ended at most this many days ago (server: ADMIN_HISTORY_DAYS, 2026-11-07). */
+/** Admins see bookings that ended at most this many days ago (server: ADMIN_HISTORY_DAYS). */
 export const ADMIN_HISTORY_DAYS = 7
 
 /** Recent history (30 days for a Manager, the Admin limit for an Admin) to 30 days ahead. A zID lookup from the

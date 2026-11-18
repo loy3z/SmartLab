@@ -18,7 +18,7 @@ const dashboard: Dashboard = {
 }
 const emptyList = { count: 0, results: [] }
 
-// Sprint 3 (1.19.0): new notification/announcement acceptance cases use the same isolated API fixture.
+// New notification/announcement acceptance cases use the same isolated API fixture.
 interface MockApi {
   me: 'ok' | 'offline' | 'expired'
   config: AuthConfig
@@ -80,14 +80,14 @@ const test = base.extend<{ api: MockApi }>({
       if (path === 'dashboard/') return json(dashboard)
       if (path === 'notifications/' && request.method() === 'GET') return json({ count: 0, unread_count: 0, results: [] })
       if (path === 'announcements/' && request.method() === 'GET') return json(emptyList)
-      // Sprint 3 (2026-10-25): the Account page's notification switches (all on by default).
+      // The Account page's notification switches (all on by default).
       if (path === 'notifications/preferences/' && request.method() === 'GET') {
         return json({ results: ['bookings', 'reminders', 'induction', 'account', 'resources'].map((category) => ({ category, enabled: true })) })
       }
-      // Sprint 3 (1.16.0): the lab's contact details (empty until a Manager saves them) and the staff Today page.
+      // The lab's contact details (empty until a Manager saves them) and the staff Today page.
       if (path === 'site/contact/' && request.method() === 'GET') return json({ id: 'contact', email: '', phone: '', hours: '', note: '' })
       if (path === 'admin/overview/' && request.method() === 'GET' && user.role !== 'STUDENT') return json(emptyOverview(user.role))
-      // 2026-11-07: the Manager home page shows this week's usage figures.
+      // The Manager home page shows this week's usage figures.
       if (path === 'admin/reports/usage/' && request.method() === 'GET' && user.role === 'MANAGER') return json(emptyUsage)
       if (path === 'admin/users/' && request.method() === 'GET' && user.role === 'MANAGER') {
         return json({ count: accounts.length, results: accounts })
@@ -108,7 +108,7 @@ const emptyUsage = { first_date: '2030-01-07', last_date: '2030-01-13', days: 7,
   totals: { approved: 0, booked_hours: 0, open_hours: 0, utilisation: null, checked_in: 0, no_show: 0, excused: 0, not_tracked: 0,
     attendance_rate: null, cancelled: 0, rejected: 0 } }
 
-// Sprint 3 (1.16.0): nothing waiting on the staff Today page.
+// Nothing waiting on the staff Today page.
 function emptyOverview(role: string) {
   return { role, pending_inductions: 0, pending_bookings: 0, urgent_requests: 0, waitlisted: 0, changes_waiting: 0, due_soon: [],
     due_soon_hours: 6, out_of_service: [], today: [], today_count: 0, missed_today: 0, can_decide_urgent: role === 'MANAGER' }
@@ -155,9 +155,9 @@ for (const { entry, destination, heading, menu } of [
 
 const portals: { role: Role; home: string; heading: string; forbidden: string }[] = [
   { role: 'STUDENT', home: '/dashboard', heading: 'Dashboard', forbidden: '/admin/qualifications' },
-  // Sprint 3 (1.16.0): staff start on Today.
+  // Staff start on Today.
   { role: 'ADMIN', home: '/admin/today', heading: 'Today', forbidden: '/manager/bookings' },
-  { role: 'MANAGER', home: '/manager/home', heading: 'Lab overview', forbidden: '/dashboard' }, // 2026-11-07
+  { role: 'MANAGER', home: '/manager/home', heading: 'Lab overview', forbidden: '/dashboard' },
 ]
 for (const { role, home, heading, forbidden } of portals) {
   test(`${role} gets its home, shared account page and a restricted page for a forbidden route`, async ({ page, api }) => {
@@ -215,7 +215,7 @@ test('Manager returns to user management after mock login and can reopen it from
 test('staff can book too: booking, my bookings and induction pages are in the menu (client, 17 Oct)', async ({ page }) => {
   await page.goto('/#/login')
   await signIn(page, 'ADMIN')
-  await expect(page).toHaveURL('http://127.0.0.1:5174/#/admin/today') // Sprint 3 (1.16.0): staff home is Today
+  await expect(page).toHaveURL('http://127.0.0.1:5174/#/admin/today') // Staff home is Today
   const navigation = page.getByRole('navigation', { name: 'Main navigation', exact: true })
   for (const [menu, path, heading] of [
     ['Book a resource', '/resources', 'Book a resource'],
@@ -234,7 +234,7 @@ for (const role of ['STUDENT', 'ADMIN'] as const) {
   test(`${role} cannot enter user management or request its user data`, async ({ page, api }) => {
     await page.goto('/#/manager/users')
     await signIn(page, role)
-    await expect(page).toHaveURL(role === 'STUDENT' ? /#\/dashboard$/ : /#\/admin\/today$/) // Sprint 3 (1.16.0)
+    await expect(page).toHaveURL(role === 'STUDENT' ? /#\/dashboard$/ : /#\/admin\/today$/)
     await expect(page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link', { name: 'User management', exact: true })).toHaveCount(0)
     expect(api.managerUserRequests).toEqual([])
     await page.goto('/#/manager/users')
@@ -423,8 +423,8 @@ for (const failure of ['offline', 'rejected'] as const) {
 }
 
 for (const { label, user, home } of [
-  { label: 'Administrator', user: users.ADMIN, home: '/admin/today' }, // Sprint 3 (1.16.0)
-  { label: 'Manager', user: users.MANAGER, home: '/manager/home' }, // 2026-11-07
+  { label: 'Administrator', user: users.ADMIN, home: '/admin/today' },
+  { label: 'Manager', user: users.MANAGER, home: '/manager/home' },
 ]) {
   test(`staff sign-in authenticates ${label} with zID and password`, async ({ page, api }) => {
     await page.goto('/#/login')
@@ -447,7 +447,7 @@ test('each sign-in page refuses the other kind of account', async ({ page, api }
   await page.getByLabel('Demo zID or university email', { exact: true }).fill(users.ADMIN.zid)
   await page.getByRole('button', { name: 'Next', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('Staff sign-in page')
-  // Sprint 3 (2026-10-28 feedback L1, L4): the hint links to staff sign-in, whose breadcrumb leads back.
+  // The hint links to staff sign-in, whose breadcrumb leads back.
   await page.getByRole('alert').getByRole('link', { name: 'Staff sign-in page', exact: true }).click()
   await expect(page).toHaveURL(/#\/staff\/login$/)
   await page.getByRole('link', { name: 'SmartLab', exact: true }).click()
@@ -477,7 +477,7 @@ test('an administrator zID and login response cannot grant a role rejected by au
 })
 
 
-// Sprint 3 (2026-10-25, Loy): new demo students sign up on the mock SSO page ("Create one").
+// New demo students sign up on the mock SSO page ("Create one").
 test('a new demo student creates an account on the mock sign-in page', async ({ page, api }) => {
   api.config = { ...config, demo_registration_enabled: true }
   const bodies: unknown[] = []
@@ -691,7 +691,7 @@ test('find a free time searches only on submit and preserves the chosen interval
   await expect(page.getByRole('button', { name: 'View day availability', exact: true })).toBeVisible()
   await expect(page.locator('.bk-timeline')).toHaveCount(0)
 
-  // Sprint 3 (review R4, R5): the dialog is named after the resource; selecting text and releasing over the backdrop keeps it open.
+  // The dialog is named after the resource; selecting text and releasing over the backdrop keeps it open.
   const dialog = page.getByRole('dialog', { name: 'Book Lab Room 1', exact: true })
   const purpose = dialog.getByPlaceholder(/What will you use it for/)
   await purpose.fill('Thesis experiment')
@@ -714,7 +714,7 @@ test('find a free time searches only on submit and preserves the chosen interval
   await expect(dialog).toHaveCount(0)
 })
 
-// Sprint 3: notifications, check-in, calendar link, weekly series.
+// Notifications, check-in, calendar link, weekly series.
 const approvedBooking = (overrides: Record<string, unknown> = {}) => ({
   id: 'bk-1', student_id: 'test-student', resource_id: 'room-1', start: '2030-01-10T00:00:00Z', end: '2030-01-10T01:00:00Z',
   purpose: 'Lab', created_at: '2030-01-01T00:00:00Z', status: 'APPROVED', reason_code: 'MANUALLY_APPROVED', decision_reason: null,
@@ -1222,7 +1222,7 @@ test('the bell shows unread notifications and opens the linked page', async ({ p
   await expect(page.getByRole('button', { name: 'Notifications', exact: true })).toBeVisible()
 })
 
-// 2026-11-17: opening the panel starts a reload; its answer used to arrive after a click and bring the old count back.
+// Opening the panel starts a reload; its answer used to arrive after a click and bring the old count back.
 test('a slow reload does not bring back a notification that was just opened', async ({ page }) => {
   const read: string[] = []
   let slow = false
@@ -1256,7 +1256,7 @@ test('a slow reload does not bring back a notification that was just opened', as
   await expect(page.getByRole('button', { name: 'Notifications, 1 unread' })).toBeVisible()
 })
 
-// Sprint 3 (1.15.0): the badge used to inherit 27px from ".app-icon-button > span" and covered the bell.
+// The badge used to inherit 27px from ".app-icon-button > span" and covered the bell.
 test('the bell badge stays small, and the panel groups notifications with an icon each', async ({ page }) => {
   const now = new Date()
   const earlier = new Date(now.getTime() - 3 * 86400000)
@@ -1271,7 +1271,7 @@ test('the bell badge stays small, and the panel groups notifications with an ico
   const bell = page.getByRole('button', { name: 'Notifications, 4 unread' })
   const badge = bell.locator('.nt-badge')
   await expect(badge).toHaveText('4')
-  await expect(badge).toHaveCSS('font-size', '12px') // Sprint 3 (internal-tool UI, AI-3): nothing below 12px
+  await expect(badge).toHaveCSS('font-size', '12px') // Nothing below 12px
   // Measure after the pop animation, which briefly scales the badge to 115%.
   await badge.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
   const box = await badge.boundingBox()
@@ -1340,7 +1340,7 @@ test('booking status tabs filter locally and retain the selected view after relo
   await expect(page.locator('.bk-bcard')).toContainText('Cancelled session')
 })
 
-// Sprint 3 (1.20.0): resource and status filters compose without another API read.
+// Resource and status filters compose without another API read.
 for (const role of ['STUDENT', 'ADMIN', 'MANAGER'] as const) {
   test(`booking history resource filter composes and survives reload: ${role}`, async ({ page }) => {
     let reads = 0
@@ -1446,7 +1446,7 @@ test('booking dashboard uses distinct metrics and a compact next session on desk
   await page.setViewportSize({ width: 1440, height: 1000 })
   const metrics = page.locator('.dash-stats .dash-stat')
   await expect(metrics).toHaveCount(4)
-  // 2026-11-03: hours left this week, with the way to ask for more.
+  // Hours left this week, with the way to ask for more.
   await expect(metrics.nth(3)).toContainText('Hours left this week')
   await expect(metrics.nth(3)).toContainText('4.5 h')
   await expect(metrics.nth(3)).toContainText('7.5 of 12 h booked')
@@ -1471,7 +1471,7 @@ test('booking staff overview retains its tasks with a compact status line', asyn
   } }))
   await page.goto('/#/login')
   await signIn(page, 'MANAGER')
-  await page.goto('/#/admin/today') // 2026-11-07: a Manager lands on the Lab overview
+  await page.goto('/#/admin/today') // A Manager lands on the Lab overview
   await page.setViewportSize({ width: 1440, height: 1000 })
   await expect(page.getByRole('link', { name: /Booking requests to decide/ })).toBeVisible()
   await expect(page.getByRole('heading', { name: /Bookings today/ })).toBeVisible()
@@ -1637,7 +1637,7 @@ test('weekly series test override has no upper date limit but on-behalf bookings
   await expect(check).toBeEnabled()
 })
 
-// Sprint 3: Managers add and edit rooms and equipment.
+// Managers add and edit rooms and equipment.
 test('a Manager adds equipment and sees bookings that no longer fit an edit', async ({ page }) => {
   const room = { id: 'room-1', name: 'Lab Room 1', kind: 'ROOM', location: 'Demo laboratory', description: '', active: true,
     required_qualification_id: 'req-1', slot_minutes: 30, max_booking_minutes: 480, opening_time: '08:00:00', closing_time: '20:00:00',
@@ -1721,7 +1721,7 @@ test('Admins do not see the Resources page', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'This page is not available for your role' })).toBeVisible()
 })
 
-// Sprint 3: usage statistics tab of Booking Records (Managers only since 2026-11-07).
+// Usage statistics tab of Booking Records (Managers only).
 test('a Manager reads the usage statistics on Booking Records; an Admin has no such tab', async ({ page }) => {
   const figures = { approved: 3, booked_hours: 4.5, open_hours: 84, utilisation: 0.054, checked_in: 1, no_show: 1, excused: 0,
     not_tracked: 0, attendance_rate: 0.5, cancelled: 1, rejected: 0 }
@@ -1759,7 +1759,7 @@ test('the old Usage Report address opens the usage statistics tab', async ({ pag
   await expect(page.getByRole('tab', { name: 'Usage statistics', exact: true })).toHaveAttribute('aria-selected', 'true')
 })
 
-// Sprint 3: Booking Records tab: filters (including name/zID search) and a CSV of the same list.
+// Booking Records tab: filters (including name/zID search) and a CSV of the same list.
 test('staff search booking records and export the same list as CSV', async ({ page }) => {
   const asked: URLSearchParams[] = []
   const exported: URLSearchParams[] = []
@@ -1809,7 +1809,7 @@ test('students do not see Booking Records', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'This page is not available for your role' })).toBeVisible()
 })
 
-// Sprint 3: a weekly series is one card on My Bookings; dates open underneath and are cancelled one at a time.
+// A weekly series is one card on My Bookings; dates open underneath and are cancelled one at a time.
 test('my bookings shows a weekly series as one card', async ({ page }) => {
   const cancelled: string[] = []
   const series = (id: string, start: string, end: string, extra: Record<string, unknown> = {}) =>
@@ -1850,7 +1850,7 @@ test('my bookings shows a weekly series as one card', async ({ page }) => {
   expect(cancelled).toEqual(['d3'])
 })
 
-// 2026-11-16 (Loy): no induction list at the top of Book a resource; the chip on each card leads to the induction page.
+// No induction list at the top of Book a resource; the chip on each card leads to the induction page.
 test('book a resource links a missing induction from the resource card', async ({ page }) => {
   const room = { id: 'room-1', name: 'Lab Room 1', kind: 'ROOM', location: 'Demo laboratory', description: '', active: true,
     required_qualification_id: 'req-2', slot_minutes: 30, max_booking_minutes: 240, opening_time: '08:00:00', closing_time: '20:00:00',
@@ -1884,7 +1884,7 @@ test('book a resource links a missing induction from the resource card', async (
   const done = page.locator('.bk-rcard', { hasText: 'Lab Room 2' })
   await expect(done.getByText('Induction verified')).toBeVisible()
   await expect(done.getByRole('link')).toHaveCount(0)
-  // 2026-11-16 (U7): without the induction nothing can be requested, so the form offers no urgent request either.
+  // Without the induction nothing can be requested, so the form offers no urgent request either.
   await missing.getByRole('button', { name: 'View availability' }).click()
   await expect(page.getByRole('dialog')).toContainText('You cannot request this resource yet')
   await expect(page.getByRole('dialog').getByLabel(/Urgent request/)).toHaveCount(0)
@@ -1900,7 +1900,7 @@ test('book a resource links a missing induction from the resource card', async (
   await expect(missing.getByText('Induction verified')).toBeVisible()
   await expect(missing.getByRole('link')).toHaveCount(0)
 
-  // 2026-11-16 (Loy): the urgent explanation sits below the time picker, where the normal purpose is.
+  // The urgent explanation sits below the time picker, where the normal purpose is.
   await done.getByRole('button', { name: 'View availability' }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByRole('button', { name: 'Make an urgent request' })).toBeVisible()
@@ -1910,7 +1910,7 @@ test('book a resource links a missing induction from the resource card', async (
   expect(below).toBe(true)
 })
 
-// Sprint 3: staff change their own password on the Account page.
+// Staff change their own password on the Account page.
 test('staff change their password on the Account page; students do not see it', async ({ page }) => {
   const sent: unknown[] = []
   await page.route('**/api/v1/auth/change-password/', async (route) => {
@@ -1939,7 +1939,7 @@ test('students have no password form', async ({ page }) => {
   await expect(page.getByRole('form', { name: 'Change password' })).toHaveCount(0)
 })
 
-// Sprint 3 (1.16.0): fixes from the user review.
+// Fixes from the user review.
 const reviewRoom = { id: 'room-1', name: 'Lab Room 1', kind: 'ROOM', location: 'Demo laboratory', description: '', active: true,
   required_qualification_id: 'req-1', slot_minutes: 30, max_booking_minutes: 480, opening_time: '08:00:00', closing_time: '20:00:00',
   timezone: 'Australia/Sydney', pending_hold_minutes: 1440, status: 'AVAILABLE', status_reason: null, room_id: null, category: null,
@@ -2091,7 +2091,7 @@ test('a student asks to move a booking; a taken time can only join the waitlist'
   expect(sent).toEqual([{ start: '2030-01-09T21:30:00Z', end: '2030-01-09T22:00:00Z' }])
 })
 
-// Sprint 3 (review R1): a toast is hidden under a modal dialog's backdrop, so a failed move is also shown inside the dialog.
+// A toast is hidden under a modal dialog's backdrop, so a failed move is also shown inside the dialog.
 test('Room Management shows a failed reschedule inside the dialog', async ({ page }) => {
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
@@ -2123,7 +2123,7 @@ test('Room Management shows a failed reschedule inside the dialog', async ({ pag
   await expect(dialog.getByRole('alert')).toContainText('Booking not moved: That time is already booked.')
 })
 
-// 2026-10-29 (Loy): the weekly-limit error only appeared as a toast behind the booking dialog; the dialog showed nothing,
+// The weekly-limit error only appeared as a toast behind the booking dialog; the dialog showed nothing,
 // because reloading the day after the failure cleared the error together with the selection.
 test('a refused booking request is explained inside the booking dialog', async ({ page }) => {
   let availabilityLoads = 0
@@ -2160,7 +2160,7 @@ test('a refused booking request is explained inside the booking dialog', async (
   await expect(dialog.getByText('Choose a time above.')).toHaveCount(0)
 })
 
-// Review D1 (2026-10-25): the day timeline appears only after the day has loaded; a vertical mouse wheel still scrolls it sideways.
+// The day timeline appears only after the day has loaded; a vertical mouse wheel still scrolls it sideways.
 test('a mouse wheel scrolls the day timeline sideways once the day has loaded', async ({ page }) => {
   const halfHours = Array.from({ length: 40 }, (_, index) => {
     const start = Date.parse('2030-01-09T21:00:00Z') + index * 30 * 60_000
@@ -2194,7 +2194,7 @@ test('a mouse wheel scrolls the day timeline sideways once the day has loaded', 
   await expect.poll(() => timeline.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0)
 })
 
-// Sprint 3 (UI review #1): on a 390 px phone, wide tables and tab rows scroll inside themselves; the page never gets wider than the screen.
+// On a 390 px phone, wide tables and tab rows scroll inside themselves; the page never gets wider than the screen.
 test('phone width: tables and tab rows never make a page wider than the screen', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.route('**/api/v1/**', async (route) => {
@@ -2230,7 +2230,7 @@ test('phone width: tables and tab rows never make a page wider than the screen',
   }
 })
 
-// 2026-11-07 (client, Week 8): the three roles look different; a Manager starts on the Lab overview.
+// The three roles look different; a Manager starts on the Lab overview.
 test('a Manager starts on the Lab overview, sees the role badge and looks up a zID', async ({ page }) => {
   await page.goto('/#/login')
   await signIn(page, 'ADMIN')
@@ -2265,11 +2265,11 @@ test('staff start on Today, whose cards open the pages that handle them', async 
   await signIn(page, 'ADMIN')
   await expect(page).toHaveURL(/#\/admin\/today$/)
   await expect(page.getByRole('heading', { name: 'Today', exact: true })).toBeVisible()
-  // 2026-11-07 (client, Week 8): an Admin's Today has review work only; what a Manager decides is on the Manager home.
+  // An Admin's Today has review work only; what a Manager decides is on the Manager home.
   await expect(page.getByRole('link', { name: /Urgent requests/ })).toHaveCount(0)
   await expect(page.getByText('Water leak')).toBeVisible()
   await expect(page.getByText('2 future bookings')).toBeVisible()
-  // Sprint 3 (2026-10-28 feedback L2, L5): urgent has its own red line; the check only shows when nothing waits.
+  // Urgent has its own red line; the check only shows when nothing waits.
   await expect(page.getByRole('link', { name: /Booking requests to decide/ })).toHaveCSS('border-top-color', 'rgb(173, 63, 57)')
   await expect(page.locator('.today-brief-mark')).toHaveCount(0)
   await page.getByRole('link', { name: /Induction evidence to review/ }).click()
@@ -2277,7 +2277,7 @@ test('staff start on Today, whose cards open the pages that handle them', async 
 })
 
 test('Today keeps a lone card and a lone panel in proportion', async ({ page }) => {
-  // Sprint 3 (2026-10-28 feedback L2): one card stays a third wide; a panel without its neighbour spans the row.
+  // One card stays a third wide; a panel without its neighbour spans the row.
   await page.route('**/api/v1/admin/overview/', (route) => route.fulfill({ json: {
     role: 'ADMIN', pending_inductions: 1, pending_bookings: 0, urgent_requests: 0, waitlisted: 0, changes_waiting: 0,
     due_soon: [], due_soon_hours: 6,
@@ -2344,7 +2344,7 @@ test('a Manager saves the lab\'s contact details on Lab setup', async ({ page })
   expect(saved).toEqual([{ email: 'lab@example.edu', phone: '', hours: '', note: '' }])
 })
 
-// Sprint 3 (1.19.0): acceptance tests, first run against 81ef6a5 before implementing the new pages.
+// Acceptance tests, first run against 81ef6a5 before implementing the new pages.
 for (const role of ['STUDENT', 'ADMIN', 'MANAGER'] as Role[]) {
   test(`1.19 notifications: ${role} can save two independent channels and reload at 390px`, async ({ page }, testInfo) => {
     const categories = ['bookings', 'reminders', 'induction', 'account', 'resources']
@@ -2383,7 +2383,7 @@ for (const role of ['STUDENT', 'ADMIN', 'MANAGER'] as Role[]) {
     await page.reload()
     await expect(page.getByText('Email is not switched on for this site.', { exact: true })).toBeVisible()
     await expect(page.getByRole('checkbox', { name: 'Booking updates: By email', exact: true })).toBeDisabled()
-    // Review Q1 (2026-10-27): with email off the whole column shows unchecked; the saved choice returns when email is on.
+    // With email off the whole column shows unchecked; the saved choice returns when email is on.
     for (const category of ['Booking updates', 'Reminders', 'Induction and training', 'Missed check-ins', 'Room and equipment status']) {
       await expect(page.getByRole('checkbox', { name: `${category}: By email`, exact: true })).not.toBeChecked()
     }
@@ -2409,7 +2409,7 @@ for (const role of ['STUDENT', 'ADMIN', 'MANAGER'] as Role[]) {
   })
 }
 
-// 2026-11-16 (Loy): whoever posted an announcement can delete it from the history once it has ended.
+// Whoever posted an announcement can delete it from the history once it has ended.
 test('announcements: only the author sees Delete on an ended notice, and it leaves the history', async ({ page }) => {
   const ended = { id: 'mine', title: 'Old notice', body: 'Finished.', kind: 'MANUAL', resource_id: null,
     created_by: users.ADMIN.id, author_role: 'ADMIN', author: { id: users.ADMIN.id, display_name: 'Test Admin', role: 'ADMIN' },
@@ -2474,7 +2474,7 @@ test('1.19 announcements: staff manage own notices; public boards show signature
   await page.getByLabel('Title', { exact: true }).fill('Updated safety')
   await page.getByRole('button', { name: 'Save changes', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Remove Updated safety', exact: true })).toBeVisible()
-  // Sprint 3 (2026-10-28 feedback L3): Remove sits in the card's top-right corner, above the title.
+  // Remove sits in the card's top-right corner, above the title.
   const removeBox = await page.getByRole('button', { name: 'Remove Updated safety', exact: true }).boundingBox()
   const cardBox = await page.locator('.announcement-history article', { hasText: 'Updated safety' }).boundingBox()
   const titleBox = await page.locator('.announcement-history article', { hasText: 'Updated safety' }).getByRole('heading').boundingBox()
@@ -2533,7 +2533,7 @@ test('1.19 resource status keeps errors inside the form and sends the optional S
   expect(writes[1]).toEqual({ status: 'MAINTENANCE', reason: 'Repairing the air conditioning', expected_back: '2030-01-10T01:00:00.000Z' })
 })
 
-// 2026-11-07 (client, Week 8): drag the end of a booking in progress, as in a calendar; it asks a Manager.
+// Drag the end of a booking in progress, as in a calendar; it asks a Manager.
 test('a student drags the end of a booking in progress to ask a Manager for more time', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2030-01-09T23:30:00Z')) // 10:30 in Sydney
   const room = { ...recurringRoom, closing_time: '13:00:00' }
@@ -2669,7 +2669,7 @@ test('jumping to extension requests moves keyboard focus and respects reduced mo
   await expect(zid).toBeFocused()
 })
 
-// 2026-11-09 (Loy feedback): the Lab overview reads as a row of counts and small bars, on a laptop and on a phone.
+// The Lab overview reads as a row of counts and small bars, on a laptop and on a phone.
 const overviewRoom = (id: string, name: string, status: string) => ({ id, name, kind: 'ROOM', location: 'Demo laboratory', description: '',
   active: true, required_qualification_id: 'req-1', slot_minutes: 30, max_booking_minutes: 480, opening_time: '08:00:00', closing_time: '20:00:00',
   timezone: 'Australia/Sydney', pending_hold_minutes: 1440, status, status_reason: null, room_id: null, category: null })
@@ -2705,7 +2705,7 @@ test('the Lab overview shows waiting counts as chips and this week as bars', asy
   await page.screenshot({ path: '../../output/manager-ui-2026-11-09/lab-overview-390.png', fullPage: true })
 })
 
-// 2026-11-09 (Loy feedback): the resource form is wide, in two columns, and has a close button; title and Save stay in view.
+// The resource form is wide, in two columns, and has a close button; title and Save stay in view.
 test('the resource form opens wide in two columns and closes with the close button', async ({ page }) => {
   await page.route('**/api/v1/**', (route) => {
     const path = new URL(route.request().url()).pathname.replace('/api/v1/', '')
@@ -2742,7 +2742,7 @@ test('the resource form opens wide in two columns and closes with the close butt
   await page.screenshot({ path: '../../output/manager-ui-2026-11-09/resource-dialog-390.png', animations: 'disabled' })
 })
 
-// 2026-11-07 (three-role walkthrough): what another person decides shows without F5.
+// What another person decides shows without F5.
 test('Today shows a new request when the Admin comes back to the tab', async ({ page }) => {
   let pending = 0
   await page.route('**/api/v1/admin/overview/', (route) => route.fulfill({ json: { ...emptyOverview('ADMIN'), pending_bookings: pending } }))
@@ -2774,7 +2774,7 @@ test('a Manager sees Manager rules on resource cards; a student opens additional
   await expect(studentCard.getByRole('button', { name: 'Request additional hours' })).toHaveCount(1)
 })
 
-// 2026-11-12 (delivery acceptance): a successful decision or change shows at once, also when the refresh after it fails.
+// A successful decision or change shows at once, also when the refresh after it fails.
 const unavailable = { status: 503, json: { error: { code: 'UNAVAILABLE', message: 'Service unavailable.' } } }
 
 test('an approved request leaves Booking review even if the list fails to refresh', async ({ page }) => {

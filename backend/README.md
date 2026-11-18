@@ -51,7 +51,7 @@ Django 5.2 + Django REST Framework 3.16. Provides REST APIs for student availabi
 
 Pending is not confirmed but holds the time until its deadline, preventing later users from taking a request under review. Conflicts enter the waitlist without holding time. Every resource has one qualification requirement, which may have prerequisites, and its validity must cover the booking end.
 
-A Manager reads a resource's review window through `GET /api/v1/admin/resources/{id}/booking-policy/` and updates it with `PATCH {"pending_hold_minutes":1440}`. Values are integers from 1 to 20160 minutes, default 1440 or 24 hours. A change affects only later requests. An Admin cannot read or update it. The seed default comes from `default_review_window_minutes`.
+A Manager reads a resource's review window (`pending_hold_minutes`) from `GET /api/v1/admin/resources/` and updates it with `PATCH /api/v1/admin/resources/{id}/` and `{"pending_hold_minutes":1440}`. Values are integers from 1 to 20160 minutes, default 1440 or 24 hours. A change affects only later requests. An Admin cannot read or update it. The seed default comes from `default_review_window_minutes`.
 
 ## Configurable rules for client changes
 
@@ -236,7 +236,7 @@ $env:DEBUG="true"
 $env:ENABLE_DEMO_AUTH="true"
 $env:ENABLE_TEST_CONSOLE="true"
 $env:AUTH_PROVIDER="booking.authentication.DemoIdentityProvider"
-$env:REPOSITORY_FACTORY="booking.repository.MemoryRepository"
+$env:REPOSITORY_FACTORY="booking.memory.MemoryRepository"
 .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000 --noreload
 ```
 

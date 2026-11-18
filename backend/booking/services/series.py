@@ -1,4 +1,4 @@
-"""Sprint 3: Weekly series made by staff (Admin or Manager), for themselves or for someone else.
+"""Weekly series made by staff (Admin or Manager), for themselves or for someone else.
 
 Staff choose the weekdays, start time, length and first/last date (at most BookingRules.max_series_weeks). A
 preview shows every date and whether it can be booked; dates with a problem are skipped by choice, never queued.
@@ -70,7 +70,7 @@ class SeriesMixin:
         return resource, person, days, occurrences
 
     def _series_check(self, actor, person, resource, day, start, end):
-        # Sprint 3 (1.17.0): written the same way as in _series_plan and create_series (the actor's own series only).
+        # Written the same way as in _series_plan and create_series (the actor's own series only).
         bypass = booking_rules_bypassed(actor, person.id)
         error = (test_period_violation(self, resource, start, end) if bypass
                  else self.rule_violation(person.id, resource, start, end, check_window=True))
@@ -132,7 +132,7 @@ class SeriesMixin:
             if person.id != actor.id:
                 self._notify(person.id, "SERIES_CREATED_FOR_YOU", "Weekly booking made for you",
                              f"{actor.display_name} booked {resource.name} for you on {dates}. All dates are approved.")
-            else:  # Sprint 3: confirmation of the staff member's own series
+            else:  # Confirmation of the staff member's own series
                 self._notify(person.id, "SERIES_CREATED", "Weekly booking confirmed",
                              f"You booked {resource.name} on {dates}. All dates are approved.")
             return series, bookings

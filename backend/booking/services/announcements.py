@@ -1,4 +1,4 @@
-"""Sprint 3 (1.19.0): attributed public announcements, separate from personal notifications."""
+"""Attributed public announcements, separate from personal notifications."""
 from dataclasses import replace
 from uuid import uuid4
 
@@ -27,7 +27,7 @@ class AnnouncementsMixin:
         return title, body
 
     def _check_removal_time(self, expires_at):
-        # Review 1.19.0 R1: a past removal time would publish an announcement that no home page shows.
+        # A past removal time would publish an announcement that no home page shows.
         if expires_at is not None and expires_at <= self.now():
             raise DomainError('VALIDATION_ERROR', 'Choose a removal time in the future, or leave it blank.')
 
@@ -73,7 +73,7 @@ class AnnouncementsMixin:
             return item
 
     def delete_announcement(self, actor, announcement_id):
-        """2026-11-16 (Loy): only the person who posted it clears an ended announcement from the history, for good."""
+        """Only the person who posted it clears an ended announcement from the history, for good."""
         self.require_staff(actor)
         with self.repo.atomic():
             item = self._announcement(announcement_id)

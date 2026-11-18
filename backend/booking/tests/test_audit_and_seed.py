@@ -88,10 +88,9 @@ class AuditTrailAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(data["results"][1]["details"]["status"], "PENDING_APPROVAL")
 
     def test_filter_by_resource_includes_policy_changes_but_not_other_resources(self):
-        self.manager.patch(f"/api/v1/admin/resources/{self.room['id']}/booking-policy/",
-                           {"pending_hold_minutes": 45}, format="json")
+        self.manager.patch(f"/api/v1/admin/resources/{self.room['id']}/", {"pending_hold_minutes": 45}, format="json")
         data = self.audit(resource_id=self.room["id"])
-        self.assertEqual(self.actions(data), ["RESOURCE_BOOKING_POLICY_UPDATED", "BOOKING_CANCELLED", "BOOKING_CREATED"])
+        self.assertEqual(self.actions(data), ["RESOURCE_UPDATED", "BOOKING_CANCELLED", "BOOKING_CREATED"])
         self.assertNotIn(self.equipment_booking["id"], [item["entity_id"] for item in data["results"]])
 
     def test_filter_by_student_and_action(self):

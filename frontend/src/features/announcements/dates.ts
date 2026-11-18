@@ -1,4 +1,4 @@
-// Sprint 3 (1.19.0): datetime-local controls display Sydney wall time, independent of the device zone.
+// datetime-local controls display Sydney wall time, independent of the device zone.
 import { TZ } from '../booking/format.ts'
 
 export function dateTimeInput(iso: string | null): string {

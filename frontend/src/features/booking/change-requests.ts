@@ -1,4 +1,4 @@
-// Sprint 3 (1.16.0): wording and rules for change requests on My Bookings (backend: services/changes.py).
+// Wording and rules for change requests on My Bookings (backend: services/changes.py).
 import { fmtDateTime, fmtRange, STATUS_TEXT } from './format.ts'
 import type { Booking } from '../../api/types/index.ts'
 

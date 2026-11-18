@@ -50,7 +50,7 @@ class ApprovalFlowServiceTests(BookingFixtureMixin, SimpleTestCase):
         return current.status, current.reason_code
 
     def test_requests_that_are_not_due_yet_are_not_locked(self):
-        # 2026-10-27 (performance P5): every API request runs time processing, so a request that is not due yet
+        # Every API request runs time processing, so a request that is not due yet
         # must not cost a transaction and row locks; with 200 waiting requests that added about 0.5 s per request.
         first = self.book(self.a)
         queued = self.book(self.b)
@@ -158,8 +158,8 @@ class ApprovalFlowServiceTests(BookingFixtureMixin, SimpleTestCase):
         self.assertEqual(self.state(waiting)[0], BookingStatus.PENDING_APPROVAL)
 
     def test_admins_book_under_the_same_rules(self):
-        """Client, 17 Oct: Admins and Managers may book for themselves; induction is never bypassed.
-        2026-11-06 (client, Week 8): Managers now override the rules (next test); Admins still follow them."""
+        """Admins may book for themselves under the same rules; induction is never bypassed for them.
+        Managers override the rules (next test)."""
         with self.assertRaises(DomainError) as denied:
             self.book(self.admin, start=self.start + timedelta(hours=4), end=self.start + timedelta(hours=5))
         self.assertEqual(denied.exception.code, "QUALIFICATION_REQUIRED")
@@ -181,7 +181,7 @@ class ApprovalFlowServiceTests(BookingFixtureMixin, SimpleTestCase):
         self.assertEqual(queued.status, BookingStatus.WAITLISTED)
 
     def test_a_manager_booking_overrides_the_rules_but_needs_free_time(self):
-        """2026-11-06 (client, Week 8): no induction, approved at once; nobody is displaced."""
+        """No induction, approved at once; nobody is displaced."""
         own = self.book(self.manager, start=self.start + timedelta(hours=2), end=self.start + timedelta(hours=3))
         self.assertEqual((own.status, own.reason_code, own.reviewed_by), (BookingStatus.APPROVED, "MANAGER_OVERRIDE", self.manager.id))
         unqualified = self.make_student("z5555555")
@@ -251,14 +251,14 @@ class ApprovalFlowServiceTests(BookingFixtureMixin, SimpleTestCase):
 
     def test_manager_sets_the_review_window_for_new_requests_only(self):
         first = self.book(self.a)
-        updated = self.service.set_booking_policy(self.manager, self.room.id, 60)
+        updated, _ = self.service.update_resource(self.manager, self.room.id, {"pending_hold_minutes": 60})
         self.assertEqual(updated.pending_hold_minutes, 60)
         self.assertEqual(self.get(first).hold_until, first.created_at + timedelta(hours=24))
         later = self.book(self.b, start=self.end, end=self.end + timedelta(hours=1))
         self.assertEqual(later.hold_until, later.created_at + timedelta(minutes=60))
         for actor, value in ((self.admin, 60), (self.a, 60), (self.manager, 0), (self.manager, 20161), (self.manager, True)):
             with self.subTest(actor=actor.zid, value=value), self.assertRaises(DomainError):
-                self.service.set_booking_policy(actor, self.room.id, value)
+                self.service.update_resource(actor, self.room.id, {"pending_hold_minutes": value})
 
     def test_reads_and_idempotent_retries_do_not_renew_the_window(self):
         first = super().book(self.a, idempotency_key="retry-1")
@@ -311,13 +311,11 @@ class ApprovalFlowAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual((decided["status"], decided["reason_code"], decided["reviewed_by"]),
                          ("APPROVED", "AUTO_APPROVED_AFTER_REVIEW_WINDOW", "SYSTEM"))
 
-    def test_manager_policy_endpoint(self):
-        url = f"/api/v1/admin/resources/{self.room['id']}/booking-policy/"
-        self.assert_error(self.admin.get(url), 403)  # rules belong to Managers; Admins approve
-        self.assertEqual(self.manager.get(url).data, {"resource_id": self.room["id"], "pending_hold_minutes": 1440})
-        self.assert_error(self.admin.patch(url, {"pending_hold_minutes": 60}, format="json"), 403)
-        self.assertEqual(self.manager.patch(url, {"pending_hold_minutes": 60}, format="json").data["pending_hold_minutes"], 60)
-        for body in ({}, {"pending_hold_minutes": 0}, {"pending_hold_minutes": 60, "auto_approve_max_minutes": 120}):
+    def test_only_a_manager_sets_the_review_window(self):
+        url = f"/api/v1/admin/resources/{self.room['id']}/"
+        self.assert_error(self.admin.patch(url, {"pending_hold_minutes": 60}, format="json"), 403)  # rules belong to Managers
+        self.assertEqual(self.manager.patch(url, {"pending_hold_minutes": 60}, format="json").data["resource"]["pending_hold_minutes"], 60)
+        for body in ({"pending_hold_minutes": 0}, {"pending_hold_minutes": 60, "auto_approve_max_minutes": 120}):
             with self.subTest(body=body):
                 self.assert_error(self.manager.patch(url, body, format="json"), 400)
 
@@ -333,7 +331,7 @@ class ApprovalFlowAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         moved = self.admin.get("/api/v1/admin/bookings/").data["results"]
         self.assertEqual([(item["id"], item["reason_code"]) for item in moved], [(queued.data["id"], "PROMOTED_FROM_WAITLIST")])
         self.assert_error(self.create_booking(self.admin, self.payload(hour=14)), 403)  # no induction
-        # 2026-11-06 (client, Week 8): a Manager overrides the induction rule and is approved at once.
+        # A Manager overrides the induction rule and is approved at once.
         managed = self.create_booking(self.manager, self.payload(hour=14))
         self.assertEqual((managed.status_code, managed.data["status"]), (201, "APPROVED"))
 

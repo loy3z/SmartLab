@@ -1,4 +1,4 @@
-// Sprint 3 (2026-10-27): moved from the booking feature folder; function bodies unchanged.
+// Moved from the booking feature folder; function bodies unchanged.
 import { request, requestBlob } from '../lib/api-client'
 import { post } from './client'
 import type { StaffOverview } from './types/admin'
@@ -29,7 +29,7 @@ export function reviewQualification(
   })
 }
 
-/** Room management (maintenance card A, 2026-10-28): bookings and requests that have not ended yet,
+/** Room management: bookings and requests that have not ended yet,
  *  i.e. everyone a resource status change notifies. */
 export function listUnfinishedBookings(since: string) {
   const params = new URLSearchParams({ status: 'APPROVED,PENDING_APPROVAL,WAITLISTED,WAITING_QUALIFICATION', since })
@@ -82,7 +82,7 @@ export function createStaff(data: { zid: string; display_name: string; universit
   return post<ManagedUser>('admin/users/staff/', data)
 }
 
-// Sprint 3 (Booking Records, Admin and Manager): the list and its CSV take the same filters
+// The list and its CSV take the same filters
 // (status, since, until, resource_id, q = part of a zID or name).
 export function listBookingRecords(params: URLSearchParams) {
   return request<ListResponse<Booking>>(`admin/bookings/?${params.toString()}`)
@@ -96,7 +96,7 @@ export function updateResourceStatus(
   resourceId: string,
   status: ResourceStatus,
   reason: string,
-  expected_back?: string | null, // Sprint 3 (1.19.0)
+  expected_back?: string | null,
 ) {
   return request<{
     resource: Resource
@@ -108,7 +108,7 @@ export function updateResourceStatus(
 }
 
 
-// Sprint 3: usage report (Manager) ---------------------------------------------------------------------------
+// Usage report (Manager) ---------------------------------------------------------------------------
 export const getUsageReport = (firstDate: string, lastDate: string) =>
   request<UsageReport>(`admin/reports/usage/?${new URLSearchParams({ first_date: firstDate, last_date: lastDate })}`)
 

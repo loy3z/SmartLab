@@ -1,4 +1,4 @@
-"""Sprint 3 (1.16.0): change requests (the person asks to move an approved booking), maintenance notices, and why
+"""Change requests (the person asks to move an approved booking), maintenance notices, and why
 Find a free time hides resources (too long for them, or not bookable by this person)."""
 
 from dataclasses import replace
@@ -195,7 +195,7 @@ class ChangeRequestTests(Sprint3Fixture, SimpleTestCase):
 
 
 class ExtendBookingTests(Sprint3Fixture, SimpleTestCase):
-    """2026-11-07 (client, Week 8): the person asks to finish a booking in progress later; a Manager decides."""
+    """The person asks to finish a booking in progress later; a Manager decides."""
 
     def at_hour(self, booking, hour, minute=0):
         return datetime.combine(booking.start.astimezone(SYDNEY).date(), time(hour, minute), SYDNEY)
@@ -339,7 +339,7 @@ class ChangeRequestAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(other.status_code, 404)
 
     def test_extend_a_booking_in_progress(self):
-        """2026-11-07: the person asks, a Manager approves."""
+        """The person asks, a Manager approves."""
         payload = self.payload(day_offset=3, hour=10)
         created = self.verified.post("/api/v1/bookings/", payload, format="json")
         self.admin.post(f"/api/v1/admin/bookings/{created.data['id']}/review/", {"decision": "APPROVED"}, format="json")

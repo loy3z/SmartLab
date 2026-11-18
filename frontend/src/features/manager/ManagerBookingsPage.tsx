@@ -1,4 +1,4 @@
-import { ResourceStatusDialog } from './ResourceStatusDialog' // Sprint 3 (1.19.0)
+import { ResourceStatusDialog } from './ResourceStatusDialog'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { EmptyState, PageHeader, RefreshStamp } from '../../ui/components'
 import { useFeedback } from '../../ui/feedback-context'
@@ -10,7 +10,7 @@ import {
 import { errorMessage, fmtDuration, fmtRange, minutesBetween } from '../booking/format'
 import { Modal } from '../booking/Modal'
 import { RescheduleBox } from '../booking/RescheduleBox'
-import { ExtendBox } from '../booking/ExtendBox' // 1.24.0
+import { ExtendBox } from '../booking/ExtendBox'
 import type { Booking, Resource, ResourceStatus } from '../../api/types/index.ts'
 
 const STATUS_LABELS: Record<ResourceStatus, string> = {
@@ -37,11 +37,11 @@ export function ManagerBookingsPage() {
   const [refresh, setRefresh] = useState(0)
   const [roomFilter, setRoomFilter] = useState('')
   const [moving, setMoving] = useState<Booking | null>(null)
-  const [extending, setExtending] = useState<Booking | null>(null) // 1.24.0 (client, Week 8)
+  const [extending, setExtending] = useState<Booking | null>(null)
 
   useEffect(() => {
     let active = true
-    // Card A (M1①, 2026-10-28): only bookings and requests that have not ended, not the whole history.
+    // Only bookings and requests that have not ended, not the whole history.
     Promise.all([listUnfinishedBookings(new Date().toISOString()), listResources({ kind: 'ROOM' })])
       .then(([bookingData, resourceData]) => {
         if (!active) return
@@ -64,17 +64,17 @@ export function ManagerBookingsPage() {
   }, [])
 
   const now = loadedAt ?? 0
-  // Sprint 3 (fluency V6): a failed first load has a text retry, not a misleading loading stamp.
+  // A failed first load has a text retry, not a misleading loading stamp.
   const initialLoadFailed = loadedAt === null && !loading && Boolean(error)
   const roomName = (id: string) => rooms.find((room) => room.id === id)?.name ?? 'Room'
-  // Card A (B1): the tables show confirmed bookings; the status dialog counts requests too (they are notified as well).
+  // The tables show confirmed bookings; the status dialog counts requests too (they are notified as well).
   const confirmed = useMemo(() => bookings.filter((b) => b.status === 'APPROVED'), [bookings])
   const visibleBookings = useMemo(
     () => confirmed.filter((b) => (!roomFilter || b.resource_id === roomFilter) && Date.parse(b.end) > now),
     [confirmed, roomFilter, now],
   )
 
-  // Sprint 3 (1.19.0): status errors stay inside its still-open form.
+  // Status errors stay inside its still-open form.
   function changeStatus(room: Resource, status: ResourceStatus) {
     setStatusTarget({ room, status })
   }
@@ -178,7 +178,7 @@ export function ManagerBookingsPage() {
                     const room = rooms.find((item) => item.id === booking.resource_id)
                     const started = Date.parse(booking.start) <= now
                     return (
-                      <tr key={booking.id} className={room && room.status !== 'AVAILABLE' ? 'is-attention' : undefined}>{/* Sprint 3 (1.16.0) */}
+                      <tr key={booking.id} className={room && room.status !== 'AVAILABLE' ? 'is-attention' : undefined}>
                         <td>{fmtRange(booking.start, booking.end)}<span className="ui-sub-text">{fmtDuration(minutesBetween(booking.start, booking.end))}</span></td>
                         <td>
                           {room?.name ?? 'Room'}
@@ -222,7 +222,7 @@ export function ManagerBookingsPage() {
       {statusTarget && <ResourceStatusDialog resource={statusTarget.room} status={statusTarget.status}
         affected={bookings.filter(item => item.resource_id === statusTarget.room.id && Date.parse(item.end) > now)}
         onClose={() => setStatusTarget(null)} onSaved={(saved) => {
-          // Card A (V3): show the saved status at once; the refresh still runs (reopening can promote the waitlist).
+          // Show the saved status at once; the refresh still runs (reopening can promote the waitlist).
           setRooms((current) => current.map((item) => (item.id === saved.id ? saved : item)))
           setStatusTarget(null); feedback.success('Resource status updated'); reload()
         }} />}

@@ -1,4 +1,4 @@
-// Sprint 3: weekly series form (staff only).
+// Weekly series form (staff only).
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../auth/auth-context'
 import { useFeedback } from '../../ui/feedback-context'
@@ -42,7 +42,7 @@ export function RecurringBookingForm({ resource, onBooked }: { resource: Resourc
     let cancelled = false
     getAvailability(resource.id, todaySydney(), step, undefined, { forZid }).then(availability => {
       if (cancelled) return
-      // Sprint 3: the Manager override is for single bookings, not weekly series.
+      // The Manager override is for single bookings, not weekly series.
       const window = availability.normal_booking_window ?? availability
       const clamp = (date: string) => date < window.earliest_date ? window.earliest_date
         : window.latest_date && date > window.latest_date ? window.latest_date : date

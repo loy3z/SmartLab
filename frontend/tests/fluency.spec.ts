@@ -1,4 +1,4 @@
-// Sprint 3: fluency B-card acceptance; every API response is synthetic and intercepted.
+// Loading and refresh behaviour; every API response is synthetic and intercepted.
 import { expect, test as base, type Page } from '@playwright/test'
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -247,7 +247,7 @@ for (const role of ['STUDENT', 'ADMIN', 'MANAGER'] as const) {
     await expect(page.locator(role === 'STUDENT' ? '.dash-stats' : '.today-grid')).toBeVisible()
   })
 
-  // Claude Code review (2026-10-27): V5 gates only the first paint; a later refresh keeps the announcements in place.
+  // The home page waits for announcements only on the first paint; a later refresh keeps the announcements in place.
   test(`V5 ${role} refresh keeps the announcements in place`, async ({ page, api }) => {
     api.role = role
     await page.goto(role === 'STUDENT' ? '/#/dashboard' : '/#/admin/today')

@@ -1,4 +1,4 @@
-// Sprint 3: Booking Records (Admin and Manager). Who booked what and when, with filters and a CSV of the same
+// Booking Records (Admin and Manager). Who booked what and when, with filters and a CSV of the same
 // list; the Usage statistics tab is the former Usage Report page.
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router'
@@ -29,11 +29,11 @@ function saveCsv(blob: Blob, filename: string) {
 
 function RecordsTab({ isManager, lookup }: { isManager: boolean; lookup: string }) {
   const feedback = useFeedback()
-  // 2026-11-07 (client, Week 8): Admins see recent history only; a Manager can arrive with a zID to look up.
+  // Admins see recent history only; a Manager can arrive with a zID to look up.
   const [filters, setFilters] = useState<RecordFilters>(() => defaultRecordFilters(todaySydney(), isManager, lookup))
   const [search, setSearch] = useState(filters.q) // typed text; applied on Search / Enter
   const [resources, setResources] = useState<Resource[]>([])
-  // Sprint 3 (fluency V4): retain the exact filters behind the visible rows, even after a failed request.
+  // Retain the exact filters behind the visible rows, even after a failed request.
   const [result, setResult] = useState<{ rows: Booking[]; filters: RecordFilters } | null>(null)
   const [settledFilters, setSettledFilters] = useState<RecordFilters | null>(null)
   const [error, setError] = useState('')
@@ -141,7 +141,7 @@ export function BookingRecordsPage() {
   const [params, setParams] = useSearchParams()
   const { user } = useAuth()
   const isManager = user?.role === 'MANAGER'
-  // 2026-11-07: usage statistics (history reports) are for Managers only.
+  // Usage statistics (history reports) are for Managers only.
   const tab: Tab = isManager && params.get('tab') === 'usage' ? 'usage' : 'records'
   return (
     <div>

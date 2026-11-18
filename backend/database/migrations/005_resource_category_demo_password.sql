@@ -6,7 +6,9 @@
 -- 1. bookable_resource.category: equipment type used by the booking page filter (rooms stay NULL). The demo
 --    equipment gets made-up categories; values someone already set are kept.
 -- 2. The two fake demo staff accounts (z9000001 Admin, z9000002 Manager) sign in with the password "123".
---    Only these two demo accounts change; real staff keep their own passwords.
+--    Only these two demo accounts change; real staff keep their own passwords. The password is replaced only
+--    while it is still the earlier demo password from 003, so running this script again never undoes a
+--    password that was changed later.
 
 ALTER TABLE public.bookable_resource ADD COLUMN IF NOT EXISTS category text;
 
@@ -29,4 +31,5 @@ UPDATE public.bookable_resource SET category = 'Soldering'
 
 UPDATE public.staff_credential
     SET password_hash = 'pbkdf2_sha256$1000000$smartlabdemostaff2$zptccOYVBe7KY3Xftwge1EpinjQjfTL5RQuWZcJnvLE=', invite_code = NULL, updated_at = now()
-    WHERE principal_id IN ('00000000-0000-0000-0000-000000000901', '00000000-0000-0000-0000-000000000902');
+    WHERE principal_id IN ('00000000-0000-0000-0000-000000000901', '00000000-0000-0000-0000-000000000902')
+      AND password_hash = 'pbkdf2_sha256$1000000$smartlabdemostaff1$VEZGh4DfYxawq0X9qmaNEO0lg4UNdhtLIxnXrS21Btw=';

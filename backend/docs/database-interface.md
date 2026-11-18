@@ -113,7 +113,7 @@ Repository methods include `save_notification`, `get_notification`, `list_notifi
 
 ## Integration and upgrades
 
-- For an existing database, run every script under `database/migrations/` in order. Scripts 001–011 are repeatable. See Section 2 of `database/README.md`.
+- For an existing database, run every script under `database/migrations/` in order. Every script is repeatable. See Section 2 of `database/README.md`.
 - Populate user email addresses from trusted identity data; never invent production user addresses.
 - `DEFAULT_PENDING_HOLD_MINUTES` is only for creating demo seed data and cannot override Manager configuration stored in the database.
 - Store time fields with time zones. The API emits UTC; opening-hour rules use the resource time zone.

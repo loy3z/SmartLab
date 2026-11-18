@@ -6,6 +6,25 @@ This file records what changed in each update and why. Other documents describe 
 
 - Opening the bell panel starts a reload. On a slow connection its answer could arrive after the person had already clicked a notification: the unread count went down by one, then jumped back, and the notification showed as unread again until the next reload (up to a minute). The bell now ignores an answer that was requested before the click, and any answer that is not the newest one (`NotificationBell.tsx`). `routing.spec.ts` has a new case with a 700 ms delay; it failed before the change.
 
+## After 1.28.0: Two Rules Written Down: Extensions and Equipment Return (2026-11-18, documentation only)
+
+- Extending a booking in progress has never counted towards the 12-hour weekly limit, but no document said so. The product owner confirmed that this is the rule: an extension always needs a Manager's approval, and the Manager decides whether the extra time is reasonable. `backend/README.md` now states it next to the weekly limit. No code changed.
+- `backend/README.md` listed equipment collection and return as not implemented. It is a decision, not a gap: picking up and returning an item happens in the lab and is left to trust, in line with the client's wish (Week 8 meeting) not to rely on penalties, and a "returned" button could not prove that an item came back. The README now says so in its own line.
+
+## After 1.28.0: `authentication.py` Explains Itself (2026-11-17, comments only)
+
+- `backend/booking/authentication.py` had one line of explanation for 80 lines of code. Its module docstring now says what the file does, why no role from the user is trusted, and the three steps for connecting real university SSO; each class and function has a one-line docstring. No code changed.
+
+## After 1.28.0: Booking Limits Are Configured in Hours (2026-11-17, API unchanged)
+
+- The two fair-use limits were set as numbers of 30-minute slots (`MAX_SLOTS_PER_BOOKING=6`, `MAX_SLOTS_PER_WEEK=24`), which had to be multiplied out to read as 3 h and 12 h. They are now `MAX_HOURS_PER_BOOKING=3` and `MAX_HOURS_PER_WEEK=12`. `BOOKING_SLOT_MINUTES` stays as the step in which hours are counted; `SettingsRulesProvider` (`booking/rules.py`) converts each hour limit into that many steps and refuses a value that is not a whole number of steps. The rule checks, API fields and defaults are unchanged.
+- **Deployment note:** the old names are no longer read. A `.env.docker` that sets `MAX_SLOTS_PER_BOOKING` or `MAX_SLOTS_PER_WEEK` to something other than 6 and 24 must set the hour values instead; with the old defaults nothing changes. `docker-compose.yml`, `.env.docker.example`, `backend/.env.example` and the rule table in `backend/README.md` use the new names. Test: `test_booking_window.py` `test_hour_limits_from_settings_become_counting_steps`.
+
+## After 1.28.0: Running Migration 005 Again Keeps Changed Staff Passwords (2026-11-17, no new migration)
+
+- `005_resource_category_demo_password.sql` set the two demo staff accounts (z9000001, z9000002) to the demo password every time it ran, so running the whole set of migrations again, as `backend/database/README.md` recommends, undid a password that had been changed. It now replaces only the earlier demo password from 003. A database upgraded from before 005 ends up the same as before; a database where the password was changed keeps it. Checked in a temporary database: before the change a changed password was reset, after it the password is kept on the first and the second run.
+- `backend/database/README.md`, `DEPLOY.md` and the comment in `backend/entrypoint.sh` no longer warn against running 005 again. The README now names the one change a repeated run still makes (001 moves a 30-minute review deadline to 1440 minutes).
+
 ## After 1.28.0: Backend Top-Level Clean-up (2026-11-16, no behaviour change)
 
 First pass of a file-by-file review of `backend/`, for a teammate to check.
@@ -15,7 +34,10 @@ First pass of a file-by-file review of `backend/`, for a teammate to check.
 - Update two stale “Sprint 1” descriptions (`requirements-lock.txt`, `booking/__init__.py`).
 - Delete three service methods that nothing calls, tests included: `_require_eligible` (`checks.py`; callers use `_qualification_violation`), `require_student` (`base.py`; replaced by `require_booking_user` when staff were allowed to book) and `set_pending_hold_minutes` (`resources.py`; a one-line alias of `set_booking_policy`).
 - Delete `PrerequisiteSerializer` (`serializers.py`), which was defined and imported but never used, and an unused import of `booking_rules_bypassed` in `views/_common.py`.
+- Remove three unused imports from the tests (`test_long_bookings.py`, `test_test_console.py`, `test_user_management.py`).
 - Delete the management command `process_outlook`: `process_due --outlook-limit N` already pushes the due Outlook updates, and the Docker `scheduler` runs it every minute. The test that a separate worker refuses the in-memory repository now calls `process_due` (`test_outlook.py`); `backend/README.md`, `backend/docs/outlook-setup.md` and `ARCHITECTURE.md` no longer mention the command.
+- Frontend `src/`, top level: delete `src/assets/` (three images from the Vite template that nothing references; the site's images are in `frontend/public/`), `features/booking/Layout.tsx` (the Sprint 1 shell, replaced by `app/AppLayout.tsx` and imported nowhere) and `features/manager/ManagerUsagePage.tsx` (replaced by `features/records/UsageTab.tsx` in 1.14.0 and imported nowhere). `features/manager/usage.ts` stays: `UsageTab.tsx` uses it.
+- `backend/database/` and `backend/docs/`, documents only (2026-11-17): `backend/database/README.md` loses five “upgrade an existing database for …” subsections that repeated the migration table above them, two leftover notes about an earlier iteration not being deployed, and the line calling the PostgreSQL adapter local-only (the Docker deployment uses it); it now says exactly what running every migration again changes. `database-interface.md` said scripts 001–011 are repeatable; all of them are. `email-setup.md` no longer names one person's computer in a heading. Documents and the CI file describe checks by what they do instead of naming helper scripts that are not in this repository.
 
 ## After 1.28.0: Two Small Interface Fixes (2026-11-16, frontend only)
 
@@ -100,8 +122,8 @@ Based on Loy's feedback in `claude/reports/2026-11-09-loy-feedback-lab-rules-ove
 Based on the Week 9 course teamwork assessment requirement to demonstrate engineering practice (CI/CD).
 
 - **Add `.gitlab-ci.yml`**: run two jobs on every push and MR: `backend-tests` (`python:3.12-slim`, `manage.py test booking`, memory storage) and `frontend-checks` (`node:22-alpine`, `npm test`, `npm run lint`, and `npm run build`). Images and dependency installation match the two Dockerfiles. The pipeline first passed on the university GitLab on 2026-11-09.
-- **No automatic deployment**: deployment still uses `claude-tools/deploy-ec2` with `--dry-run` followed by manual confirmation (Section 3 of `DEPLOY.md`) because some migrations delete data (such as 014), and automatic deployment would require storing the server SSH key in GitLab.
-- PostgreSQL integration tests and Playwright e2e are not included in CI and continue to run locally through `check-local.sh`.
+- **No automatic deployment**: deployment stays manual, a dry run followed by manual confirmation (Section 3 of `DEPLOY.md`), because some migrations delete data (such as 014), and automatic deployment would require storing the server SSH key in GitLab.
+- PostgreSQL integration tests and Playwright e2e are not included in CI and continue to run locally.
 
 ## After 1.27.0: Five Changes from the Three-Role Walkthrough (2026-11-07, frontend only, API unchanged)
 
@@ -283,7 +305,7 @@ Following Sections 4.3 and 4.4 of `reports/2026-10-27-code-structure-review.md`,
 - **S1: remove 31 unused CSS class names**: 21 from `features/booking/booking.css`, 8 from `ui/workspace.css`, 3 from `app/shell.css`, and 2 from `features/auth/auth.css` (three class names had rules in two files). The review checklist originally listed 32; `ttf` was the font URL `manrope-regular.ttf` misidentified as a class, so no such class existed and nothing was removed for it. Before deletion, each class was searched in `.ts`, `.tsx`, and `.mjs` under `frontend/src` and `frontend/tests`; all appeared only in CSS. For selectors containing `:is()`, remove only the target member (for example, the mobile `.app-shell :is(.ui-tabs, .bk-pills, .bk-mode-tabs)` retains the first two).
 - **S3: move the API layer to `src/api/`**: split `features/booking/api.ts` (73 functions) and `types.ts` (52 types) by domain into `src/api/{auth,bookings,resources,admin,notifications,announcements,site}.ts`, `src/api/client.ts`, and `src/api/types/<domain>.ts`, with unified exports from `src/api/index.ts` and `src/api/types/index.ts`. Function bodies and type definitions are unchanged. Delete old files without forwarders. Move locally defined `BookingRequest` to `types/bookings.ts`. Review found that the split attached 19 explanatory comments to the wrong declarations (for example, the `lookupPerson` explanation moved above `listBookings`); restore all to their original declarations (Claude Code, R1 in `claude/reports/2026-10-27-review-structure.md`).
 - Change all consumers to import from `src/api` (`index.ts`). Node unit tests continue to use full `.ts` extensions, and types use `import type`.
-- Evidence of unchanged behaviour: all `check-local.sh` checks pass (backend 379, pg 26, OpenAPI 1.19.0 / 72 routes, unit 72, lint, build, e2e 75). Screenshot comparison: 22 pages × desktop 1440×900 / phone 390×844 = 44 images; every updated screenshot is pixel-identical to one pre-change (`8ae931f`) screenshot (five pages show tens to thousands of random pixel differences even between consecutive captures of the same version, so they were captured several times). The delivery claim “all 44 images match” was invalid because the comparison script checked only the alpha channel, not colour, and eight images were blank. The script was fixed and screenshots retaken (review report R2).
+- Evidence of unchanged behaviour: all local checks pass (backend 379, pg 26, OpenAPI 1.19.0 / 72 routes, unit 72, lint, build, e2e 75). Screenshot comparison: 22 pages × desktop 1440×900 / phone 390×844 = 44 images; every updated screenshot is pixel-identical to one pre-change (`8ae931f`) screenshot (five pages show tens to thousands of random pixel differences even between consecutive captures of the same version, so they were captured several times). The delivery claim “all 44 images match” was invalid because the comparison script checked only the alpha channel, not colour, and eight images were blank. The script was fixed and screenshots retaken (review report R2).
 - Documentation: Section 7 of `ARCHITECTURE.md` and the path explanation in `frontend/README.md`; Section 25 of `SPRINT3.md` lists the moves and deletions. The older SPRINT3 section is a historical record and remains unchanged.
 
 ## 1.19.0: Notification Settings Page and Attributed Announcements (2026-10-26, Sprint 3)

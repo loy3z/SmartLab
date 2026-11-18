@@ -1,5 +1,4 @@
 """Sprint 3 (1.17.0): the opt-in test console is a signed session, not an editable user role or a request flag."""
-from dataclasses import replace
 from datetime import timedelta
 
 from django.core import signing

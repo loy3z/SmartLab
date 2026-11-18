@@ -166,10 +166,23 @@ export function QualificationReviewPage() {
 
       {error && <p className="bk-error" role="alert">{error}</p>}
       {loading && loadedAt === null && <p role="status">Loading applications…</p>}
-
+      
+      {/* Distinguish an empty search result from a review queue with no pending evidence. */}
       {loadedAt !== null && rows.length === 0 && (
-        <EmptyState title={tab === 'PENDING' ? "You're all caught up" : 'Nothing here yet'}>
-          {search ? 'No evidence matches this search.' : tab === 'PENDING' ? 'There is no evidence waiting for review.' : `No ${tab.toLowerCase()} evidence.`}
+        <EmptyState
+          title={
+            search.trim()
+              ? 'No matching evidence'
+              : tab === 'PENDING'
+                ? "You're all caught up"
+                : 'Nothing here yet'
+          }
+        >
+          {search.trim()
+            ? 'Try a different name, zID or submission title.'
+            : tab === 'PENDING'
+              ? 'There is no evidence waiting for review.'
+              : `No ${tab.toLowerCase()} evidence.`}
         </EmptyState>
       )}
 

@@ -1,4 +1,4 @@
-"""Week 5 client review fixes.
+"""Fixes from a client review.
 
 C01 every decision path applies the same rules; C02 the requester's account is re-checked;
 C04 induction prerequisites (Advanced needs a current General); booking rules come from a provider.
@@ -104,7 +104,7 @@ class AccountStatusTests(BookingFixtureMixin, SimpleTestCase):
         self.assertEqual((self.repo.get_booking(queued.id).status, self.repo.get_booking(queued.id).reason_code),
                          (BookingStatus.REJECTED, "ACCOUNT_INACTIVE"))
 
-    def test_deactivation_rejects_undecided_requests_and_cancels_future_approved_bookings(self):  # 2026-11-10 (U3): approved ones used to stay
+    def test_deactivation_rejects_undecided_requests_and_cancels_future_approved_bookings(self):  # Approved ones used to stay
         manager = Principal(str(uuid4()), "z9888888", "Manager", Role.MANAGER, "z9888888@ad.unsw.edu.au")
         self.repo.save_principal(manager)
         approved = self.service.review_booking(self.admin, self.book().id, "APPROVED")

@@ -14,7 +14,7 @@ from booking.domain import (
     QualificationStatus, QualificationSubmission, Resource, ResourceKind, Role,
 )
 from booking.exceptions import DomainError
-from booking.repository import MemoryRepository
+from booking.memory import MemoryRepository
 from booking.services import BookingService
 from booking.storage import MemoryFileStorage
 

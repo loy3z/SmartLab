@@ -99,7 +99,7 @@ Version 1.25.0 (2026-11-07) removed freezing and unfreeze requests (client Week 
 ## 6. Manager Room and Equipment Management on the Website
 
 - **Rules**: described at the top of `booking/services/resources.py`:
-  - Name, location, and required induction are mandatory; names must be unique.
+  - Name and location are mandatory, and the induction is a choice: an induction or "No induction required" (1.30.0, client meeting 5: equipment is independent of rooms); names must be unique.
   - A room cannot have a parent room or category.
   - Times must align with 15-, 30-, or 60-minute steps; the maximum duration must fit within opening hours.
   - The resource type cannot be changed after creation.
@@ -462,7 +462,7 @@ Replaces the “takes effect immediately” behaviour in W2 of Section 30. Task 
 
 | Area | Files and entry points | Tests |
 | --- | --- | --- |
-| Data | `Booking.extension_end` in `domain.py`; `migrations/016_extension_requests.sql` (adds the column and `booking_extension_end_check` constraint) and `schema.sql` | `test_extension_request_is_persisted` in `test_postgres.py` |
+| Data | `Booking.extension_end` and `Booking.end_before_extension` (the end before the first approved extension, used by the weekly allowance; migration 017) in `domain.py`; `migrations/016_extension_requests.sql` (adds the column and `booking_extension_end_check` constraint) and `schema.sql` | `test_extension_request_is_persisted` in `test_postgres.py` |
 | Backend | `extend_booking` (student submits a request; Manager applies immediately), `review_extension`, `_check_extension`, and `_apply_extension` in `services/changes.py`; `extension_requests` in `services/overview.py`; `BookingExtensionReviewView` in `views/bookings.py`; `ExtensionReviewSerializer` in `serializers.py`; `urls.py`; notifications `EXTENSION_REQUESTED`/`APPROVED`/`REJECTED` (email kinds in `notifications.py` and `settings.py`) | Three `ExtendBookingTests` and `test_extend_a_booking_in_progress` in `test_change_requests.py` |
 | Frontend | `features/booking/ExtendBox.tsx` (timeline, dragging, and arrow keys); `timelineCells`, `latestEnd`, `waitingExtension`, and `sydneyDate` in `extend.ts`; waiting message in `MyBookings.tsx`; `extensions` card in `admin/today.ts`; `ExtensionRow` in `manager/ManagerHomePage.tsx`; `reviewExtension` in `api/bookings.ts`; `.ext-*` in `ui/workspace.css` | `tests/extend.test.mjs`; Playwright `a student drags the end of a booking in progress…` and `a Manager approves an extension request on the Lab overview` |
 

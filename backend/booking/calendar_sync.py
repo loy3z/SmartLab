@@ -1,4 +1,4 @@
-"""One-way Outlook synchronisation: the website is the only authority (client email, 17 Oct).
+"""One-way Outlook synchronisation: the website is the only authority (agreed with the client).
 
 Transactional outbox for create/update/cancel; network calls run after commit. The system never reads changes
 made in Outlook, so nothing done there can bypass the booking rules or become an approved booking. A person may
@@ -57,7 +57,7 @@ class CalendarSyncService:
                 lease_until=current.lease_until if running else None, last_error=None))
 
     def describe(self, booking, records=None):
-        """records (2026-10-29, load test S2): sync records by booking id, read once for a whole list of bookings."""
+        """records: sync records by booking id, read once for a whole list of bookings instead of once per booking."""
         def stored():
             return records.get(booking.id) if records is not None else self.repo.get_outlook_sync(booking.id)
 

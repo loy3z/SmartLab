@@ -1,4 +1,4 @@
-// Sprint 3 (2026-10-27): moved from the booking feature folder; function bodies unchanged.
+// Moved from the booking feature folder; function bodies unchanged.
 import { request, requestBlob } from '../lib/api-client'
 import { post } from './client'
 import type { ListResponse } from './types/common'
@@ -65,7 +65,7 @@ export function submitQualification(
   })
 }
 
-// Sprint 3: resource setup (Manager) ------------------------------------------------------------------------
+// Resource setup (Manager) ------------------------------------------------------------------------
 export const listAllResources = () => request<ListResponse<Resource>>('admin/resources/')
 
 export const createResource = (kind: ResourceKind, fields: ResourceInput) =>
@@ -74,7 +74,7 @@ export const createResource = (kind: ResourceKind, fields: ResourceInput) =>
 export const updateResource = (resourceId: string, fields: Partial<ResourceInput>) =>
   request<ResourceUpdateResult>(`admin/resources/${resourceId}/`, { method: 'PATCH', body: JSON.stringify(fields) })
 
-/** 2026-11-07 (client, Week 8), Manager only: owner, asset number, where it came from, specifications. */
+/** Manager only: owner, asset number, where it came from, specifications. */
 export const getResourceInternalInfo = (resourceId: string) => request<ResourceInternalInfo>(`admin/resources/${resourceId}/internal/`)
 
 export const updateResourceInternalInfo = (resourceId: string, fields: Partial<ResourceInternalInput>) =>
@@ -85,7 +85,7 @@ export const archiveResource = (resourceId: string) => post<Resource>(`admin/res
 export const restoreResource = (resourceId: string) => post<Resource>(`admin/resources/${resourceId}/restore/`, {})
 
 
-// Sprint 3 (1.16.0): lab setup (Manager), the lab's contact details and the staff "Today" page -----------------
+// Lab setup (Manager), the lab's contact details and the staff "Today" page -----------------
 export const createRequirement = (fields: Partial<RequirementInput> & { name: string }) =>
   post<Requirement>('admin/qualification-requirements/', fields)
 

@@ -1,6 +1,6 @@
-"""Sprint 3 (1.16.0): change requests — the person a booking is for asks to move it to another time.
+"""Change requests — the person a booking is for asks to move it to another time.
 
-How it works (agreed with Loy on 2026-10-25):
+How it works:
 
 - Only an approved, future booking can be changed, and only by the person it is for. The new time is on the same
   resource and goes through the normal request rules (booking window, opening hours, length, induction,
@@ -14,7 +14,7 @@ How it works (agreed with Loy on 2026-10-25):
 
 Managers can still move a booking directly (``reschedule_booking`` in bookings.py).
 
-2026-11-07 (client, Week 8): the person asks to extend a booking in progress and a Manager decides
+Extensions: the person asks to extend a booking in progress and a Manager decides
 (``extend_booking``, ``review_extension``); a Manager's own extension applies at once.
 """
 from dataclasses import replace
@@ -54,7 +54,7 @@ class ChangesMixin:
                                    replaces=source)
 
     def extend_booking(self, actor, booking_id, end):
-        """2026-11-07 (client, Week 8): finish a booking in progress later.
+        """Finish a booking in progress later.
 
         The person the booking is for asks for a later end (by dragging it on the page). It waits for a Manager, as when
         they emailed the Manager, who checked that nobody had booked the time after. A Manager extending a booking
@@ -103,7 +103,7 @@ class ChangesMixin:
             source = self.booking_for(actor, booking_id)
             if source.extension_end is None or source.status != BookingStatus.APPROVED:
                 raise DomainError("NO_EXTENSION_REQUEST", "This booking has no extension request waiting.", 409)
-            # Sprint 3: decide the time the Manager saw, not a replacement submitted while the page was open.
+            # Decide the time the Manager saw, not a replacement submitted while the page was open.
             if expected_end is not None and source.extension_end != expected_end:
                 raise DomainError("EXTENSION_CHANGED", "The requested end changed. Refresh the page before deciding.", 409)
             if decision == "REJECTED":
@@ -129,7 +129,8 @@ class ChangesMixin:
             raise DomainError("BOOKING_CONFLICT", "Someone has already booked or is holding the time after this booking.", 409)
 
     def _apply_extension(self, actor, booking, end):
-        extended = replace(booking, end=end, extension_end=None, updated_at=self.now(), revision=booking.revision + 1)
+        extended = replace(booking, end=end, extension_end=None, end_before_extension=booking.end_before_extension or booking.end,
+                           updated_at=self.now(), revision=booking.revision + 1)
         self._save_booking(extended)
         self._audit(actor.id, "BOOKING_EXTENDED", "booking", booking.id, old_end=booking.end.isoformat(), new_end=end.isoformat())
         if actor.id != booking.student_id:

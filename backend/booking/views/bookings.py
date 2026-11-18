@@ -1,4 +1,4 @@
-"""HTTP views: bookings (split from booking/views.py on 2026-10-25)."""
+"""HTTP views: bookings (split from booking/views.py)."""
 
 from ._common import *  # noqa: F401,F403 - shared imports, helpers and PublicView.
 
@@ -58,15 +58,15 @@ def my_bookings(service, user):
     """Bookings for me plus those I created for other people, oldest first."""
     mine = {item.id: item for item in service.repo.list_bookings(student_id=user.id)}
     if user.role in (Role.ADMIN, Role.MANAGER):
-        # 2026-10-29 (load test S5): filter in the repository instead of reading every booking.
+        # Filter in the repository instead of reading every booking.
         mine.update({item.id: item for item in service.repo.list_bookings(created_by=user.id) if item.created_by == user.id})
-    # Sprint 3 (1.20.0): personal lists and Dashboard share visibility; reports keep the original rows.
+    # Personal lists and Dashboard share visibility; reports keep the original rows.
     hidden = service.repo.hidden_booking_ids(user.id)
     return sorted((item for item in mine.values() if item.id not in hidden), key=lambda item: (item.created_at, item.id))
 
 
 class BookingHistoryRemoveView(APIView):
-    """Sprint 3 (1.20.0): remove only the caller's personal history entry, idempotently."""
+    """Remove only the caller's personal history entry, idempotently."""
     def post(self, request, booking_id):
         if request.data:
             raise DomainError("VALIDATION_ERROR", "The history removal action does not accept extra fields.")
@@ -104,7 +104,7 @@ class BookingRescheduleView(APIView):
         return Response(json_value(booking))
 
 class BookingExtendView(APIView):
-    """2026-11-07 (client, Week 8): ask to finish a booking in progress later; a Manager's extension applies at once."""
+    """Ask to finish a booking in progress later; a Manager's extension applies at once."""
     def post(self, request, booking_id):
         data = validated(BookingExtendSerializer, request.data)
         service = get_service()
@@ -113,7 +113,7 @@ class BookingExtendView(APIView):
         return Response(json_value(booking))
 
 class BookingExtensionReviewView(APIView):
-    """2026-11-07, Manager: approve or reject an extension request (services/changes.py ``review_extension``)."""
+    """Manager: approve or reject an extension request (services/changes.py ``review_extension``)."""
     def post(self, request, booking_id):
         data = validated(ExtensionReviewSerializer, request.data)
         service = get_service()
@@ -123,7 +123,7 @@ class BookingExtensionReviewView(APIView):
         return Response(json_value(booking))
 
 class BookingChangeView(APIView):
-    """Sprint 3 (1.16.0): the person a booking is for asks to move it (services/changes.py). Returns the new request;
+    """The person a booking is for asks to move it (services/changes.py). Returns the new request;
     the old booking stays until it is approved."""
     def post(self, request, booking_id):
         data = validated(BookingRescheduleSerializer, request.data)
@@ -143,7 +143,7 @@ class DashboardView(APIView):
         lookups = BookingListLookups(service, bookings)
         return Response({"bookings": [booking_json(item, lookups) for item in bookings],
                          "qualifications": [submission_json(item) for item in submissions], "counts": counts,
-                         "week_hours": service.week_hours(request.user.id)})  # 2026-11-03: hours left this week
+                         "week_hours": service.week_hours(request.user.id)})  # Hours left this week
 
 class BookingCheckInView(APIView):
     def post(self, request, booking_id):

@@ -1,4 +1,4 @@
-"""Sprint 3: reminders in the bell (booking coming up, induction expiring soon) and expired-request notices."""
+"""Reminders in the bell (booking coming up, induction expiring soon) and expired-request notices."""
 
 from datetime import timedelta
 import threading
@@ -11,7 +11,7 @@ from booking.domain import BookingStatus
 from booking.tests.test_sprint3 import Sprint3Fixture
 
 
-# Sprint 3 (2026-11-01): force two processors past the bulk de-duplication read before either saves.
+# Force two processors past the bulk de-duplication read before either saves.
 def concurrent_reminder_check(test, service, person, kind, process):
     from booking.email_channel import EmailDeliveryService
     barrier, errors = threading.Barrier(2), []

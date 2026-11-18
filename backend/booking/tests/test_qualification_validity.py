@@ -1,4 +1,4 @@
-"""Sprint 1 fixed induction validity: one term, counted in days from approval."""
+"""Fixed induction validity: one term, counted in days from approval."""
 
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -7,7 +7,7 @@ from django.test import SimpleTestCase, override_settings
 
 from booking.domain import BookingStatus, QualificationStatus
 from booking.exceptions import DomainError
-from booking.repository import MemoryRepository
+from booking.memory import MemoryRepository
 from booking.runtime import get_service, reset_runtime
 from booking.services import BookingService
 from booking.storage import MemoryFileStorage

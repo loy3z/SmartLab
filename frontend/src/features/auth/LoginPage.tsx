@@ -25,7 +25,7 @@ export function LoginPage({ notice = '' }: { notice?: string }) {
 
   return (
     <AuthShell crumb="Sign in">
-          {/* Sprint 3 (internal-tool UI, AI-2): no eyebrow above the form title. */}
+          {/* No eyebrow above the form title. */}
           <h2 id="auth-title" tabIndex={-1}>Sign in</h2>
           <p className="auth-description">Access your bookings and training records.</p>
           {notice && <p className="auth-notice" role="status">{notice}</p>}
@@ -36,7 +36,7 @@ export function LoginPage({ notice = '' }: { notice?: string }) {
             <div className="auth-demo-notice"><span>Simulated university sign-in</span><p>This is a project demonstration. University SSO is not connected. Use demo accounts only; no university password is required.</p></div>
             <Link className="auth-submit auth-sso-entry" to="/login/mock-sso" state={location.state}>University sign-in (Demo)<span aria-hidden="true">→</span></Link>
             <p className="auth-sso-caption">For students. Enter your demo zID or university email on the next screen.</p>
-            <p className="auth-staff-entry">Admin or Manager? <Link to="/staff/login" state={location.state}>Staff sign-in<span aria-hidden="true"> →</span></Link></p>
+            <p className="auth-staff-entry">Admin or Manager? <Link className="ui-btn ui-btn-ghost" to="/staff/login" state={location.state}>Staff sign-in<span aria-hidden="true"> →</span></Link></p>
             {config.test_console_enabled && <p className="auth-staff-entry">Local testing? <Link to="/test/login" state={location.state}>Test console →</Link></p>}
           </>}
     </AuthShell>

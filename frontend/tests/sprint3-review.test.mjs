@@ -1,4 +1,4 @@
-// Sprint 3 (1.16.0): helpers behind the fixes from the user review (change requests, Find a free time, forms,
+// Helpers behind the fixes from the user review (change requests, Find a free time, forms,
 // contact details, induction guidance, Lab setup and the staff Today page).
 import assert from 'node:assert/strict'
 import test from 'node:test'

@@ -1,11 +1,11 @@
-// Sprint 3: calendar subscription link on My Bookings.
+// Calendar subscription link on My Bookings.
 import { useState } from 'react'
 import { useFeedback } from '../../ui/feedback-context'
 import { getCalendarLink, resetCalendarLink } from '../../api/index.ts'
 import { calendarUrl } from './attendance'
 import { errorMessage } from './format'
 
-// Sprint 3 (1.16.0): steps for each calendar app (menu names can differ slightly between versions).
+// Steps for each calendar app (menu names can differ slightly between versions).
 const CALENDAR_APPS = {
   outlook: { name: 'Outlook', steps: ['Open Calendar and choose Add calendar.', 'Choose Subscribe from web and paste the link.', 'Give it a name such as SmartLab and choose Import.'] },
   google: { name: 'Google Calendar', steps: ['On a computer, open Google Calendar.', 'Next to Other calendars choose + and then From URL.', 'Paste the link and choose Add calendar. It then also shows on your phone.'] },
@@ -59,7 +59,7 @@ export function CalendarSubscribe() {
     }
   }
 
-  // Sprint 3 (compact page top): only a small button until the person asks for the link.
+  // Only a small button until the person asks for the link.
   if (!url) {
     return (
       <div className="bk-calsub-button">
@@ -78,7 +78,7 @@ export function CalendarSubscribe() {
           Approved bookings appear in your calendar by themselves. Keep the link private: anyone with it can see your bookings.
         </p>
       </div>
-      {/* Sprint 3 (1.16.0): steps for Outlook, Google and Apple, and what to expect after a change. */}
+      {/* Steps for Outlook, Google and Apple, and what to expect after a change. */}
       <div className="bk-calsub-apps" role="tablist" aria-label="Calendar app">
         {(Object.keys(CALENDAR_APPS) as CalendarApp[]).map((key) => (
           <button key={key} type="button" role="tab" aria-selected={app === key} className={`bk-pill ${app === key ? 'is-on' : ''}`} onClick={() => setApp(key)}>

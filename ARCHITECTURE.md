@@ -44,7 +44,8 @@ team-repo/
 │   │   ├── domain.py            Entities (dataclasses) and state enums
 │   │   ├── errors.py            DomainError(code, message, status)
 │   │   ├── exceptions.py        Normalises errors to {"error": {code, message, details}}
-│   │   ├── repository.py        Repository interface + memory implementation
+│   │   ├── repository.py        Repository interface: every read and write the rules need
+│   │   ├── memory.py            In-memory implementation (tests and local demo)
 │   │   ├── postgres.py          PostgreSQL implementation, including attachment storage
 │   │   ├── rules.py             Configurable global values: notice, validity, etc.
 │   │   ├── storage.py           FileStorage interface + memory implementation
@@ -78,7 +79,7 @@ team-repo/
 | HTTP | `views/`, `serializers.py`, `urls.py` | Validate request shape, resolve current user, call service, convert to JSON and trigger Outlook sync after the transaction |
 | Business rules | `booking/services/` | Permission, qualification, time, conflict, review, waitlist and audit; independent of HTTP and database choice |
 | Entities | `domain.py` | Data structures and simple field validation |
-| Storage | `repository.py`, `postgres.py`, `storage.py` | Persistence and transactional locking without business decisions |
+| Storage | `repository.py` (interface), `postgres.py`, `memory.py`, `storage.py` | Persistence and transactional locking without business decisions |
 | External services | `calendar_sync.py`, `outlook.py` | Outlook synchronisation whose failure does not affect the booking |
 
 `BookingService` is the sole business entry point, assembled from topic mixins whose methods share one object:
@@ -222,6 +223,7 @@ Use this table to find the implementation of a rule. Function headers explain wh
 | Exclude original from change conflict, duplicate and weekly allowance (1.16.0) | `services/bookings.py` `create_booking` (`replaces`); `services/checks.py` `_overlaps` (`also_exclude`) |
 | Status-change recipients (1.16.0) | `services/resources.py` `_notify_status_change`, called by `set_resource_status` |
 | Room capacity and label/value limits (1.16.0) | `services/resources.py` `_check_resource_fields`, `MAX_DETAILS` |
+| A resource may need no induction; equipment never inherits its room's (1.30.0) | `services/qualifications.py` `qualification_state` (`NOT_REQUIRED`); `services/resources.py` `create_resource`, `_check_resource_fields`; frontend `ManagerResourcesPage.tsx` induction select |
 | Induction create/edit and guidance (1.16.0) | `services/qualifications.py` `create_requirement`, `update_requirement`, `_check_requirement_fields` |
 | Contact edit permissions and fields (1.16.0) | `services/site_contact.py` `update_site_contact`, `CONTACT_FIELDS` |
 | Today calculations (1.16.0) | `services/overview.py` `staff_overview` |

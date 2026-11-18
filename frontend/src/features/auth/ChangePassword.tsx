@@ -1,4 +1,4 @@
-// Sprint 3: Admins and Managers change their own password on the Account page (students use university sign-in).
+// Admins and Managers change their own password on the Account page (students use university sign-in).
 import { useState, type FormEvent } from 'react'
 import { useFeedback } from '../../ui/feedback-context'
 import { changePassword } from '../../api/index.ts'

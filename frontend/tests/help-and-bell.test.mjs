@@ -1,4 +1,4 @@
-// 2026-11-10 (U2, U6): the bell's two keys never collide; the Help page lists the booking rules.
+// The bell's two keys never collide; the Help page lists the booking rules.
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'

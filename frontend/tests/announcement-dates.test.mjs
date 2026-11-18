@@ -1,4 +1,4 @@
-// Sprint 3 (1.19.0): Sydney estimates/expiry dates are independent of the browser's local time zone.
+// Sydney estimates/expiry dates are independent of the browser's local time zone.
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { dateTimeInput, dateTimeISO } from '../src/features/announcements/dates.ts'

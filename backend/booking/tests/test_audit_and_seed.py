@@ -21,7 +21,9 @@ class DemoSeedTests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(len({item["id"] for item in resources}), 22)
         self.assertEqual(len(self.items(self.verified.get("/api/v1/resources/?kind=EQUIPMENT"))), 20)
         requirements = {item["required_qualification_id"] for item in resources}
-        self.assertEqual(requirements, {fixed_id(1), fixed_id(2)})
+        self.assertEqual(requirements, {fixed_id(1), fixed_id(2), None})  # None: the multimeters need no induction
+        no_induction = sorted(item["name"] for item in resources if item["required_qualification_id"] is None)
+        self.assertEqual(no_induction, ["Digital Multimeter 001", "Digital Multimeter 002"])
         self.assertEqual(len(DEMO_RESOURCES), 22)
 
     def test_existing_demo_ids_and_requirements_are_unchanged(self):
@@ -88,10 +90,9 @@ class AuditTrailAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(data["results"][1]["details"]["status"], "PENDING_APPROVAL")
 
     def test_filter_by_resource_includes_policy_changes_but_not_other_resources(self):
-        self.manager.patch(f"/api/v1/admin/resources/{self.room['id']}/booking-policy/",
-                           {"pending_hold_minutes": 45}, format="json")
+        self.manager.patch(f"/api/v1/admin/resources/{self.room['id']}/", {"pending_hold_minutes": 45}, format="json")
         data = self.audit(resource_id=self.room["id"])
-        self.assertEqual(self.actions(data), ["RESOURCE_BOOKING_POLICY_UPDATED", "BOOKING_CANCELLED", "BOOKING_CREATED"])
+        self.assertEqual(self.actions(data), ["RESOURCE_UPDATED", "BOOKING_CANCELLED", "BOOKING_CREATED"])
         self.assertNotIn(self.equipment_booking["id"], [item["entity_id"] for item in data["results"]])
 
     def test_filter_by_student_and_action(self):

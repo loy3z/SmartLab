@@ -1,4 +1,4 @@
-// Sprint 3: check-in ("I'm here") helpers and the calendar link address.
+// Check-in ("I'm here") helpers and the calendar link address.
 import type { Attendance, Booking } from '../../api/types/index.ts'
 
 export const ATTENDANCE_TEXT: Record<Attendance, string> = {

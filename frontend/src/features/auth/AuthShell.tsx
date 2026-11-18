@@ -29,9 +29,9 @@ export function AuthShell({ crumb, children }: { crumb: string; children: ReactN
         </div>
       </div>
       <main className="auth-container auth-main">
-        <div className="auth-breadcrumb" aria-label="Page location"><span>UNSW Sydney</span><span aria-hidden="true">/</span>{/* Sprint 3 (2026-10-28 feedback L4): a way back to the sign-in choices. */}<Link to="/login" state={location.state}>SmartLab</Link><span aria-hidden="true">/</span><strong>{crumb}</strong></div>
+        <div className="auth-breadcrumb" aria-label="Page location"><span>UNSW Sydney</span><span aria-hidden="true">/</span>{/* A way back to the sign-in choices. */}<Link to="/login" state={location.state}>SmartLab</Link><span aria-hidden="true">/</span><strong>{crumb}</strong></div>
         <div className="auth-content-grid">
-          {/* Sprint 3 (internal-tool UI, AI-2 / D7): the service name and one plain line; no slogan, eyebrow or feature list. */}
+          {/* The service name and one plain line; no slogan, eyebrow or feature list. */}
           <section className="auth-introduction" aria-labelledby="auth-introduction-title">
             <h1 id="auth-introduction-title">SmartLab</h1>
             <div className="auth-title-rule" aria-hidden="true" />

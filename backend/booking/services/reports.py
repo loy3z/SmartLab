@@ -1,4 +1,4 @@
-"""Sprint 3: usage report for Managers (how much each room and piece of equipment is used; Managers only since 2026-11-07).
+"""Usage report for Managers (how much each room and piece of equipment is used; Managers only).
 
 For a range of local dates, one row per resource (archived ones too, if they had bookings):
 - approved: approved bookings starting in the range, and booked_hours, their total length;
@@ -23,7 +23,7 @@ def _hours(minutes):
 
 class ReportsMixin:
     def usage_report(self, actor, first_date, last_date):
-        self.require_manager(actor)  # 2026-11-07 (client, Week 8): history and reports are for Managers
+        self.require_manager(actor)  # History and reports are for Managers
         if last_date < first_date or (last_date - first_date).days >= MAX_REPORT_DAYS:
             raise DomainError("VALIDATION_ERROR", f"Choose a range of 1 to {MAX_REPORT_DAYS} days, ending on or after its start.")
         self.process_due_requests()

@@ -11,7 +11,7 @@ from .base import UNDECIDED_STATUSES
 
 
 class EligibilitySources:
-    """2026-10-29 (load test S7): one person's submissions and every requirement, read once and shared by the
+    """One person's submissions and every requirement, read once and shared by the
     eligibility checks of many resources (the day overview checked 22 resources with 4-5 queries each).
 
     submissions must be that person's, in repository order (the order breaks ties between equal submission times).
@@ -37,7 +37,7 @@ class QualificationsMixin:
                             "valid_until": record.valid_until if record and status == "VERIFIED" else None})
         return summary
 
-    # Sprint 3 (1.16.0): Managers add induction types and write their guidance on the website ------------------
+    # Managers add induction types and write their guidance on the website ------------------
 
     REQUIREMENT_TEXT_FIELDS = ("name", "description", "how_to_complete", "accepted_evidence", "reviewer", "contact")
 
@@ -167,15 +167,17 @@ class QualificationsMixin:
         """Single eligibility check used by create, approve, automatic decisions, waitlist promotion,
         reschedule and availability.
 
-        The resource's required induction must be verified and valid until the booking ends, and so must
+        A resource without an induction (the Manager chose "no induction") is open to everyone: NOT_REQUIRED.
+        Otherwise the resource's own induction must be verified and valid until the booking ends, and so must
         every prerequisite of it (for example General Lab Induction for Advanced Lab Training). A missing
-        prerequisite is reported as PREREQUISITE_REQUIRED. Eligibility comes only from the latest
+        prerequisite is reported as PREREQUISITE_REQUIRED. Equipment is checked against its own induction
+        only, never its room's. Eligibility comes only from the latest
         QualificationSubmission of each requirement; a future source (school records, Moodle) can be an
         adapter that saves VERIFIED submissions, and these rules need no change.
-        sources: an EligibilitySources read once for many resources (2026-10-29, load test S7); same answer.
+        sources: an EligibilitySources read once for many resources instead of once per resource; same answer.
         """
         if not resource.required_qualification_id:
-            return "NOT_CONFIGURED", False
+            return "NOT_REQUIRED", True
         if self.missing_prerequisite(student_id, resource.required_qualification_id, end, sources):
             return "PREREQUISITE_REQUIRED", False
         status = self._requirement_status(student_id, resource.required_qualification_id, end, sources)
@@ -209,7 +211,7 @@ class QualificationsMixin:
                 record = QualificationSubmission(str(uuid4()), actor.id, requirement_id, title.strip(), notes, stored.id, self.now())
                 self.repo.save_submission(record)
                 self._audit(actor.id, "QUALIFICATION_SUBMITTED", "qualification", record.id)
-                # Sprint 3 (2026-10-25): tell the student their evidence arrived; submitting used to be silent.
+                # Tell the student their evidence arrived; submitting used to be silent.
                 requirement = self.repo.get_requirement(requirement_id)
                 self._notify(actor.id, "INDUCTION_SUBMITTED", "Induction evidence received",
                              f"Your evidence for {requirement.name} was received and is waiting for review.",
@@ -230,7 +232,7 @@ class QualificationsMixin:
                               409, {"prerequisite_id": missing[0], "prerequisite_status": missing[1]})
 
     def qualification_expiry(self, verified_at):
-        """Expiry for a qualification verified at ``verified_at`` (Sprint 1: fixed days).
+        """Expiry for a qualification verified at ``verified_at`` (a fixed number of days).
 
         Replace this calculation if the client later adopts term end dates or
         per-requirement validity; manual review and any Moodle adapter should both use it.
@@ -261,7 +263,7 @@ class QualificationsMixin:
             self.repo.save_submission(updated)
             self._audit(actor.id, f"QUALIFICATION_{decision}", "qualification", updated.id, reason=reason.strip(),
                         valid_until=updated.valid_until.isoformat() if updated.valid_until else None)
-            # Sprint 3: tell the person the review result.
+            # Tell the person the review result.
             requirement = self.repo.get_requirement(updated.requirement_id)
             name = requirement.name if requirement else "induction"
             if decision == "VERIFIED":

@@ -1,4 +1,4 @@
-"""Sprint 3: reminders in the notification bell.
+"""Reminders in the notification bell.
 
 - The day before an approved booking (BookingRules.reminder_hours_before): "remember to press I'm here".
 - When a verified induction expires soon (BookingRules.induction_reminder_days): "upload new evidence in time".
@@ -22,7 +22,7 @@ class RemindersMixin:
     def _booking_reminders(self):
         now, sent = self.now(), 0
         horizon = now + timedelta(hours=self.rules().reminder_hours_before)
-        # 2026-10-29 (load test S1): read only bookings that may be due, and look up the reminders already sent for
+        # Read only bookings that may be due, and look up the reminders already sent for
         # them in one query (before: every booking, then one notification query per due booking).
         candidates = self.repo.list_bookings(statuses=[BookingStatus.APPROVED], unmarked=True, start_from=now, start_to=horizon)
         sent_for = {(item.recipient_id, item.booking_id) for item in
@@ -44,7 +44,7 @@ class RemindersMixin:
     def _induction_reminders(self):
         now, sent = self.now(), 0
         horizon = now + timedelta(days=self.rules().induction_reminder_days)
-        # 2026-10-29 (load test S8): a reminder is due only for a person who has a verified induction expiring in the
+        # A reminder is due only for a person who has a verified induction expiring in the
         # window, so find those first (usually none: one query) and read only their submissions to find each latest
         # one, instead of every submission on every request. Reminders already sent are read in one query.
         expiring_soon = self.repo.list_submissions(statuses=[QualificationStatus.VERIFIED], valid_from=now, valid_to=horizon)

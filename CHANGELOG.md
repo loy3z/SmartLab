@@ -2,6 +2,53 @@
 
 This file records what changed in each update and why. Other documents describe only the current rules. Version numbers refer to the API version in `backend/docs/openapi.json`, and migrations refer to scripts in `backend/database/migrations/`. The newest entries appear first.
 
+## After 1.30.0: Staff Sign-In Is a Clear Button (2026-11-18, frontend only)
+
+- Client meeting 5: on the sign-in page the Admin and Manager entry was a faint line of text that staff did not notice. It is now a full-width secondary button under the student sign-in (`LoginPage.tsx`, `auth.css`); the student button stays the main one. Test: `routing.spec.ts` “the login page shows a secondary staff sign-in button that opens staff sign-in”.
+
+## After 1.30.0: Edge-Case Tests for the Handover (2026-11-18, tests only)
+
+- The client asked (meeting 5) how the system reacts in difficult cases, not only the normal path. Two new test files check them; no feature code changed.
+- `test_edge_cases.py`: permissions (403 for students and Admins on Manager actions, 401 when signed out), expired inductions and missing prerequisites, cancelling keeps the record and a repeated cancel changes nothing, opening hours, crossing midnight, Sydney daylight-saving days and the exact 12-hour weekly limit.
+- `test_edge_hunt.py`: parallel duplicate requests, a review deadline reached while the resource is under maintenance, the mail server failing (the booking stays, the bell notice stays, the email is retried and stops after the last attempt), archiving after cancellation keeps history, and resources and inductions cannot be deleted. One test is an expected failure on purpose: email is delivered at least once, so if two mail workers ran and one was very slow, a message could be sent twice; only one worker runs in the delivered setup.
+- The search also found that approved extensions used the weekly allowance; fixed in the entry below.
+
+## After 1.30.0: An Approved Extension No Longer Uses the Weekly Allowance (2026-11-18, migration 017, API unchanged)
+
+- **Bug:** extending a booking in progress overwrote its end, and the weekly allowance counted the whole booking, so an approved extension used up the 12 hours. `backend/README.md` says extensions do not count (a Manager approves each one). Example: 7 h booked, a 1 h booking extended by 3 h; the week showed 10 h and a later 3 h request was refused as 13 h. Found by the edge-case review after client meeting 5.
+- **Fix:** a booking keeps `end_before_extension`, its end before the first approved extension (`domain.py`, set in `services/changes.py` `_apply_extension`). The weekly count uses it (`services/checks.py` `_week_slots_used`, which also gives the hours shown on the Dashboard and in the booking window). The real end still decides the calendar, conflicts and usage.
+- **Migration 017** adds the column with a check that it lies between start and end, and fills it for bookings already extended from the earliest `old_end` in their `BOOKING_EXTENDED` audit records. Safe to run again.
+- Tests: `test_change_requests.py` `test_an_approved_extension_does_not_count_towards_the_weekly_allowance`, `test_an_extension_does_not_block_a_later_normal_request`, `test_a_second_extension_keeps_the_end_from_before_the_first`; `test_postgres.py` `test_017_backfills_the_end_before_the_first_extension`.
+
+## 1.30.0: A Resource May Need No Induction (2026-11-18, no migration)
+
+- **Why:** in client meeting 5 the client said equipment is separate from rooms and that simple devices (for example smart watches) need no induction. Every resource had to name an induction, and the demo equipment used its room's, so a student could borrow nothing without passing a room induction first.
+- **Rule:** the Manager chooses an induction or "No induction required" for each room or device. A resource with none can be booked by anyone (`qualification_status` `NOT_REQUIRED`); equipment is only ever checked against its own induction. Adding a resource must still send the field, so "no induction" is a choice and never a field left out. `NOT_CONFIGURED` and the error `RESOURCE_POLICY_NOT_CONFIGURED` are gone (`services/qualifications.py`, `checks.py`, `resources.py`).
+- **Website:** the induction list in Resource setup starts with "No induction required"; the booking card shows "No induction needed"; the borrowing conditions for such equipment say no induction is needed.
+- **Demo data:** Digital Multimeter 001 and 002 need no induction (`runtime.py`, `database/seed_resources.sql`). Existing databases are not changed.
+- API 1.30.0: `openapi.json`, `docs/frontend-api.md`. Tests: `test_resource_setup.py` (no induction, explicit choice, switching back), `test_api.py`, `test_day_overview.py`, `test_audit_and_seed.py`, `test_test_console.py`, `frontend/tests/resource-form.test.mjs`.
+
+## After 1.28.0: The Change-Time Dialog Counts the Week Without the Booking Being Moved (2026-11-17, API unchanged)
+
+- A student whose week was full (12 h) opened “Change time” on one booking and read “0 h left of your 12 h”, although moving it within the same week is allowed: submitting a change already leaves the old booking out of the weekly count. `availability` now does the same for `week_hours` when `exclude_booking_id` is given (`services/availability.py`, `checks.py` `week_hours`), so the dialog shows the hours the move can use (3 h in this example). The booking dialog and the Dashboard are unchanged. Test: `test_change_requests.py` `test_the_change_window_shows_the_hours_the_moved_booking_gives_back` (failed before the change).
+
+## After 1.28.0: The Bell Keeps the Count After a Notification Is Opened (2026-11-17, frontend only)
+
+- Opening the bell panel starts a reload. On a slow connection its answer could arrive after the person had already clicked a notification: the unread count went down by one, then jumped back, and the notification showed as unread again until the next reload (up to a minute). The bell now ignores an answer that was requested before the click, and any answer that is not the newest one (`NotificationBell.tsx`). `routing.spec.ts` has a new case with a 700 ms delay; it failed before the change.
+
+## 1.29.0: Storage Interface in Its Own File; Two Unused Endpoints Removed (2026-11-17, no migration)
+
+- **Storage interface apart from the in-memory implementation.** `booking/repository.py` now holds only the `Repository` interface, the list of reads and writes the booking rules need and the part a new storage adapter implements. The in-memory implementation used by tests and the local demo moved to the new `booking/memory.py` unchanged, with its two filter helpers. The setting value is now `REPOSITORY_FACTORY=booking.memory.MemoryRepository` (still the default; `.env.example`, `backend/README.md`, `ARCHITECTURE.md` and `docs/database-interface.md` updated). Deployment uses `booking.postgres.PostgresRepository` and is unaffected.
+- **API 1.29.0: two endpoints the website never called are removed.** `POST admin/users/managers/` duplicated Add staff with the Manager role (`POST admin/users/staff/`). `GET / PATCH admin/resources/{id}/booking-policy/` duplicated the `pending_hold_minutes` field of Resource setup (`PATCH admin/resources/{id}/`). Removed with them: the two views, `BookingPolicySerializer`, the service method `set_booking_policy` and its audit action `RESOURCE_BOOKING_POLICY_UPDATED` (a change to the review window is now always recorded as `RESOURCE_UPDATED`; old audit rows keep the old name). `ManagerCreateSerializer` is folded into `StaffCreateSerializer`. The `create_manager` command is unchanged. Tests that used the removed endpoints now use the remaining ones.
+
+## After 1.28.0: Comments Without Sprint, Version or Date Tags (2026-11-17, no behaviour change)
+
+Code comments no longer start with tags such as “Sprint 3 (1.16.0):”, “2026-11-07 (client, Week 8):” or “(load test S2)”. The reason each comment gives stays; when and in which round a change was made is recorded here and in `SPRINT3.md`. Migration scripts keep their headers.
+
+- `backend/booking/` and `backend/config/`: comments and docstrings. Section headers that only said “Sprint 3” now name what follows.
+- `frontend/src/`: comments in TypeScript, TSX and CSS. Two CSS comments that only recorded where an old rule had been (`app/shell.css`, `index.css`) are deleted.
+- `frontend/tests/`: comments only; test names are unchanged.
+
 ## After 1.28.0: Docker Deployment Reads the Mail Server and All Rule Settings (2026-11-17, no code change)
 
 - `docker-compose.yml` did not hand ten settings to the API and scheduler containers, so changing them in `.env.docker` had no effect and the defaults in `config/settings.py` always applied: the mail server (`EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`), which made a mailbox other than Gmail impossible under Docker, and seven rules from the table in `backend/README.md` (`QUALIFICATION_VALIDITY_DAYS`, `DEFAULT_PENDING_HOLD_MINUTES`, `CHECK_IN_OPENS_MINUTES`, `CHECK_IN_CLOSES_MINUTES`, `MAX_SERIES_WEEKS`, `REMINDER_HOURS_BEFORE`, `INDUCTION_REMINDER_DAYS`). The compose file now passes them with the same defaults, and `.env.docker.example` lists them. An existing `.env.docker` without these lines behaves as before.

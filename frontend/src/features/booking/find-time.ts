@@ -1,4 +1,4 @@
-// Sprint 3 (1.16.0): wording for "Find a free time" when rows are hidden (lengths and empty results).
+// Wording for "Find a free time" when rows are hidden (lengths and empty results).
 
 /**
  * Booking lengths offered by Find a free time: half hours up to 3 h, then whole hours, up to the longest
@@ -15,7 +15,6 @@ const REASON_TEXT: Record<string, string> = {
   EXPIRED: 'induction expired',
   EXPIRES_BEFORE_END: 'induction expires before that day',
   PREREQUISITE_REQUIRED: 'an earlier induction is needed first',
-  NOT_CONFIGURED: 'not open for booking yet',
   MAINTENANCE: 'under maintenance',
   CLOSED: 'closed',
 }

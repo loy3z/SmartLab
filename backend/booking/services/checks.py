@@ -32,7 +32,7 @@ class ChecksMixin:
     def _overlaps(self, resource_id, start, end, exclude_id=None, also_exclude=None):
         """Bookings and active holds that block this period.
 
-        also_exclude (Sprint 3, 1.16.0): one more booking to ignore. A change request passes the booking it replaces,
+        also_exclude: one more booking to ignore. A change request passes the booking it replaces,
         so moving a booking by an hour is not blocked by its own old time.
         """
         found = self.repo.list_blocking_bookings(resource_id, start, end, self.now(), exclude_id)
@@ -72,7 +72,7 @@ class ChecksMixin:
     def _period_violation(self, resource, start, end, allow_long_booking=False, started=False):
         """Time rules of one resource: future start, maximum length, one local day within opening hours, increments.
 
-        started (2026-11-06): extending a booking in progress, so the start may already have passed.
+        started: extending a booking in progress, so the start may already have passed.
         """
         if start.tzinfo is None or start.utcoffset() is None or end.tzinfo is None or end.utcoffset() is None:
             return DomainError("INVALID_TIME", "Start and end require UTC offsets.")
@@ -122,9 +122,6 @@ class ChecksMixin:
 
     def _qualification_violation(self, student_id, resource, end):
         eligibility, qualified = self.qualification_state(student_id, resource, end)
-        if eligibility == "NOT_CONFIGURED":
-            return DomainError("RESOURCE_POLICY_NOT_CONFIGURED",
-                               "Configure an induction requirement for this resource before accepting requests.", 409)
         if not qualified:
             details = {"qualification_status": eligibility, "requirement_id": resource.required_qualification_id}
             missing = self.missing_prerequisite(student_id, resource.required_qualification_id, end)
@@ -233,7 +230,8 @@ class ChecksMixin:
                                and original.status == BookingStatus.APPROVED and original.start > now
                                and original.resource_id == item.resource_id)
             key = original.id if replaces_future else item.id
-            reserved[key] = max(reserved.get(key, 0), self._duration_slots(item.start, item.end))
+            # Approved extensions are not part of the allowance: count up to the end before them.
+            reserved[key] = max(reserved.get(key, 0), self._duration_slots(item.start, item.end_before_extension or item.end))
         return sum(reserved.values())
 
     def _change_approval_quota_violation(self, booking):
@@ -244,17 +242,19 @@ class ChecksMixin:
         return self._weekly_limit_violation(booking.student_id, self.resource(booking.resource_id),
                                             booking.start, booking.end, exclude_id=booking.id)
 
-    def week_hours(self, student_id, day=None):
+    def week_hours(self, student_id, day=None, exclude_id=None):
         """Hours booked against the weekly allowance in the Sydney week of ``day`` (default: this week).
 
-        Dashboard (2026-11-03) shows this week; the booking window (2026-11-10, U1) shows the week being booked.
+        exclude_id: a booking that is being moved, so its own hours do not count.
+
+        The Dashboard shows this week; the booking window shows the week being booked.
         """
         rules = self.rules()
         zone = ZoneInfo("Australia/Sydney")
         day = day or self.now().astimezone(zone).date()
         week_start = day - timedelta(days=day.weekday())
         hours = lambda slots: slots * rules.booking_slot_minutes / 60  # noqa: E731
-        return {"week_start": week_start.isoformat(), "used_hours": hours(self._week_slots_used(student_id, zone, week_start)),
+        return {"week_start": week_start.isoformat(), "used_hours": hours(self._week_slots_used(student_id, zone, week_start, exclude_id)),
                 "limit_hours": hours(rules.max_slots_per_week)}
 
     def _future_booking_limit_violation(self, student_id, exclude_id=None, additional_count=0):

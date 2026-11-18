@@ -29,7 +29,7 @@ class CorsMiddleware:
 
 
 class NotificationDeliveryMiddleware:
-    """Sprint 3: after each API request, send its new notifications through extra channels (booking/notification_channels.py).
+    """After each API request, send its new notifications through extra channels (booking/notification_channels.py).
 
     Runs after the view, so the database transaction that stored the notifications has finished. Always clears the
     per-request list, even when no channel is configured. Email only queues the message here and sends it on a

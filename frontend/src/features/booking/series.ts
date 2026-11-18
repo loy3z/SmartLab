@@ -1,4 +1,4 @@
-// Sprint 3: weekly series helpers.
+// Weekly series helpers.
 import type { SeriesOccurrence } from '../../api/types/index.ts'
 
 export const WEEKDAYS: { value: number; short: string; long: string }[] = [

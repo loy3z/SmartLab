@@ -1,4 +1,4 @@
-"""Sprint 3 (1.16.0): "Today" page for Admins and Managers: what needs doing first, in one call.
+""""Today" page for Admins and Managers: what needs doing first, in one call.
 
 Everything here is a count or a short list taken from the same records the other staff pages use, so each card can
 link to the page that handles it. Nothing is changed by reading it (apart from the usual time processing).
@@ -24,7 +24,7 @@ class OverviewMixin:
         - out_of_service: resources under maintenance or closed, with how many future bookings or requests they still have.
         - today: approved bookings starting today (Sydney), in time order; missed_today counts those marked as missed.
         - changes_waiting: change requests (people asking to move a booking) still undecided.
-        - extension_requests (2026-11-07): bookings whose person asks to finish later; a Manager decides.
+        - extension_requests: bookings whose person asks to finish later; a Manager decides.
         """
         self.require_staff(actor)
         self.process_due_requests()
@@ -32,7 +32,7 @@ class OverviewMixin:
         local_today = now.astimezone(_SYDNEY).date()
         day_start = datetime.combine(local_today, time(0), _SYDNEY)
         day_end = day_start + timedelta(days=1)
-        # 2026-10-29 (load test S5): read every undecided request, approved bookings that have not ended and
+        # Read every undecided request, approved bookings that have not ended and
         # today's approved bookings, instead of every booking ever made. Each count below still applies its own checks.
         bookings = list({item.id: item for query in (
             self.repo.list_bookings(statuses=UNDECIDED_STATUSES),
@@ -68,7 +68,7 @@ class OverviewMixin:
             "due_soon": due_soon[:LIST_LIMIT],
             "due_soon_hours": DUE_SOON_HOURS,
             "out_of_service": out_of_service,
-            # Sprint 3: a Manager can still approve after the original end, until the requested end.
+            # A Manager can still approve after the original end, until the requested end.
             "extension_requests": sorted(
                 self.repo.list_bookings(statuses=[BookingStatus.APPROVED], extension_end_after=now),
                 key=lambda item: (item.extension_end, item.id),

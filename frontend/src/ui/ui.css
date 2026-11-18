@@ -14,7 +14,7 @@
 .ui-btn-reject { background: var(--card); color: var(--red); border-color: #f2c4c0; }
 .ui-btn-reject:hover:not(:disabled) { background: var(--red-bg); }
 .ui-btn-sm { min-height: 32px; padding: 5px 12px; font-size: 14px; }
-/* Sprint 3 (1.15.0): buttons change colour smoothly and dip slightly when pressed. */
+/* Buttons change colour smoothly and dip slightly when pressed. */
 .ui-btn, .bk-btn-outline, .bk-pill, .ui-icon-btn { transition: background-color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), filter var(--motion-fast) var(--ease-out), transform 80ms var(--ease-out); }
 .bk-pill:active, .ui-icon-btn:active:not(:disabled) { transform: scale(.97); }
 .ui-icon-btn { display: inline-grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); cursor: pointer; font-size: 20px; line-height: 1; color: var(--muted); }
@@ -42,7 +42,7 @@
 /* Confirm dialog */
 .ui-dialog { padding: 0; border: 0; border-radius: 12px; width: min(460px, calc(100vw - 32px)); box-shadow: 0 24px 60px rgba(17, 24, 39, .28); }
 .ui-dialog::backdrop { background: rgba(17, 24, 39, .45); }
-/* Sprint 3 (1.15.0): confirm dialogs rise into place. */
+/* Confirm dialogs rise into place. */
 .ui-dialog[open] { animation: ui-dialog-in var(--motion-base) var(--ease-out); }
 .ui-dialog[open]::backdrop { animation: ui-fade-in var(--motion-base) var(--ease-out); }
 @keyframes ui-dialog-in { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
@@ -90,7 +90,7 @@
 .ui-empty h3 { font-size: 16px; }
 .ui-empty p { color: var(--muted); max-width: 420px; }
 
-/* Data table. Sprint 3 (UI review #1): `position: relative` keeps absolutely positioned cell content (the
+/* Data table. `position: relative` keeps absolutely positioned cell content (the
    screen-reader-only "Actions" header) inside the horizontal scroller, so a wide table no longer widens the page. */
 .ui-table-wrap { position: relative; border: 1px solid var(--line); border-radius: 12px; background: var(--card); overflow-x: auto; }
 .ui-table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -125,7 +125,7 @@
 .ui-drawer-head h2 { font-size: 20px; font-weight: 800; }
 .ui-drawer-head p { margin-top: 4px; color: var(--muted); font-size: 14px; }
 .ui-drawer-body { flex: 1; overflow-y: auto; padding: 18px 22px; display: grid; gap: 18px; align-content: start; }
-.ui-drawer-body h3 { font-size: 14px; color: var(--muted); margin-bottom: 8px; } /* Sprint 3 (internal-tool UI, AI-3): no capitals */
+.ui-drawer-body h3 { font-size: 14px; color: var(--muted); margin-bottom: 8px; } /* No capitals */
 .ui-drawer-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--line); background: #fafafb; }
 .ui-facts { margin: 0; display: grid; gap: 10px; }
 .ui-facts div { display: grid; grid-template-columns: 120px 1fr; gap: 12px; font-size: 14px; }
@@ -149,7 +149,7 @@
 .ui-tl { margin: 14px 0 6px; }
 .ui-tl-scroll { overflow-x: auto; padding-bottom: 4px; }
 .ui-tl-grid { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(26px, 1fr); min-width: 100%; }
-/* Sprint 3 (1.15.0): the grid gets a frame and a "now" line; colours below were reworked so the eye lands on
+/* The grid gets a frame and a "now" line; colours below were reworked so the eye lands on
    what is taken, not on the free time (free used to be the darkest colour and filled the whole screen). */
 .ui-tl-grid { position: relative; border: 1px solid #d5dde8; border-radius: 8px; overflow: hidden; }
 .ui-tl-now { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #d93025; pointer-events: none; z-index: 2; }
@@ -233,14 +233,14 @@
 .um-invite { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .um-invite code { font-size: 14px; font-weight: 700; letter-spacing: .06em; padding: 2px 8px; border-radius: 8px; background: var(--bg); border: 1px dashed var(--line); }
 
-/* Sprint 3 (1.16.0): review list purpose, change requests, start/length selects, wide dialogs, guidance, contact. */
+/* Review list purpose, change requests, start/length selects, wide dialogs, guidance, contact. */
 .ui-clamp-2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; max-width: 260px; }
 .ui-change-from { color: #1f5fbf; }
 .ui-table tbody tr.is-attention { background: #fff6f5; }
 .ui-tl-inputs { display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 0 0; }
 .ui-tl-inputs label { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
 .ui-tl-inputs select { min-height: 40px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); font-weight: 400; }
-/* 2026-11-09 (Loy feedback): long forms use a wide dialog; the title with its close button and the Save row stay in view
+/* Long forms use a wide dialog; the title with its close button and the Save row stay in view
    while the fields in between scroll. */
 .ui-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .ui-dialog-form { width: min(960px, calc(100vw - 32px)); }
@@ -268,7 +268,7 @@
   .ui-tl-day { display: none; }                      /* the date input already shows the day */
 }
 
-/* Sprint 3 (1.16.0): the staff "Today" page. */
+/* The staff "Today" page. */
 .today-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin: 18px 0 22px; }
 .today-card { display: flex; flex-direction: column; gap: 4px; padding: 16px; border: 1px solid var(--line); border-left: 4px solid #c9ced6; border-radius: 12px; background: var(--card); color: inherit; text-decoration: none; transition: transform var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out); }
 .today-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(17, 24, 39, .08); }

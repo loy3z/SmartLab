@@ -1,4 +1,4 @@
-/* Sprint 3: SmartLab workspace. Shared visual primitives bridge the existing feature components. */
+/* SmartLab workspace. Shared visual primitives bridge the existing feature components. */
 @font-face { font-family: Manrope; src: url('/fonts/manrope-regular.ttf') format('truetype'); font-style: normal; font-weight: 400 500; font-display: swap; }
 @font-face { font-family: Manrope; src: url('/fonts/manrope-bold.ttf') format('truetype'); font-style: normal; font-weight: 600 800; font-display: swap; }
 :root {
@@ -46,13 +46,13 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .app-account-menu { border-radius: 12px; box-shadow: var(--shadow-pop); }
 .app-account-menu a, .app-account-menu button { font-size: 12px; min-height: 42px; }
 .app-content { max-width: 1480px; padding: 36px 38px 48px; }
-/* Sprint 3 (internal-tool UI, AI-3): the only H1 size, for every page including sign-in (24px on phones, below).
+/* The only H1 size, for every page including sign-in (24px on phones, below).
    Type scale: 28 (H1) / 20 (H2) / 16 (H3) / 14 (body) / 12 (secondary). */
 :is(.app-content, .app-session-state, .auth-introduction) h1 { font-size: 28px; font-weight: 700; letter-spacing: -.5px; line-height: 1.2; color: var(--ink); }
 .app-content h2 { font-weight: 700; letter-spacing: -.65px; }
 .app-workspace-footer { margin-inline: 38px; padding-block: 20px; color: var(--muted); font-size: 12px; }
 .app-workspace-footer a { color: var(--muted); }
-/* Sprint 3 (fluency V8): work pages appear immediately; state-specific motion is kept. */
+/* Work pages appear immediately; state-specific motion is kept. */
 .app-content .bk-sub, .app-content h1 + p:not([class]), .ui-page-desc, .app-page-description { color: var(--muted); font-size: 12px; line-height: 1.7; margin-top: 10px; max-width: 82ch; }
 .ui-page-head { align-items: center; margin-bottom: 28px; gap: 20px; }
 .ui-page-actions { gap: 10px; }
@@ -166,12 +166,12 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .today-brief { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 8px 0; margin-bottom: 12px; color: var(--ink); }
 .today-brief h2 { font-size: 16px; font-weight: 700; letter-spacing: 0; }
 .today-brief-mark { display: grid; place-items: center; width: 28px; height: 28px; color: var(--green); flex-shrink: 0; }
-/* Sprint 3 (2026-10-28 feedback L2): three fixed columns, so one card does not stretch across the page. */
+/* Three fixed columns, so one card does not stretch across the page. */
 .app-shell .today-cards { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-bottom: 24px; }
 .app-shell .today-card { border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; background: #fff; box-shadow: none; color: var(--ink); min-height: auto; }
 .app-shell .today-card:hover { transform: none; border-color: var(--ink); background: #fcfdf8; }
 .app-shell .today-card.is-amber { border-top: 3px solid var(--yellow); }
-/* Sprint 3 (2026-10-28 feedback L5): urgent requests stand out from the yellow cards. */
+/* Urgent requests stand out from the yellow cards. */
 .app-shell .today-card.is-red { border-top: 3px solid var(--red); }
 .app-shell .today-card.is-red .today-count { color: var(--red); }
 .app-shell .today-count { font-size: 28px; line-height: 1; letter-spacing: -.5px; }
@@ -201,7 +201,7 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .bk-find-explainer p { font-size: 12px; max-width: 48ch; margin-inline: auto; }
 .bk-browse-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin-top: 18px; }
 .app-shell .bk-browse-toolbar .bk-search { flex: 1 1 300px; margin: 0; }
-/* Sprint 3 (fluency V2/V4): keep filters reachable and mark retained results while updating. */
+/* Keep filters reachable and mark retained results while updating. */
 .bk-resource-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 14px; min-width: 0; }
 .bk-resource-filters .bk-room-filter { margin-left: 0; max-width: 100%; }
 .ui-table[aria-busy="true"] { opacity: .55; }
@@ -214,10 +214,10 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .app-shell .bk-native-dialog .bk-modal { width: 100%; max-height: calc(100dvh - 36px); margin: 0; box-shadow: none; }
 .bk-native-dialog .bk-modal:focus { outline: none; }
 .bk-native-dialog:focus { outline: none; }
-/* 2026-10-25: dialog entrance is .bk-modal in booking.css; the duplicate fade-in here was removed. */
+/* Dialog entrance is .bk-modal in booking.css; the duplicate fade-in here was removed. */
 .app-shell .bk-timeline-toggle { padding: 8px 0; min-height: 34px; font-size: 12px; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 .app-shell .bk-earlier { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 10px; padding: 10px 12px; font-size: 12px; }
-/* Sprint 3 (2026-10-25): the urgent route is the one action in this hint, so it looks like a button, not a link. */
+/* The urgent route is the one action in this hint, so it looks like a button, not a link. */
 .app-shell .bk-earlier .bk-linkbtn { background: var(--yellow); color: var(--ink); border: 1px solid #d9c400; border-radius: 8px; padding: 5px 12px; font-weight: 700; }
 .app-shell .bk-earlier .bk-linkbtn:hover { background: #ffe14d; }
 .app-shell .ui-tl-inputs select { min-height: 40px; border-color: var(--line); font-size: 12px; }
@@ -233,7 +233,7 @@ input::placeholder, textarea::placeholder { color: #78837d; }
   .ui-page-head { gap: 14px; flex-direction: column; align-items: flex-start; margin-bottom: 22px; }
   .ui-page-actions { flex-wrap: wrap; width: 100%; }
   .app-shell .ui-table { min-width: 620px; }
-  /* Sprint 3 (UI review #1): a row of tabs wider than the phone scrolls sideways inside itself instead of widening the page. */
+  /* A row of tabs wider than the phone scrolls sideways inside itself instead of widening the page. */
   .app-shell :is(.ui-tabs, .bk-pills) { max-width: 100%; overflow-x: auto; flex-wrap: nowrap; }
   .app-shell :is(.ui-tabs, .bk-pills) > * { flex-shrink: 0; white-space: nowrap; }
   .app-shell .ui-btn-sm { min-height: 40px; }
@@ -268,9 +268,9 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after,::backdrop { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 
-/* Sprint 3 (2026-10-25): notification switches on the Account page. */
+/* Notification switches on the Account page. */
 
-/* Sprint 3 (1.19.0): notification matrix and announcements; all new UI styles live here. */
+/* Notification matrix and announcements; all new UI styles live here. */
 .notification-settings, .announcements-page { min-width: 0; }
 .notification-settings > .app-card, .announcement-editor { margin-top: 20px; }
 .notification-settings p, .announcement-editor p { font-size: 14px; }
@@ -299,7 +299,6 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .announcement-history { margin-top: 28px; min-width: 0; }
 .announcement-history article { padding: 20px; margin-bottom: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); min-width: 0; overflow-wrap: anywhere; }
 .announcement-history .ui-pill { margin-right: 8px; font-size: 12px; }
-/* Sprint 3 (2026-10-28 feedback L3) */
 .announcement-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .announcement-card-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .announcement-error { padding: 12px; margin-bottom: 16px; font-size: 14px; }
@@ -312,7 +311,7 @@ input::placeholder, textarea::placeholder { color: #78837d; }
   .announcement-board, .announcement-history article { padding: 16px; }
 }
 
-/* Sprint 3 (1.20.0): resource filter stays on its own wrapping row below status tabs. */
+/* Resource filter stays on its own wrapping row below status tabs. */
 .bookings-resource-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 14px 0 20px; }
 .bookings-resource-filter label { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 12px; }
 .bookings-resource-filter select { min-width: 0; max-width: 100%; width: 260px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); font: inherit; }
@@ -321,7 +320,7 @@ input::placeholder, textarea::placeholder { color: #78837d; }
   .bookings-resource-filter select { flex: 1; width: 0; }
 }
 
-/* 2026-11-07 (client, Week 8): role badge in the top bar and the Manager home page. */
+/* Role badge in the top bar and the Manager home page. */
 .app-role-badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: .02em; border: 1px solid transparent; }
 .app-role-badge.is-student { background: var(--blue-bg); color: var(--blue); border-color: #c9d9e7; }
 .app-role-badge.is-admin { background: var(--amber-bg); color: var(--amber); border-color: #ecd3a5; }
@@ -334,7 +333,7 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .manager-home .ui-filters input { flex: 1; min-width: 0; max-width: 200px; }
 @media (max-width: 760px) { .manager-home .today-grid { grid-template-columns: 1fr; } }
 
-/* 2026-11-09 (Loy feedback): Lab overview counts as one row of chips, and small bars instead of bare numbers. */
+/* Lab overview counts as one row of chips, and small bars instead of bare numbers. */
 .mh-clear { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
 .mh-section-status { margin: 8px 0 14px; }
 .mh-extensions-heading { scroll-margin-top: 84px; }
@@ -361,7 +360,7 @@ input::placeholder, textarea::placeholder { color: #78837d; }
 .mh-usage-hours { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) { .mh-chip-admin { margin-left: 0; } .mh-usage li { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) 3rem; } }
 
-/* 2026-11-07: drag the end of a booking in progress (ExtendBox) and extension requests on the Manager home. */
+/* Drag the end of a booking in progress (ExtendBox) and extension requests on the Manager home. */
 .ext-track { position: relative; display: grid; gap: 2px; height: 34px; margin: 10px 0 4px; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-sub); touch-action: none; cursor: ew-resize; }
 .ext-cell { border-radius: 0; background: var(--card); }
 .ext-cell.is-mine { background: var(--ink); }

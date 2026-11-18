@@ -20,15 +20,15 @@ each file holds one part (all methods share ``self``: repo, storage, clock, rule
   series.py          weekly series made by staff
   reminders.py       reminders: booking coming up, induction expiring soon
   reports.py         usage report for Managers
-  changes.py         change requests: the person a booking is for asks for a new time (Sprint 3)
-  site_contact.py    the lab's contact details, set by a Manager (Sprint 3)
-  overview.py        the staff "Today" page: what needs doing first (Sprint 3)
-  announcements.py   attributed public notices and resource-status announcements (Sprint 3, 1.19.0)
+  changes.py         change requests: the person a booking is for asks for a new time
+  site_contact.py    the lab's contact details, set by a Manager
+  overview.py        the staff "Today" page: what needs doing first
+  announcements.py   attributed public notices and resource-status announcements
 
 To add a feature, put its methods in the file for its topic (or a new mixin listed below) and its tests next to
 the existing ones; import ``BookingService`` from ``booking.services`` as before.
 """
-from .announcements import AnnouncementsMixin  # Sprint 3 (1.19.0)
+from .announcements import AnnouncementsMixin
 from .additional_hours import AdditionalHoursMixin
 from .long_bookings import LongBookingsMixin
 from .accounts import AccountsMixin, new_invite_code, normalize_invite_code
@@ -36,9 +36,9 @@ from .attendance import AttendanceMixin
 from .audit import AuditMixin
 from .availability import AvailabilityMixin
 from .calendar_feed import CalendarFeedMixin
-from .changes import ChangesMixin  # Sprint 3 (1.16.0)
-from .overview import OverviewMixin  # Sprint 3 (1.16.0)
-from .site_contact import SiteContactMixin  # Sprint 3 (1.16.0)
+from .changes import ChangesMixin
+from .overview import OverviewMixin
+from .site_contact import SiteContactMixin
 from .base import ACTIVE_REQUEST_STATUSES, HEAD_STATUSES, UNDECIDED_STATUSES, ServiceBase
 from .bookings import BookingsMixin
 from .checks import ChecksMixin

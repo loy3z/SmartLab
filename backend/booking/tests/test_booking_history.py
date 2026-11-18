@@ -1,4 +1,4 @@
-"""Sprint 3 (1.20.0): removing personal history preserves the shared booking and its consequences."""
+"""Removing personal history preserves the shared booking and its consequences."""
 
 from dataclasses import replace
 from datetime import timedelta

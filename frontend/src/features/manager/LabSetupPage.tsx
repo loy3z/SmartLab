@@ -1,4 +1,4 @@
-// Sprint 3 (1.16.0): Lab setup (Manager) — induction types and their guidance, and the lab's contact details.
+// Lab setup (Manager) — induction types and their guidance, and the lab's contact details.
 // The client fills these in themselves; nothing here is fixed in code. Rules live in the backend
 // (services/qualifications.py create/update_requirement, services/site_contact.py).
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'

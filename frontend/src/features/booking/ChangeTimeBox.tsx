@@ -1,4 +1,4 @@
-// Sprint 3 (1.16.0): the person a booking is for asks for a new time (backend: services/changes.py).
+// The person a booking is for asks for a new time (backend: services/changes.py).
 import { useState } from 'react'
 import { useAuth } from '../auth/auth-context'
 import { useFeedback } from '../../ui/feedback-context'

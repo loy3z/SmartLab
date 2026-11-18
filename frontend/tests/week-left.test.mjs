@@ -1,4 +1,4 @@
-// 2026-11-10 (U1): the booking window says how many hours are left in the week being booked.
+// The booking window says how many hours are left in the week being booked.
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { weekLeftText } from '../src/features/booking/week-left.ts'

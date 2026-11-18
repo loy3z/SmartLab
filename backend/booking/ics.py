@@ -1,4 +1,4 @@
-"""Sprint 3: iCalendar (RFC 5545) text for a person's calendar subscription link.
+"""iCalendar (RFC 5545) text for a person's calendar subscription link.
 
 Outlook, Google Calendar and Apple Calendar fetch the link themselves every few hours; the website stays the only
 authority (the feed is read-only). Each booking keeps one UID, so a rescheduled booking replaces its old entry.

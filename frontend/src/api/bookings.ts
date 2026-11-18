@@ -1,4 +1,4 @@
-// Sprint 3 (2026-10-27): moved from the booking feature folder; function bodies unchanged.
+// Moved from the booking feature folder; function bodies unchanged.
 import { request } from '../lib/api-client'
 import { post } from './client'
 import type { AdditionalHoursRequest, Booking, BookingRequest, BookingSeries, Dashboard, LongBookingRequest, SeriesPlan, SeriesPreview } from './types/bookings'
@@ -20,28 +20,28 @@ export const listBookings = () => request<ListResponse<Booking>>('bookings/')
 
 export const cancelBooking = (id: string) => post<Booking>(`bookings/${id}/cancel/`, {})
 
-// Sprint 3 (1.20.0): personal visibility only; the shared booking remains in staff records.
+// Personal visibility only; the shared booking remains in staff records.
 export const removeBookingHistory = (id: string) => post<void>(`bookings/${id}/remove-from-history/`, {})
 
 export const rescheduleBooking = (id: string, start: string, end: string) =>
   post<Booking>(`bookings/${id}/reschedule/`, { start, end })
 
-/** 1.24.0 (client, Week 8): finish a booking in progress later. 2026-11-07: a request a Manager decides; a Manager's
+/** Finish a booking in progress later. A request a Manager decides; a Manager's
  *  own extension applies at once. */
 export const extendBooking = (id: string, end: string) => post<Booking>(`bookings/${id}/extend/`, { end })
 
-/** 2026-11-07, Manager: approve or reject an extension request (a rejection needs a reason). */
+/** Manager: approve or reject an extension request (a rejection needs a reason). */
 export const reviewExtension = (id: string, decision: 'APPROVED' | 'REJECTED', expectedEnd: string, reason = '') =>
   post<Booking>(`bookings/${id}/extend/review/`, { decision, reason, expected_end: expectedEnd })
 
-/** Sprint 3 (1.16.0): the person a booking is for asks for a new time; returns the new request (the old booking stays until it is approved). */
+/** The person a booking is for asks for a new time; returns the new request (the old booking stays until it is approved). */
 export const requestTimeChange = (id: string, start: string, end: string) =>
   post<Booking>(`bookings/${id}/change/`, { start, end })
 
-// Sprint 3: check-in -----------------------------------------------------------------------------------------------
+// Check-in -----------------------------------------------------------------------------------------------
 export const checkIn = (bookingId: string) => post<Booking>(`bookings/${bookingId}/check-in/`, {})
 
-// Sprint 3: weekly series (staff) ---------------------------------------------------------------------------------------
+// Weekly series (staff) ---------------------------------------------------------------------------------------
 export const previewSeries = (plan: SeriesPlan) => post<SeriesPreview>('bookings/series/preview/', plan)
 
 export const createSeries = (plan: SeriesPlan & { purpose: string; skip_dates: string[] }) =>

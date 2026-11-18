@@ -1,4 +1,4 @@
-"""HTTP views: calendar (split from booking/views.py on 2026-10-25)."""
+"""HTTP views: calendar (split from booking/views.py)."""
 
 from ._common import *  # noqa: F401,F403 - shared imports, helpers and PublicView.
 
@@ -29,4 +29,4 @@ class CalendarFeedView(PublicView):
         return response
 
 
-# Sprint 3: notifications ------------------------------------------------------------------------------------
+# Notifications ------------------------------------------------------------------------------------

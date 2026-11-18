@@ -1,4 +1,4 @@
-"""Sprint 3: calendar subscription link, website notifications, check-in and missed bookings, weekly limit, weekly series."""
+"""Calendar subscription link, website notifications, check-in and missed bookings, weekly limit, weekly series."""
 
 from dataclasses import replace
 from datetime import datetime, time, timedelta
@@ -179,7 +179,7 @@ class AttendanceTests(Sprint3Fixture, SimpleTestCase):
         self.refused("CHECK_IN_CLOSED", self.service.check_in, self.student, late.id)
 
     def test_missed_bookings_are_marked_and_notified_without_a_penalty(self):
-        """2026-11-07 (client, Week 8): the booking freeze was removed; a missed booking is only recorded."""
+        """The booking freeze was removed; a missed booking is only recorded."""
         missed = [self.approved(self.student, days=day) for day in (1, 2, 3, 4, 5)]
         later = self.approved(self.student, days=20)
         for booking in missed:
@@ -220,7 +220,7 @@ class WeeklyLimitTests(Sprint3Fixture, SimpleTestCase):
         self.assertEqual(fourth.status, BookingStatus.PENDING_APPROVAL)
 
     def test_dashboard_week_hours_count_this_week_only(self):
-        # 2026-11-03: the dashboard shows hours booked this Sydney week; additional hours and other weeks do not count.
+        # The dashboard shows hours booked this Sydney week; additional hours and other weeks do not count.
         self.service.max_advance_days = 30
         self.request(self.student, days=1, minutes=180)
         self.request(self.student, days=2, minutes=90)
@@ -240,7 +240,7 @@ class WeeklyLimitTests(Sprint3Fixture, SimpleTestCase):
         self.assertEqual(self.request(self.student, days=next_monday).status, BookingStatus.PENDING_APPROVAL)
 
     def test_a_manager_may_reschedule_into_a_full_week(self):
-        """2026-11-06 (client, Week 8): the Manager overrides the weekly limit (before: WEEKLY_LIMIT_REACHED)."""
+        """The Manager overrides the weekly limit (before: WEEKLY_LIMIT_REACHED)."""
         self.service.max_advance_days = 30
         week_day = self.today.isoweekday()
         moved = self.approved(self.student, days=8 - week_day + 2, minutes=30)  # next week
@@ -394,7 +394,7 @@ class SeriesTests(Sprint3Fixture, SimpleTestCase):
     def test_cancel_series_keeps_past_dates(self):
         actor, arguments = self.plan()
         series, bookings = self.service.create_series(actor, purpose="Weekly lab", **arguments)
-        # Sprint 3: the staff member's own series is confirmed once (emailed when email is on).
+        # The staff member's own series is confirmed once (emailed when email is on).
         self.assertEqual([item.kind for item in self.notices(self.admin)], ["SERIES_CREATED"])
         self.now = bookings[1].start + timedelta(hours=2)
         self.service.check_in_state(bookings[0])
@@ -476,7 +476,7 @@ class Sprint3APITests(BookingAPIFixtureMixin, SimpleTestCase):
         checked = self.verified.post(f"/api/v1/bookings/{booking['id']}/check-in/", {}, format="json")
         self.assertEqual((checked.status_code, checked.data["attendance"], checked.data["check_in_open"]), (200, "CHECKED_IN", False))
         me = self.verified.get("/api/v1/auth/me/").data
-        self.assertNotIn("frozen_until", me)  # the booking freeze was removed on 2026-11-07
+        self.assertNotIn("frozen_until", me)  # the booking freeze was removed
 
     def test_series_api(self):
         self.service.max_advance_days = 28  # This workflow exercises three weeks of dates.
@@ -514,7 +514,7 @@ class Sprint3APITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual((week["used_hours"], week["limit_hours"]), (3, 12))
 
     def test_availability_reports_hours_left_in_the_week_of_the_chosen_day(self):
-        # 2026-11-10 (U1): the booking window shows the allowance of the week being booked, not of the current week.
+        # The booking window shows the allowance of the week being booked, not of the current week.
         self.create(self.verified, day_offset=1, minutes=180)
         self.create(self.verified, day_offset=2, minutes=120)
         day = self.payload(day_offset=2)["start"][:10]

@@ -6,6 +6,27 @@ This file records what changed in each update and why. Other documents describe 
 
 - A student whose week was full (12 h) opened “Change time” on one booking and read “0 h left of your 12 h”, although moving it within the same week is allowed: submitting a change already leaves the old booking out of the weekly count. `availability` now does the same for `week_hours` when `exclude_booking_id` is given (`services/availability.py`, `checks.py` `week_hours`), so the dialog shows the hours the move can use (3 h in this example). The booking dialog and the Dashboard are unchanged. Test: `test_change_requests.py` `test_the_change_window_shows_the_hours_the_moved_booking_gives_back` (failed before the change).
 
+## After 1.28.0: The Bell Keeps the Count After a Notification Is Opened (2026-11-17, frontend only)
+
+- Opening the bell panel starts a reload. On a slow connection its answer could arrive after the person had already clicked a notification: the unread count went down by one, then jumped back, and the notification showed as unread again until the next reload (up to a minute). The bell now ignores an answer that was requested before the click, and any answer that is not the newest one (`NotificationBell.tsx`). `routing.spec.ts` has a new case with a 700 ms delay; it failed before the change.
+
+## 1.29.0: Storage Interface in Its Own File; Two Unused Endpoints Removed (2026-11-17, no migration)
+
+- **Storage interface apart from the in-memory implementation.** `booking/repository.py` now holds only the `Repository` interface, the list of reads and writes the booking rules need and the part a new storage adapter implements. The in-memory implementation used by tests and the local demo moved to the new `booking/memory.py` unchanged, with its two filter helpers. The setting value is now `REPOSITORY_FACTORY=booking.memory.MemoryRepository` (still the default; `.env.example`, `backend/README.md`, `ARCHITECTURE.md` and `docs/database-interface.md` updated). Deployment uses `booking.postgres.PostgresRepository` and is unaffected.
+- **API 1.29.0: two endpoints the website never called are removed.** `POST admin/users/managers/` duplicated Add staff with the Manager role (`POST admin/users/staff/`). `GET / PATCH admin/resources/{id}/booking-policy/` duplicated the `pending_hold_minutes` field of Resource setup (`PATCH admin/resources/{id}/`). Removed with them: the two views, `BookingPolicySerializer`, the service method `set_booking_policy` and its audit action `RESOURCE_BOOKING_POLICY_UPDATED` (a change to the review window is now always recorded as `RESOURCE_UPDATED`; old audit rows keep the old name). `ManagerCreateSerializer` is folded into `StaffCreateSerializer`. The `create_manager` command is unchanged. Tests that used the removed endpoints now use the remaining ones.
+
+## After 1.28.0: Comments Without Sprint, Version or Date Tags (2026-11-17, no behaviour change)
+
+Code comments no longer start with tags such as “Sprint 3 (1.16.0):”, “2026-11-07 (client, Week 8):” or “(load test S2)”. The reason each comment gives stays; when and in which round a change was made is recorded here and in `SPRINT3.md`. Migration scripts keep their headers.
+
+- `backend/booking/` and `backend/config/`: comments and docstrings. Section headers that only said “Sprint 3” now name what follows.
+- `frontend/src/`: comments in TypeScript, TSX and CSS. Two CSS comments that only recorded where an old rule had been (`app/shell.css`, `index.css`) are deleted.
+- `frontend/tests/`: comments only; test names are unchanged.
+
+## After 1.28.0: Docker Deployment Reads the Mail Server and All Rule Settings (2026-11-17, no code change)
+
+- `docker-compose.yml` did not hand ten settings to the API and scheduler containers, so changing them in `.env.docker` had no effect and the defaults in `config/settings.py` always applied: the mail server (`EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`), which made a mailbox other than Gmail impossible under Docker, and seven rules from the table in `backend/README.md` (`QUALIFICATION_VALIDITY_DAYS`, `DEFAULT_PENDING_HOLD_MINUTES`, `CHECK_IN_OPENS_MINUTES`, `CHECK_IN_CLOSES_MINUTES`, `MAX_SERIES_WEEKS`, `REMINDER_HOURS_BEFORE`, `INDUCTION_REMINDER_DAYS`). The compose file now passes them with the same defaults, and `.env.docker.example` lists them. An existing `.env.docker` without these lines behaves as before.
+
 ## After 1.28.0: Two Rules Written Down: Extensions and Equipment Return (2026-11-18, documentation only)
 
 - Extending a booking in progress has never counted towards the 12-hour weekly limit, but no document said so. The product owner confirmed that this is the rule: an extension always needs a Manager's approval, and the Manager decides whether the extra time is reasonable. `backend/README.md` now states it next to the weekly limit. No code changed.

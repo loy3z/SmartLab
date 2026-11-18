@@ -1,4 +1,4 @@
-// Sprint 3 (1.19.0): dedicated settings with separate website/email channels.
+// Dedicated settings with separate website/email channels.
 import { useEffect, useState } from 'react'
 import { useFeedback } from '../../ui/feedback-context'
 import { getNotificationPreferences, saveNotificationPreferences } from '../../api/index.ts'
@@ -48,7 +48,7 @@ export function NotificationPreferences() {
         <div className="notification-matrix-head" aria-hidden="true"><span>Category</span><span>In the bell</span><span>By email</span></div>
         {items.map(item => <div key={item.category} className="notification-matrix-row">
           <div><h2>{CATEGORIES[item.category]?.label ?? item.category}</h2><p>{CATEGORIES[item.category]?.description}</p></div>
-          {/* Review Q1 (2026-10-27): with email off the email column shows unchecked; the saved choice is kept and shows again once email is on. */}
+          {/* With email off the email column shows unchecked; the saved choice is kept and shows again once email is on. */}
           {(['in_app', 'email'] as const).map(channel => <label key={channel}>
             <span>{channel === 'in_app' ? 'In the bell' : 'By email'}</span>
             <input type="checkbox" checked={item[channel] && (channel === 'in_app' || emailAvailable)} disabled={busy || (channel === 'email' && !emailAvailable)}

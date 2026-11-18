@@ -1,4 +1,4 @@
-// Sprint 3: usage statistics tab of Booking Records (Admin and Manager). The figures are worked out by the backend
+// Usage statistics tab of Booking Records (Admin and Manager). The figures are worked out by the backend
 // (booking/services/reports.py).
 import { useEffect, useMemo, useState } from 'react'
 import { EmptyState } from '../../ui/components'

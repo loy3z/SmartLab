@@ -1,4 +1,4 @@
-"""Sprint 3: check the email settings by sending one test email.
+"""Check the email settings by sending one test email.
 
     python manage.py send_test_email --to your.own@address
 

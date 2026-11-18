@@ -1,4 +1,4 @@
-// 2026-11-10 (U1): the booking window says how many hours are left in the week being booked.
+// The booking window says how many hours are left in the week being booked.
 import type { Availability } from '../../api/types/index.ts'
 
 /** Hours left of the weekly allowance in the week of the chosen day; empty when the allowance does not apply. */

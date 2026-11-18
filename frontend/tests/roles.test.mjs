@@ -1,4 +1,4 @@
-// 2026-11-07 (client, Week 8): the three roles see different home pages and data.
+// The three roles see different home pages and data.
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { cardsFor, MANAGER_DECIDES } from '../src/features/admin/today.ts'
@@ -58,7 +58,7 @@ test('the Extension requests card opens the approval list', async () => {
   assert.equal(card.to, '/manager/home?focus=extensions')
 })
 
-// 2026-11-09 (Loy feedback): the Lab overview shows split bars and the most booked resources.
+// The Lab overview shows split bars and the most booked resources.
 test('a split bar leaves out empty parts and shows nothing when everything is 0', () => {
   const parts = [{ label: 'open', count: 3, color: 'g' }, { label: 'under maintenance', count: 0, color: 'a' }, { label: 'closed', count: 1, color: 'r' }]
   assert.deepEqual(segments(parts).map(({ label, share }) => [label, share]), [['open', 75], ['closed', 25]])

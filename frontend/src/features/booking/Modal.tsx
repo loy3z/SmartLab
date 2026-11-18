@@ -8,16 +8,16 @@ function onBackdrop(event: MouseEvent<HTMLDialogElement>) {
 }
 
 /**
- * Sprint 3 (workspace UI): a native modal dialog. Focus stays inside, Escape closes it, and focus returns to the
+ * A native modal dialog. Focus stays inside, Escape closes it, and focus returns to the
  * button that opened it.
  *
  * While it is open, everything outside it (toasts included) is inert and drawn under the backdrop, so content
- * shown in a Modal must also report errors inline; a toast alone cannot be read (review R1).
- * `label` is the dialog's accessible name, normally its visible heading (review R5).
+ * shown in a Modal must also report errors inline; a toast alone cannot be read.
+ * `label` is the dialog's accessible name, normally its visible heading.
  */
 export function Modal({ label, onClose, children }: { label: string; onClose: () => void; children: ReactNode }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
-  // Sprint 3 (review R4): close on a backdrop click only when the press also started there. Selecting text in a
+  // Close on a backdrop click only when the press also started there. Selecting text in a
   // field and releasing over the backdrop must not close the dialog and lose what was typed.
   const pressedOnBackdrop = useRef(false)
   useEffect(() => {

@@ -1,4 +1,4 @@
-"""Sprint 3: Website notifications: the bell in the top bar.
+"""Website notifications: the bell in the top bar.
 
 A notification is stored in the same transaction as the change it describes. Booking changes are noticed in one
 place (``_booking_changed``, called whenever a booking is saved), so every path that approves, rejects, promotes,
@@ -17,14 +17,14 @@ from ..errors import DomainError
 # Notifications created during the current request, so extra channels can send them after commit.
 _new_notification_ids = ContextVar("booking_new_notification_ids", default=None)
 
-# Sprint 3 (1.19.0): categories on the dedicated Notifications page. The Managers' urgent-request
+# Categories on the dedicated Notifications page. The Managers' urgent-request
 # notice is deliberately not in this list: it is part of their job, not a personal update.
 NOTIFICATION_CATEGORIES = ("bookings", "reminders", "induction", "account", "resources")
 
 _CATEGORY_BY_KIND = {
     "BOOKING_APPROVED": "bookings", "BOOKING_REJECTED": "bookings", "BOOKING_PROMOTED": "bookings",
     "BOOKING_EXPIRED": "bookings", "BOOKING_CANCELLED": "bookings", "BOOKING_RESCHEDULED": "bookings",
-    "EXTENSION_REQUESTED": "bookings", "EXTENSION_APPROVED": "bookings", "EXTENSION_REJECTED": "bookings",  # 2026-11-07
+    "EXTENSION_REQUESTED": "bookings", "EXTENSION_APPROVED": "bookings", "EXTENSION_REJECTED": "bookings",
     "BOOKING_SUBMITTED": "bookings", "BOOKING_CREATED_FOR_YOU": "bookings",
     "SERIES_CREATED": "bookings", "SERIES_CREATED_FOR_YOU": "bookings",
     "CHANGE_APPROVED": "bookings", "CHANGE_REJECTED": "bookings", "CHANGE_REQUESTED": "bookings",
@@ -69,7 +69,7 @@ class NotificationsMixin:
         """Store a notice and its email atomically; once rechecks a reminder's identity under the write lock."""
         if not recipient_id:
             return None
-        # Sprint 3 (1.19.0): keep email-only messages out of the bell permanently.
+        # Keep email-only messages out of the bell permanently.
         category = notification_category(kind)
         in_app, email = self._category_channels(recipient_id, category)
         if not (in_app or email):
@@ -80,7 +80,7 @@ class NotificationsMixin:
         # This nested transaction is also needed for standalone reminders: the notification and SMTP outbox row
         # either both commit or both roll back. Booking operations already have a wider outer transaction.
         with self.repo.atomic(student_ids=[str(recipient_id)]):
-            # Sprint 3 (2026-11-01): the bulk reminder read is only a fast path. Another request or the
+            # The bulk reminder read is only a fast path. Another request or the
             # scheduler may have sent it since then; check again while holding the same lock as the write.
             if once:
                 previous = (self.repo.list_booking_notifications(kind, [booking.id]) if booking
@@ -99,7 +99,7 @@ class NotificationsMixin:
         ids.append(notification.id)
         return notification
 
-    # Sprint 3 (1.19.0): missing choices default to enabled; urgent staff duties have no category.
+    # Missing choices default to enabled; urgent staff duties have no category.
     def _category_channels(self, principal_id, category):
         if category is not None:
             for item in self.repo.list_notification_preferences(str(principal_id)):
@@ -144,14 +144,14 @@ class NotificationsMixin:
         if old.status != new.status:
             if new.status == BookingStatus.APPROVED:
                 how = " automatically after the review window" if new.reason_code == "AUTO_APPROVED_AFTER_REVIEW_WINDOW" else ""
-                if new.replaces_id:  # Sprint 3 (1.16.0): change request approved
+                if new.replaces_id:  # Change request approved
                     self._notify(new.student_id, "CHANGE_APPROVED", "Booking moved",
                                  f"Your change was approved{how}: your booking is now {label}.{self._old_time_note(new, released=True)}", new)
                 else:
                     self._notify(new.student_id, "BOOKING_APPROVED", "Booking approved", f"{label} was approved{how}.", new)
             elif new.status == BookingStatus.REJECTED:
                 reason = f" Reason: {new.decision_reason}" if new.decision_reason else ""
-                if new.replaces_id:  # Sprint 3 (1.16.0)
+                if new.replaces_id:
                     self._notify(new.student_id, "CHANGE_REJECTED", "Change request rejected",
                                  f"Your request to move to {label} was rejected.{reason}{self._old_time_note(new)}", new)
                 else:
@@ -160,7 +160,7 @@ class NotificationsMixin:
                 self._notify(new.student_id, "BOOKING_PROMOTED", "Your waitlisted request moved up",
                              f"A place opened up: {label} is now waiting for review.", new)
             elif new.status == BookingStatus.EXPIRED and old.status in (BookingStatus.WAITLISTED, BookingStatus.PENDING_APPROVAL):
-                # Sprint 3: the start time came before a place opened up (waitlist) or before anyone decided.
+                # The start time came before a place opened up (waitlist) or before anyone decided.
                 why = "no place opened up in time" if old.status == BookingStatus.WAITLISTED else "it was not decided in time"
                 self._notify(new.student_id, "BOOKING_EXPIRED", "Request expired",
                              f"{label} expired: {why}.{self._old_time_note(new) if new.replaces_id else ''}", new)
@@ -171,7 +171,7 @@ class NotificationsMixin:
                          f"Your booking was moved to {label} (was {self.describe_time(old)}).", new)
 
     def _old_time_note(self, change, released=False):
-        """Sprint 3 (1.16.0): sentence about the booking a change request replaces."""
+        """Sentence about the booking a change request replaces."""
         old = self.repo.get_booking(change.replaces_id) if change.replaces_id else None
         if old is None or old.status != BookingStatus.APPROVED:
             return ""

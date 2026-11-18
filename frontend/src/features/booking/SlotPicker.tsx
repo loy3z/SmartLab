@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { getAvailability } from '../../api/index.ts'
 import { errorMessage, fmtDate, fmtDuration, fmtRange, fmtTime, QUAL_TEXT, todaySydney, TZ } from './format'
-import { weekLeftText } from './week-left' // 2026-11-10 (U1)
-import { addDays, dateRange } from './slot-picker' // Sprint 3 (2026-10-25 cleanup): moved out of this file
+import { weekLeftText } from './week-left'
+import { addDays, dateRange } from './slot-picker'
 import { cellTitle, kindOf } from './slot-cells'
-import { NowLegend, NowLine } from './NowLine' // Sprint 3 (1.15.0)
+import { NowLegend, NowLine } from './NowLine'
 import type { Availability, Resource } from '../../api/types/index.ts'
 
 /** A chosen period: start/end are UTC ISO strings. */
@@ -43,9 +43,9 @@ interface Props {
   /** Pre-select a period once the day has loaded (UTC ISO start, length in minutes), e.g. from the day grid. */
   initialStart?: string
   initialMinutes?: number
-  /** Sprint 3 (1.16.0): offer the urgent route when someone is on the first normal day and wants an earlier one. */
+  /** Offer the urgent route when someone is on the first normal day and wants an earlier one. */
   onAskEarlier?: () => void
-  /** Sprint 3 (1.16.0): replaces the "joins the waitlist" text when part of the chosen time is taken (change requests). */
+  /** Replaces the "joins the waitlist" text when part of the chosen time is taken (change requests). */
   takenNote?: string
 }
 
@@ -58,14 +58,14 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
   const [range, setRange] = useState<{ from: number; to: number } | null>(null)
   const [hover, setHover] = useState<number | null>(null)
   const [problem, setProblem] = useState('')
-  // Sprint 3 (workspace UI): coming from Find a free time (a start is given), the day grid starts folded; the
+  // Coming from Find a free time (a start is given), the day grid starts folded; the
   // Start / Length selects below stay visible either way.
   const [showTimeline, setShowTimeline] = useState(!initialStart)
-  // Sprint 3 (1.16.0): length used by the "Start / Length" selects (cells of `step` minutes); 1 hour by default.
+  // Length used by the "Start / Length" selects (cells of `step` minutes); 1 hour by default.
   const [wantedCells, setWantedCells] = useState<number | null>(null)
-  // 2026-11-12: the Start the inputs asked for when that time was refused, so another Length can retry from it.
+  // The Start the inputs asked for when that time was refused, so another Length can retry from it.
   const [inputStart, setInputStart] = useState<number | null>(null)
-  // Sprint 3 (2026-10-25): the day timeline scrolls sideways; a desktop mouse wheel scrolls it too.
+  // The day timeline scrolls sideways; a desktop mouse wheel scrolls it too.
   const timelineRef = useRef<HTMLDivElement>(null)
   // Applied once, on the first load of the initial day; later days and refreshes start empty as before.
   const pendingInitial = useRef(initialStart && initialMinutes ? { start: initialStart, minutes: initialMinutes } : null)
@@ -78,9 +78,9 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
     onAvailabilityRef.current = onAvailability
   })
 
-  // Sprint 3 (2026-10-25): a mouse wheel over the day timeline scrolls it sideways (Windows wheels have no
+  // A mouse wheel over the day timeline scrolls it sideways (Windows wheels have no
   // horizontal axis). Passive: false so the page itself does not scroll while the timeline moves.
-  // Review D1 (2026-10-25): the timeline only exists once a day has loaded and is rebuilt for every day, so the
+  // The timeline only exists once a day has loaded and is rebuilt for every day, so the
   // listener is attached again whenever `data` changes; at either end the wheel scrolls the page as usual.
   useEffect(() => {
     const el = timelineRef.current
@@ -177,7 +177,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
 
   function blockedBetween(from: number, to: number): string {
     // An urgent request or a reschedule needs free time: it never joins the waitlist.
-    const strict = urgent || allowEarly || data?.test_bypass || data?.manager_override // 1.24.0: a Manager booking too
+    const strict = urgent || allowEarly || data?.test_bypass || data?.manager_override // A Manager booking too
     const bad = kinds.slice(from, to + 1).findIndex((k) => k === 'closed' || k === 'mine' || (strict && (k === 'taken' || k === 'held')))
     if (bad < 0) return ''
     const kind = kinds[from + bad]
@@ -225,7 +225,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
     commit(index, index)
   }
 
-  // Sprint 3 (1.16.0): choose by "Start" and "Length" instead of tapping narrow cells (phones). Same checks as clicking.
+  // Choose by "Start" and "Length" instead of tapping narrow cells (phones). Same checks as clicking.
   const defaultCells = fixedCells ?? Math.max(minCells, Math.min(maxCells, Math.round(60 / step)))
   const lengthCells = fixedCells ?? Math.max(minCells, wantedCells ?? (range ? range.to - range.from + 1 : defaultCells))
   function chooseByInputs(from: number, cells: number) {
@@ -301,7 +301,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
         {!urgent && !allowEarly && !forZid && weekLeftText(data) &&<> {weekLeftText(data)}</>}
         {longBooking && <> Long-booking requests: {fmtDuration(minimumMinutes)} to {fmtDuration(maximumMinutes)}. A Manager must decide before the review deadline.</>}
       </p>
-      {/* Sprint 3 (1.16.0): someone who wants an earlier day used to see only a disabled "previous day" button. */}
+      {/* Someone who wants an earlier day used to see only a disabled "previous day" button. */}
       {onAskEarlier && canRequest && !urgent && !allowEarly && atStart && data?.earliest_date && data.earliest_date > todaySydney() && (
         <div className="ui-hint bk-earlier">
           Need a date before {fmtDate(data.earliest_date)}?
@@ -348,7 +348,7 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
                     />
                   )
                 })}
-                <NowLine slots={slots} />{/* Sprint 3 (1.15.0) */}
+                <NowLine slots={slots} />
               </div>
             </div>
           </div>
@@ -359,12 +359,12 @@ export function SlotPicker({ resource, onSelect, refreshKey = 0, hideQualificati
             <span><i className="lg-held" />Awaiting approval</span>
             <span><i className="lg-mine" />{forZid ? 'Their request' : 'Your request'}</span>
             <span><i className="lg-closed" />Not bookable</span>
-            <NowLegend slots={slots} />{/* Sprint 3 (1.15.0) */}
+            <NowLegend slots={slots} />
           </div>
         </div>
       )}
 
-      {/* Sprint 3 (1.16.0): the same choice with two selects (easier than tapping cells on a phone). */}
+      {/* The same choice with two selects (easier than tapping cells on a phone). */}
       {data && slots.length > 0 && canRequest && startOptions.length > 0 && (
         <div className="ui-tl-inputs">
           <label>Start

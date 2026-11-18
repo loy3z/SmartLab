@@ -2,6 +2,11 @@
 
 The API base path is `/api/v1/`, and every path ends with `/`. See [openapi.json](openapi.json) for the authoritative schema; after startup, `GET /api/schema/` returns the same definition.
 
+## 1.29.0: Two Unused Endpoints Removed (no migration)
+
+- `POST admin/users/managers/` is removed. Use `POST admin/users/staff/` with `"role":"MANAGER"`, which the website already does.
+- `GET / PATCH admin/resources/{id}/booking-policy/` is removed. The review period is the `pending_hold_minutes` field of the resource: read it from `GET admin/resources/` and change it with `PATCH admin/resources/{id}/`, as Resource setup does. The audit log records the change as `RESOURCE_UPDATED`.
+
 ## 1.28.0: The Author Deletes an Ended Announcement (no migration)
 
 - `DELETE announcements/{id}/`: only the person who posted the announcement (`created_by`), for manual and resource-status announcements alike; anyone else, a Manager included, receives 403. The announcement must have ended (removed or expired), otherwise 409 `ANNOUNCEMENT_ACTIVE`. Returns 204; the row is deleted permanently and the audit log keeps `ANNOUNCEMENT_DELETED` with the title.
@@ -139,7 +144,7 @@ Fields in `details` vary by action; for example, booking creation has `status`, 
 Only a **Manager** can view the people list, create staff, change staff accounts, or deactivate accounts. Admin and students receive 403 from these endpoints.
 
 - `GET admin/users/`: returns `{ count, results }`. Each item contains `id`, `zid`, `display_name`, `role`, `is_staff`, `active`, `university_email`, `inductions` (each induction's `name`, `status`: `NOT_SUBMITTED`/`PENDING`/`VERIFIED`/`REJECTED`/`EXPIRED`, and `valid_until`), and `induction_status` (`VERIFIED` when all are valid, otherwise `INCOMPLETE`). Staff can also book and likewise need valid induction. Filter by `role`, `active=true|false`, and `q` (matching zID/name/email).
-- **Add staff**: `POST admin/users/staff/` with `{"zid":"z5123456","display_name":"…","university_email":"…","role":"ADMIN"}` (`role` is `ADMIN` or `MANAGER`). Success returns 201 with the user and writes `ADMIN_CREATED`/`MANAGER_CREATED` audit. Existing zID returns 409 `USER_EXISTS` (an existing student cannot become staff). Compatibility endpoint `POST admin/users/managers/` is equivalent to `role=MANAGER`.
+- **Add staff**: `POST admin/users/staff/` with `{"zid":"z5123456","display_name":"…","university_email":"…","role":"ADMIN"}` (`role` is `ADMIN` or `MANAGER`). Success returns 201 with the user and writes `ADMIN_CREATED`/`MANAGER_CREATED` audit. Existing zID returns 409 `USER_EXISTS` (an existing student cannot become staff).
 - `PATCH admin/users/{id}/`: deactivate or reactivate an account (`active`). Role is fixed at creation and cannot change. A different `role` returns 409 `ROLE_CHANGE_NOT_ALLOWED`; the current role is ignored. To replace a person, create a new account through Add staff and deactivate the old one. The change takes effect on the user's **next request**; a deactivated user's next request receives 401, and the frontend should return to sign-in.
 - **Deactivating a student** immediately rejects all their undecided requests (pending and waitlisted, `reason_code=ACCOUNT_DEACTIVATED`) and promotes the next request. Approved bookings remain for a Manager to decide whether to cancel.
 - Self-modification is forbidden (`SELF_MODIFICATION_FORBIDDEN`, 403), and the system must retain at least one active Manager (`LAST_MANAGER`, 409). Every change writes a `USER_UPDATED` audit record.
@@ -177,7 +182,7 @@ The automatic-decision and direct-rescheduling rules below apply to normal booki
 - **Still unresolved at deadline**: the system processes it automatically with `reviewed_by="SYSTEM"`. If account is active, qualification including prerequisites still covers the whole booking, resource is open, and no approved booking conflicts → `APPROVED` (`AUTO_APPROVED_AFTER_REVIEW_WINDOW`); otherwise `REJECTED` (`AUTO_REJECTED_ACCOUNT_INACTIVE`/`AUTO_REJECTED_QUALIFICATION`/`AUTO_REJECTED_RESOURCE_UNAVAILABLE`/`AUTO_REJECTED_BOOKING_RULES`/`AUTO_REJECTED_CONFLICT`) with the reason in `decision_reason`. The server processes this on the next access, through `admin/process-due/`, or scheduled command `manage.py process_due`; the frontend only refreshes.
 - **One shared rule set**: creation, manual approval, automatic processing, waitlist promotion, and rescheduling use the same backend rule checks for consistent results.
 - Rescheduling (Manager only): change date, time, and duration of an approved future booking (subject to latest date and qualification, but not minimum advance period), applying immediately. For slot selection pass `exclude_booking_id=<booking being changed>`, `for_zid=<booking holder>`, and `urgent=true`; the original time appears selectable.
-- Manager sets a per-resource review period through `PATCH admin/resources/{id}/booking-policy/` with `{"pending_hold_minutes":1440}` (1–20,160 minutes).
+- Manager sets a per-resource review period through `PATCH admin/resources/{id}/` with `{"pending_hold_minutes":1440}` (1–20,160 minutes).
 
 **Room/equipment status**: `PATCH admin/resources/{id}/status/` (Manager only) with `{"status":"MAINTENANCE","reason":"Fume hood repair"}`. Status is `AVAILABLE`/`MAINTENANCE`/`CLOSED`; the latter two require a reason.
 - Resource lists/details include `status` and `status_reason`. Maintenance/closed resources remain visible; the frontend should mark “under maintenance / closed” and the reason.
@@ -275,12 +280,10 @@ All paths below start with `/api/v1/`. A Bearer token is required except for hea
 | GET | `admin/users/?role=&active=&q=` | Manager only: people list |
 | POST | `admin/users/staff/` | Manager only: Add staff with `zid`, `display_name`, `university_email`, and `role` (`ADMIN`/`MANAGER`); response includes `invite_code` |
 | POST | `admin/users/{id}/reset-access/` | Manager only: reset staff sign-in and generate a new invite code |
-| POST | `admin/users/managers/` | Manager only: compatibility endpoint equivalent to selecting Manager in Add staff |
 | PATCH | `admin/users/{id}/` | Manager only: `{"active":false}` deactivates/`{"active":true}` restores; role cannot be changed |
 | PATCH | `admin/qualification-requirements/{id}/` | Manager only: set prerequisite inductions with `{"prerequisite_ids":[...]}` |
 | GET | `admin/audit/?resource_id=&student_id=&action=&since=&until=&limit=100&offset=0` | Admin/Manager view audit records (requests, reviews, rescheduling, cancellation, and so on), newest first |
 | POST | `admin/process-due/` | Immediately process requests whose review deadline or start time has arrived (automatic approval or rejection) |
-| GET / PATCH | `admin/resources/{id}/booking-policy/` | Manager only: read and modify the review period `pending_hold_minutes` |
 | PATCH | `admin/resources/{id}/status/` | Manager only: `AVAILABLE`/`MAINTENANCE`/`CLOSED` + `reason` |
 | GET | `admin/outlook/` | Admin/Manager: Outlook configuration, statistics, and per-booking sync/check status (does not call Microsoft) |
 | POST | `admin/outlook/check/` | Test Microsoft sign-in and calendar permission, `{}` |
@@ -310,7 +313,7 @@ All paths below start with `/api/v1/`. A Bearer token is required except for hea
 
 Slot queries default to 30 minutes. Ordinary bookings use 30-minute fair-use slots and may select at most six slots (three hours); the resource itself may define a shorter technical limit. Resource and availability responses return `booking_slot_minutes`, `max_booking_slots`, `selection_step_minutes`, and `effective_max_booking_minutes`; the frontend must use these server values to limit selection. A booking cannot cross a local calendar-day boundary.
 
-The Manager rules page sends `PATCH admin/resources/{id}/booking-policy/` with `{"pending_hold_minutes":1440}` (the field name follows the database column and represents the review period in minutes). Both GET and PATCH return `{"resource_id":"<uuid>","pending_hold_minutes":1440}`. The value must be an integer from 1 to 20,160 and defaults to 1,440 (24 hours). If nobody acts before the deadline, an ordinary booking is automatically approved or rejected according to the rules, while a long booking expires and releases the time. A change affects only requests that enter pending review afterward; existing deadlines do not change. Resource details include `pending_hold_minutes`, and slot-query responses include the same value as `review_window_minutes`. The request must contain `pending_hold_minutes`; sending `auto_approve_max_minutes` returns 400.
+Resource setup sends `PATCH admin/resources/{id}/` with `{"pending_hold_minutes":1440}` (the field name follows the database column and represents the review period in minutes). The value must be an integer from 1 to 20,160 and defaults to 1,440 (24 hours). If nobody acts before the deadline, an ordinary booking is automatically approved or rejected according to the rules, while a long booking expires and releases the time. A change affects only requests that enter pending review afterward; existing deadlines do not change. Resource details include `pending_hold_minutes`, and slot-query responses include the same value as `review_window_minutes`. The request must contain `pending_hold_minutes`; sending `auto_approve_max_minutes` returns 400.
 
 Attachments support PDF, PNG, and JPEG and may be at most 5 MiB. The backend checks size, extension, MIME type, and file-format signatures. The `file_url` in evidence is a protected API path, and downloads still require Authorization. The frontend may request it as a Blob for display/download; it must not assume that `<img src>` or an ordinary link automatically includes the Bearer token. Attachments have no public address.
 
@@ -580,7 +583,7 @@ Urgent booking requests still require both `purpose` and `urgent_reason` in `POS
 
 ### Opt-in local test session
 
-- `GET auth/config/` adds `test_console_enabled`. It is true only when `DEBUG=true`, `ENABLE_DEMO_AUTH=true`, `ENABLE_TEST_CONSOLE=true`, `AUTH_PROVIDER=booking.authentication.DemoIdentityProvider` and `REPOSITORY_FACTORY=booking.repository.MemoryRepository` (the in-memory store; with PostgreSQL it stays off). Any disabled condition hides the login endpoint (404) and invalidates existing test tokens (401). Default: disabled.
+- `GET auth/config/` adds `test_console_enabled`. It is true only when `DEBUG=true`, `ENABLE_DEMO_AUTH=true`, `ENABLE_TEST_CONSOLE=true`, `AUTH_PROVIDER=booking.authentication.DemoIdentityProvider` and `REPOSITORY_FACTORY=booking.memory.MemoryRepository` (the in-memory store; with PostgreSQL it stays off). Any disabled condition hides the login endpoint (404) and invalidates existing test tokens (401). Default: disabled.
 - `POST auth/test-login/` accepts exactly `{ "login_id": "1" }`; no password. Returns the usual session envelope with a signed token and user (`zid="1"`, initial `role="STUDENT"`, `test_account=true`, `bypass_booking_rules=true`). Database `id` remains a UUID. The stored role stays STUDENT.
 - `POST auth/test-session/`, authenticated with that test token only, accepts `{ "role": "STUDENT" | "ADMIN" | "MANAGER", "bypass_booking_rules": true | false }`. It returns a fresh signed session. Replace the token and verify with `auth/me/`. Ordinary accounts receive 403 and cannot obtain overrides by adding fields to booking requests. Switching a session does not mutate another tab's already-issued token.
 - Bypass applies to the test account's own bookings, moves and staff weekly series. Free valid future times become APPROVED immediately (`TEST_OVERRIDE` for single bookings); induction, 7–28 day window, opening hours, resource maximum duration, maintenance/closed status and weekly booking limit are bypassed. Archived resources remain unavailable. Single appointments are limited to 24 h; staff series to 52 weeks. Existing bookings and held requests cannot be displaced. Booking for someone else uses that person's normal rules. Turning bypass off restores normal booking windows and approvals; account 1 retains its automatically granted inductions.

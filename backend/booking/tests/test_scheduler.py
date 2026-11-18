@@ -8,7 +8,7 @@ from django.core.management import call_command as django_call_command
 from django.core.management.base import CommandError
 from django.test import SimpleTestCase
 
-from booking.repository import MemoryRepository
+from booking.memory import MemoryRepository
 
 
 class SchedulerCommandTests(SimpleTestCase):
@@ -96,7 +96,7 @@ class SchedulerCommandTests(SimpleTestCase):
 
 class EmailWorkerConnectionTests(SimpleTestCase):
     def test_worker_clears_old_database_connections_before_each_batch(self):
-        # 2026-11-01: this thread has no requests, so nothing else clears a connection the server has closed.
+        # This thread has no requests, so nothing else clears a connection the server has closed.
         from booking.email_channel import EmailOutbox
 
         calls = mock.Mock()

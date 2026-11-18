@@ -32,7 +32,7 @@ class ChecksMixin:
     def _overlaps(self, resource_id, start, end, exclude_id=None, also_exclude=None):
         """Bookings and active holds that block this period.
 
-        also_exclude (Sprint 3, 1.16.0): one more booking to ignore. A change request passes the booking it replaces,
+        also_exclude: one more booking to ignore. A change request passes the booking it replaces,
         so moving a booking by an hour is not blocked by its own old time.
         """
         found = self.repo.list_blocking_bookings(resource_id, start, end, self.now(), exclude_id)
@@ -72,7 +72,7 @@ class ChecksMixin:
     def _period_violation(self, resource, start, end, allow_long_booking=False, started=False):
         """Time rules of one resource: future start, maximum length, one local day within opening hours, increments.
 
-        started (2026-11-06): extending a booking in progress, so the start may already have passed.
+        started: extending a booking in progress, so the start may already have passed.
         """
         if start.tzinfo is None or start.utcoffset() is None or end.tzinfo is None or end.utcoffset() is None:
             return DomainError("INVALID_TIME", "Start and end require UTC offsets.")
@@ -249,7 +249,7 @@ class ChecksMixin:
 
         exclude_id: a booking that is being moved, so its own hours do not count.
 
-        Dashboard (2026-11-03) shows this week; the booking window (2026-11-10, U1) shows the week being booked.
+        The Dashboard shows this week; the booking window shows the week being booked.
         """
         rules = self.rules()
         zone = ZoneInfo("Australia/Sydney")

@@ -1,4 +1,4 @@
-// Sprint 3 (1.19.0): resource status and optional recovery estimate; errors stay in the dialog.
+// Resource status and optional recovery estimate; errors stay in the dialog.
 import { useId, useState, type FormEvent } from 'react'
 import { updateResourceStatus } from '../../api/index.ts'
 import { Modal } from '../booking/Modal'
@@ -30,7 +30,7 @@ export function ResourceStatusDialog({ resource, status, affected, onClose, onSa
     <form className="announcement-editor" onSubmit={event => void save(event)}>
       <h2>{title}</h2>
       <p>{reopening ? 'New requests are allowed again. The resource status announcement will be removed.' : 'New requests and approvals stop. Existing bookings are kept. A status announcement will appear on the home pages.'}</p>
-      {/* Card A (B1): one total for bookings and requests, the same people the server notifies. */}
+      {/* One total for bookings and requests, the same people the server notifies. */}
       <p>{affected.length === 1 ? '1 upcoming booking or request affected.' : `${affected.length} upcoming bookings and requests affected.`} People with bookings or requests are notified using their notification settings.</p>
       {affected.slice(0, 5).map(booking => <p key={booking.id}>{fmtRange(booking.start, booking.end)} · {booking.student?.display_name ?? booking.student_id}</p>)}
       {!reopening && <>

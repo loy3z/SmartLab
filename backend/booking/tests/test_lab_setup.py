@@ -1,4 +1,4 @@
-"""Sprint 3 (1.16.0): what a Manager sets up on the website for people to read: induction types and their guidance,
+"""What a Manager sets up on the website for people to read: induction types and their guidance,
 the lab's contact details, room capacity and resource details; and the staff "Today" overview."""
 
 from datetime import timedelta

@@ -1,4 +1,4 @@
-// Sprint 3 (1.15.0): helpers behind the visual pass (notification bell, resource covers, time grid).
+// Helpers behind the visual pass (notification bell, resource covers, time grid).
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { groupNotifications, notificationIcon, shouldRing } from '../src/features/notifications/notifications.ts'

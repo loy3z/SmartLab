@@ -10,7 +10,7 @@ from ..test_console import booking_rules_bypassed, test_availability, test_windo
 
 
 class _DaySources:
-    """2026-10-29 (load test S7): what every resource of the day overview needs about the person and the day, read
+    """What every resource of the day overview needs about the person and the day, read
     once (before: about 6 queries per resource, 130 for the 22 demo resources).
 
     Each part answers exactly what the single-resource path asks, filtered per resource in memory: the person's
@@ -47,14 +47,14 @@ class AvailabilityMixin:
         self.process_due_requests()
         result = self._availability(actor, self.resource(resource_id), day, duration_minutes, exclude_booking_id,
                                     for_zid, urgent, additional_hours=additional_hours, long_booking=long_booking)
-        # 2026-11-10 (U1): the allowance of the week being booked (not in the day overview: one extra read per resource).
+        # The allowance of the week being booked (not in the day overview: one extra read per resource).
         # The booking being moved gives its hours back, as it does when the change is submitted.
         result["week_hours"] = self.week_hours(result["booking_for"]["id"], day, exclude_booking_id)
         return result
 
     def _availability(self, actor, resource, day, duration_minutes=30, exclude_booking_id=None, for_zid=None,
                       urgent=False, shared=None, additional_hours=False, long_booking=False):
-        """shared: a _DaySources read once for every resource of the day overview (2026-10-29, load test S7)."""
+        """shared: a _DaySources read once for every resource of the day overview, instead of once per resource."""
         person = self._beneficiary(actor, for_zid)
         if long_booking and (additional_hours or urgent):
             raise DomainError("VALIDATION_ERROR", "Longer bookings cannot be combined with urgent or additional-hours requests.")
@@ -68,7 +68,7 @@ class AvailabilityMixin:
             return test_availability(self, actor, resource, day, duration_minutes, exclude)
         if not resource.active:
             raise DomainError("RESOURCE_UNAVAILABLE", "The resource is inactive.", 409)
-        # 2026-11-06 (client, Week 8): a Manager's booking skips the person's rules (see _create_manager_booking).
+        # A Manager's booking skips the person's rules (see _create_manager_booking).
         override = actor.role == Role.MANAGER and not (additional_hours or long_booking)
         normal_maximum = self._normal_booking_limit(resource)[2]
         max_slots, quota_slot_minutes, maximum = (self._long_booking_limit(resource) if long_booking or override
@@ -90,7 +90,7 @@ class AvailabilityMixin:
         mine = shared.own_requests if shared else self.repo.list_bookings(student_id=person.id, resource_id=resource.id)
         own_requests = [item for item in mine
                         if item.resource_id == resource.id and item.status in ACTIVE_REQUEST_STATUSES and item.id != exclude]
-        # 2026-10-29 (load test S6): one query for the whole opening day instead of one per slot (22 resources made
+        # One query for the whole opening day instead of one per slot (22 resources made
         # the day overview run 500+ queries). Every slot lies inside the day, so filtering this list by the same
         # strict overlap gives exactly what _overlaps would return for that slot.
         day_blockers = (shared.blockers_for(resource.id) if shared
@@ -115,7 +115,7 @@ class AvailabilityMixin:
                           "requested_by_me": requested_by_me})
             cursor += timedelta(minutes=step)
         window_details = self._window_details(resource)
-        # Sprint 3: weekly series keep the configured booking window even for Managers.
+        # Weekly series keep the configured booking window even for Managers.
         normal_window = {"normal_booking_window": window_details.copy()} if override else {}
         if additional_hours or override:
             window_details.update(earliest_date=self.now().astimezone(zone).date().isoformat(), min_advance_days=0)
@@ -152,7 +152,7 @@ class AvailabilityMixin:
         and the equipment kept in it), category (equipment type), query (name/location), bookable_only (the person
         may request it now), free_at (local "HH:MM": keep only resources free for the whole duration from then).
 
-        Sprint 3 (1.16.0): resources that cannot be booked for this length (longer than their maximum, or not a
+        Resources that cannot be booked for this length (longer than their maximum, or not a
         multiple of their time step) are left out and counted in ``too_long`` instead of failing the whole page
         (before, one such resource made the whole request fail with INVALID_DURATION).
         Rows hidden by bookable_only are counted by reason in ``not_bookable`` (resource status when it is out of
@@ -164,7 +164,7 @@ class AvailabilityMixin:
         active = [item for item in self.repo.list_resources() if item.active]
         rooms = {item.id: item for item in active if item.kind == ResourceKind.ROOM}
         rows, too_long, not_bookable = [], 0, {}
-        shared = _DaySources(self, actor, active, day) if active else None  # 2026-10-29 (load test S7)
+        shared = _DaySources(self, actor, active, day) if active else None
         for resource in sorted(active, key=lambda item: (item.kind != ResourceKind.ROOM, item.name)):
             if kind and resource.kind.value != kind:
                 continue
@@ -175,16 +175,16 @@ class AvailabilityMixin:
             if query and query not in f"{resource.name} {resource.location} {resource.category or ''}".casefold():
                 continue
             maximum = (1440 if booking_rules_bypassed(actor) else self._long_booking_limit(resource)[2]
-                       if actor.role == Role.MANAGER else self._normal_booking_limit(resource)[2])  # 2026-11-06
+                       if actor.role == Role.MANAGER else self._normal_booking_limit(resource)[2])
             step = resource.slot_minutes if booking_rules_bypassed(actor) else self._selection_step_minutes(resource)
-            if duration_minutes > maximum or duration_minutes % step:  # Sprint 3 (1.16.0)
+            if duration_minutes > maximum or duration_minutes % step:
                 too_long += 1
                 continue
             result = self._availability(actor, resource, day, duration_minutes, shared=shared)
             if bookable_only and not result["can_request"]:
                 status, induction = result["resource_status"], result["qualification_status"]
                 reason = status if status != "AVAILABLE" else induction if induction != "VERIFIED" else "NOT_AVAILABLE"
-                not_bookable[reason] = not_bookable.get(reason, 0) + 1  # Sprint 3 (1.16.0)
+                not_bookable[reason] = not_bookable.get(reason, 0) + 1
                 continue
             if free_at is not None:
                 start = datetime.combine(day, free_at, ZoneInfo(resource.timezone)).astimezone(UTC)
@@ -197,11 +197,11 @@ class AvailabilityMixin:
         window = self._window_details(next(iter(active))) if active else {}
         if booking_rules_bypassed(actor):
             window = test_window(self)
-        elif actor.role == Role.MANAGER and active:  # 2026-11-06 (client, Week 8): Manager override, from today
+        elif actor.role == Role.MANAGER and active:  # Manager override, from today
             window.update(earliest_date=self.now().astimezone(ZoneInfo("Australia/Sydney")).date().isoformat(),
                           latest_date=None, min_advance_days=0, manager_override=True)
         return {"date": day.isoformat(), "duration_minutes": duration_minutes, "timezone": "Australia/Sydney", **window,
-                "too_long": too_long, "not_bookable": not_bookable,  # Sprint 3 (1.16.0)
+                "too_long": too_long, "not_bookable": not_bookable,
                 "rooms": [{"id": item.id, "name": item.name} for item in sorted(rooms.values(), key=lambda r: r.name)],
                 "categories": sorted({item.category for item in active if item.category}),
                 "count": len(rows), "results": rows}

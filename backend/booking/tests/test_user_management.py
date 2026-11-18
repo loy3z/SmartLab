@@ -29,8 +29,9 @@ class UserManagementAPITests(BookingAPIFixtureMixin, SimpleTestCase):
                 status=status, reviewed_by=self.user("z9000001").id, reviewed_at=self.service.now(), valid_until=valid_until))
 
     def add_manager(self, zid="z5999999"):
-        response = self.manager.post("/api/v1/admin/users/managers/", {
-            "zid": zid, "display_name": "Second manager", "university_email": f"{zid}@ad.unsw.edu.au"}, format="json")
+        response = self.manager.post("/api/v1/admin/users/staff/", {
+            "zid": zid, "display_name": "Second manager", "university_email": f"{zid}@ad.unsw.edu.au", "role": "MANAGER"},
+                                     format="json")
         self.assertEqual(response.status_code, 201, response.data)
         return self.user(zid)
 
@@ -114,7 +115,7 @@ class UserManagementAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual((booking.status.value, booking.reason_code), ("REJECTED", "ACCOUNT_DEACTIVATED"))
 
     def test_deactivating_a_student_cancels_their_future_approved_bookings(self):
-        # 2026-11-10 (U3): an approved booking of a deactivated person no longer holds the time; they are told.
+        # An approved booking of a deactivated person no longer holds the time; they are told.
         approved = self.create_approved()
         self.assertEqual(approved["status"], "APPROVED")
         self.patch("z1000001", {"active": False})
@@ -145,7 +146,7 @@ class UserManagementAPITests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(self.verified.get("/api/v1/auth/me/").status_code, 200)
 
     def test_a_deactivated_student_is_told_so_at_sign_in(self):
-        # 2026-11-10 (U4): before, they were told to create the account first, and creating it said the zID existed.
+        # Before, they were told to create the account first, and creating it said the zID existed.
         self.patch("z1000001", {"active": False})
         response = self.client.post("/api/v1/auth/demo-login/", {"zid": "z1000001"}, format="json")
         self.assert_error(response, 403)

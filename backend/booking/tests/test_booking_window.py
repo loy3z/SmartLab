@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from booking.domain import BookingStatus, Principal, Role
 from booking.exceptions import DomainError
-from booking.repository import MemoryRepository
+from booking.memory import MemoryRepository
 from booking.runtime import reset_runtime
 from booking.services import BookingService
 from booking.storage import MemoryFileStorage
@@ -129,7 +129,7 @@ class BookingWindowServiceTests(BookingFixtureMixin, SimpleTestCase):
         self.assertEqual(len(bookings), 1)
 
     def test_a_manager_reschedule_overrides_the_booking_window(self):
-        """2026-11-06 (client, Week 8): before, a Manager could move earlier but not past the last day."""
+        """Before, a Manager could move earlier but not past the last day."""
         manager = Principal(str(uuid4()), "z9888888", "Manager", Role.MANAGER, "z9888888@ad.unsw.edu.au")
         self.repo.save_principal(manager)
         booking = self.book_on(10)
@@ -225,7 +225,7 @@ class BookingWindowAPITests(BookingAPIFixtureMixin, SimpleTestCase):
                 self.assertEqual(accepted.status_code, 201, accepted.data)
                 denied = client.post("/api/v1/bookings/", {**self.payload(day_offset=29, hour=hour), **extra}, format="json")
                 self.assertEqual((denied.status_code, denied.data["error"]["code"]), (400, "BOOKING_TOO_FAR_AHEAD"))
-        # 2026-11-06 (client, Week 8): a Manager overrides the booking window.
+        # A Manager overrides the booking window.
         managed = self.manager.post("/api/v1/bookings/", {**self.payload(day_offset=29, hour=12), "on_behalf_of_zid": "z1000001"},
                                     format="json")
         self.assertEqual((managed.status_code, managed.data["status"]), (201, "APPROVED"))

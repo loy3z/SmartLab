@@ -1,4 +1,4 @@
-// Sprint 3: notification helpers (badge, link, tone).
+// Notification helpers (badge, link, tone).
 import type { AppNotification } from '../../api/types/index.ts'
 
 /** Text for the bell badge: nothing at 0, "99+" above 99. */
@@ -7,7 +7,7 @@ export function badgeText(unread: number): string {
   return unread > 99 ? '99+' : String(unread)
 }
 
-/** React keys for the bell icon and the badge. 2026-11-10 (U2): both were the number 1, which stacked two bells. */
+/** React keys for the bell icon and the badge. Both were the number 1, which stacked two bells. */
 export const ringIconKey = (ringKey: number) => `ring-${ringKey}`
 export const badgeKey = (badge: string) => `badge-${badge}`
 
@@ -24,7 +24,7 @@ export function notificationTone(kind: string): 'good' | 'bad' | 'info' {
   return 'info'
 }
 
-// Sprint 3 (1.15.0): icon, Today/Earlier groups and when the bell should ring.
+// Icon, Today/Earlier groups and when the bell should ring.
 
 export type NotificationIcon = 'check' | 'cross' | 'clock' | 'info'
 

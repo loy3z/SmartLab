@@ -49,7 +49,7 @@ class BookingStatus(str, Enum):
     EXPIRED = "EXPIRED"
 
 
-# Sprint 3: attendance of an approved booking (check-in).
+# Attendance of an approved booking (check-in).
 ATTENDANCE_VALUES = ("CHECKED_IN", "NO_SHOW", "EXCUSED", "NOT_TRACKED")
 
 # Upper bound for a resource's review window (two weeks). The default window is 24 hours.
@@ -70,7 +70,7 @@ class Principal:
     role: Role
     university_email: str
     active: bool = True
-    # 2026-11-07: no_show_count and frozen_until were removed with the booking freeze (client, Week 8).
+    # no_show_count and frozen_until were removed with the booking freeze (the client dropped it).
 
     def __post_init__(self) -> None:
         if not self.university_email or "@" not in self.university_email or any(char.isspace() for char in self.university_email):
@@ -116,7 +116,7 @@ class QualificationRequirement:
     # Requirements that must be verified and current first (e.g. Advanced needs General). Stored data,
     # not code: change it with BookingService.set_prerequisites or in the database.
     prerequisite_ids: tuple[str, ...] = ()
-    # Sprint 3 (1.16.0): guidance a Manager writes for people who do not have this induction yet (shown on the
+    # Guidance a Manager writes for people who do not have this induction yet (shown on the
     # Induction & Training page). Free text; empty means "not written yet".
     how_to_complete: str = ""      # where and how to do the training
     accepted_evidence: str = ""    # what proof to upload
@@ -131,14 +131,14 @@ class QualificationRequirement:
 
 @dataclass(frozen=True)
 class ResourceDetail:
-    """Sprint 3 (1.16.0): one "label: value" line on a resource, e.g. ("Model", "Rigol DS1054Z")."""
+    """One "label: value" line on a resource, e.g. ("Model", "Rigol DS1054Z")."""
     label: str
     value: str
 
 
 @dataclass(frozen=True)
 class SiteContact:
-    """Sprint 3 (1.16.0): how to reach the lab. One record (id SITE_CONTACT_ID), edited by a Manager and shown on the
+    """How to reach the lab. One record (id SITE_CONTACT_ID), edited by a Manager and shown on the
     Help page, My Bookings and the Induction & Training page. Empty fields are not shown."""
     id: str
     email: str = ""
@@ -154,7 +154,7 @@ SITE_CONTACT_ID = "00000000-0000-0000-0000-000000000c01"
 
 @dataclass(frozen=True)
 class ResourceInternalInfo:
-    """2026-11-07 (client, Week 8): what only Managers see about a room or piece of equipment: who owns it, its UNSW
+    """What only Managers see about a room or piece of equipment: who owns it, its UNSW
     asset number, where it came from and its specifications. A separate record (table resource_internal_info), so it
     never travels with the resource data that students and Admins receive."""
     resource_id: str
@@ -189,7 +189,7 @@ class Resource:
     room_id: str | None = None
     # Equipment type used to filter the booking page (e.g. "Microscopy", "Fabrication"). Rooms: None.
     category: str | None = None
-    # Sprint 3 (1.16.0): rooms: how many people fit (None = not given; equipment always None). Any resource: extra
+    # Rooms: how many people fit (None = not given; equipment always None). Any resource: extra
     # "label: value" lines the Manager chooses (e.g. Model: Rigol DS1054Z, Floor: Level 3), so the lab decides what
     # information people need without code changes.
     capacity: int | None = None
@@ -198,7 +198,7 @@ class Resource:
     def __post_init__(self) -> None:
         if not isinstance(self.kind, ResourceKind):
             object.__setattr__(self, "kind", ResourceKind(self.kind))
-        # Sprint 3 (1.16.0): details may arrive as dicts (JSON from the database); store them as ResourceDetail.
+        # Details may arrive as dicts (JSON from the database); store them as ResourceDetail.
         object.__setattr__(self, "details", tuple(item if isinstance(item, ResourceDetail) else ResourceDetail(**item)
                                                   for item in self.details))
         if self.kind == ResourceKind.EQUIPMENT and self.capacity is not None:
@@ -267,13 +267,13 @@ class Booking:
     # (never automatic). Induction and conflict rules still apply.
     urgent: bool = False
     urgent_reason: str | None = None
-    # Sprint 3: weekly series created by staff (see BookingSeries); None for single bookings.
+    # Weekly series created by staff (see BookingSeries); None for single bookings.
     series_id: str | None = None
-    # Sprint 3: attendance of an approved booking: CHECKED_IN (the person confirmed they were there), NO_SHOW (not confirmed
+    # Attendance of an approved booking: CHECKED_IN (the person confirmed they were there), NO_SHOW (not confirmed
     # in time), EXCUSED (the resource was unavailable) or NOT_TRACKED (started before check-in existed).
     attendance: str | None = None
     checked_in_at: datetime | None = None
-    # Sprint 3 (1.16.0): change request. This request asks to move the approved booking ``replaces_id`` (same person,
+    # Change request. This request asks to move the approved booking ``replaces_id`` (same person,
     # same resource) to a new time. The old booking stays until this one is approved, then it is cancelled
     # automatically (services/changes.py). None for ordinary requests.
     replaces_id: str | None = None
@@ -288,7 +288,7 @@ class Booking:
     # A separate Manager decision exempts only this booking's normal single-booking duration cap.
     long_booking: bool = False
     long_booking_reason: str | None = None
-    # 2026-11-07 (client, Week 8): the later end the person asked for while the booking is in progress; it waits for
+    # The later end the person asked for while the booking is in progress; it waits for
     # a Manager (extend_booking / review_extension in services/changes.py). None when nothing is waiting.
     extension_end: datetime | None = None
 
@@ -370,7 +370,7 @@ class OutlookSyncRecord:
                        lease_until=self.lease_until, last_success_at=self.last_success_at)
 
 
-# Sprint 3 records ----------------------------------------------------------------------------------------------
+# Series, notifications, preferences, calendar feeds and announcements ------------------------------------------
 
 @dataclass(frozen=True)
 class BookingSeries:
@@ -407,7 +407,7 @@ class Notification:
     link: str | None = None          # page in the web app, e.g. "/bookings?booking=<id>"
     booking_id: str | None = None
     read_at: datetime | None = None
-    # Sprint 3 (1.19.0): channel choices are captured when the notification is created.
+    # Channel choices are captured when the notification is created.
     in_app: bool = True
     email: bool = True
 
@@ -445,7 +445,7 @@ class EmailDelivery:
 
 @dataclass(frozen=True)
 class NotificationPreference:
-    """Sprint 3 (2026-10-25): one person's choice for one notification category.
+    """One person's choice for one notification category.
 
     A missing row means the category is on, so new accounts keep every notification by default.
     """
@@ -453,7 +453,7 @@ class NotificationPreference:
     principal_id: str
     category: str      # bookings | reminders | induction | account | resources
     enabled: bool
-    email_enabled: bool = True  # Sprint 3 (1.19.0): independent email preference.
+    email_enabled: bool = True  # Independent email preference.
 
 
 @dataclass(frozen=True)
@@ -467,7 +467,7 @@ class CalendarFeed:
         _require_aware(created_at=self.created_at)
 
 
-# Sprint 3 (1.19.0): explicit author role preserves the signature of signed test sessions too.
+# Explicit author role preserves the signature of signed test sessions too.
 @dataclass(frozen=True)
 class Announcement:
     id: str

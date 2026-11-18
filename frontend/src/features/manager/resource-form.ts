@@ -12,7 +12,7 @@ export function toMinutes(value: string): number {
 }
 
 /** An empty form for a new room or equipment (same defaults as the backend). */
-export function emptyResource(defaultRequirementId = ''): ResourceInput {
+export function emptyResource(defaultRequirementId: string | null = null): ResourceInput {
   return {
     name: '', location: '', description: '', required_qualification_id: defaultRequirementId, room_id: null, category: null,
     slot_minutes: 30, max_booking_minutes: 480, opening_time: '08:00', closing_time: '20:00', pending_hold_minutes: 1440,
@@ -24,7 +24,7 @@ export function emptyResource(defaultRequirementId = ''): ResourceInput {
 export function resourceToInput(resource: Resource): ResourceInput {
   return {
     name: resource.name, location: resource.location, description: resource.description,
-    required_qualification_id: resource.required_qualification_id ?? '', room_id: resource.room_id,
+    required_qualification_id: resource.required_qualification_id, room_id: resource.room_id,
     category: resource.category ?? null, slot_minutes: resource.slot_minutes, max_booking_minutes: resource.max_booking_minutes,
     opening_time: resource.opening_time.slice(0, 5), closing_time: resource.closing_time.slice(0, 5),
     pending_hold_minutes: resource.pending_hold_minutes,
@@ -37,7 +37,6 @@ export function checkResource(kind: ResourceKind, input: ResourceInput): Partial
   const problems: Partial<Record<keyof ResourceInput, string>> = {}
   if (!input.name.trim()) problems.name = 'Give a name.'
   if (!input.location.trim()) problems.location = 'Give a location.'
-  if (!input.required_qualification_id) problems.required_qualification_id = 'Choose the induction people need.'
   if (kind === 'ROOM' && (input.room_id || input.category)) problems.room_id = 'A room is not kept in another room.'
   const slot = input.slot_minutes
   if (!SLOT_CHOICES.includes(slot as 15 | 30 | 60)) problems.slot_minutes = 'Use 15, 30 or 60 minutes.'
@@ -84,7 +83,6 @@ export const PROBLEM_TEXT: Record<string, string> = {
   DURATION_LIMIT: 'longer than the new longest booking',
   INVALID_TIME_INCREMENT: 'not on the new time steps',
   QUALIFICATION_REQUIRED: 'the person lacks the new induction',
-  RESOURCE_POLICY_NOT_CONFIGURED: 'no induction is set',
 }
 
 // The form shows lengths in hours (bookings are shown in hours everywhere else); the API keeps minutes.

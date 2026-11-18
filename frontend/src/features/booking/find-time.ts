@@ -15,7 +15,6 @@ const REASON_TEXT: Record<string, string> = {
   EXPIRED: 'induction expired',
   EXPIRES_BEFORE_END: 'induction expires before that day',
   PREREQUISITE_REQUIRED: 'an earlier induction is needed first',
-  NOT_CONFIGURED: 'not open for booking yet',
   MAINTENANCE: 'under maintenance',
   CLOSED: 'closed',
 }

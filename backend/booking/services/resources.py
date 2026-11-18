@@ -2,7 +2,8 @@
 maintenance/closed status, and the bookings report.
 
 Resource setup rules (all checked in _check_resource_fields):
-- Every resource needs a name, a location and the induction people must have to book it.
+- Every resource needs a name and a location. The Manager chooses its induction, or no induction
+  (simple equipment such as a smart watch), when adding it; equipment never inherits its room's induction.
 - Names are unique among listed (not archived) resources, ignoring upper/lower case.
 - A room has no room and no category. Equipment may name the listed room it is kept in, and a category.
 - Bookings use slot_minutes steps (15, 30 or 60). Opening and closing times fall on those steps, closing is
@@ -49,6 +50,10 @@ class ResourcesMixin:
         unknown = set(fields) - set(EDITABLE_FIELDS)
         if unknown:
             raise DomainError("VALIDATION_ERROR", f"Unknown fields: {', '.join(sorted(unknown))}.")
+        if "required_qualification_id" not in fields:
+            # No induction must be a choice (null), not a field left out by mistake.
+            message = "Choose the induction people need, or no induction."
+            raise DomainError("VALIDATION_ERROR", message, 400, {"required_qualification_id": [message]})
         defaults = dict(description="", slot_minutes=30, max_booking_minutes=480, opening_time=time(8), closing_time=time(20),
                         pending_hold_minutes=self.rules().default_review_window_minutes, room_id=None, category=None,
                         capacity=None, details=())
@@ -160,9 +165,9 @@ class ResourcesMixin:
         if same_name:
             raise DomainError("RESOURCE_NAME_TAKEN", "Another listed resource already has this name.", 409, {"name": name})
 
-        requirement_id = values.get("required_qualification_id")
-        if not requirement_id or self.repo.get_requirement(str(requirement_id)) is None:
-            invalid("required_qualification_id", "Choose the induction people need to book this resource.")
+        requirement_id = values.get("required_qualification_id") or None
+        if requirement_id and self.repo.get_requirement(str(requirement_id)) is None:
+            invalid("required_qualification_id", "Choose a listed induction, or no induction.")
 
         room_id = values.get("room_id") or None
         category = (values.get("category") or "").strip() or None
@@ -213,7 +218,7 @@ class ResourcesMixin:
         if len(details) > MAX_DETAILS:
             invalid("details", f"Add at most {MAX_DETAILS} details.")
 
-        return dict(name=name, location=location, description=description, required_qualification_id=str(requirement_id),
+        return dict(name=name, location=location, description=description, required_qualification_id=str(requirement_id) if requirement_id else None,
                     room_id=str(room_id) if room_id else None, category=category, slot_minutes=slot,
                     max_booking_minutes=longest, opening_time=opening, closing_time=closing, pending_hold_minutes=hold,
                     capacity=capacity, details=tuple(details))

@@ -2,6 +2,14 @@
 
 This file records what changed in each update and why. Other documents describe only the current rules. Version numbers refer to the API version in `backend/docs/openapi.json`, and migrations refer to scripts in `backend/database/migrations/`. The newest entries appear first.
 
+## 1.30.0: A Resource May Need No Induction (2026-11-18, no migration)
+
+- **Why:** in client meeting 5 the client said equipment is separate from rooms and that simple devices (for example smart watches) need no induction. Every resource had to name an induction, and the demo equipment used its room's, so a student could borrow nothing without passing a room induction first.
+- **Rule:** the Manager chooses an induction or "No induction required" for each room or device. A resource with none can be booked by anyone (`qualification_status` `NOT_REQUIRED`); equipment is only ever checked against its own induction. Adding a resource must still send the field, so "no induction" is a choice and never a field left out. `NOT_CONFIGURED` and the error `RESOURCE_POLICY_NOT_CONFIGURED` are gone (`services/qualifications.py`, `checks.py`, `resources.py`).
+- **Website:** the induction list in Resource setup starts with "No induction required"; the booking card shows "No induction needed"; the borrowing conditions for such equipment say no induction is needed.
+- **Demo data:** Digital Multimeter 001 and 002 need no induction (`runtime.py`, `database/seed_resources.sql`). Existing databases are not changed.
+- API 1.30.0: `openapi.json`, `docs/frontend-api.md`. Tests: `test_resource_setup.py` (no induction, explicit choice, switching back), `test_api.py`, `test_day_overview.py`, `test_audit_and_seed.py`, `test_test_console.py`, `frontend/tests/resource-form.test.mjs`.
+
 ## After 1.28.0: The Change-Time Dialog Counts the Week Without the Booking Being Moved (2026-11-17, API unchanged)
 
 - A student whose week was full (12 h) opened “Change time” on one booking and read “0 h left of your 12 h”, although moving it within the same week is allowed: submitting a change already leaves the old booking out of the weekly count. `availability` now does the same for `week_hours` when `exclude_booking_id` is given (`services/availability.py`, `checks.py` `week_hours`), so the dialog shows the hours the move can use (3 h in this example). The booking dialog and the Dashboard are unchanged. Test: `test_change_requests.py` `test_the_change_window_shows_the_hours_the_moved_booking_gives_back` (failed before the change).

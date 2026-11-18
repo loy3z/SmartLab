@@ -6,7 +6,7 @@ import { AlertIcon, CheckIcon, ClockIcon, PinIcon } from './icons'
 import type { Resource } from '../../api/types/index.ts'
 
 /** This person's induction state for the one resource (from the latest evidence for the induction it requires). */
-export type InductionState = 'VERIFIED' | 'PENDING' | 'NOT_SUBMITTED' | 'REJECTED' | 'EXPIRED' | 'NOT_CONFIGURED' | 'PREREQUISITE_REQUIRED'
+export type InductionState = 'VERIFIED' | 'PENDING' | 'NOT_SUBMITTED' | 'REJECTED' | 'EXPIRED' | 'NOT_REQUIRED' | 'PREREQUISITE_REQUIRED'
 
 /** The status chip for each induction state (ok = green, otherwise amber). */
 const CHIP: Record<InductionState, { text: string; ok: boolean }> = {
@@ -15,7 +15,7 @@ const CHIP: Record<InductionState, { text: string; ok: boolean }> = {
   NOT_SUBMITTED: { text: 'Induction not submitted', ok: false },
   REJECTED: { text: 'Induction rejected', ok: false },
   EXPIRED: { text: 'Induction expired', ok: false },
-  NOT_CONFIGURED: { text: 'Not open for booking', ok: false },
+  NOT_REQUIRED: { text: 'No induction needed', ok: true },
   PREREQUISITE_REQUIRED: { text: 'Earlier induction needed first', ok: false },
 }
 
@@ -25,7 +25,6 @@ const NOTE: Partial<Record<InductionState, string>> = {
   NOT_SUBMITTED: 'Submit induction to request a booking.',
   REJECTED: 'Resubmit induction to request a booking.',
   EXPIRED: 'Resubmit induction to request a booking.',
-  NOT_CONFIGURED: 'No induction requirement is set up for this resource yet.',
 }
 
 const STATUS_TEXT = { MAINTENANCE: 'Under maintenance', CLOSED: 'Closed' } as const
@@ -71,7 +70,6 @@ export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEq
     : NOTE[state]
   // Under maintenance or closed: new requests are paused, but the room/device stays visible with the reason.
   const unavailable = resource.status !== 'AVAILABLE'
-  const blocked = !testOverride && !managerOverride && state === 'NOT_CONFIGURED'
   const chipBody = <>{chip.ok ? <CheckIcon size={16} /> : <AlertIcon size={16} />} {chip.text}</>
   const chipClass = `bk-chip ${chip.ok ? 'is-ok' : 'is-warn'}`
   // The longest normal booking; a Manager may book up to the hard maximum.
@@ -110,12 +108,12 @@ export function ResourceCard({ resource, state, onOpen, equipmentCount, onShowEq
         </div>
         <div className="resource-hours"><ClockIcon size={13} /><span>{fmtHours(resource.opening_time, resource.closing_time)}</span><span>Up to {longest / 60} h</span></div>
         <div className="bk-rcard-actions">
-          <button type="button" className="bk-btn-outline bk-rcard-primary" disabled={blocked} onClick={onOpen}>{openLabel ?? 'View availability'}</button>
-          {onAdditionalHours && <button type="button" className="bk-btn-outline" disabled={blocked || unavailable} onClick={onAdditionalHours}>Request additional hours</button>}
+          <button type="button" className="bk-btn-outline bk-rcard-primary" onClick={onOpen}>{openLabel ?? 'View availability'}</button>
+          {onAdditionalHours && <button type="button" className="bk-btn-outline" disabled={unavailable} onClick={onAdditionalHours}>Request additional hours</button>}
           {onLongBooking && resource.max_booking_minutes > (resource.effective_max_booking_minutes ?? resource.max_booking_minutes) &&
-            <button type="button" className="bk-btn-outline" disabled={blocked || unavailable} onClick={onLongBooking}>Request a longer booking</button>}
+            <button type="button" className="bk-btn-outline" disabled={unavailable} onClick={onLongBooking}>Request a longer booking</button>}
           {onRepeat && (
-            <button type="button" className="bk-btn-outline" disabled={blocked || (unavailable && !testOverride)} onClick={onRepeat}>Repeat weekly</button>
+            <button type="button" className="bk-btn-outline" disabled={unavailable && !testOverride} onClick={onRepeat}>Repeat weekly</button>
           )}
         </div>
       </div>

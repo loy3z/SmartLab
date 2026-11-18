@@ -21,7 +21,9 @@ class DemoSeedTests(BookingAPIFixtureMixin, SimpleTestCase):
         self.assertEqual(len({item["id"] for item in resources}), 22)
         self.assertEqual(len(self.items(self.verified.get("/api/v1/resources/?kind=EQUIPMENT"))), 20)
         requirements = {item["required_qualification_id"] for item in resources}
-        self.assertEqual(requirements, {fixed_id(1), fixed_id(2)})
+        self.assertEqual(requirements, {fixed_id(1), fixed_id(2), None})  # None: the multimeters need no induction
+        no_induction = sorted(item["name"] for item in resources if item["required_qualification_id"] is None)
+        self.assertEqual(no_induction, ["Digital Multimeter 001", "Digital Multimeter 002"])
         self.assertEqual(len(DEMO_RESOURCES), 22)
 
     def test_existing_demo_ids_and_requirements_are_unchanged(self):

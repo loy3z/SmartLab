@@ -76,8 +76,9 @@ class TestConsoleAPITests(BookingAPIFixtureMixin, SimpleTestCase):
             self.assertEqual(len(dashboard.data['qualifications']), len(required))
             self.assertTrue(all(item['effective_status'] == 'VERIFIED' for item in dashboard.data['qualifications']))
         for resource in self.service.repo.list_resources():
+            expected = ('VERIFIED', True) if resource.required_qualification_id else ('NOT_REQUIRED', True)
             self.assertEqual(self.service.qualification_state(TEST_ACCOUNT_ID, resource,
-                             NOW + timedelta(days=3650)), ('VERIFIED', True))
+                             NOW + timedelta(days=3650)), expected)
         self.assertFalse(self.student.get('/api/v1/qualifications/').data['results'])
 
     def test_existing_session_receives_new_requirements_without_duplicate_grants(self):

@@ -50,7 +50,9 @@ class DayOverviewTests(BookingAPIFixtureMixin, SimpleTestCase):
         everything = self.overview(bookable_only="true")
         self.assertNotIn("Lab Room 2", self.names(everything))  # needs Advanced training
         self.assertIn("Lab Room 1", self.names(everything))
-        self.assertEqual(self.overview(self.student, bookable_only="true")["count"], 0)  # no induction yet
+        # No induction yet: only the devices that need none (the two multimeters), not their room.
+        self.assertEqual(set(self.names(self.overview(self.student, bookable_only="true"))),
+                         {"Digital Multimeter 001", "Digital Multimeter 002"})
 
     def test_free_at_keeps_only_resources_free_for_the_whole_duration(self):
         self.create_approved(payload=self.payload(hour=10, minutes=60))  # Lab Room 1, 10:00-11:00

@@ -143,7 +143,9 @@ export function BookingForm({ resource, onBooked, initialDate, initialStart, ini
         <div className="bk-loan-box">
           <b>Borrowing conditions</b>
           <ul>
-            <li>A valid induction covering the whole borrowing period is required.</li>
+            <li>{resource.required_qualification_id
+              ? 'A valid induction covering the whole borrowing period is required.'
+              : 'No induction is needed for this equipment.'}</li>
             <li>Borrowing period: up to {fmtDuration(normalMaximum)} per booking, within {fmtHours(resource.opening_time, resource.closing_time)}.</li>
             <li>Return the equipment by the end of your booked time{range ? ` (${fmtRange(range.start, range.end)})` : ''}.</li>
           </ul>

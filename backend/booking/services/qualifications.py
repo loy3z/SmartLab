@@ -167,15 +167,17 @@ class QualificationsMixin:
         """Single eligibility check used by create, approve, automatic decisions, waitlist promotion,
         reschedule and availability.
 
-        The resource's required induction must be verified and valid until the booking ends, and so must
+        A resource without an induction (the Manager chose "no induction") is open to everyone: NOT_REQUIRED.
+        Otherwise the resource's own induction must be verified and valid until the booking ends, and so must
         every prerequisite of it (for example General Lab Induction for Advanced Lab Training). A missing
-        prerequisite is reported as PREREQUISITE_REQUIRED. Eligibility comes only from the latest
+        prerequisite is reported as PREREQUISITE_REQUIRED. Equipment is checked against its own induction
+        only, never its room's. Eligibility comes only from the latest
         QualificationSubmission of each requirement; a future source (school records, Moodle) can be an
         adapter that saves VERIFIED submissions, and these rules need no change.
         sources: an EligibilitySources read once for many resources instead of once per resource; same answer.
         """
         if not resource.required_qualification_id:
-            return "NOT_CONFIGURED", False
+            return "NOT_REQUIRED", True
         if self.missing_prerequisite(student_id, resource.required_qualification_id, end, sources):
             return "PREREQUISITE_REQUIRED", False
         status = self._requirement_status(student_id, resource.required_qualification_id, end, sources)
